@@ -71,5 +71,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
 .btn.toggle.active { background: var(--ink); color: var(--bg); }
 .btn.icon { padding: 7px 10px; font-size: 14px; line-height: 1; }
+.btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn:disabled:hover { filter: none; }
 
 .eyebrow { font-size: 10px; font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-dim); }

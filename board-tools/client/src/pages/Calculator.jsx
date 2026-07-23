@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { getCalculator, saveCalculator } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
@@ -23,6 +23,9 @@ export default function Calculator() {
   const [loadError, setLoadError] = useState(null);
   const [saveError, setSaveError] = useState(null);
   const [duelResult, setDuelResult] = useState(null);
+  const [past, setPast] = useState([]);
+  const [future, setFuture] = useState([]);
+  const fieldSnapshotRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,11 +38,62 @@ export default function Calculator() {
   function saveNow(next) {
     saveCalculator(next).then(() => setSaveError(null)).catch(() => setSaveError("Không lưu được lên server."));
   }
-  function commitAndSave(next) {
+
+  function applyFieldChange(next) {
     setCalc(next);
     setDuelResult(null);
     saveNow(next);
   }
+
+  const MAX_HISTORY = 50;
+  function recordHistory(prevCalc) {
+    setPast((p) => {
+      const nextPast = [...p, prevCalc];
+      return nextPast.length > MAX_HISTORY ? nextPast.slice(nextPast.length - MAX_HISTORY) : nextPast;
+    });
+    setFuture([]);
+  }
+
+  function commitAndSave(next) {
+    recordHistory(calc);
+    applyFieldChange(next);
+  }
+
+  function beginFieldEdit() {
+    if (fieldSnapshotRef.current === null) fieldSnapshotRef.current = calc;
+  }
+  function endFieldEdit() {
+    const snap = fieldSnapshotRef.current;
+    fieldSnapshotRef.current = null;
+    if (snap && JSON.stringify(snap) !== JSON.stringify(calc)) recordHistory(snap);
+  }
+
+  function undo() {
+    if (past.length === 0) return;
+    const prev = past[past.length - 1];
+    setPast((p) => p.slice(0, -1));
+    setFuture((f) => [calc, ...f]);
+    applyFieldChange(prev);
+  }
+  function redo() {
+    if (future.length === 0) return;
+    const nextState = future[0];
+    setFuture((f) => f.slice(1));
+    setPast((p) => [...p, calc]);
+    applyFieldChange(nextState);
+  }
+
+  useEffect(() => {
+    function onKeyDown(e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      const key = e.key.toLowerCase();
+      if (key !== "z" && key !== "y") return;
+      e.preventDefault();
+      if (key === "y" || (key === "z" && e.shiftKey)) redo(); else undo();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [calc, past, future]);
 
   if (loadError) {
     return (
@@ -73,7 +127,7 @@ export default function Calculator() {
   }
 
   function updateStat(id, field, value) {
-    commitAndSave({ ...calc, stats: calc.stats.map((s) => (s.id === id ? { ...s, [field]: value } : s)) });
+    applyFieldChange({ ...calc, stats: calc.stats.map((s) => (s.id === id ? { ...s, [field]: value } : s)) });
   }
   function addStat() {
     commitAndSave({
@@ -117,6 +171,8 @@ export default function Calculator() {
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <Link to="/" className="btn ghost">← Trang chủ</Link>
+          <button className="btn ghost icon" onClick={undo} disabled={past.length === 0} title="Hoàn tác (Ctrl+Z)">↶</button>
+          <button className="btn ghost icon" onClick={redo} disabled={future.length === 0} title="Làm lại (Ctrl+Shift+Z)">↷</button>
           <button className="btn ghost icon" onClick={toggleTheme} title="Đổi giao diện sáng/tối">◐</button>
         </div>
       </div>
@@ -128,7 +184,9 @@ export default function Calculator() {
         <input
           id="budgetInput" type="number" className="mono" min="0" step="10"
           value={calc.budget}
-          onChange={(e) => commitAndSave({ ...calc, budget: Number(e.target.value) || 0 })}
+          onFocus={beginFieldEdit}
+          onBlur={endFieldEdit}
+          onChange={(e) => applyFieldChange({ ...calc, budget: Number(e.target.value) || 0 })}
         />
       </div>
 
@@ -140,10 +198,10 @@ export default function Calculator() {
           <tbody>
             {stats.map((s) => (
               <tr key={s.id}>
-                <td><input type="text" value={s.name} onChange={(e) => updateStat(s.id, "name", e.target.value)} /></td>
-                <td><input type="number" className="mono num" min="0" step="1" value={s.cost} onChange={(e) => updateStat(s.id, "cost", Number(e.target.value) || 0)} /></td>
-                <td><input type="number" className="mono num" min="0" step="1" value={s.a} onChange={(e) => updateStat(s.id, "a", Number(e.target.value) || 0)} /></td>
-                <td><input type="number" className="mono num" min="0" step="1" value={s.b} onChange={(e) => updateStat(s.id, "b", Number(e.target.value) || 0)} /></td>
+                <td><input type="text" value={s.name} onFocus={beginFieldEdit} onBlur={endFieldEdit} onChange={(e) => updateStat(s.id, "name", e.target.value)} /></td>
+                <td><input type="number" className="mono num" min="0" step="1" value={s.cost} onFocus={beginFieldEdit} onBlur={endFieldEdit} onChange={(e) => updateStat(s.id, "cost", Number(e.target.value) || 0)} /></td>
+                <td><input type="number" className="mono num" min="0" step="1" value={s.a} onFocus={beginFieldEdit} onBlur={endFieldEdit} onChange={(e) => updateStat(s.id, "a", Number(e.target.value) || 0)} /></td>
+                <td><input type="number" className="mono num" min="0" step="1" value={s.b} onFocus={beginFieldEdit} onBlur={endFieldEdit} onChange={(e) => updateStat(s.id, "b", Number(e.target.value) || 0)} /></td>
                 <td className="col-remove">
                   <button className="icon-btn" style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, color: "var(--ink-dim)" }} title="Xoá chỉ số" onClick={() => removeStat(s.id)}>×</button>
                 </td>
