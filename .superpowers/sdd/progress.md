@@ -82,3 +82,23 @@ FINAL whole-branch review (opus, a8bff06..23da7b9): i18n feature CORRECT, no
   trims search to match the counter. Build pass; final headless smoke all
   3 routes/2 locales PASS (chrome EN, status labels + stat names stay VN).
 ALL TASKS COMPLETE. Branch ready to finish.
+
+============================================================
+# SDD Progress — User-managed badges (feature/user-managed-badges)
+Plan: docs/superpowers/plans/2026-07-24-user-managed-badges.md
+Base: 81addd0 (branched from main after i18n merge)
+
+## Pre-flight rulings (do NOT re-ask)
+- NO test framework. Human-ratified for this whole project. Reviewer may
+  flag as plan-mandated; record and move on. Verify = extract + build +
+  manual/headless.
+- Task 2 uses transitional EMPTY STUBS openBadgeCreate/openBadgeMenu that
+  the filterbar JSX calls; they get real bodies in Task 3/4. Correct for
+  Task 2's deliverable (invisible data refactor). Not a defect.
+- LIVE DATA: server :3001 is the user's running instance on OLD code.
+  Migration mutates the real board on first GET. Subagents verify code +
+  `node --check` + build ONLY — they must NOT restart :3001 or run the new
+  server against the live DB. Controller/user does the runtime migration
+  verify with a backup, under control.
+
+## Tasks
