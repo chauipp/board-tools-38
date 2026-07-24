@@ -25,3 +25,7 @@ Task 1: complete (commits 6a61446..c874a31, review clean, no Critical/Important)
   Minor noted: Home.jsx has two separate imports from @lingui/react/macro
   (brief-mandated); new Lingui pkgs declare engines.node >=22.19.0.
   OUTSTANDING: browser check never ran. Controller verifying now.
+  RESOLVED: controller ran the browser check via headless Chrome on the built
+  output (vite preview :4174). Default -> Vietnamese + "VI" button; with
+  locale-pref=en -> English + "EN" button; DOM ~2.9KB (not a blank page).
+  Residual gap: the click path (activateLocale write) is still unclicked.
