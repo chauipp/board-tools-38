@@ -12,6 +12,7 @@ import FrameBox from "../components/FrameBox.jsx";
 import { nodesInFrame, edgeEndpoint, edgesMatch, rectForEndpoint, clipToRect } from "../lib/board-geometry.js";
 import { computeSnap } from "../lib/snap.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
+import { gridLayout } from "../lib/layout.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -1010,6 +1011,24 @@ export default function IdeaMap() {
     });
   }
 
+  function tidySelection() {
+    if (selectedIds.size < 2) return;
+    const selected = board.nodes
+      .filter((n) => selectedIds.has(n.id))
+      .sort((a, b) => (a.y - b.y) || (a.x - b.x));       // thứ tự đọc
+    const items = selected.map((n) => ({ id: n.id, ...frameCardSize(n.id) }));
+    const origin = {
+      x: Math.min(...selected.map((n) => n.x)),
+      y: Math.min(...selected.map((n) => n.y))
+    };
+    const cols = Math.ceil(Math.sqrt(items.length));
+    const pos = gridLayout(items, origin, cols);
+    commitAndSave({
+      ...board,
+      nodes: board.nodes.map((n) => (pos.has(n.id) ? { ...n, ...pos.get(n.id) } : n))
+    });
+  }
+
   function zoomToNodes(ids) {
     if (!ids || ids.length === 0) return;
     const targets = board.nodes.filter((n) => ids.includes(n.id));
@@ -1461,6 +1480,7 @@ export default function IdeaMap() {
                 <button key={token} className="be-swatch" style={{ background: colorVar(token) }} onClick={() => applyToSelection({ color: token })} title={token} />
               ))}
             </div>
+            <button className="bb-clear" onClick={tidySelection}><Trans>Xếp gọn</Trans></button>
             <button className="bb-clear" onClick={() => setSelectedIds(new Set())}><Trans>Bỏ chọn</Trans></button>
           </div>
         )}
