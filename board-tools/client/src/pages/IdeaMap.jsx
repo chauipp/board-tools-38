@@ -293,6 +293,29 @@ export default function IdeaMap() {
     saveNow(next);
   }
 
+  // Cùng kỷ luật refs-only như applyImageToNode: được gọi từ listener "paste"
+  // gắn-một-lần và từ .then() của compressImage.
+  function createImageNode(dataUrl, pos) {
+    const current = boardRef.current;
+    if (!current || !viewportRef.current) return;
+    let x, y;
+    if (pos) {
+      ({ x, y } = pos);
+    } else {
+      const rect = viewportRef.current.getBoundingClientRect();
+      x = Math.round((rect.width / 2 - current.view.panX) / current.view.scale - CARD_W / 2);
+      y = Math.round((rect.height / 2 - current.view.panY) / current.view.scale - 80);
+    }
+    const id = current.nextNodeId;
+    const node = { id, title: t`Ảnh`, desc: "", tagId: null, statusId: null, x, y, image: dataUrl };
+    const next = { ...current, nodes: [...current.nodes, node], nextNodeId: id + 1 };
+    recordHistory(current);
+    setBoard(next);
+    boardRef.current = next;
+    saveNow(next);
+    setSelectedIds(new Set([id]));
+  }
+
   useEffect(() => {
     function onPaste(e) {
       const tag = (e.target.tagName || "").toLowerCase();
@@ -300,11 +323,13 @@ export default function IdeaMap() {
       const current = boardRef.current;
       if (!current) return;
       const sel = selectedIdsRef.current;
-      if (sel.size !== 1) return;
+      if (sel.size > 1) return;
       const item = Array.from(e.clipboardData?.items ?? []).find((i) => i.type.startsWith("image/"));
       if (!item) return;
       e.preventDefault();
-      compressImage(item.getAsFile()).then((dataUrl) => applyImageToNode(Array.from(sel)[0], dataUrl)).catch(() => {});
+      const file = item.getAsFile();
+      if (sel.size === 1) compressImage(file).then((dataUrl) => applyImageToNode(Array.from(sel)[0], dataUrl)).catch(() => {});
+      else compressImage(file).then((dataUrl) => createImageNode(dataUrl)).catch(() => {});
     }
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
@@ -847,6 +872,51 @@ export default function IdeaMap() {
     e.stopPropagation();
     const f = Array.from(e.dataTransfer.files).find((x) => x.type.startsWith("image/"));
     if (f) compressImage(f).then((d) => applyImageToNode(nodeId, d)).catch(() => {});
+  }
+
+  // Thả file ảnh lên chỗ trống canvas → tạo thẻ ảnh tại điểm thả (thả lên thẻ
+  // có sẵn do handleImageDrop xử lý và đã stopPropagation).
+  function handleViewportImageDrop(e) {
+    const f = Array.from(e.dataTransfer?.files ?? []).find((x) => x.type.startsWith("image/"));
+    if (!f) return;
+    e.preventDefault();
+    const rect = viewportRef.current.getBoundingClientRect();
+    const x = Math.round((e.clientX - rect.left - board.view.panX) / board.view.scale - CARD_W / 2);
+    const y = Math.round((e.clientY - rect.top - board.view.panY) / board.view.scale - 40);
+    compressImage(f).then((d) => createImageNode(d, { x, y })).catch(() => {});
+  }
+
+  // Kéo góc ảnh đổi bề rộng thẻ (node.w); chiều cao ảnh theo tỉ lệ. Cùng
+  // pattern với handleGroupResizeMouseDown: live update, 1 history entry lúc thả.
+  function handleImageResizeMouseDown(e, node) {
+    if (e.button !== 0 || node.locked) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const scale = board.view.scale;
+    const boardBeforeDrag = board;
+    const startW = node.w || CARD_W;
+    const MIN_W = 140, MAX_W = 560;
+    let latest = board;
+    let moved = false;
+
+    function onMove(ev) {
+      const dx = (ev.clientX - startX) / scale;
+      if (Math.abs(dx) > 0.5) moved = true;
+      const w = Math.min(MAX_W, Math.max(MIN_W, Math.round(startW + dx)));
+      setBoard((prev) => {
+        const next = { ...prev, nodes: prev.nodes.map((n) => (n.id === node.id ? { ...n, w } : n)) };
+        latest = next;
+        return next;
+      });
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (moved) { recordHistory(boardBeforeDrag); saveNow(latest); }
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   }
 
   function removeNodeImage(id) {
@@ -1590,6 +1660,8 @@ export default function IdeaMap() {
         ref={viewportRef}
         onMouseDown={handleViewportMouseDown}
         onDoubleClick={handleViewportDoubleClick}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={handleViewportImageDrop}
       >
         <div
           className="canvas"
@@ -1638,7 +1710,7 @@ export default function IdeaMap() {
                     className="visible"
                     x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                     strokeDasharray={edge.style === "dashed" ? "6 5" : undefined}
-                    markerEnd="url(#edge-arrow)"
+                    markerEnd={edge.arrow === "none" ? undefined : "url(#edge-arrow)"}
                   />
                   {edge.label && (
                     <text className="edge-label" x={(p1.x + p2.x) / 2} y={(p1.y + p2.y) / 2 - 4} textAnchor="middle">{edge.label}</text>
@@ -1681,6 +1753,7 @@ export default function IdeaMap() {
               onCancel={() => setEditingId(null)}
               onDropImage={(e) => handleImageDrop(e, node.id)}
               onRemoveImage={() => removeNodeImage(node.id)}
+              onImageResize={(e) => handleImageResizeMouseDown(e, node)}
             />
           ))}
         </div>
@@ -1903,6 +1976,8 @@ export default function IdeaMap() {
             x={edgeMenu.x} y={edgeMenu.y}
             edge={edge}
             onStyleToggle={() => updateEdge(edge.id, { style: (edge.style === "dashed" ? "solid" : "dashed") })}
+            onArrowToggle={() => updateEdge(edge.id, { arrow: edge.arrow === "none" ? undefined : "none" })}
+            onReverse={() => updateEdge(edge.id, { from: edge.to, fromKind: edge.toKind, to: edge.from, toKind: edge.fromKind })}
             onLabel={(label) => updateEdge(edge.id, { label: label.trim() || undefined })}
             onDelete={() => deleteEdge(edge.id)}
             onClose={() => setEdgeMenu(null)}
@@ -1977,7 +2052,7 @@ function MdLite({ text }) {
   );
 }
 
-function EdgeMenu({ x, y, edge, onStyleToggle, onLabel, onDelete, onClose }) {
+function EdgeMenu({ x, y, edge, onStyleToggle, onArrowToggle, onReverse, onLabel, onDelete, onClose }) {
   const { t } = useLingui();
   const ref = useRef(null);
   useCloseOnOutside(ref, onClose);
@@ -2008,6 +2083,14 @@ function EdgeMenu({ x, y, edge, onStyleToggle, onLabel, onDelete, onClose }) {
         <button className="save-btn" onClick={onStyleToggle}>
           {edge.style === "dashed" ? <Trans>Nét liền</Trans> : <Trans>Nét đứt</Trans>}
         </button>
+        <button className="save-btn" onClick={onArrowToggle}>
+          {edge.arrow === "none" ? <Trans>Có hướng</Trans> : <Trans>Vô hướng</Trans>}
+        </button>
+        {edge.arrow !== "none" && (
+          <button className="save-btn" onClick={onReverse}><Trans>Đảo chiều</Trans></button>
+        )}
+      </div>
+      <div className="be-actions">
         <button className="be-delete" onClick={onDelete} title={t`Xoá cạnh`}>🗑</button>
         <button className="cancel-btn" onClick={onClose}><Trans>Đóng</Trans></button>
       </div>
@@ -2065,7 +2148,7 @@ function CommentsPopover({ x, y, comments, onAdd, onDelete, onClose }) {
   );
 }
 
-function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, dropTarget, selected, flash, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onToggleFavorite, onOpenComments, onSave, onSaveAndNext, onCancel, onDropImage, onRemoveImage }) {
+function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, dropTarget, selected, flash, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onToggleFavorite, onOpenComments, onSave, onSaveAndNext, onCancel, onDropImage, onRemoveImage, onImageResize }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(node.title);
   const [desc, setDesc] = useState(node.desc);
@@ -2099,7 +2182,7 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
 
   if (editing) {
     return (
-      <div className={classNames.join(" ")} data-id={node.id} style={{ left: node.x, top: node.y }} onMouseDown={(e) => e.stopPropagation()}>
+      <div className={classNames.join(" ")} data-id={node.id} style={{ left: node.x, top: node.y, ...(node.w ? { width: node.w } : {}) }} onMouseDown={(e) => e.stopPropagation()}>
         <div className="edit-form">
           <input type="text" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t`Tên ý tưởng`} onKeyDown={handleEditKeyDown} />
           <textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t`Mô tả ngắn`} onKeyDown={handleEditKeyDown} />
@@ -2130,6 +2213,7 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
       data-id={node.id}
       style={{
         left: node.x, top: node.y,
+        ...(node.w ? { width: node.w } : {}),
         ...(node.color ? { borderLeftColor: colorVar(node.color), borderLeftWidth: 4 } : {})
       }}
       onMouseDown={onMouseDown}
@@ -2154,7 +2238,14 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
       <div className="card-top">
         <div className="title">{node.title}</div>
       </div>
-      {node.image && <img className="card-img" src={node.image} alt="" draggable={false} />}
+      {node.image && (
+        <div className="card-img-wrap">
+          <img className="card-img" src={node.image} alt="" draggable={false} />
+          {!node.locked && (
+            <span className="img-resize" title={t`Kéo để đổi cỡ ảnh`} onMouseDown={onImageResize} onClick={(e) => e.stopPropagation()} />
+          )}
+        </div>
+      )}
       <div className="desc">{node.desc ? <MdLite text={node.desc} /> : null}</div>
       <div className="meta-row">
         {(() => {

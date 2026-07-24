@@ -115,7 +115,16 @@
 .idea-card .icon-btn:hover { color: var(--ink); }
 .fav-btn.on { color: #D9A514; }
 .lock-badge { position: absolute; top: 8px; left: 8px; font-size: 10px; opacity: 0.7; }
-.idea-card .card-img { width: 100%; border-radius: 4px; margin-top: 6px; max-height: 140px; object-fit: cover; }
+.idea-card .card-img-wrap { position: relative; margin-top: 6px; }
+.idea-card .card-img { width: 100%; height: auto; border-radius: 4px; display: block; }
+.idea-card .img-resize {
+  position: absolute; right: 1px; bottom: 1px; width: 14px; height: 14px;
+  cursor: nwse-resize;
+  border-right: 3px solid var(--accent); border-bottom: 3px solid var(--accent);
+  border-radius: 0 0 4px 0;
+  opacity: 0; transition: opacity 0.12s ease;
+}
+.idea-card:hover .img-resize { opacity: 0.9; }
 .idea-card .desc {
   font-size: 11px; color: var(--ink-dim); margin-top: 5px; line-height: 1.35;
   display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
