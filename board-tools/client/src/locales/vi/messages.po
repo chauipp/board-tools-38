@@ -33,6 +33,11 @@ msgstr "Chuyển sang tiếng Anh"
 msgid "Chuyển sang tiếng Việt"
 msgstr "Chuyển sang tiếng Việt"
 
+#: src/pages/Calculator.jsx:104
+#: src/pages/IdeaMap.jsx:171
+msgid "Đang tải…"
+msgstr "Đang tải…"
+
 #: src/pages/Home.jsx:25
 msgid "Đổi giao diện sáng/tối"
 msgstr "Đổi giao diện sáng/tối"
@@ -48,6 +53,15 @@ msgstr "Dữ liệu lưu chung trên server cho cả nhóm — ai mở link cũn
 #: src/pages/Home.jsx:20
 msgid "Hai công cụ nhẹ để quản lý ý tưởng và thử cân bằng số liệu trước khi bắt tay code thật. Dữ liệu dùng chung cho cả nhóm."
 msgstr "Hai công cụ nhẹ để quản lý ý tưởng và thử cân bằng số liệu trước khi bắt tay code thật. Dữ liệu dùng chung cho cả nhóm."
+
+#: src/pages/Calculator.jsx:178
+#: src/pages/IdeaMap.jsx:619
+msgid "Không lưu được lên server."
+msgstr "Không lưu được lên server."
+
+#: src/components/LoadError.jsx:6
+msgid "Không tải được dữ liệu. Kiểm tra server đã chạy chưa (npm run dev trong thư mục server) và biến MONGODB_URI đã đúng chưa."
+msgstr "Không tải được dữ liệu. Kiểm tra server đã chạy chưa (npm run dev trong thư mục server) và biến MONGODB_URI đã đúng chưa."
 
 #: src/pages/Home.jsx:43
 msgid "Sơ đồ tư duy tự do: kéo-thả, nối quan hệ, gắn nhãn/trạng thái, lọc và tìm kiếm — quản lý mọi ý tưởng liên quan đến game."

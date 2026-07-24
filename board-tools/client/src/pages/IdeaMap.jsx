@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { Trans } from "@lingui/react/macro";
 import { getIdeas, saveIdeas } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
+import LoadError from "../components/LoadError.jsx";
 import "../styles/idea-map.css";
 
 const STATUS = {
@@ -68,7 +70,7 @@ export default function IdeaMap() {
     let cancelled = false;
     getIdeas()
       .then((data) => { if (!cancelled) setBoard(data); })
-      .catch((e) => setLoadError(e.message || "Lỗi tải dữ liệu"));
+      .catch((e) => setLoadError(e.code || "UNKNOWN"));
     return () => { cancelled = true; };
   }, []);
 
@@ -103,7 +105,7 @@ export default function IdeaMap() {
   }, []);
 
   function saveNow(next) {
-    saveIdeas(next).then(() => setSaveError(null)).catch(() => setSaveError("Không lưu được lên server."));
+    saveIdeas(next).then(() => setSaveError(null)).catch(() => setSaveError(true));
   }
 
   function saveDebounced(next) {
@@ -175,14 +177,10 @@ export default function IdeaMap() {
   }, [contextMenu]);
 
   if (loadError) {
-    return (
-      <div style={{ padding: 40 }}>
-        Không tải được dữ liệu: {loadError}. Kiểm tra server đã chạy chưa (npm run dev trong thư mục server) và biến MONGODB_URI đã đúng chưa.
-      </div>
-    );
+    return <LoadError code={loadError} />;
   }
   if (!board) {
-    return <div style={{ padding: 40, color: "var(--ink-dim)" }}>Đang tải…</div>;
+    return <div style={{ padding: 40, color: "var(--ink-dim)" }}><Trans>Đang tải…</Trans></div>;
   }
 
   function passesFilter(node) {
@@ -641,7 +639,7 @@ export default function IdeaMap() {
           <input type="text" placeholder="Tìm theo tên/mô tả…" value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="spacer" />
-        {saveError && <span style={{ fontSize: 11, color: "var(--danger)" }}>{saveError}</span>}
+        {saveError && <span style={{ fontSize: 11, color: "var(--danger)" }}><Trans>Không lưu được lên server.</Trans></span>}
         <button className="btn ghost" onClick={() => { setIoMode("export"); setIoText(JSON.stringify(board, null, 2)); setIoOpen(true); }}>Xuất JSON</button>
         <button className="btn ghost" onClick={() => { setIoMode("import"); setIoText(""); setIoOpen(true); }}>Nhập JSON</button>
         <button className="btn ghost icon" onClick={toggleTheme} title="Đổi giao diện sáng/tối">◐</button>

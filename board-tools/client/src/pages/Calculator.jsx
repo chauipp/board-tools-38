@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { Trans } from "@lingui/react/macro";
 import { getCalculator, saveCalculator } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
+import LoadError from "../components/LoadError.jsx";
 import "../styles/calculator.css";
 
 function normalize(s) {
@@ -31,12 +33,12 @@ export default function Calculator() {
     let cancelled = false;
     getCalculator()
       .then((data) => { if (!cancelled) setCalc(data); })
-      .catch((e) => setLoadError(e.message || "Lỗi tải dữ liệu"));
+      .catch((e) => setLoadError(e.code || "UNKNOWN"));
     return () => { cancelled = true; };
   }, []);
 
   function saveNow(next) {
-    saveCalculator(next).then(() => setSaveError(null)).catch(() => setSaveError("Không lưu được lên server."));
+    saveCalculator(next).then(() => setSaveError(null)).catch(() => setSaveError(true));
   }
 
   function applyFieldChange(next) {
@@ -96,14 +98,10 @@ export default function Calculator() {
   }, [calc, past, future]);
 
   if (loadError) {
-    return (
-      <div style={{ padding: 40 }}>
-        Không tải được dữ liệu: {loadError}. Kiểm tra server đã chạy chưa (npm run dev trong thư mục server) và biến MONGODB_URI đã đúng chưa.
-      </div>
-    );
+    return <LoadError code={loadError} />;
   }
   if (!calc) {
-    return <div style={{ padding: 40, color: "var(--ink-dim)" }}>Đang tải…</div>;
+    return <div style={{ padding: 40, color: "var(--ink-dim)" }}><Trans>Đang tải…</Trans></div>;
   }
 
   const { stats } = calc;
@@ -177,7 +175,7 @@ export default function Calculator() {
         </div>
       </div>
 
-      {saveError && <div style={{ fontSize: 12, color: "var(--danger)", marginBottom: 10 }}>{saveError}</div>}
+      {saveError && <div style={{ fontSize: 12, color: "var(--danger)", marginBottom: 10 }}><Trans>Không lưu được lên server.</Trans></div>}
 
       <div className="budget-row">
         <label htmlFor="budgetInput">Ngân sách điểm</label>

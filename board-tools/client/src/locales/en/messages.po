@@ -33,6 +33,11 @@ msgstr "Switch to English"
 msgid "Chuyển sang tiếng Việt"
 msgstr "Switch to Vietnamese"
 
+#: src/pages/Calculator.jsx:104
+#: src/pages/IdeaMap.jsx:171
+msgid "Đang tải…"
+msgstr "Loading…"
+
 #: src/pages/Home.jsx:25
 msgid "Đổi giao diện sáng/tối"
 msgstr "Toggle light/dark theme"
@@ -48,6 +53,15 @@ msgstr "Data lives on a shared server — anyone opening the link sees the lates
 #: src/pages/Home.jsx:20
 msgid "Hai công cụ nhẹ để quản lý ý tưởng và thử cân bằng số liệu trước khi bắt tay code thật. Dữ liệu dùng chung cho cả nhóm."
 msgstr "Two lightweight tools for managing ideas and testing number balance before writing real code. Data is shared across the team."
+
+#: src/pages/Calculator.jsx:178
+#: src/pages/IdeaMap.jsx:619
+msgid "Không lưu được lên server."
+msgstr "Could not save to the server."
+
+#: src/components/LoadError.jsx:6
+msgid "Không tải được dữ liệu. Kiểm tra server đã chạy chưa (npm run dev trong thư mục server) và biến MONGODB_URI đã đúng chưa."
+msgstr "Could not load data. Check that the server is running (npm run dev in the server folder) and that MONGODB_URI is correct."
 
 #: src/pages/Home.jsx:43
 msgid "Sơ đồ tư duy tự do: kéo-thả, nối quan hệ, gắn nhãn/trạng thái, lọc và tìm kiếm — quản lý mọi ý tưởng liên quan đến game."
