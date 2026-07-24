@@ -25,7 +25,7 @@ msgstr "← Home"
 
 #: src/pages/IdeaMap.jsx:1153
 msgid "+ Khung"
-msgstr ""
+msgstr "+ Frame"
 
 #: src/pages/Calculator.jsx:221
 msgid "+ Thêm chỉ số"
@@ -221,7 +221,7 @@ msgstr "Could not save to the server."
 #: src/components/ColorMenu.jsx:17
 #: src/pages/IdeaMap.jsx:1376
 msgid "Không màu"
-msgstr ""
+msgstr "No color"
 
 #: src/pages/IdeaMap.jsx:1235
 #: src/pages/IdeaMap.jsx:1372
@@ -249,12 +249,12 @@ msgstr "{matchCount}/{0} match"
 #: src/components/FrameBox.jsx:51
 #: src/pages/IdeaMap.jsx:482
 msgid "Khung"
-msgstr ""
+msgstr "Frame"
 
 #: src/pages/IdeaMap.jsx:309
 #: src/pages/IdeaMap.jsx:328
 msgid "Khung mới"
-msgstr ""
+msgstr "New frame"
 
 #: src/pages/Calculator.jsx:175
 #: src/pages/IdeaMap.jsx:1155
@@ -397,7 +397,7 @@ msgstr "Delete stat"
 
 #: src/components/FrameBox.jsx:30
 msgid "Xoá khung"
-msgstr ""
+msgstr "Delete frame"
 
 #: src/pages/IdeaMap.jsx:1249
 msgid "Xoá lọc"
