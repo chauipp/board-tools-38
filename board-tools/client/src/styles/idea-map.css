@@ -194,3 +194,30 @@
   border-radius: 4px; padding: 5px 8px; font-size: 12px; cursor: pointer; flex: 0 0 auto;
 }
 .badge-editor .be-actions .be-delete:hover { border-color: var(--danger); }
+
+.frame-box {
+  position: absolute; border: 2px dashed var(--line); border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  cursor: grab;
+}
+.frame-box:active { cursor: grabbing; }
+.frame-title {
+  position: absolute; top: -13px; left: 10px; max-width: calc(100% - 44px);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
+  padding: 1px 8px; font-size: 11px; color: var(--ink-dim); cursor: text;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.frame-title-input {
+  position: absolute; top: -13px; left: 10px; width: 160px;
+  background: var(--bg); border: 1px solid var(--accent); border-radius: 4px;
+  padding: 1px 8px; font-size: 11px; color: var(--ink);
+}
+.frame-delete {
+  position: absolute; top: -13px; right: 6px; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 50%; width: 20px; height: 20px;
+}
+.frame-resize-handle {
+  position: absolute; right: -6px; bottom: -6px; width: 16px; height: 16px;
+  border-radius: 3px; background: var(--surface); border: 1.5px solid var(--ink-dim);
+  cursor: nwse-resize;
+}

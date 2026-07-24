@@ -8,6 +8,8 @@ import LoadError from "../components/LoadError.jsx";
 import LocaleToggle from "../components/LocaleToggle.jsx";
 import BadgeEditor from "../components/BadgeEditor.jsx";
 import ColorMenu from "../components/ColorMenu.jsx";
+import FrameBox from "../components/FrameBox.jsx";
+import { nodesInFrame } from "../lib/board-geometry.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -47,6 +49,7 @@ export default function IdeaMap() {
   const [marquee, setMarquee] = useState(null);
   const [badgeUI, setBadgeUI] = useState(null); // { mode: "create"|"edit", kind, def?, x, y }
   const [colorMenu, setColorMenu] = useState(null); // { kind: "card"|"group", id, x, y }
+  const [editingGroupTitleId, setEditingGroupTitleId] = useState(null);
   const [, bump] = useState(0);
 
   const viewportRef = useRef(null);
@@ -195,6 +198,119 @@ export default function IdeaMap() {
     const cx = (rect.width / 2 - board.view.panX) / board.view.scale;
     const cy = (rect.height / 2 - board.view.panY) / board.view.scale;
     createNode(cx - CARD_W / 2, cy - 40);
+  }
+
+  function frameCardSize(nodeId) {
+    const card = canvasRef.current && canvasRef.current.querySelector(`.idea-card[data-id="${nodeId}"]`);
+    return { w: card ? card.offsetWidth : CARD_W, h: card ? card.offsetHeight : 110 };
+  }
+
+  function createGroup() {
+    const rect = viewportRef.current.getBoundingClientRect();
+    const w = 480, h = 320;
+    const cx = (rect.width / 2 - board.view.panX) / board.view.scale;
+    const cy = (rect.height / 2 - board.view.panY) / board.view.scale;
+    const id = board.nextGroupId;
+    const group = { id, title: t`Khung mới`, x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), w, h, color: null };
+    commitAndSave({ ...board, groups: [...board.groups, group], nextGroupId: id + 1 });
+  }
+
+  function handleGroupMouseDown(e, group) {
+    if (e.button === 2) { e.stopPropagation(); startPan(e); return; }
+    if (e.button !== 0) return;
+    e.stopPropagation();
+
+    const startX = e.clientX, startY = e.clientY;
+    const scale = board.view.scale;
+    const boardBeforeDrag = board;
+    const memberIds = nodesInFrame(board.nodes, group, frameCardSize);
+    const startGroupPos = { x: group.x, y: group.y };
+    const startNodePositions = new Map(
+      memberIds.map((id) => {
+        const n = board.nodes.find((nn) => nn.id === id);
+        return [id, { x: n.x, y: n.y }];
+      })
+    );
+    let latest = board;
+    let moved = false;
+
+    function onMove(ev) {
+      const dx = (ev.clientX - startX) / scale;
+      const dy = (ev.clientY - startY) / scale;
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
+      setBoard((prev) => {
+        const next = {
+          ...prev,
+          groups: prev.groups.map((g) => (g.id === group.id
+            ? { ...g, x: Math.round(startGroupPos.x + dx), y: Math.round(startGroupPos.y + dy) }
+            : g)),
+          nodes: prev.nodes.map((n) => {
+            const start = startNodePositions.get(n.id);
+            if (!start) return n;
+            return { ...n, x: Math.round(start.x + dx), y: Math.round(start.y + dy) };
+          })
+        };
+        latest = next;
+        return next;
+      });
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (moved) recordHistory(boardBeforeDrag);
+      saveNow(latest);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  function handleGroupResizeMouseDown(e, group) {
+    e.preventDefault();
+    const startX = e.clientX, startY = e.clientY;
+    const scale = board.view.scale;
+    const boardBeforeDrag = board;
+    const startW = group.w, startH = group.h;
+    const MIN_W = 160, MIN_H = 120;
+    let latest = board;
+    let moved = false;
+
+    function onMove(ev) {
+      const dx = (ev.clientX - startX) / scale;
+      const dy = (ev.clientY - startY) / scale;
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
+      setBoard((prev) => {
+        const next = {
+          ...prev,
+          groups: prev.groups.map((g) => (g.id === group.id
+            ? { ...g, w: Math.max(MIN_W, Math.round(startW + dx)), h: Math.max(MIN_H, Math.round(startH + dy)) }
+            : g))
+        };
+        latest = next;
+        return next;
+      });
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (moved) recordHistory(boardBeforeDrag);
+      saveNow(latest);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  function saveGroupTitle(groupId, title) {
+    setEditingGroupTitleId(null);
+    commitAndSave({ ...board, groups: board.groups.map((g) => (g.id === groupId ? { ...g, title: title.trim() || t`Khung` } : g)) });
+  }
+
+  function deleteGroup(id) {
+    commitAndSave({ ...board, groups: board.groups.filter((g) => g.id !== id) });
+  }
+
+  function applyGroupColor(groupId, color) {
+    commitAndSave({ ...board, groups: board.groups.map((g) => (g.id === groupId ? { ...g, color } : g)) });
+    setColorMenu(null);
   }
 
   function handleViewportDoubleClick(e) {
@@ -581,6 +697,8 @@ export default function IdeaMap() {
     try {
       const parsed = JSON.parse(ioText);
       if (!parsed.nodes || !parsed.edges || !parsed.view) throw new Error("bad shape");
+      if (!Array.isArray(parsed.groups)) parsed.groups = [];
+      if (typeof parsed.nextGroupId !== "number") parsed.nextGroupId = 1;
       commitAndSave(parsed);
       setIoOpen(false);
     } catch (e) {
@@ -675,6 +793,7 @@ export default function IdeaMap() {
         </div>
         <Link to="/" className="btn ghost"><Trans>← Trang chủ</Trans></Link>
         <button className="btn" onClick={handleAddClick}><Trans>+ Ý tưởng</Trans></button>
+        <button className="btn ghost" onClick={createGroup}><Trans>+ Khung</Trans></button>
         <button className="btn ghost icon" onClick={undo} disabled={past.length === 0} title={t`Hoàn tác (Ctrl+Z)`}>↶</button>
         <button className="btn ghost icon" onClick={redo} disabled={future.length === 0} title={t`Làm lại (Ctrl+Shift+Z)`}>↷</button>
         <button
@@ -789,6 +908,20 @@ export default function IdeaMap() {
           {marquee && (
             <div className="marquee-box" style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h }} />
           )}
+          {board.groups.map((group) => (
+            <FrameBox
+              key={group.id}
+              group={group}
+              editingTitle={editingGroupTitleId === group.id}
+              onMouseDown={(e) => handleGroupMouseDown(e, group)}
+              onResizeMouseDown={(e) => handleGroupResizeMouseDown(e, group)}
+              onContextMenu={(e) => openColorMenu(e, "group", group.id)}
+              onTitleDoubleClick={() => setEditingGroupTitleId(group.id)}
+              onTitleSave={(title) => saveGroupTitle(group.id, title)}
+              onTitleCancel={() => setEditingGroupTitleId(null)}
+              onDelete={() => deleteGroup(group.id)}
+            />
+          ))}
           <svg className="edge-layer">
             {board.edges.map((edge) => {
               const a = board.nodes.find((n) => n.id === edge.from);
@@ -900,6 +1033,20 @@ export default function IdeaMap() {
             color={node.color ?? null}
             onPick={(color) => applyNodeColor(node.id, color)}
             onEdit={() => { setColorMenu(null); setEditingId(node.id); }}
+            onClose={() => setColorMenu(null)}
+          />
+        );
+      })()}
+
+      {colorMenu && colorMenu.kind === "group" && (() => {
+        const group = board.groups.find((g) => g.id === colorMenu.id);
+        if (!group) return null;
+        return (
+          <ColorMenu
+            x={colorMenu.x}
+            y={colorMenu.y}
+            color={group.color ?? null}
+            onPick={(color) => applyGroupColor(group.id, color)}
             onClose={() => setColorMenu(null)}
           />
         );
