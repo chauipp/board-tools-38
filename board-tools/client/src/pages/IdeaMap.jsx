@@ -885,7 +885,7 @@ export default function IdeaMap() {
     if (e.button === 0 && spacePanRef.current) { e.stopPropagation(); startPan(e); return; }
     if (e.button !== 0) return;
     e.stopPropagation();
-    if (node.locked && !e.altKey) return;
+    if (node.locked && !e.altKey) { setSelectedIds(new Set([node.id])); return; }
 
     const boardBeforeDrag = board;
     let dragIds, baseBoard, isAlt = false, selectedIdsBeforeDrag;
