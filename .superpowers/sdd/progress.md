@@ -12,3 +12,12 @@ Base before Task 1: (recorded below per task)
   de-duplicate rather than keep the copy-paste the plan originally had).
 
 ## Tasks
+- Vite 5 -> 6 upgrade: APPROVED by human during Task 1.
+  Reason: @lingui/vite-plugin@6.5.0 has a REQUIRED peer on vite ^6.3.0||^7||^8.
+  No Lingui v6 vite-plugin supports Vite 5 (verified on npm). Human chose to
+  take Vite 6 rather than drop to Lingui 5.9.5 or hand-run `lingui compile`.
+  Plan/spec updated to match. Do NOT flag package.json's vite bump as scope creep.
+  STILL UNVERIFIED: `npm run dev` has never started successfully (EMFILE /
+  inotify exhaustion on this shared machine). `npm run build` passes.
+
+## Tasks

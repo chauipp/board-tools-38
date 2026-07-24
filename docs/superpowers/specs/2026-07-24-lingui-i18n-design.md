@@ -15,7 +15,9 @@ Cho phép người dùng chuyển giao diện app `game-tools` giữa **tiếng 
 
 ## 2. Hiện trạng
 
-- Client React 18 + Vite 5 + react-router 6, không có babel config riêng.
+- Client React 18 + Vite 6 + react-router 6, không có babel config riêng.
+  (Dự án khởi đầu ở Vite 5; nâng lên 6 trong lúc làm Task 1 vì `@lingui/vite-plugin@6.5.0`
+  yêu cầu bắt buộc `vite ^6.3.0`. Chủ dự án đã duyệt.)
 - Toàn bộ chữ giao diện là tiếng Việt viết thẳng trong JSX, khoảng **70 chuỗi** nằm ở 3 trang: `IdeaMap.jsx` (859 dòng), `Calculator.jsx` (240), `Home.jsx` (58).
 - `lib/api.js` chứa thêm 4 câu lỗi tiếng Việt được ném ra bằng `new Error(...)` rồi hiển thị cho người dùng.
 - Đã có sẵn pattern lưu tuỳ chọn người dùng: `useTheme.js` ghi khoá `theme-pref` vào `localStorage`. Phần i18n sẽ soi gương pattern này.
