@@ -905,7 +905,7 @@ export default function IdeaMap() {
     } else {
       dragIds = [node.id];
       if (selectedIds.has(node.id) && selectedIds.size > 1) {
-        dragIds = Array.from(selectedIds);
+        dragIds = Array.from(selectedIds).filter((id) => !board.nodes.find((n) => n.id === id)?.locked);
       } else {
         setSelectedIds(new Set([node.id]));
       }
