@@ -61,6 +61,7 @@ export default function IdeaMap() {
   const [badgeUI, setBadgeUI] = useState(null); // { mode: "create"|"edit", kind, def?, x, y }
   const [colorMenu, setColorMenu] = useState(null); // { kind: "card"|"group", id, x, y }
   const [edgeMenu, setEdgeMenu] = useState(null); // { id, x, y } | null
+  const [commentsFor, setCommentsFor] = useState(null); // { id, x, y } | null
   const [editingGroupTitleId, setEditingGroupTitleId] = useState(null);
   const [focusId, setFocusId] = useState(null);
   const [flashId, setFlashId] = useState(null);
@@ -233,6 +234,7 @@ export default function IdeaMap() {
         if (colorMenu) setColorMenu(null);
         else if (badgeUI) setBadgeUI(null);
         else if (edgeMenu) setEdgeMenu(null);
+        else if (commentsFor) setCommentsFor(null);
         else if (linkMode) { setLinkMode(false); setPendingSource(null); }
         else if (focusId != null) setFocusId(null);
         else if (selectedIds.size > 0) setSelectedIds(new Set());
@@ -246,7 +248,7 @@ export default function IdeaMap() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [board, past, future, selectedIds, linkMode, colorMenu, badgeUI, edgeMenu, focusId]);
+  }, [board, past, future, selectedIds, linkMode, colorMenu, badgeUI, edgeMenu, commentsFor, focusId]);
 
   useEffect(() => {
     function down(e) {
@@ -1261,6 +1263,27 @@ export default function IdeaMap() {
     });
   }
 
+  function addComment(nodeId, text) {
+    const user = getUserName(window.localStorage, () => window.prompt(t`Tên của bạn (hiện cạnh ⭐ và comment):`));
+    if (!user || !text.trim()) return false;
+    commitAndSave({
+      ...board,
+      nodes: board.nodes.map((n) => (n.id === nodeId
+        ? { ...n, comments: [...(n.comments ?? []), { text: text.trim(), author: user, at: new Date().toISOString() }] }
+        : n))
+    });
+    return true;
+  }
+
+  function deleteComment(nodeId, index) {
+    commitAndSave({
+      ...board,
+      nodes: board.nodes.map((n) => (n.id === nodeId
+        ? { ...n, comments: (n.comments ?? []).filter((_, i) => i !== index) }
+        : n))
+    });
+  }
+
   function openBadgeCreate(e, kind) {
     e.preventDefault();
     e.stopPropagation();
@@ -1520,6 +1543,7 @@ export default function IdeaMap() {
               onEdit={() => setEditingId(node.id)}
               onDelete={() => deleteNode(node.id)}
               onToggleFavorite={() => toggleFavorite(node.id)}
+              onOpenComments={(e) => setCommentsFor({ id: node.id, x: e.clientX, y: e.clientY })}
               onSave={(fields) => saveNodeEdit(node.id, fields)}
               onSaveAndNext={(fields) => saveNodeEditAndNext(node.id, fields)}
               onCancel={() => setEditingId(null)}
@@ -1663,6 +1687,9 @@ export default function IdeaMap() {
             onGroup={selectedIds.size >= 2 && selectedIds.has(node.id) ? groupSelectedCards : undefined}
             onFocus={() => { setColorMenu(null); setFocusId(node.id); }}
             onDuplicate={() => { setColorMenu(null); const { next, cloneIds } = duplicateNodes([node.id]); commitAndSave(next); setSelectedIds(new Set(cloneIds)); }}
+            onComments={(node.comments?.length ?? 0) === 0
+              ? () => { setColorMenu(null); setCommentsFor({ id: node.id, x: colorMenu.x, y: colorMenu.y }); }
+              : undefined}
             onCopyLink={() => {
               const url = new URL(window.location.href);
               url.searchParams.set("card", String(node.id));
@@ -1731,6 +1758,21 @@ export default function IdeaMap() {
             onLabel={(label) => updateEdge(edge.id, { label: label.trim() || undefined })}
             onDelete={() => deleteEdge(edge.id)}
             onClose={() => setEdgeMenu(null)}
+          />
+        );
+      })()}
+
+      {commentsFor && (() => {
+        const node = board.nodes.find((n) => n.id === commentsFor.id);
+        if (!node) return null;
+        return (
+          <CommentsPopover
+            key={node.id}
+            x={commentsFor.x} y={commentsFor.y}
+            comments={node.comments ?? []}
+            onAdd={(text) => addComment(node.id, text)}
+            onDelete={(index) => deleteComment(node.id, index)}
+            onClose={() => setCommentsFor(null)}
           />
         );
       })()}
@@ -1825,7 +1867,57 @@ function EdgeMenu({ x, y, edge, onStyleToggle, onLabel, onDelete, onClose }) {
   );
 }
 
-function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, dropTarget, selected, flash, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onToggleFavorite, onSave, onSaveAndNext, onCancel }) {
+function CommentsPopover({ x, y, comments, onAdd, onDelete, onClose }) {
+  const { t } = useLingui();
+  const ref = useRef(null);
+  useCloseOnOutside(ref, onClose);
+  const [text, setText] = useState("");
+
+  function timeAgo(iso) {
+    const diffSec = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+    if (diffSec < 60) return t`vừa xong`;
+    if (diffSec < 3600) { const m = Math.floor(diffSec / 60); return t`${m} phút trước`; }
+    if (diffSec < 86400) { const h = Math.floor(diffSec / 3600); return t`${h} giờ trước`; }
+    const d = Math.floor(diffSec / 86400);
+    return t`${d} ngày trước`;
+  }
+
+  function submit() {
+    if (!text.trim()) return;
+    if (onAdd(text)) setText("");
+  }
+
+  return (
+    <div className="badge-editor comments-pop" ref={ref} style={{ left: x, top: y }} onMouseDown={(e) => e.stopPropagation()}>
+      {comments.length > 0 && (
+        <div className="cmt-list">
+          {comments.map((c, i) => (
+            <div className="cmt-item" key={i}>
+              <div className="cmt-item-head">
+                <span className="cmt-author">{c.author}</span>
+                <span className="cmt-time">{timeAgo(c.at)}</span>
+                <button className="cmt-delete" onClick={() => onDelete(i)} title={t`Xoá`}>×</button>
+              </div>
+              <div className="cmt-text">{c.text}</div>
+            </div>
+          ))}
+        </div>
+      )}
+      <textarea
+        autoFocus
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        placeholder={t`Viết bình luận…`}
+        onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); submit(); } }}
+      />
+      <div className="cmt-actions">
+        <button className="save-btn" onClick={submit}><Trans>Gửi</Trans></button>
+      </div>
+    </div>
+  );
+}
+
+function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, dropTarget, selected, flash, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onToggleFavorite, onOpenComments, onSave, onSaveAndNext, onCancel }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(node.title);
   const [desc, setDesc] = useState(node.desc);
@@ -1926,6 +2018,15 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
             </span>
           ) : null;
         })()}
+        {(node.comments?.length ?? 0) > 0 && (
+          <button
+            className="cmt-pill"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onOpenComments(e); }}
+          >
+            💬 {node.comments.length}
+          </button>
+        )}
       </div>
       <span className="connector-zone top" onMouseDown={(e) => onConnectorMouseDown(e, "top")} onClick={(e) => e.stopPropagation()} title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot">+</span></span>
       <span className="connector-zone right" onMouseDown={(e) => onConnectorMouseDown(e, "right")} onClick={(e) => e.stopPropagation()} title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot">+</span></span>
