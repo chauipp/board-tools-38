@@ -39,6 +39,7 @@
   display: inline-flex; align-items: center; gap: 5px;
   border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px;
   font-size: 11px; cursor: grab; background: var(--bg); color: var(--ink-dim);
+  user-select: none; -webkit-user-select: none;
 }
 .chip-toggle.tag { border-radius: 4px; }
 .chip-toggle:active { cursor: grabbing; }
