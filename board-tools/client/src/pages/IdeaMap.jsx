@@ -14,6 +14,7 @@ import { computeSnap } from "../lib/snap.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout } from "../lib/layout.js";
 import { parseDesc } from "../lib/mdlite.js";
+import { getUserName } from "../lib/user.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -39,6 +40,7 @@ export default function IdeaMap() {
   const [pendingSource, setPendingSource] = useState(null);
   const [filterStatus, setFilterStatus] = useState({});
   const [filterTags, setFilterTags] = useState({});
+  const [filterFav, setFilterFav] = useState(false);
   const [search, setSearch] = useState("");
   const [outlineOpen, setOutlineOpen] = useState(false);
   const [ioOpen, setIoOpen] = useState(false);
@@ -235,6 +237,8 @@ export default function IdeaMap() {
     return <div style={{ padding: 40, color: "var(--ink-dim)" }}><Trans>Đang tải…</Trans></div>;
   }
 
+  const currentUser = window.localStorage.getItem("idea-map-user");
+
   function entityAtPoint(clientX, clientY) {
     const el = document.elementFromPoint(clientX, clientY);
     const card = el && el.closest(".idea-card");
@@ -255,6 +259,7 @@ export default function IdeaMap() {
       const key = node.tagId == null ? "none" : String(node.tagId);
       if (!filterTags[key]) return false;
     }
+    if (filterFav && !(node.favorites?.length > 0)) return false;
     const q = search.trim().toLowerCase();
     if (q) {
       const hay = (node.title + " " + node.desc).toLowerCase();
@@ -1164,12 +1169,14 @@ export default function IdeaMap() {
   const activeFilterCount =
     Object.values(filterStatus).filter(Boolean).length +
     Object.values(filterTags).filter(Boolean).length +
+    (filterFav ? 1 : 0) +
     (search.trim() ? 1 : 0);
   const matchCount = board.nodes.filter(passesFilter).length;
 
   function clearFilters() {
     setFilterStatus({});
     setFilterTags({});
+    setFilterFav(false);
     setSearch("");
   }
 
@@ -1198,6 +1205,19 @@ export default function IdeaMap() {
   function toggleGroupLock(id) {
     commitAndSave({ ...board, groups: board.groups.map((g) => (g.id === id ? { ...g, locked: !g.locked } : g)) });
     setColorMenu(null);
+  }
+
+  function toggleFavorite(nodeId) {
+    const user = getUserName(window.localStorage, () => window.prompt(t`Tên của bạn (hiện cạnh ⭐ và comment):`));
+    if (!user) return;
+    commitAndSave({
+      ...board,
+      nodes: board.nodes.map((n) => {
+        if (n.id !== nodeId) return n;
+        const favs = n.favorites ?? [];
+        return { ...n, favorites: favs.includes(user) ? favs.filter((f) => f !== user) : [...favs, user] };
+      })
+    });
   }
 
   function openBadgeCreate(e, kind) {
@@ -1346,6 +1366,17 @@ export default function IdeaMap() {
           </div>
         </div>
 
+        <div className="fb-group">
+          <div className="fb-chips">
+            <span
+              className={"chip-toggle" + (filterFav ? " on" : "")}
+              onClick={() => setFilterFav((v) => !v)}
+            >
+              ★ <Trans>Yêu thích</Trans>
+            </span>
+          </div>
+        </div>
+
         <div className="spacer" />
 
         {activeFilterCount > 0 && (
@@ -1426,6 +1457,7 @@ export default function IdeaMap() {
               key={node.id}
               node={node}
               board={board}
+              currentUser={currentUser}
               editing={editingId === node.id}
               dimmed={(!passesFilter(node) || (focusSet != null && !focusSet.has(node.id))) && editingId !== node.id}
               linkPending={linkMode && pendingSource === node.id}
@@ -1437,6 +1469,7 @@ export default function IdeaMap() {
               onConnectorMouseDown={(e, direction) => handleConnectorMouseDown(e, node, direction)}
               onEdit={() => setEditingId(node.id)}
               onDelete={() => deleteNode(node.id)}
+              onToggleFavorite={() => toggleFavorite(node.id)}
               onSave={(fields) => saveNodeEdit(node.id, fields)}
               onSaveAndNext={(fields) => saveNodeEditAndNext(node.id, fields)}
               onCancel={() => setEditingId(null)}
@@ -1682,7 +1715,7 @@ function MdLite({ text }) {
   );
 }
 
-function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selected, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onSave, onSaveAndNext, onCancel }) {
+function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, dropTarget, selected, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onToggleFavorite, onSave, onSaveAndNext, onCancel }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(node.title);
   const [desc, setDesc] = useState(node.desc);
@@ -1752,6 +1785,14 @@ function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selec
       onContextMenu={onContextMenu}
     >
       <div className="card-actions">
+        <button
+          className={"icon-btn fav-btn" + ((node.favorites ?? []).includes(currentUser) ? " on" : "")}
+          title={t`Yêu thích`}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
+        >
+          ★{(node.favorites?.length ?? 0) > 0 ? node.favorites.length : ""}
+        </button>
         <button className="icon-btn" title={t`Sửa`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(); }}>✎</button>
         <button className="icon-btn" title={t`Xoá`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onDelete(); }}>×</button>
       </div>

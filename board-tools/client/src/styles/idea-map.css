@@ -107,6 +107,7 @@
 .idea-card .card-actions { display: flex; gap: 3px; flex-shrink: 0; position: absolute; top: 8px; right: 8px; }
 .idea-card .icon-btn { background: none; border: none; cursor: pointer; font-size: 12px; color: var(--ink-dim); padding: 1px 3px; line-height: 1; }
 .idea-card .icon-btn:hover { color: var(--ink); }
+.fav-btn.on { color: #D9A514; }
 .lock-badge { position: absolute; top: 8px; left: 8px; font-size: 10px; opacity: 0.7; }
 .idea-card .desc {
   font-size: 11px; color: var(--ink-dim); margin-top: 5px; line-height: 1.35;
