@@ -15,6 +15,7 @@ import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout } from "../lib/layout.js";
 import { parseDesc } from "../lib/mdlite.js";
 import { getUserName } from "../lib/user.js";
+import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -59,6 +60,7 @@ export default function IdeaMap() {
   const [snapGuides, setSnapGuides] = useState([]);
   const [badgeUI, setBadgeUI] = useState(null); // { mode: "create"|"edit", kind, def?, x, y }
   const [colorMenu, setColorMenu] = useState(null); // { kind: "card"|"group", id, x, y }
+  const [edgeMenu, setEdgeMenu] = useState(null); // { id, x, y } | null
   const [editingGroupTitleId, setEditingGroupTitleId] = useState(null);
   const [focusId, setFocusId] = useState(null);
   const [flashId, setFlashId] = useState(null);
@@ -795,6 +797,15 @@ export default function IdeaMap() {
     }
   }
 
+  function updateEdge(id, patch) {
+    commitAndSave({ ...board, edges: board.edges.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+  }
+
+  function deleteEdge(id) {
+    commitAndSave({ ...board, edges: board.edges.filter((e) => e.id !== id) });
+    setEdgeMenu(null);
+  }
+
   function handleCardClick(node) {
     if (!linkMode) return;
     if (pendingSource === null) setPendingSource(node.id);
@@ -1465,9 +1476,17 @@ export default function IdeaMap() {
                   <line
                     className="hit"
                     x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                    onClick={() => commitAndSave({ ...board, edges: board.edges.filter((e) => e.id !== edge.id) })}
+                    onClick={(e) => setEdgeMenu({ id: edge.id, x: e.clientX, y: e.clientY })}
                   />
-                  <line className="visible" x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} markerEnd="url(#edge-arrow)" />
+                  <line
+                    className="visible"
+                    x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                    strokeDasharray={edge.style === "dashed" ? "6 5" : undefined}
+                    markerEnd="url(#edge-arrow)"
+                  />
+                  {edge.label && (
+                    <text className="edge-label" x={(p1.x + p2.x) / 2} y={(p1.y + p2.y) / 2 - 4} textAnchor="middle">{edge.label}</text>
+                  )}
                 </g>
               );
             })}
@@ -1699,6 +1718,22 @@ export default function IdeaMap() {
         />
       )}
 
+      {edgeMenu && (() => {
+        const edge = board.edges.find((e) => e.id === edgeMenu.id);
+        if (!edge) return null;
+        return (
+          <EdgeMenu
+            key={edge.id}
+            x={edgeMenu.x} y={edgeMenu.y}
+            edge={edge}
+            onStyleToggle={() => updateEdge(edge.id, { style: (edge.style === "dashed" ? "solid" : "dashed") })}
+            onLabel={(label) => updateEdge(edge.id, { label: label.trim() || undefined })}
+            onDelete={() => deleteEdge(edge.id)}
+            onClose={() => setEdgeMenu(null)}
+          />
+        );
+      })()}
+
       {captureOpen && (
         <div className="capture-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setCaptureOpen(false); }}>
           <div
@@ -1748,6 +1783,44 @@ function MdLite({ text }) {
         ? <div key={i} className="md-bullet">{renderInline(b.inline)}</div>
         : <div key={i}>{renderInline(b.inline)}</div>)}
     </>
+  );
+}
+
+function EdgeMenu({ x, y, edge, onStyleToggle, onLabel, onDelete, onClose }) {
+  const { t } = useLingui();
+  const ref = useRef(null);
+  useCloseOnOutside(ref, onClose);
+
+  // Guard against a redundant second commit: Enter commits immediately, and a
+  // later blur (e.g. clicking elsewhere) would otherwise push the same value
+  // again. Comparing against the (by-then-updated) `edge.label` prop makes the
+  // second call a no-op instead of a duplicate history entry.
+  function commitLabel(rawValue) {
+    const next = rawValue.trim();
+    const prev = (edge.label ?? "").trim();
+    if (next === prev) return;
+    onLabel(rawValue);
+  }
+
+  return (
+    <div className="badge-editor edge-menu" ref={ref} style={{ left: x, top: y }} onMouseDown={(e) => e.stopPropagation()}>
+      <input
+        className="be-name"
+        type="text"
+        autoFocus
+        defaultValue={edge.label ?? ""}
+        placeholder={t`Nhãn edge…`}
+        onKeyDown={(e) => { if (e.key === "Enter") commitLabel(e.currentTarget.value); }}
+        onBlur={(e) => commitLabel(e.target.value)}
+      />
+      <div className="be-actions">
+        <button className="save-btn" onClick={onStyleToggle}>
+          {edge.style === "dashed" ? <Trans>Nét liền</Trans> : <Trans>Nét đứt</Trans>}
+        </button>
+        <button className="be-delete" onClick={onDelete} title={t`Xoá cạnh`}>🗑</button>
+        <button className="cancel-btn" onClick={onClose}><Trans>Đóng</Trans></button>
+      </div>
+    </div>
   );
 }
 
