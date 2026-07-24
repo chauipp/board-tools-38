@@ -108,6 +108,7 @@ export default function IdeaMap() {
   }, [board != null]);
 
   function saveNow(next) {
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
     saveIdeas(next).then(() => setSaveError(null)).catch(() => setSaveError(true));
   }
 
