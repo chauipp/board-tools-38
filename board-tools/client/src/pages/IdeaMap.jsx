@@ -575,7 +575,10 @@ export default function IdeaMap() {
     commitAndSave({
       ...board,
       nodes: board.nodes.filter((n) => n.id !== id),
-      edges: board.edges.filter((e) => e.from !== id && e.to !== id)
+      edges: board.edges.filter((e) => !(
+        (e.from === id && (e.fromKind || "node") === "node") ||
+        (e.to === id && (e.toKind || "node") === "node")
+      ))
     });
   }
 
