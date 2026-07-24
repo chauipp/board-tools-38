@@ -110,16 +110,63 @@ Task 1: complete (commits 5e3476b..49272b5, review clean, no Critical/Important)
   risk). (2) GET inlines toObject+delete instead of stripMongoMeta (forced,
   migrateBoard needs plain obj pre-strip).
   RUNTIME MIGRATION not yet run against live DB — controller does with backup.
-Task 2: IN FLIGHT — implemented + committed (d43f5f2), NOT yet reviewed.
-  Build passes, extract 0/0 (en 77/77). Client now REQUIRES migrated data
-  (board.statuses.map throws on old shape) → renders blank against the
-  unmigrated :3001 server, so runtime non-regression is UNVERIFIED.
-  RESUME HERE: (1) dispatch Task 2 reviewer on review package
-  .superpowers/sdd/review-a1b1823..d43f5f2.diff (base a1b1823, head d43f5f2,
-  brief task-2-brief.md, report task-2-report.md). (2) After review clean,
-  mark Task 2 done, continue Task 3 (brief: task-brief PLAN 3).
+Task 2: complete (commits a1b1823..d43f5f2, review clean on LOGIC — no
+  Critical/Important that are implementer errors). Sonnet reviewer verified
+  via TWO independent greps (diff + full committed file) that ZERO stray refs
+  to node.status/node.tag/STATUS[/STATUS_ORDER/hashTag(/DOT_PALETTE/
+  TAG_SUGGESTIONS/tagLabel(/tagOptions remain. Null/orphaned-id handling
+  defensive everywhere (statusById/tagById → no pill on unresolved id, no
+  crash). Removed module-level `import {t}` safe (component calls useLingui at
+  line 25). No protected files touched. Empty stubs match brief line 225.
+  PLAN-MANDATED findings (from brief Step 7 template, NOT implementer error;
+  brief line 5 "app trông y hệt" contradicts its own Step 7 UI). HUMAN DECISION
+  (asked, answered): "Chấp nhận, đi tiếp Task 3." So:
+    (1) .fb-add "+" / .dot-empty unstyled → Task 3 adds CSS (self-heals).
+    (2) tooltip "chuột phải để sửa" advertises non-functional right-click →
+        Task 4 wires openBadgeMenu (self-heals).
+    (3) "no tag/no status" filter chip lost drag-to-clear that old "—" chip
+        had (still reachable via edit-form dropdown) → RIDER ON TASK 3:
+        restore drag-to-clear on the "none" chips so no capability regresses.
+  "Trông y hệt" milestone deferred from Task 2 commit → verified at end of
+  Task 4 instead. Build passes, extract 0/0 (en 77/77).
   DEFERRED (controller+user, needs live-DB migration with backup): runtime
   non-regression of Task 2 + all click testing for Tasks 3-4. The :3001
   server must be restarted on new code (migrates real board once) before
   the app renders — do this WITH a JSON backup, confirm with user first.
-  Minor noted: .fb-add/.dot-empty unstyled until Task 3 adds their CSS.
+Task 3: complete (commit fa1a64b, review APPROVED — spec ✅, no Critical/
+  Important). Added BadgeEditor.jsx (generic popover: name field + swatch
+  palette from BADGE_PALETTE, closes on outside-click/Escape, rejects empty
+  name), badgeUI state, real openBadgeCreate + createBadge (immutable via
+  commitAndSave, id from nextStatusId/nextTagId, color kept as token),
+  render wiring, CSS (.fb-add/.dot-empty/.badge-editor). openBadgeMenu left
+  as untouched empty stub for Task 4. RIDER DONE: drag-to-clear restored on
+  both "none" chips via onMouseDown handleChipMouseDown(e,kind,"none")
+  (machinery already maps "none"→null); no onContextMenu on none chips.
+  extract vi 79/0 en 79/0, build pass. So findings 1&2 from Task 2 review
+  are now CLOSED (.fb-add CSS added; right-click still stub → Task 4).
+  Minor (for final review): (1) BadgeEditor has no viewport-edge clamping —
+  popover from a "+" near window edge may overflow; brief specifies the exact
+  positioning, so left as-is — verify in live click test. (2) Pre-existing
+  Task-2 en tooltip wording ("...assign the tag/status...") differs from the
+  generic table wording; out of Task 3 scope, untouched.
+  DEFERRED: live click test of "+" create (controller/user, needs migration).
+Task 4: complete (commits 20beab3 + fix 9ef22b3, review APPROVED after fix).
+  Right-click chip → edit popover (openBadgeMenu real body at cursor).
+  updateBadge (rename/recolor) touches ONLY the def array, never nodes —
+  reviewer-confirmed. deleteBadge filters the def AND sets statusId/tagId→null
+  on every referencing node, atomic in one commitAndSave (one undo step).
+  Trash button gated on onDelete (create passes none → no trash; edit → trash).
+  (t)→(tg) rename applied in updateBadge (controller-directed) + deleteBadge
+  (fix commit). "Xoá badge"→"Delete badge" in en .po. openBadgeCreate/
+  createBadge (Task 3) unchanged. extract vi/en 0/0, build pass.
+  IMPORTANT finding FIXED (9ef22b3): brief Step 5 CSS was a plan bug — trash
+  button's `flex:0 0 auto` was defeated by `.be-actions button {flex:1}`
+  specificity (0,2,1 > 0,2,0); scoped .be-delete under .be-actions (0,3,0)
+  so intent realized. Fix = clear plan-bug repair (realizes stated intent),
+  applied directly, not a human-decision case. Fix diff verified by controller
+  hunk-by-hunk (2 selectors + 1 param rename, nothing else), extract 0/0,
+  build pass. So Task-2 finding (2) right-click tooltip now TRUE (openBadgeMenu
+  functional). Minor for final review: BadgeEditor still no viewport-edge
+  clamp (shared with Task 3 minor #1).
+  DEFERRED: live right-click test — rename propagates to all cards, recolor
+  updates pill+chip, delete → card back to no-status/no-tag (needs migration).

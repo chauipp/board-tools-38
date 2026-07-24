@@ -642,7 +642,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ## Task 3: Client — tạo badge qua nút "+"
 
-- [ ] **HOÀN THÀNH TASK 3** — tick sau khi xong và pass review
+- [x] **HOÀN THÀNH TASK 3** — tick sau khi xong và pass review
 
 **Files:**
 - Create: `game-tools/client/src/components/BadgeEditor.jsx`
@@ -857,7 +857,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ## Task 4: Client — chuột phải sửa badge (đổi tên / đổi màu / xoá)
 
-- [ ] **HOÀN THÀNH TASK 4** — tick sau khi xong và pass review
+- [x] **HOÀN THÀNH TASK 4** — tick sau khi xong và pass review
 
 **Files:**
 - Modify: `game-tools/client/src/pages/IdeaMap.jsx`
