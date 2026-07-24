@@ -279,3 +279,20 @@
   border-radius: 3px; background: var(--surface); border: 1.5px solid var(--ink-dim);
   cursor: nwse-resize;
 }
+
+.capture-overlay {
+  position: fixed; inset: 0; z-index: 95;
+  background: color-mix(in srgb, var(--ink) 25%, transparent);
+  display: flex; align-items: center; justify-content: center;
+}
+.capture-modal {
+  width: 380px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 8px; box-shadow: var(--shadow); padding: 12px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.capture-modal textarea {
+  height: 160px; resize: vertical; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 4px; padding: 8px; font-size: 12px;
+}
+.capture-modal .cm-note { font-size: 11px; color: var(--ink-dim); }
+.capture-modal .cm-actions { display: flex; gap: 6px; justify-content: flex-end; }

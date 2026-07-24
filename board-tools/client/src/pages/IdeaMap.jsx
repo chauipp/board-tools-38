@@ -44,6 +44,8 @@ export default function IdeaMap() {
   const [ioOpen, setIoOpen] = useState(false);
   const [ioMode, setIoMode] = useState("export");
   const [ioText, setIoText] = useState("");
+  const [captureOpen, setCaptureOpen] = useState(false);
+  const [captureText, setCaptureText] = useState("");
   const [isPanning, setIsPanning] = useState(false);
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
@@ -1121,6 +1123,34 @@ export default function IdeaMap() {
     }
   }
 
+  function confirmCapture() {
+    const titles = captureText.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (titles.length === 0) { setCaptureOpen(false); return; }
+    const rect = viewportRef.current.getBoundingClientRect();
+    const cx = (rect.width / 2 - board.view.panX) / board.view.scale;
+    const cy = (rect.height / 2 - board.view.panY) / board.view.scale;
+    const estH = 90;
+    const cols = Math.ceil(Math.sqrt(titles.length));
+    const items = titles.map((_, i) => ({ id: i, w: CARD_W, h: estH }));
+    const gridW = cols * (CARD_W + 24) - 24;
+    const rows = Math.ceil(titles.length / cols);
+    const gridH = rows * (estH + 24) - 24;
+    const pos = gridLayout(items, { x: Math.round(cx - gridW / 2), y: Math.round(cy - gridH / 2) }, cols);
+    let nextId = board.nextNodeId;
+    const newNodes = titles.map((title, i) => ({
+      id: nextId + i,
+      title,
+      desc: "",
+      tagId: null,
+      statusId: board.statuses[0]?.id ?? null,
+      x: pos.get(i).x,
+      y: pos.get(i).y
+    }));
+    commitAndSave({ ...board, nodes: [...board.nodes, ...newNodes], nextNodeId: nextId + titles.length });
+    setCaptureOpen(false);
+    setCaptureText("");
+  }
+
   const hasNoStatus = board.nodes.some((n) => n.statusId == null);
   const hasNoTag = board.nodes.some((n) => n.tagId == null);
   const activeFilterCount =
@@ -1209,6 +1239,7 @@ export default function IdeaMap() {
         <Link to="/" className="btn ghost"><Trans>← Trang chủ</Trans></Link>
         <button className="btn" onClick={handleAddClick}><Trans>+ Ý tưởng</Trans></button>
         <button className="btn ghost" onClick={createGroup}><Trans>+ Khung</Trans></button>
+        <button className="btn ghost" onClick={() => setCaptureOpen(true)}><Trans>Nhập nhanh</Trans></button>
         <button className="btn ghost icon" onClick={undo} disabled={past.length === 0} title={t`Hoàn tác (Ctrl+Z)`}>↶</button>
         <button className="btn ghost icon" onClick={redo} disabled={future.length === 0} title={t`Làm lại (Ctrl+Shift+Z)`}>↷</button>
         <button
@@ -1576,6 +1607,28 @@ export default function IdeaMap() {
           onSubmit={(name, color) => updateBadge(badgeUI.kind, badgeUI.def.id, name, color)}
           onClose={() => setBadgeUI(null)}
         />
+      )}
+
+      {captureOpen && (
+        <div className="capture-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setCaptureOpen(false); }}>
+          <div className="capture-modal">
+            <div className="cm-note"><Trans>Mỗi dòng một ý tưởng — xác nhận để tạo hàng loạt thẻ.</Trans></div>
+            <textarea
+              autoFocus
+              value={captureText}
+              onChange={(e) => setCaptureText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") { e.stopPropagation(); setCaptureOpen(false); }
+                if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); confirmCapture(); }
+              }}
+              placeholder={t`Ý tưởng 1\nÝ tưởng 2\n…`}
+            />
+            <div className="cm-actions">
+              <button className="btn small" onClick={confirmCapture}><Trans>Tạo thẻ</Trans></button>
+              <button className="btn ghost small" onClick={() => setCaptureOpen(false)}><Trans>Hủy</Trans></button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
