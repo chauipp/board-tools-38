@@ -62,6 +62,7 @@ export default function IdeaMap() {
   const [editingGroupTitleId, setEditingGroupTitleId] = useState(null);
   const [focusId, setFocusId] = useState(null);
   const [flashId, setFlashId] = useState(null);
+  const [initialCardParam] = useState(() => new URLSearchParams(window.location.search).get("card"));
   const [, bump] = useState(0);
 
   const viewportRef = useRef(null);
@@ -79,8 +80,9 @@ export default function IdeaMap() {
     getIdeas()
       .then((data) => {
         if (cancelled) return;
-        const cardParam = new URLSearchParams(window.location.search).get("card");
-        if (cardParam && data.nodes.some((n) => n.id === Number(cardParam))) pendingJumpRef.current = Number(cardParam);
+        if (initialCardParam && data.nodes.some((n) => n.id === Number(initialCardParam))) {
+          pendingJumpRef.current = Number(initialCardParam);
+        }
         setBoard(data);
       })
       .catch((e) => setLoadError(e.code || "UNKNOWN"));
