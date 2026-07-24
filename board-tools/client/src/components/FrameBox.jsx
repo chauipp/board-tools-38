@@ -51,6 +51,7 @@ export default function FrameBox({
           {group.title || t`Khung`}
         </span>
       )}
+      {group.locked && <span className="lock-badge frame-lock">🔒</span>}
       <div
         className="frame-resize-handle"
         onMouseDown={(e) => { e.stopPropagation(); onResizeMouseDown(e); }}

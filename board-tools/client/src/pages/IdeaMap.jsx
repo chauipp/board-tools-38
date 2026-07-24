@@ -376,12 +376,14 @@ export default function IdeaMap() {
     if (e.button === 2) { e.stopPropagation(); startPan(e); return; }
     if (e.button === 0 && spacePanRef.current) { e.stopPropagation(); startPan(e); return; }
     if (e.button !== 0) return;
+    if (group.locked) return;
     e.stopPropagation();
 
     const startX = e.clientX, startY = e.clientY;
     const scale = board.view.scale;
     const boardBeforeDrag = board;
-    const memberIds = nodesInFrame(board.nodes, group, frameCardSize);
+    const memberIds = nodesInFrame(board.nodes, group, frameCardSize)
+      .filter((id) => !board.nodes.find((n) => n.id === id)?.locked);
     const startGroupPos = { x: group.x, y: group.y };
     const startNodePositions = new Map(
       memberIds.map((id) => {
@@ -451,6 +453,7 @@ export default function IdeaMap() {
   }
 
   function handleGroupResizeMouseDown(e, group) {
+    if (group.locked) return;
     e.preventDefault();
     const startX = e.clientX, startY = e.clientY;
     const scale = board.view.scale;
@@ -770,6 +773,7 @@ export default function IdeaMap() {
     if (e.button === 0 && spacePanRef.current) { e.stopPropagation(); startPan(e); return; }
     if (e.button !== 0) return;
     e.stopPropagation();
+    if (node.locked && !e.altKey) return;
 
     const boardBeforeDrag = board;
     let dragIds, baseBoard, isAlt = false, selectedIdsBeforeDrag;
@@ -1018,8 +1022,9 @@ export default function IdeaMap() {
   function tidySelection() {
     if (selectedIds.size < 2) return;
     const selected = board.nodes
-      .filter((n) => selectedIds.has(n.id))
+      .filter((n) => selectedIds.has(n.id) && !n.locked)
       .sort((a, b) => (a.y - b.y) || (a.x - b.x));       // thứ tự đọc
+    if (selected.length < 2) return;
     const items = selected.map((n) => ({ id: n.id, ...frameCardSize(n.id) }));
     const origin = {
       x: Math.min(...selected.map((n) => n.x)),
@@ -1101,7 +1106,7 @@ export default function IdeaMap() {
     }
     const next = {
       ...board,
-      nodes: board.nodes.map((n) => (selectedIds.has(n.id) ? { ...n, x: n.x + dx, y: n.y + dy } : n))
+      nodes: board.nodes.map((n) => (selectedIds.has(n.id) && !n.locked ? { ...n, x: n.x + dx, y: n.y + dy } : n))
     };
     setBoard(next);
     saveDebounced(next);
@@ -1182,6 +1187,15 @@ export default function IdeaMap() {
 
   function applyNodeColor(nodeId, color) {
     commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, color } : n)) });
+    setColorMenu(null);
+  }
+
+  function toggleNodeLock(id) {
+    commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, locked: !n.locked } : n)) });
+    setColorMenu(null);
+  }
+  function toggleGroupLock(id) {
+    commitAndSave({ ...board, groups: board.groups.map((g) => (g.id === id ? { ...g, locked: !g.locked } : g)) });
     setColorMenu(null);
   }
 
@@ -1567,6 +1581,8 @@ export default function IdeaMap() {
             onDuplicate={() => { setColorMenu(null); const { next, cloneIds } = duplicateNodes([node.id]); commitAndSave(next); setSelectedIds(new Set(cloneIds)); }}
             onDelete={() => { setColorMenu(null); deleteNode(node.id); }}
             onClose={() => setColorMenu(null)}
+            locked={node.locked ?? false}
+            onToggleLock={() => toggleNodeLock(node.id)}
           />
         );
       })()}
@@ -1581,6 +1597,8 @@ export default function IdeaMap() {
             color={group.color ?? null}
             onPick={(color) => applyGroupColor(group.id, color)}
             onClose={() => setColorMenu(null)}
+            locked={group.locked ?? false}
+            onToggleLock={() => toggleGroupLock(group.id)}
           />
         );
       })()}
@@ -1736,6 +1754,7 @@ function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selec
         <button className="icon-btn" title={t`Sửa`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(); }}>✎</button>
         <button className="icon-btn" title={t`Xoá`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onDelete(); }}>×</button>
       </div>
+      {node.locked && <span className="lock-badge">🔒</span>}
       <div className="card-top">
         <div className="title">{node.title}</div>
       </div>

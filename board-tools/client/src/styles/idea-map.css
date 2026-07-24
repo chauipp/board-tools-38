@@ -107,6 +107,7 @@
 .idea-card .card-actions { display: flex; gap: 3px; flex-shrink: 0; position: absolute; top: 8px; right: 8px; }
 .idea-card .icon-btn { background: none; border: none; cursor: pointer; font-size: 12px; color: var(--ink-dim); padding: 1px 3px; line-height: 1; }
 .idea-card .icon-btn:hover { color: var(--ink); }
+.lock-badge { position: absolute; top: 8px; left: 8px; font-size: 10px; opacity: 0.7; }
 .idea-card .desc {
   font-size: 11px; color: var(--ink-dim); margin-top: 5px; line-height: 1.35;
   display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
@@ -274,6 +275,11 @@
   display: inline-flex; align-items: center; justify-content: center;
 }
 .frame-delete:hover { color: var(--ink); border-color: var(--ink-dim); }
+.frame-box .frame-lock {
+  top: -13px; left: auto; right: 30px; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 50%; width: 20px; height: 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
 .frame-resize-handle {
   position: absolute; right: -6px; bottom: -6px; width: 16px; height: 16px;
   border-radius: 3px; background: var(--surface); border: 1.5px solid var(--ink-dim);
