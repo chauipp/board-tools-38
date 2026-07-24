@@ -425,3 +425,83 @@ FINAL W2 whole-branch review (opus, 81303aa..8f0f6e8): 1 IMPORTANT + 2 minors, A
   Ship minors: ids.includes O(n·m); buildOutline unmemoized (watch for jank on big boards);
   a&&b empty-title edge lines; estH=90 capture overlap; search matches raw ** markers.
 WAVE 2 COMPLETE.
+
+============================================================
+# SDD Progress — Wave 3 extras (feature/idea-map-wave-3)
+Plan: docs/superpowers/plans/2026-07-25-idea-map-wave3-extras.md
+Spec: docs/superpowers/specs/2026-07-25-idea-map-wave3-extras-design.md
+Base: main @ 740c97e (waves 1-2 merged & pushed). Standing rules unchanged.
+8 tasks: lock, favorites, deep link, edge style/label, comments, images, PNG, present.
+Server change: ONE line in Task 6 (json limit 2mb->10mb). Edge click behavior changes
+delete->menu in Task 4 (deliberate, note for final review).
+
+## Tasks
+Base before W3-Task 1: daee925
+W3-Task 1: complete (commits 0971581 + fix 56f3d7c, review APPROVED after fix).
+  CRITICAL FOUND & FIXED: duplicateNodes spread copied locked:true onto clones (alt-drag /
+  Nhân bản of locked card gave locked clone). Fix: destructure-drop locked key. All guard
+  placements verified (right-pan over locked works, alt-clone works, frame drag skips locked
+  members which become snap targets, tidy re-checks post-filter length).
+  Minors (disclosed, accepted): no-op nudge burst on all-locked selection; frame lock badge
+  during title edit.
+Base before W3-Task 2: 56f3d7c
+W3-Task 2: complete (commit cbefd41, review clean — spec ✅, Approved, no blocking issues).
+  3 lib tests traced; immutability ok; null-currentUser safe; .po 2 pairs.
+  Minors: fav-btn title reuses Yêu thích msgid; hover ties gold tint (brief CSS).
+Base before W3-Task 3: cbefd41
+W3-Task 3: complete (commits 54c5f9d + cd7b759 + fca89b3, review APPROVED after 2 fixes).
+  IMPORTANT #1 FIXED (cd7b759): replaceState per marquee mousemove -> Safari 100/30s throttle
+  crash risk (no ErrorBoundary). Guard: compare want/have before writing.
+  CRITICAL #2 (deterministic, missed in round 1, caught in re-review) FIXED (fca89b3):
+  mount-time URL-sync effect stripped ?card= BEFORE fetch resolved -> deep link never jumped.
+  Fix: lazy useState captures the param at render phase; fetch reads frozen value; URL
+  self-heals after the jump. Reviewer traced end-to-end + StrictMode-safe.
+  Residual minors: hairline-marquee across distinct single cards writes per card (bounded);
+  brief empty-param window during load spinner (cosmetic).
+Base before W3-Task 4: fca89b3
+W3-Task 4: complete (commits e44994b + polish 356d203, review APPROVED).
+  All named-risk checks pass: delete-on-click fully removed (behavior change deliberate),
+  label commit guard = 1 history entry per real change, label text non-interactive w/ halo.
+  Minor confirmed & fixed post-approval (356d203): edgeMenu added to global Escape chain
+  (parity with colorMenu/badgeUI; final review re-covers). Extra string 'Xoá cạnh' accepted.
+Base before W3-Task 5: 356d203
+W3-Task 5: complete (commits 6f999c3 + fix c71e358, review APPROVED after fix).
+  IMPORTANT (undisclosed deviation) FIXED: ColorMenu onComments was gated to zero-comment
+  cards; brief says always available — gate dropped (fix = reviewer's exact prescription,
+  controller-verified, +1/-3). Self-caught bug during impl: draft preserved when name prompt
+  cancelled. timeAgo clamps future timestamps (clock skew safe). Escape chain + deps correct.
+  Minors: stale-board closure pattern (matches file convention); comments-pop outer overflow.
+Base before W3-Task 6: c71e358
+W3-Task 6: complete (commits 55334f2 + polish 21fa01a, review APPROVED, no blocking).
+  Stale-closure discipline verified fully (full transitive closure traced incl. nudge-burst
+  chronology); undo-of-paste correct; compressImage revokes both paths; server exactly 1 line;
+  JPEG transparency -> black FIXED with white-fill (21fa01a, reviewer-prescribed).
+Base before W3-Task 7: 21fa01a
+W3-Task 7: IN FLIGHT — implementer DONE (commit bd65f39, png-export.js + exportPng +
+  Xuất PNG button, build pass, haiku transcription). REVIEW NOT YET RUN. Next: review-package
+  21fa01a..bd65f39 + dispatch reviewer. Then Task 8 (presentation), then final wave review.
+Base before W3-Task 7 was: 21fa01a
+W3-Task 7: complete (commit bd65f39, review clean — spec ✅, Approved, no issues).
+  Byte-exact transcription (diff-verified); theme vars resolve; no drawImage (taint-free by
+  construction); font set before measureText (no mismatch).
+  USER DIRECTIVE: use Fable 5 for ALL remaining subagents, no economizing.
+Base before W3-Task 8: bd65f39
+W3-Task 8: complete (commits bfa042f + fix 4ebe30f, review APPROVED after fix).
+  IMPORTANT (plan-gap, mine) FIXED: presenting now hides ALL chrome (6-selector rule) and
+  startPresentation closes every popover/modal/edit first. All 4 named-risk checks passed:
+  no updater side effects, key priority + edit-form interleaving acceptable, view snapshot
+  mutation-safe, .po clean. Minors: Ctrl+Arrow also steps; save-per-step (inherited);
+  bottom-center vs 'góc dưới' (brief wins).
+ALL 8 WAVE-3 TASKS COMPLETE. Final whole-branch review next (Fable 5 per user directive).
+FINAL W3 whole-branch review (fable, 740c97e..4ebe30f): 1 IMPORTANT (multi-select drag
+  moved locked cards — the only movement path missing the lock filter) + 4 cheap minors,
+  ALL FIXED in 5 commits (9cdeca3 lock filter, c6b306e locked-card click-select, 00c5150
+  sibling-popover close, 5b856d9 phantom-history guard, fe67be6 empty-hint hide).
+  Verification pass: all correct, no regressions — READY TO MERGE YES. Bonus catch during
+  verification: PRE-EXISTING latent crash (deleteNode left stale id in selectedIds ->
+  multi-drag TypeError) FIXED in f4f59da + drag filter hardened to require existence.
+  Ship-accepted minors: edge-label blur-commit unreliable on click-outside; duplicate copies
+  comments/favorites (2-user trust app); no 8MB payload warning; edge labels absent from MD
+  export; locked-card-in-multiselection click collapses selection; badgeUI outside
+  sibling-close set (self-healing).
+WAVE 3 COMPLETE. ALL 3 WAVES DONE.
