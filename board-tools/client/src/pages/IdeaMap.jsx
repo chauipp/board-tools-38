@@ -701,10 +701,11 @@ export default function IdeaMap() {
     e.stopPropagation();
 
     const boardBeforeDrag = board;
-    let dragIds, baseBoard, isAlt = false;
+    let dragIds, baseBoard, isAlt = false, selectedIdsBeforeDrag;
 
     if (e.altKey) {
       isAlt = true;
+      selectedIdsBeforeDrag = selectedIds;
       const cloneSourceIds = selectedIds.has(node.id) && selectedIds.size > 1
         ? Array.from(selectedIds)
         : [node.id];
@@ -762,7 +763,7 @@ export default function IdeaMap() {
         // Alt-click without drag: roll back the clone so nothing is silently duplicated.
         setBoard(boardBeforeDrag);
         boardRef.current = boardBeforeDrag;
-        setSelectedIds(new Set([node.id]));
+        setSelectedIds(selectedIdsBeforeDrag);
       } else {
         saveNow(latest);
       }
