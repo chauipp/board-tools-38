@@ -706,6 +706,11 @@ export default function IdeaMap() {
     commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, ...fields } : n)) });
   }
 
+  function saveNodeEditAndNext(id, fields) {
+    saveNodeEdit(id, fields);          // commit 1: lưu nội dung
+    createLinkedNode(id, "right");     // commit 2: card mới + edge, editingId chuyển sang card mới
+  }
+
   function toggleEdge(a, aKind, b, bKind) {
     const existing = board.edges.find((e) => edgesMatch(e, a, aKind, b, bKind));
     if (existing) {
@@ -1291,6 +1296,7 @@ export default function IdeaMap() {
               onEdit={() => setEditingId(node.id)}
               onDelete={() => deleteNode(node.id)}
               onSave={(fields) => saveNodeEdit(node.id, fields)}
+              onSaveAndNext={(fields) => saveNodeEditAndNext(node.id, fields)}
               onCancel={() => setEditingId(null)}
             />
           ))}
@@ -1405,7 +1411,7 @@ export default function IdeaMap() {
   );
 }
 
-function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selected, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onSave, onCancel }) {
+function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selected, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onSave, onSaveAndNext, onCancel }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(node.title);
   const [desc, setDesc] = useState(node.desc);
@@ -1429,8 +1435,18 @@ function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selec
     return (
       <div className={classNames.join(" ")} data-id={node.id} style={{ left: node.x, top: node.y }} onMouseDown={(e) => e.stopPropagation()}>
         <div className="edit-form">
-          <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t`Tên ý tưởng`} />
-          <textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t`Mô tả ngắn`} />
+          <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t`Tên ý tưởng`} onKeyDown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+              e.preventDefault();
+              onSaveAndNext({ title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId });
+            }
+          }} />
+          <textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t`Mô tả ngắn`} onKeyDown={(e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+              e.preventDefault();
+              onSaveAndNext({ title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId });
+            }
+          }} />
           <div className="edit-row">
             <select value={tagId ?? ""} onChange={(e) => setTagId(e.target.value === "" ? null : Number(e.target.value))}>
               <option value="">{t`Không nhãn`}</option>
@@ -1445,6 +1461,7 @@ function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selec
             <button className="save-btn" onClick={() => onSave({ title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId })}><Trans>Lưu</Trans></button>
             <button className="cancel-btn" onClick={onCancel}><Trans>Hủy</Trans></button>
           </div>
+          <div className="edit-hint"><Trans>Ctrl+Enter: lưu & tạo ý nối tiếp</Trans></div>
         </div>
       </div>
     );

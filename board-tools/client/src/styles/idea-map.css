@@ -131,6 +131,7 @@
 .edit-form .edit-actions button { flex: 1; font-size: 10.5px; padding: 4px; border-radius: 3px; cursor: pointer; }
 .edit-form .save-btn { background: var(--accent); color: var(--accent-ink); border: none; }
 .edit-form .cancel-btn { background: transparent; color: var(--ink-dim); border: 1px solid var(--line); }
+.edit-form .edit-hint { font-size: 9px; color: var(--ink-dim); }
 
 .empty-hint {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
