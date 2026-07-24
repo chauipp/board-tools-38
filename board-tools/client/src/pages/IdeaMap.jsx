@@ -224,6 +224,29 @@ export default function IdeaMap() {
     commitAndSave({ ...board, groups: [...board.groups, group], nextGroupId: id + 1 });
   }
 
+  function groupSelectedCards() {
+    const PAD = 28, TITLE_ROOM = 20;
+    const ids = Array.from(selectedIds);
+    if (ids.length < 2) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    ids.forEach((id) => {
+      const n = board.nodes.find((nn) => nn.id === id);
+      if (!n) return;
+      const { w, h } = frameCardSize(id);
+      minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + w); maxY = Math.max(maxY, n.y + h);
+    });
+    if (minX === Infinity) return;
+    const id = board.nextGroupId;
+    const group = {
+      id, title: t`Khung mới`, color: null,
+      x: Math.round(minX - PAD), y: Math.round(minY - PAD - TITLE_ROOM),
+      w: Math.round(maxX - minX + PAD * 2), h: Math.round(maxY - minY + PAD * 2 + TITLE_ROOM)
+    };
+    setColorMenu(null);
+    commitAndSave({ ...board, groups: [...board.groups, group], nextGroupId: id + 1 });
+  }
+
   function handleGroupMouseDown(e, group) {
     if (e.button === 2) { e.stopPropagation(); startPan(e); return; }
     if (e.button !== 0) return;
@@ -1080,6 +1103,7 @@ export default function IdeaMap() {
             color={node.color ?? null}
             onPick={(color) => applyNodeColor(node.id, color)}
             onEdit={() => { setColorMenu(null); setEditingId(node.id); }}
+            onGroup={selectedIds.size >= 2 && selectedIds.has(node.id) ? groupSelectedCards : undefined}
             onClose={() => setColorMenu(null)}
           />
         );

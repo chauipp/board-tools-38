@@ -3,7 +3,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { BADGE_PALETTE, colorVar } from "../lib/badges.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 
-export default function ColorMenu({ x, y, color, onPick, onEdit, onClose }) {
+export default function ColorMenu({ x, y, color, onPick, onEdit, onGroup, onClose }) {
   const { t } = useLingui();
   const ref = useRef(null);
   useCloseOnOutside(ref, onClose);
@@ -27,6 +27,7 @@ export default function ColorMenu({ x, y, color, onPick, onEdit, onClose }) {
         ))}
       </div>
       <div className="be-actions">
+        {onGroup && <button className="save-btn" onClick={onGroup}><Trans>Gom nhóm</Trans></button>}
         {onEdit && <button className="save-btn" onClick={onEdit}><Trans>Sửa</Trans></button>}
         <button className="cancel-btn" onClick={onClose}><Trans>Đóng</Trans></button>
       </div>
