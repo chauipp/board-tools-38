@@ -823,6 +823,12 @@ export default function IdeaMap() {
         (e.to === id && (e.toKind || "node") === "node")
       ))
     });
+    setSelectedIds((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   }
 
   function saveNodeEdit(id, fields) {
@@ -906,7 +912,10 @@ export default function IdeaMap() {
     } else {
       dragIds = [node.id];
       if (selectedIds.has(node.id) && selectedIds.size > 1) {
-        dragIds = Array.from(selectedIds).filter((id) => !board.nodes.find((n) => n.id === id)?.locked);
+        dragIds = Array.from(selectedIds).filter((id) => {
+          const n = board.nodes.find((nn) => nn.id === id);
+          return n && !n.locked;
+        });
       } else {
         setSelectedIds(new Set([node.id]));
       }
