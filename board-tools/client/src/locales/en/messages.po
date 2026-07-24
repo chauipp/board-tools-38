@@ -513,6 +513,10 @@ msgstr "Export JSON"
 msgid "Xuất MD"
 msgstr "Export MD"
 
+#: src/pages/IdeaMap.jsx:1650
+msgid "Xuất PNG"
+msgstr "Export PNG"
+
 #: src/pages/Home.jsx:17
 msgid "Xưởng Game Của Tôi"
 msgstr "My Game Workshop"

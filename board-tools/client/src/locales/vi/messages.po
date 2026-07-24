@@ -513,6 +513,10 @@ msgstr "Xuất JSON"
 msgid "Xuất MD"
 msgstr "Xuất MD"
 
+#: src/pages/IdeaMap.jsx:1650
+msgid "Xuất PNG"
+msgstr "Xuất PNG"
+
 #: src/pages/Home.jsx:17
 msgid "Xưởng Game Của Tôi"
 msgstr "Xưởng Game Của Tôi"

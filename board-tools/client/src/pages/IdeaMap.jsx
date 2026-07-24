@@ -17,6 +17,7 @@ import { parseDesc } from "../lib/mdlite.js";
 import { getUserName } from "../lib/user.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 import { compressImage } from "../lib/image-utils.js";
+import { drawBoardToCanvas } from "../lib/png-export.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -1201,6 +1202,23 @@ export default function IdeaMap() {
     URL.revokeObjectURL(url);
   }
 
+  function exportPng() {
+    const styles = getComputedStyle(document.documentElement);
+    const v = (name) => styles.getPropertyValue(name).trim();
+    const theme = {
+      bg: v("--bg"), surface: v("--surface-2"), line: v("--line"),
+      ink: v("--ink"), inkDim: v("--ink-dim"), accent: v("--accent"),
+      colorOf: (token) => v(`--${token}`)
+    };
+    const canvas = drawBoardToCanvas(board, frameCardSize, theme);
+    canvas.toBlob((blob) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = "idea-map.png"; a.click();
+      URL.revokeObjectURL(url);
+    }, "image/png");
+  }
+
   function nudgeSelection(dx, dy) {
     if (selectedIds.size === 0) return;
     if (nudgeBaseRef.current == null) {
@@ -1647,6 +1665,7 @@ export default function IdeaMap() {
               <div className="op-head">
                 <span className="op-count mono">{board.nodes.length}</span>
                 <button className="btn ghost small" onClick={exportMarkdown}><Trans>Xuất MD</Trans></button>
+                <button className="btn ghost small" onClick={exportPng}><Trans>Xuất PNG</Trans></button>
                 <button className="op-close" onClick={() => setOutlineOpen(false)}>×</button>
               </div>
               <div className="op-body">
