@@ -9,7 +9,7 @@ import LocaleToggle from "../components/LocaleToggle.jsx";
 import BadgeEditor from "../components/BadgeEditor.jsx";
 import ColorMenu from "../components/ColorMenu.jsx";
 import FrameBox from "../components/FrameBox.jsx";
-import { nodesInFrame } from "../lib/board-geometry.js";
+import { nodesInFrame, edgeEndpoint, edgesMatch } from "../lib/board-geometry.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -166,6 +166,15 @@ export default function IdeaMap() {
     return <div style={{ padding: 40, color: "var(--ink-dim)" }}><Trans>Đang tải…</Trans></div>;
   }
 
+  function entityAtPoint(clientX, clientY) {
+    const el = document.elementFromPoint(clientX, clientY);
+    const card = el && el.closest(".idea-card");
+    if (card) return { id: Number(card.getAttribute("data-id")), kind: "node" };
+    const frame = el && el.closest(".frame-box");
+    if (frame) return { id: Number(frame.getAttribute("data-group-id")), kind: "group" };
+    return null;
+  }
+
   function passesFilter(node) {
     const statusKeys = Object.keys(filterStatus).filter((k) => filterStatus[k]);
     if (statusKeys.length) {
@@ -305,7 +314,14 @@ export default function IdeaMap() {
   }
 
   function deleteGroup(id) {
-    commitAndSave({ ...board, groups: board.groups.filter((g) => g.id !== id) });
+    commitAndSave({
+      ...board,
+      groups: board.groups.filter((g) => g.id !== id),
+      edges: board.edges.filter((e) => !(
+        (e.from === id && (e.fromKind || "node") === "group") ||
+        (e.to === id && (e.toKind || "node") === "group")
+      ))
+    });
   }
 
   function applyGroupColor(groupId, color) {
@@ -421,32 +437,67 @@ export default function IdeaMap() {
       const view = boardRef.current.view;
       return { x: (clientX - rect.left - view.panX) / view.scale, y: (clientY - rect.top - view.panY) / view.scale };
     }
-    function targetCardIdAt(clientX, clientY) {
-      const el = document.elementFromPoint(clientX, clientY);
-      const card = el && el.closest(".idea-card");
-      if (!card) return null;
-      const id = Number(card.getAttribute("data-id"));
-      return id === node.id ? null : id;
+    function targetAt(clientX, clientY) {
+      const t = entityAtPoint(clientX, clientY);
+      if (!t) return null;
+      if (t.kind === "node" && t.id === node.id) return null;
+      return t;
     }
 
     function onMove(ev) {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
       if (!dragging) return;
       const p = toCanvas(ev.clientX, ev.clientY);
-      setLinkDraft({ fromId: node.id, x: p.x, y: p.y });
-      setDropTargetId(targetCardIdAt(ev.clientX, ev.clientY));
+      setLinkDraft({ fromId: node.id, fromKind: "node", x: p.x, y: p.y });
+      const t = targetAt(ev.clientX, ev.clientY);
+      setDropTargetId(t ? { id: t.id, kind: t.kind } : null);
     }
     function onUp(ev) {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       if (dragging) {
         setLinkDraft(null);
-        const targetId = targetCardIdAt(ev.clientX, ev.clientY);
+        const t = targetAt(ev.clientX, ev.clientY);
         setDropTargetId(null);
-        if (targetId !== null) toggleEdge(node.id, targetId);
+        if (t) toggleEdge(node.id, "node", t.id, t.kind);
       } else {
         createLinkedNode(node.id, direction);
       }
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  function handleGroupConnectorMouseDown(e, group) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = viewportRef.current.getBoundingClientRect();
+
+    function toCanvas(clientX, clientY) {
+      const view = boardRef.current.view;
+      return { x: (clientX - rect.left - view.panX) / view.scale, y: (clientY - rect.top - view.panY) / view.scale };
+    }
+    function targetAt(clientX, clientY) {
+      const t = entityAtPoint(clientX, clientY);
+      if (!t) return null;
+      if (t.kind === "group" && t.id === group.id) return null;
+      return t;
+    }
+
+    function onMove(ev) {
+      const p = toCanvas(ev.clientX, ev.clientY);
+      setLinkDraft({ fromId: group.id, fromKind: "group", x: p.x, y: p.y });
+      const t = targetAt(ev.clientX, ev.clientY);
+      setDropTargetId(t ? { id: t.id, kind: t.kind } : null);
+    }
+    function onUp(ev) {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setLinkDraft(null);
+      setDropTargetId(null);
+      const t = targetAt(ev.clientX, ev.clientY);
+      if (t) toggleEdge(group.id, "group", t.id, t.kind);
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -481,7 +532,8 @@ export default function IdeaMap() {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
       if (!dragging) return;
       setChipDrag({ kind, value, x: ev.clientX, y: ev.clientY });
-      setDropTargetId(targetCardIdAt(ev.clientX, ev.clientY));
+      const id = targetCardIdAt(ev.clientX, ev.clientY);
+      setDropTargetId(id != null ? { id, kind: "node" } : null);
     }
     function onUp(ev) {
       window.removeEventListener("mousemove", onMove);
@@ -509,12 +561,13 @@ export default function IdeaMap() {
     commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, ...fields } : n)) });
   }
 
-  function toggleEdge(a, b) {
-    const existing = board.edges.find((e) => (e.from === a && e.to === b) || (e.from === b && e.to === a));
+  function toggleEdge(a, aKind, b, bKind) {
+    const existing = board.edges.find((e) => edgesMatch(e, a, aKind, b, bKind));
     if (existing) {
       commitAndSave({ ...board, edges: board.edges.filter((e) => e.id !== existing.id) });
     } else {
-      commitAndSave({ ...board, edges: [...board.edges, { id: board.nextEdgeId, from: a, to: b }], nextEdgeId: board.nextEdgeId + 1 });
+      const edge = { id: board.nextEdgeId, from: a, fromKind: aKind, to: b, toKind: bKind };
+      commitAndSave({ ...board, edges: [...board.edges, edge], nextEdgeId: board.nextEdgeId + 1 });
     }
   }
 
@@ -522,7 +575,7 @@ export default function IdeaMap() {
     if (!linkMode) return;
     if (pendingSource === null) setPendingSource(node.id);
     else if (pendingSource === node.id) setPendingSource(null);
-    else { toggleEdge(pendingSource, node.id); setPendingSource(null); }
+    else { toggleEdge(pendingSource, "node", node.id, "node"); setPendingSource(null); }
   }
 
   function handleNodeMouseDown(e, node) {
@@ -920,36 +973,30 @@ export default function IdeaMap() {
               onTitleSave={(title) => saveGroupTitle(group.id, title)}
               onTitleCancel={() => setEditingGroupTitleId(null)}
               onDelete={() => deleteGroup(group.id)}
+              onConnectorMouseDown={(e) => handleGroupConnectorMouseDown(e, group)}
+              dropTarget={!!dropTargetId && dropTargetId.kind === "group" && dropTargetId.id === group.id}
             />
           ))}
           <svg className="edge-layer">
             {board.edges.map((edge) => {
-              const a = board.nodes.find((n) => n.id === edge.from);
-              const b = board.nodes.find((n) => n.id === edge.to);
-              if (!a || !b) return null;
-              const cardA = canvasRef.current && canvasRef.current.querySelector(`.idea-card[data-id="${a.id}"]`);
-              const cardB = canvasRef.current && canvasRef.current.querySelector(`.idea-card[data-id="${b.id}"]`);
-              const aw = cardA ? cardA.offsetWidth : CARD_W, ah = cardA ? cardA.offsetHeight : 100;
-              const bw = cardB ? cardB.offsetWidth : CARD_W, bh = cardB ? cardB.offsetHeight : 100;
-              const x1 = a.x + aw / 2, y1 = a.y + ah / 2;
-              const x2 = b.x + bw / 2, y2 = b.y + bh / 2;
+              const p1 = edgeEndpoint(edge.fromKind || "node", edge.from, board.nodes, board.groups, frameCardSize);
+              const p2 = edgeEndpoint(edge.toKind || "node", edge.to, board.nodes, board.groups, frameCardSize);
+              if (!p1 || !p2) return null;
               return (
                 <g key={edge.id}>
                   <line
                     className="hit"
-                    x1={x1} y1={y1} x2={x2} y2={y2}
+                    x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                     onClick={() => commitAndSave({ ...board, edges: board.edges.filter((e) => e.id !== edge.id) })}
                   />
-                  <line className="visible" x1={x1} y1={y1} x2={x2} y2={y2} />
+                  <line className="visible" x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} />
                 </g>
               );
             })}
             {linkDraft && (() => {
-              const a = board.nodes.find((n) => n.id === linkDraft.fromId);
-              if (!a) return null;
-              const cardA = canvasRef.current && canvasRef.current.querySelector(`.idea-card[data-id="${a.id}"]`);
-              const aw = cardA ? cardA.offsetWidth : CARD_W, ah = cardA ? cardA.offsetHeight : 100;
-              return <line className="draft" x1={a.x + aw / 2} y1={a.y + ah / 2} x2={linkDraft.x} y2={linkDraft.y} />;
+              const from = edgeEndpoint(linkDraft.fromKind || "node", linkDraft.fromId, board.nodes, board.groups, frameCardSize);
+              if (!from) return null;
+              return <line className="draft" x1={from.x} y1={from.y} x2={linkDraft.x} y2={linkDraft.y} />;
             })()}
           </svg>
 
@@ -961,7 +1008,7 @@ export default function IdeaMap() {
               editing={editingId === node.id}
               dimmed={!passesFilter(node)}
               linkPending={linkMode && pendingSource === node.id}
-              dropTarget={dropTargetId === node.id}
+              dropTarget={!!dropTargetId && dropTargetId.kind === "node" && dropTargetId.id === node.id}
               selected={selectedIds.has(node.id)}
               onMouseDown={(e) => handleNodeMouseDown(e, node)}
               onClick={() => handleCardClick(node)}

@@ -3,8 +3,8 @@ import { useLingui } from "@lingui/react/macro";
 import { colorVar } from "../lib/badges.js";
 
 export default function FrameBox({
-  group, editingTitle, onMouseDown, onResizeMouseDown, onContextMenu,
-  onTitleDoubleClick, onTitleSave, onTitleCancel, onDelete
+  group, editingTitle, dropTarget, onMouseDown, onResizeMouseDown, onContextMenu,
+  onTitleDoubleClick, onTitleSave, onTitleCancel, onDelete, onConnectorMouseDown
 }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(group.title);
@@ -15,7 +15,7 @@ export default function FrameBox({
 
   return (
     <div
-      className="frame-box"
+      className={"frame-box" + (dropTarget ? " drop-target" : "")}
       data-group-id={group.id}
       style={{
         left: group.x, top: group.y, width: group.w, height: group.h,
@@ -54,6 +54,10 @@ export default function FrameBox({
         className="frame-resize-handle"
         onMouseDown={(e) => { e.stopPropagation(); onResizeMouseDown(e); }}
       />
+      <span className="connector-zone top" onMouseDown={onConnectorMouseDown} onClick={(e) => e.stopPropagation()}><span className="connector-dot">+</span></span>
+      <span className="connector-zone right" onMouseDown={onConnectorMouseDown} onClick={(e) => e.stopPropagation()}><span className="connector-dot">+</span></span>
+      <span className="connector-zone bottom" onMouseDown={onConnectorMouseDown} onClick={(e) => e.stopPropagation()}><span className="connector-dot">+</span></span>
+      <span className="connector-zone left" onMouseDown={onConnectorMouseDown} onClick={(e) => e.stopPropagation()}><span className="connector-dot">+</span></span>
     </div>
   );
 }
