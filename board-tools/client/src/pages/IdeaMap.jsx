@@ -1687,9 +1687,7 @@ export default function IdeaMap() {
             onGroup={selectedIds.size >= 2 && selectedIds.has(node.id) ? groupSelectedCards : undefined}
             onFocus={() => { setColorMenu(null); setFocusId(node.id); }}
             onDuplicate={() => { setColorMenu(null); const { next, cloneIds } = duplicateNodes([node.id]); commitAndSave(next); setSelectedIds(new Set(cloneIds)); }}
-            onComments={(node.comments?.length ?? 0) === 0
-              ? () => { setColorMenu(null); setCommentsFor({ id: node.id, x: colorMenu.x, y: colorMenu.y }); }
-              : undefined}
+            onComments={() => { setColorMenu(null); setCommentsFor({ id: node.id, x: colorMenu.x, y: colorMenu.y }); }}
             onCopyLink={() => {
               const url = new URL(window.location.href);
               url.searchParams.set("card", String(node.id));
