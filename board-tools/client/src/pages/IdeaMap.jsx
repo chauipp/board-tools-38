@@ -179,9 +179,10 @@ export default function IdeaMap() {
     if (statusKeys.length && filterStatus[node.status] !== true) return false;
     const tagKeys = Object.keys(filterTags).filter((k) => filterTags[k]);
     if (tagKeys.length && !filterTags[node.tag || "—"]) return false;
-    if (search) {
+    const q = search.trim().toLowerCase();
+    if (q) {
       const hay = (node.title + " " + node.desc).toLowerCase();
-      if (hay.indexOf(search.toLowerCase()) === -1) return false;
+      if (hay.indexOf(q) === -1) return false;
     }
     return true;
   }
@@ -210,6 +211,8 @@ export default function IdeaMap() {
   }
 
   function handleViewportContextMenu(e) {
+    const tag = (e.target.tagName || "").toUpperCase();
+    if (tag === "INPUT" || tag === "TEXTAREA" || e.target.isContentEditable) return;
     e.preventDefault();
   }
 
