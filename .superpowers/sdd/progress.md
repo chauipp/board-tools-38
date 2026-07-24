@@ -29,3 +29,11 @@ Task 1: complete (commits 6a61446..c874a31, review clean, no Critical/Important)
   output (vite preview :4174). Default -> Vietnamese + "VI" button; with
   locale-pref=en -> English + "EN" button; DOM ~2.9KB (not a blank page).
   Residual gap: the click path (activateLocale write) is still unclicked.
+Task 2: complete (commits cca3d84..7562d65, review clean, no Critical/Important)
+  Verified hunk-by-hunk: no WIP leaked into the commit. Browser check via
+  headless Chrome (both locales, both pages show load-error screen).
+  Minor: saveError is null|true not strict boolean (brief-mandated shape).
+WIP commit 8fb20d2 "Redesign idea map interactions and filter bar" — the
+  pre-existing uncommitted idea-map work (context-menu removal, right-drag
+  pan, filter-bar redesign), committed on its own so Task 4 starts clean.
+  Build passes with it. NOT part of the i18n feature per se.
