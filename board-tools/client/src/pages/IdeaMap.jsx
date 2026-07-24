@@ -1127,6 +1127,7 @@ export default function IdeaMap() {
   function confirmCapture() {
     const titles = captureText.split("\n").map((s) => s.trim()).filter(Boolean);
     if (titles.length === 0) { setCaptureOpen(false); return; }
+    setFocusId(null);
     const rect = viewportRef.current.getBoundingClientRect();
     const cx = (rect.width / 2 - board.view.panX) / board.view.scale;
     const cy = (rect.height / 2 - board.view.panY) / board.view.scale;
