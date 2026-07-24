@@ -1497,22 +1497,23 @@ function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selec
   if (dropTarget) classNames.push("drop-target");
   if (selected) classNames.push("selected");
 
+  function handleEditKeyDown(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      onSaveAndNext({ title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId });
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      onCancel();
+    }
+  }
+
   if (editing) {
     return (
       <div className={classNames.join(" ")} data-id={node.id} style={{ left: node.x, top: node.y }} onMouseDown={(e) => e.stopPropagation()}>
         <div className="edit-form">
-          <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t`Tên ý tưởng`} onKeyDown={(e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-              e.preventDefault();
-              onSaveAndNext({ title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId });
-            }
-          }} />
-          <textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t`Mô tả ngắn`} onKeyDown={(e) => {
-            if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-              e.preventDefault();
-              onSaveAndNext({ title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId });
-            }
-          }} />
+          <input type="text" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t`Tên ý tưởng`} onKeyDown={handleEditKeyDown} />
+          <textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t`Mô tả ngắn`} onKeyDown={handleEditKeyDown} />
           <div className="edit-row">
             <select value={tagId ?? ""} onChange={(e) => setTagId(e.target.value === "" ? null : Number(e.target.value))}>
               <option value="">{t`Không nhãn`}</option>
