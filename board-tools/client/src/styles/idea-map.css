@@ -215,7 +215,10 @@
 .frame-delete {
   position: absolute; top: -13px; right: 6px; background: var(--bg);
   border: 1px solid var(--line); border-radius: 50%; width: 20px; height: 20px;
+  color: var(--ink-dim); cursor: pointer; font-size: 12px; line-height: 1; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
 }
+.frame-delete:hover { color: var(--ink); border-color: var(--ink-dim); }
 .frame-resize-handle {
   position: absolute; right: -6px; bottom: -6px; width: 16px; height: 16px;
   border-radius: 3px; background: var(--surface); border: 1.5px solid var(--ink-dim);
