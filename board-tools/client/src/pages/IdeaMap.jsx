@@ -285,6 +285,7 @@ export default function IdeaMap() {
   function applyImageToNode(nodeId, dataUrl) {
     const current = boardRef.current;
     if (!current) return;
+    if (!current.nodes.some((n) => n.id === nodeId)) return;
     const next = { ...current, nodes: current.nodes.map((n) => (n.id === nodeId ? { ...n, image: dataUrl } : n)) };
     recordHistory(current);
     setBoard(next);
