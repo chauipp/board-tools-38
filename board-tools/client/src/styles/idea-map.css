@@ -138,6 +138,14 @@
   color: var(--ink-dim); font-size: 13px; text-align: center; pointer-events: none; width: 280px;
 }
 
+.focus-banner {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+  padding: 5px 8px 5px 14px; font-size: 11px; color: var(--ink-dim); box-shadow: var(--shadow);
+  display: flex; gap: 8px; align-items: center; z-index: 40;
+}
+.focus-banner button { background: none; border: none; cursor: pointer; color: var(--ink-dim); font-size: 13px; line-height: 1; padding: 0 4px; }
+
 .zoom-ctrl {
   position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center;
   background: var(--surface); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); overflow: hidden;

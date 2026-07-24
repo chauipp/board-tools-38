@@ -52,6 +52,7 @@ export default function IdeaMap() {
   const [badgeUI, setBadgeUI] = useState(null); // { mode: "create"|"edit", kind, def?, x, y }
   const [colorMenu, setColorMenu] = useState(null); // { kind: "card"|"group", id, x, y }
   const [editingGroupTitleId, setEditingGroupTitleId] = useState(null);
+  const [focusId, setFocusId] = useState(null);
   const [, bump] = useState(0);
 
   const viewportRef = useRef(null);
@@ -191,6 +192,7 @@ export default function IdeaMap() {
         if (colorMenu) setColorMenu(null);
         else if (badgeUI) setBadgeUI(null);
         else if (linkMode) { setLinkMode(false); setPendingSource(null); }
+        else if (focusId != null) setFocusId(null);
         else if (selectedIds.size > 0) setSelectedIds(new Set());
       }
       else if (key === "n") { e.preventDefault(); handleAddClick(); }
@@ -202,7 +204,7 @@ export default function IdeaMap() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [board, past, future, selectedIds, linkMode, colorMenu, badgeUI]);
+  }, [board, past, future, selectedIds, linkMode, colorMenu, badgeUI, focusId]);
 
   useEffect(() => {
     function down(e) {
@@ -252,6 +254,31 @@ export default function IdeaMap() {
     }
     return true;
   }
+
+  function computeFocusSet(rootId) {
+    // BFS ≤2 hop trên edge node↔node (bỏ qua edge dính group)
+    const adj = new Map();
+    board.edges.forEach((e) => {
+      if ((e.fromKind || "node") !== "node" || (e.toKind || "node") !== "node") return;
+      if (!adj.has(e.from)) adj.set(e.from, []);
+      if (!adj.has(e.to)) adj.set(e.to, []);
+      adj.get(e.from).push(e.to);
+      adj.get(e.to).push(e.from);
+    });
+    const seen = new Set([rootId]);
+    let frontier = [rootId];
+    for (let hop = 0; hop < 2; hop++) {
+      const nextFrontier = [];
+      frontier.forEach((id) => (adj.get(id) || []).forEach((nb) => {
+        if (!seen.has(nb)) { seen.add(nb); nextFrontier.push(nb); }
+      }));
+      frontier = nextFrontier;
+    }
+    return seen;
+  }
+  const focusSet = focusId != null && board.nodes.some((n) => n.id === focusId)
+    ? computeFocusSet(focusId)
+    : null;
 
   function createNode(x, y) {
     const id = board.nextNodeId;
@@ -1286,7 +1313,7 @@ export default function IdeaMap() {
               node={node}
               board={board}
               editing={editingId === node.id}
-              dimmed={!passesFilter(node)}
+              dimmed={!passesFilter(node) || (focusSet != null && !focusSet.has(node.id))}
               linkPending={linkMode && pendingSource === node.id}
               dropTarget={!!dropTargetId && dropTargetId.kind === "node" && dropTargetId.id === node.id}
               selected={selectedIds.has(node.id)}
@@ -1307,6 +1334,13 @@ export default function IdeaMap() {
           <div className="empty-hint">
             <Trans>Nhấp đúp vào khoảng trống để tạo ý tưởng đầu tiên.</Trans><br />
             <Trans>Chuột trái kéo để bôi đen chọn thẻ, chuột phải kéo để lia sa bàn, cuộn để lia, giữ Ctrl/⌘ + cuộn để phóng to.</Trans>
+          </div>
+        )}
+
+        {focusSet != null && (
+          <div className="focus-banner">
+            <Trans>Đang tập trung — Esc để thoát</Trans>
+            <button onClick={() => setFocusId(null)}>×</button>
           </div>
         )}
 
@@ -1362,6 +1396,7 @@ export default function IdeaMap() {
             onPick={(color) => applyNodeColor(node.id, color)}
             onEdit={() => { setColorMenu(null); setEditingId(node.id); }}
             onGroup={selectedIds.size >= 2 && selectedIds.has(node.id) ? groupSelectedCards : undefined}
+            onFocus={() => { setColorMenu(null); setFocusId(node.id); }}
             onDuplicate={() => { setColorMenu(null); const { next, cloneIds } = duplicateNodes([node.id]); commitAndSave(next); setSelectedIds(new Set(cloneIds)); }}
             onDelete={() => { setColorMenu(null); deleteNode(node.id); }}
             onClose={() => setColorMenu(null)}
