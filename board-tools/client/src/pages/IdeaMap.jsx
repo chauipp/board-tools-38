@@ -53,6 +53,7 @@ export default function IdeaMap() {
   const canvasRef = useRef(null);
   const saveTimerRef = useRef(null);
   const boardRef = useRef(null);
+  const suppressContextMenuRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -528,6 +529,8 @@ export default function IdeaMap() {
       if (dragging) {
         setIsPanning(false);
         saveNow(latest);
+        suppressContextMenuRef.current = true;
+        setTimeout(() => { suppressContextMenuRef.current = false; }, 0);
       }
     }
     window.addEventListener("mousemove", onMove);
@@ -608,6 +611,7 @@ export default function IdeaMap() {
   function openColorMenu(e, kind, id) {
     e.preventDefault();
     e.stopPropagation();
+    if (suppressContextMenuRef.current) { suppressContextMenuRef.current = false; return; }
     setColorMenu({ kind, id, x: e.clientX, y: e.clientY });
   }
 
