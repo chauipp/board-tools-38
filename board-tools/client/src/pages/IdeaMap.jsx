@@ -142,7 +142,16 @@ export default function IdeaMap() {
   }
 
   function undo() {
-    flushNudgeBurst();
+    if (nudgeBaseRef.current != null) {
+      const base = nudgeBaseRef.current;
+      nudgeBaseRef.current = null;
+      if (nudgeTimerRef.current) { clearTimeout(nudgeTimerRef.current); nudgeTimerRef.current = null; }
+      setFuture((f) => [board, ...f]);
+      setEditingId(null);
+      setBoard(base);
+      saveNow(base);
+      return;
+    }
     if (past.length === 0) return;
     const prev = past[past.length - 1];
     setPast((p) => p.slice(0, -1));
@@ -153,7 +162,7 @@ export default function IdeaMap() {
   }
 
   function redo() {
-    flushNudgeBurst();
+    if (nudgeBaseRef.current != null) { flushNudgeBurst(); return; }
     if (future.length === 0) return;
     const nextState = future[0];
     setFuture((f) => f.slice(1));
