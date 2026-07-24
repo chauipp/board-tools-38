@@ -90,6 +90,7 @@ export default function IdeaMap() {
     const el = viewportRef.current;
     if (!el) return;
     function wheelHandler(e) {
+      if (e.target.closest(".outline-panel, .io-drawer")) return;
       e.preventDefault();
       const current = boardRef.current;
       if (!current) return;
