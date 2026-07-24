@@ -22,10 +22,13 @@ test("hút tâm-với-tâm theo trục dọc", () => {
 });
 
 test("hút mép phải-với-mép phải (end anchors tồn tại)", () => {
-  const moving = { x: 96, y: 0, w: 50, h: 50 };      // mép phải 146
-  const others = [{ x: 50, y: 200, w: 100, h: 50 }]; // mép phải 150 → d=+4
+  const moving = { x: 96, y: 0, w: 50, h: 50 };      // anchors x: 96, 121, 146
+  const others = [{ x: 70, y: 200, w: 80, h: 50 }];  // anchors x: 70, 110, 150
+  // mọi cặp khác đều lệch >6 (96↔70/110, 121↔110/150...); chỉ 146↔150 = +4 lọt ngưỡng
   const r = computeSnap(moving, others, 6);
   assert.equal(r.dx, 4);
+  // pin đúng anchor đã khớp: guide dọc phải nằm tại mép PHẢI của other (150), không phải center
+  assert.equal(r.guides.some((g) => g.axis === "v" && g.pos === 150), true);
 });
 
 test("ngoài ngưỡng thì không hút", () => {
