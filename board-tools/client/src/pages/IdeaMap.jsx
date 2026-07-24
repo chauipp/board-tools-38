@@ -1352,6 +1352,8 @@ export default function IdeaMap() {
     e.preventDefault();
     e.stopPropagation();
     if (suppressContextMenuRef.current) { suppressContextMenuRef.current = false; return; }
+    setEdgeMenu(null);
+    setCommentsFor(null);
     setColorMenu({ kind, id, x: e.clientX, y: e.clientY });
   }
 
@@ -1620,7 +1622,7 @@ export default function IdeaMap() {
                   <line
                     className="hit"
                     x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                    onClick={(e) => setEdgeMenu({ id: edge.id, x: e.clientX, y: e.clientY })}
+                    onClick={(e) => { setColorMenu(null); setCommentsFor(null); setEdgeMenu({ id: edge.id, x: e.clientX, y: e.clientY }); }}
                   />
                   <line
                     className="visible"
@@ -1663,7 +1665,7 @@ export default function IdeaMap() {
               onEdit={() => setEditingId(node.id)}
               onDelete={() => deleteNode(node.id)}
               onToggleFavorite={() => toggleFavorite(node.id)}
-              onOpenComments={(e) => setCommentsFor({ id: node.id, x: e.clientX, y: e.clientY })}
+              onOpenComments={(e) => { setColorMenu(null); setEdgeMenu(null); setCommentsFor({ id: node.id, x: e.clientX, y: e.clientY }); }}
               onSave={(fields) => saveNodeEdit(node.id, fields)}
               onSaveAndNext={(fields) => saveNodeEditAndNext(node.id, fields)}
               onCancel={() => setEditingId(null)}
@@ -1825,7 +1827,7 @@ export default function IdeaMap() {
             onGroup={selectedIds.size >= 2 && selectedIds.has(node.id) ? groupSelectedCards : undefined}
             onFocus={() => { setColorMenu(null); setFocusId(node.id); }}
             onDuplicate={() => { setColorMenu(null); const { next, cloneIds } = duplicateNodes([node.id]); commitAndSave(next); setSelectedIds(new Set(cloneIds)); }}
-            onComments={() => { setColorMenu(null); setCommentsFor({ id: node.id, x: colorMenu.x, y: colorMenu.y }); }}
+            onComments={() => { setColorMenu(null); setEdgeMenu(null); setCommentsFor({ id: node.id, x: colorMenu.x, y: colorMenu.y }); }}
             onCopyLink={() => {
               const url = new URL(window.location.href);
               url.searchParams.set("card", String(node.id));
