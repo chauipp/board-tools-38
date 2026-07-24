@@ -13,6 +13,18 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
+#: src/pages/Calculator.jsx:173
+msgid "← Trang chủ"
+msgstr "← Home"
+
+#: src/pages/Calculator.jsx:221
+msgid "+ Thêm chỉ số"
+msgstr "+ Add stat"
+
+#: src/pages/Calculator.jsx:239
+msgid "A gây <0>{dmgToB}</0> sát thương/lượt lên B  ·  B gây <1>{dmgToA}</1> sát thương/lượt lên A"
+msgstr "A deals <0>{dmgToB}</0> damage/turn to B  ·  B deals <1>{dmgToA}</1> damage/turn to A"
+
 #: src/pages/Home.jsx:40
 msgid "Bản đồ ý tưởng"
 msgstr "Idea map"
@@ -21,9 +33,57 @@ msgstr "Idea map"
 msgid "Bàn tính đối đầu"
 msgstr "Duel calculator"
 
+#: src/pages/Calculator.jsx:169
+msgid "Bàn Tính Đối Đầu"
+msgstr "Duel Calculator"
+
+#: src/pages/Calculator.jsx:256
+msgid "Bế tắc: không bên nào đủ tấn công xuyên phá giáp đối phương. Đây là dấu hiệu nên xem lại cách quy đổi điểm."
+msgstr "Deadlock: neither side has enough attack to break through the other's armor. This is a sign the point conversion needs revisiting."
+
+#: src/pages/Calculator.jsx:200
+msgid "Build A"
+msgstr "Build A"
+
+#: src/pages/Calculator.jsx:260
+msgid "Build A thắng ở lượt {rounds}, còn lại {hp} máu."
+msgstr "Build A wins on turn {rounds} with {hp} HP left."
+
+#: src/pages/Calculator.jsx:201
+msgid "Build B"
+msgstr "Build B"
+
+#: src/pages/Calculator.jsx:262
+msgid "Build B thắng ở lượt {rounds}, còn lại {hp} máu."
+msgstr "Build B wins on turn {rounds} with {hp} HP left."
+
+#: src/pages/Calculator.jsx:258
+msgid "Cả hai cùng gục ở lượt {rounds} — hoà."
+msgstr "Both fall on turn {rounds} — a draw."
+
+#: src/pages/Calculator.jsx:240
+msgid "Cần có ít nhất Máu, Giáp và Tấn công trong bảng để xem trước đối đầu."
+msgstr "The table needs at least HP, Armor and Attack to preview a duel."
+
+#: src/pages/Calculator.jsx:198
+msgid "Chỉ số"
+msgstr "Stat"
+
+#: src/pages/Calculator.jsx:135
+msgid "Chỉ số mới"
+msgstr "New stat"
+
+#: src/pages/Calculator.jsx:170
+msgid "Chia ngân sách điểm vào chỉ số chiến đấu cho hai build, rồi mô phỏng xem ai thắng."
+msgstr "Split a point budget across combat stats for two builds, then simulate who wins."
+
 #: src/pages/Home.jsx:59
 msgid "Chia ngân sách điểm vào Máu / Giáp / Xuyên giáp / Tấn công cho hai build, rồi mô phỏng xem ai thắng."
 msgstr "Split a point budget across HP / Armor / Pierce / Attack for two builds, then simulate who wins."
+
+#: src/pages/Calculator.jsx:264
+msgid "Chưa phân thắng bại sau {rounds} lượt — trận kéo dài, có thể cần xem lại tỉ lệ sát thương/máu."
+msgstr "No winner after {rounds} turns — the fight drags on; the damage-to-HP ratio may need revisiting."
 
 #: src/components/LocaleToggle.jsx:13
 msgid "Chuyển sang tiếng Anh"
@@ -33,11 +93,24 @@ msgstr "Switch to English"
 msgid "Chuyển sang tiếng Việt"
 msgstr "Switch to Vietnamese"
 
-#: src/pages/Calculator.jsx:104
+#: src/pages/Calculator.jsx:226
+msgid "Còn lại — Build A"
+msgstr "Remaining — Build A"
+
+#: src/pages/Calculator.jsx:230
+msgid "Còn lại — Build B"
+msgstr "Remaining — Build B"
+
+#: src/pages/Calculator.jsx:106
 #: src/pages/IdeaMap.jsx:171
 msgid "Đang tải…"
 msgstr "Loading…"
 
+#: src/pages/Calculator.jsx:236
+msgid "Đối đầu thử"
+msgstr "Test duel"
+
+#: src/pages/Calculator.jsx:177
 #: src/pages/Home.jsx:25
 msgid "Đổi giao diện sáng/tối"
 msgstr "Toggle light/dark theme"
@@ -50,11 +123,19 @@ msgstr "Team project"
 msgid "Dữ liệu lưu chung trên server cho cả nhóm — ai mở link cũng thấy bản mới nhất."
 msgstr "Data lives on a shared server — anyone opening the link sees the latest version."
 
+#: src/pages/Calculator.jsx:199
+msgid "Giá / điểm"
+msgstr "Cost / point"
+
 #: src/pages/Home.jsx:20
 msgid "Hai công cụ nhẹ để quản lý ý tưởng và thử cân bằng số liệu trước khi bắt tay code thật. Dữ liệu dùng chung cho cả nhóm."
 msgstr "Two lightweight tools for managing ideas and testing number balance before writing real code. Data is shared across the team."
 
-#: src/pages/Calculator.jsx:178
+#: src/pages/Calculator.jsx:174
+msgid "Hoàn tác (Ctrl+Z)"
+msgstr "Undo (Ctrl+Z)"
+
+#: src/pages/Calculator.jsx:181
 #: src/pages/IdeaMap.jsx:619
 msgid "Không lưu được lên server."
 msgstr "Could not save to the server."
@@ -63,9 +144,33 @@ msgstr "Could not save to the server."
 msgid "Không tải được dữ liệu. Kiểm tra server đã chạy chưa (npm run dev trong thư mục server) và biến MONGODB_URI đã đúng chưa."
 msgstr "Could not load data. Check that the server is running (npm run dev in the server folder) and that MONGODB_URI is correct."
 
+#: src/pages/Calculator.jsx:175
+msgid "Làm lại (Ctrl+Shift+Z)"
+msgstr "Redo (Ctrl+Shift+Z)"
+
+#: src/pages/Calculator.jsx:242
+msgid "Mô phỏng đối đầu"
+msgstr "Simulate duel"
+
+#: src/pages/Calculator.jsx:184
+msgid "Ngân sách điểm"
+msgstr "Point budget"
+
+#: src/pages/Calculator.jsx:168
+msgid "Sa bàn thiết kế"
+msgstr "Design sandbox"
+
 #: src/pages/Home.jsx:43
 msgid "Sơ đồ tư duy tự do: kéo-thả, nối quan hệ, gắn nhãn/trạng thái, lọc và tìm kiếm — quản lý mọi ý tưởng liên quan đến game."
 msgstr "A free-form mind map: drag and drop, link relationships, assign tags and statuses, filter and search — manage every idea about the game."
+
+#: src/pages/Calculator.jsx:254
+msgid "Thiếu chỉ số Máu / Giáp / Tấn công — không mô phỏng được."
+msgstr "Missing HP / Armor / Attack stats — cannot simulate."
+
+#: src/pages/Calculator.jsx:213
+msgid "Xoá chỉ số"
+msgstr "Delete stat"
 
 #: src/pages/Home.jsx:17
 msgid "Xưởng Game Của Tôi"
