@@ -110,3 +110,16 @@ Task 1: complete (commits 5e3476b..49272b5, review clean, no Critical/Important)
   risk). (2) GET inlines toObject+delete instead of stripMongoMeta (forced,
   migrateBoard needs plain obj pre-strip).
   RUNTIME MIGRATION not yet run against live DB — controller does with backup.
+Task 2: IN FLIGHT — implemented + committed (d43f5f2), NOT yet reviewed.
+  Build passes, extract 0/0 (en 77/77). Client now REQUIRES migrated data
+  (board.statuses.map throws on old shape) → renders blank against the
+  unmigrated :3001 server, so runtime non-regression is UNVERIFIED.
+  RESUME HERE: (1) dispatch Task 2 reviewer on review package
+  .superpowers/sdd/review-a1b1823..d43f5f2.diff (base a1b1823, head d43f5f2,
+  brief task-2-brief.md, report task-2-report.md). (2) After review clean,
+  mark Task 2 done, continue Task 3 (brief: task-brief PLAN 3).
+  DEFERRED (controller+user, needs live-DB migration with backup): runtime
+  non-regression of Task 2 + all click testing for Tasks 3-4. The :3001
+  server must be restarted on new code (migrates real board once) before
+  the app renders — do this WITH a JSON backup, confirm with user first.
+  Minor noted: .fb-add/.dot-empty unstyled until Task 3 adds their CSS.
