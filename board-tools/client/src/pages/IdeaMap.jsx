@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Trans } from "@lingui/react/macro";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { t } from "@lingui/core/macro";
 import { getIdeas, saveIdeas } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import LoadError from "../components/LoadError.jsx";
+import LocaleToggle from "../components/LocaleToggle.jsx";
 import "../styles/idea-map.css";
 
 const STATUS = {
@@ -27,7 +29,7 @@ function hashTag(tag) {
 }
 
 function tagLabel(tag) {
-  return tag === "—" ? "Chưa gắn nhãn" : tag;
+  return tag === "—" ? t`Chưa gắn nhãn` : tag;
 }
 
 function computeZoom(currentBoard, rect, screenX, screenY, factor) {
@@ -41,6 +43,7 @@ function computeZoom(currentBoard, rect, screenX, screenY, factor) {
 
 export default function IdeaMap() {
   const toggleTheme = useTheme();
+  const { t } = useLingui();
   const [board, setBoard] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [saveError, setSaveError] = useState(null);
@@ -185,7 +188,7 @@ export default function IdeaMap() {
 
   function createNode(x, y) {
     const id = board.nextNodeId;
-    const node = { id, title: "Ý tưởng mới", desc: "", tag: "", status: "idea", x: Math.round(x), y: Math.round(y) };
+    const node = { id, title: t`Ý tưởng mới`, desc: "", tag: "", status: "idea", x: Math.round(x), y: Math.round(y) };
     const next = { ...board, nodes: [...board.nodes, node], nextNodeId: id + 1 };
     setEditingId(id);
     commitAndSave(next);
@@ -275,7 +278,7 @@ export default function IdeaMap() {
     }
 
     const id = board.nextNodeId;
-    const newNode = { id, title: "Ý tưởng mới", desc: "", tag: "", status: "idea", x: Math.round(x), y: Math.round(y) };
+    const newNode = { id, title: t`Ý tưởng mới`, desc: "", tag: "", status: "idea", x: Math.round(x), y: Math.round(y) };
     const next = {
       ...board,
       nodes: [...board.nodes, newNode],
@@ -578,7 +581,7 @@ export default function IdeaMap() {
       commitAndSave(parsed);
       setIoOpen(false);
     } catch (e) {
-      alert("JSON không hợp lệ — kiểm tra lại nội dung đã dán.");
+      alert(t`JSON không hợp lệ — kiểm tra lại nội dung đã dán.`);
     }
   }
 
@@ -599,32 +602,33 @@ export default function IdeaMap() {
     <div className="shell">
       <div className="topbar">
         <div>
-          <div className="eyebrow">Bản đồ ý tưởng</div>
-          <h1 className="display" style={{ fontSize: 19, margin: 0 }}>Game Của Tôi</h1>
+          <div className="eyebrow"><Trans>Bản đồ ý tưởng</Trans></div>
+          <h1 className="display" style={{ fontSize: 19, margin: 0 }}><Trans>Game Của Tôi</Trans></h1>
         </div>
-        <Link to="/" className="btn ghost">← Trang chủ</Link>
-        <button className="btn" onClick={handleAddClick}>+ Ý tưởng</button>
-        <button className="btn ghost icon" onClick={undo} disabled={past.length === 0} title="Hoàn tác (Ctrl+Z)">↶</button>
-        <button className="btn ghost icon" onClick={redo} disabled={future.length === 0} title="Làm lại (Ctrl+Shift+Z)">↷</button>
+        <Link to="/" className="btn ghost"><Trans>← Trang chủ</Trans></Link>
+        <button className="btn" onClick={handleAddClick}><Trans>+ Ý tưởng</Trans></button>
+        <button className="btn ghost icon" onClick={undo} disabled={past.length === 0} title={t`Hoàn tác (Ctrl+Z)`}>↶</button>
+        <button className="btn ghost icon" onClick={redo} disabled={future.length === 0} title={t`Làm lại (Ctrl+Shift+Z)`}>↷</button>
         <button
           className={"btn ghost toggle" + (linkMode ? " active" : "")}
           onClick={() => { setLinkMode((v) => !v); setPendingSource(null); }}
         >
-          Nối ý tưởng
+          <Trans>Nối ý tưởng</Trans>
         </button>
         <div className="search-box">
-          <input type="text" placeholder="Tìm theo tên/mô tả…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input type="text" placeholder={t`Tìm theo tên/mô tả…`} value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="spacer" />
         {saveError && <span style={{ fontSize: 11, color: "var(--danger)" }}><Trans>Không lưu được lên server.</Trans></span>}
-        <button className="btn ghost" onClick={() => { setIoMode("export"); setIoText(JSON.stringify(board, null, 2)); setIoOpen(true); }}>Xuất JSON</button>
-        <button className="btn ghost" onClick={() => { setIoMode("import"); setIoText(""); setIoOpen(true); }}>Nhập JSON</button>
-        <button className="btn ghost icon" onClick={toggleTheme} title="Đổi giao diện sáng/tối">◐</button>
+        <button className="btn ghost" onClick={() => { setIoMode("export"); setIoText(JSON.stringify(board, null, 2)); setIoOpen(true); }}><Trans>Xuất JSON</Trans></button>
+        <button className="btn ghost" onClick={() => { setIoMode("import"); setIoText(""); setIoOpen(true); }}><Trans>Nhập JSON</Trans></button>
+        <LocaleToggle />
+        <button className="btn ghost icon" onClick={toggleTheme} title={t`Đổi giao diện sáng/tối`}>◐</button>
       </div>
 
       <div className="filterbar">
         <div className="fb-group">
-          <span className="fb-label">Trạng thái</span>
+          <span className="fb-label"><Trans>Trạng thái</Trans></span>
           <div className="fb-chips">
             {STATUS_ORDER.map((key) => (
               <span
@@ -632,7 +636,7 @@ export default function IdeaMap() {
                 className={"chip-toggle status" + (filterStatus[key] ? " on" : "")}
                 onMouseDown={(e) => handleChipMouseDown(e, "status", key)}
                 onClick={() => setFilterStatus((prev) => ({ ...prev, [key]: !prev[key] }))}
-                title="Bấm để lọc — kéo thả vào thẻ để gán trạng thái"
+                title={t`Bấm để lọc — kéo thả vào thẻ để gán trạng thái`}
               >
                 <span className="dot" style={{ background: STATUS[key].color }}></span>
                 {STATUS[key].label}
@@ -643,7 +647,7 @@ export default function IdeaMap() {
 
         {distinctTags.length > 0 && (
           <div className="fb-group">
-            <span className="fb-label">Nhãn</span>
+            <span className="fb-label"><Trans>Nhãn</Trans></span>
             <div className="fb-chips">
               {distinctTags.map((tag) => (
                 <span
@@ -651,7 +655,7 @@ export default function IdeaMap() {
                   className={"chip-toggle tag" + (filterTags[tag] ? " on" : "")}
                   onMouseDown={(e) => handleChipMouseDown(e, "tag", tag)}
                   onClick={() => setFilterTags((prev) => ({ ...prev, [tag]: !prev[tag] }))}
-                  title="Bấm để lọc — kéo thả vào thẻ để gán nhãn"
+                  title={t`Bấm để lọc — kéo thả vào thẻ để gán nhãn`}
                 >
                   <span className="dot" style={{ background: hashTag(tag) }}></span>
                   {tagLabel(tag)}
@@ -665,10 +669,10 @@ export default function IdeaMap() {
 
         {activeFilterCount > 0 && (
           <div className="fb-tail">
-            <span className="fb-count mono" title="Số ý tưởng khớp bộ lọc">
-              Khớp {matchCount}/{board.nodes.length}
+            <span className="fb-count mono" title={t`Số ý tưởng khớp bộ lọc`}>
+              <Trans>Khớp {matchCount}/{board.nodes.length}</Trans>
             </span>
-            <button className="fb-clear" onClick={clearFilters}>Xoá lọc</button>
+            <button className="fb-clear" onClick={clearFilters}><Trans>Xoá lọc</Trans></button>
           </div>
         )}
       </div>
@@ -741,28 +745,30 @@ export default function IdeaMap() {
 
         {board.nodes.length === 0 && (
           <div className="empty-hint">
-            Nhấp đúp vào khoảng trống để tạo ý tưởng đầu tiên.<br />
-            Chuột trái kéo để bôi đen chọn thẻ, chuột phải kéo để lia sa bàn, cuộn để lia, giữ Ctrl/⌘ + cuộn để phóng to.
+            <Trans>Nhấp đúp vào khoảng trống để tạo ý tưởng đầu tiên.</Trans><br />
+            <Trans>Chuột trái kéo để bôi đen chọn thẻ, chuột phải kéo để lia sa bàn, cuộn để lia, giữ Ctrl/⌘ + cuộn để phóng to.</Trans>
           </div>
         )}
 
         <div className="zoom-ctrl">
-          <button onClick={() => zoomButton(1 / 1.2)} title="Thu nhỏ">−</button>
+          <button onClick={() => zoomButton(1 / 1.2)} title={t`Thu nhỏ`}>−</button>
           <span className="pct mono">{Math.round(board.view.scale * 100)}%</span>
-          <button onClick={() => zoomButton(1.2)} title="Phóng to">+</button>
+          <button onClick={() => zoomButton(1.2)} title={t`Phóng to`}>+</button>
           <div className="sep" />
-          <button onClick={fitToView} style={{ width: "auto", padding: "0 8px", fontSize: 11 }}>Vừa khung</button>
+          <button onClick={fitToView} style={{ width: "auto", padding: "0 8px", fontSize: 11 }}><Trans>Vừa khung</Trans></button>
         </div>
 
         {ioOpen && (
           <div className="io-drawer">
             <div className="note">
-              {ioMode === "export" ? "JSON hiện tại — copy để sao lưu hoặc gửi cho người khác xem." : "Dán JSON đã xuất trước đó, rồi bấm Nhập vào bản đồ."}
+              {ioMode === "export"
+                ? <Trans>JSON hiện tại — copy để sao lưu hoặc gửi cho người khác xem.</Trans>
+                : <Trans>Dán JSON đã xuất trước đó, rồi bấm Nhập vào bản đồ.</Trans>}
             </div>
             <textarea spellCheck={false} value={ioText} onChange={(e) => setIoText(e.target.value)} />
             <div className="io-actions">
-              {ioMode === "import" && <button className="btn small" onClick={handleImportConfirm}>Nhập vào bản đồ</button>}
-              <button className="btn ghost small" onClick={() => setIoOpen(false)}>Đóng</button>
+              {ioMode === "import" && <button className="btn small" onClick={handleImportConfirm}><Trans>Nhập vào bản đồ</Trans></button>}
+              <button className="btn ghost small" onClick={() => setIoOpen(false)}><Trans>Đóng</Trans></button>
             </div>
           </div>
         )}
@@ -784,6 +790,7 @@ export default function IdeaMap() {
 }
 
 function IdeaCard({ node, editing, dimmed, linkPending, dropTarget, selected, onMouseDown, onClick, onConnectorMouseDown, onEdit, onDelete, onSave, onCancel }) {
+  const { t } = useLingui();
   const [title, setTitle] = useState(node.title);
   const [desc, setDesc] = useState(node.desc);
   const [tag, setTag] = useState(node.tag);
@@ -806,17 +813,17 @@ function IdeaCard({ node, editing, dimmed, linkPending, dropTarget, selected, on
     return (
       <div className={classNames.join(" ")} data-id={node.id} style={{ left: node.x, top: node.y }} onMouseDown={(e) => e.stopPropagation()}>
         <div className="edit-form">
-          <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Tên ý tưởng" />
-          <textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Mô tả ngắn" />
+          <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t`Tên ý tưởng`} />
+          <textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t`Mô tả ngắn`} />
           <div className="edit-row">
-            <input type="text" list="tagOptions" value={tag} onChange={(e) => setTag(e.target.value)} placeholder="Nhãn" />
+            <input type="text" list="tagOptions" value={tag} onChange={(e) => setTag(e.target.value)} placeholder={t`Nhãn`} />
             <select value={status} onChange={(e) => setStatus(e.target.value)}>
               {STATUS_ORDER.map((s) => <option key={s} value={s}>{STATUS[s].label}</option>)}
             </select>
           </div>
           <div className="edit-actions">
-            <button className="save-btn" onClick={() => onSave({ title: title.trim() || "Ý tưởng mới", desc: desc.trim(), tag: tag.trim(), status })}>Lưu</button>
-            <button className="cancel-btn" onClick={onCancel}>Hủy</button>
+            <button className="save-btn" onClick={() => onSave({ title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tag: tag.trim(), status })}><Trans>Lưu</Trans></button>
+            <button className="cancel-btn" onClick={onCancel}><Trans>Hủy</Trans></button>
           </div>
         </div>
       </div>
@@ -832,8 +839,8 @@ function IdeaCard({ node, editing, dimmed, linkPending, dropTarget, selected, on
       onClick={onClick}
     >
       <div className="card-actions">
-        <button className="icon-btn" title="Sửa" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(); }}>✎</button>
-        <button className="icon-btn" title="Xoá" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onDelete(); }}>×</button>
+        <button className="icon-btn" title={t`Sửa`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(); }}>✎</button>
+        <button className="icon-btn" title={t`Xoá`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onDelete(); }}>×</button>
       </div>
       <div className="card-top">
         <div className="title">{node.title}</div>
@@ -848,10 +855,10 @@ function IdeaCard({ node, editing, dimmed, linkPending, dropTarget, selected, on
           </span>
         )}
       </div>
-      <span className="connector-zone top" onMouseDown={(e) => onConnectorMouseDown(e, "top")} onClick={(e) => e.stopPropagation()} title="Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác"><span className="connector-dot">+</span></span>
-      <span className="connector-zone right" onMouseDown={(e) => onConnectorMouseDown(e, "right")} onClick={(e) => e.stopPropagation()} title="Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác"><span className="connector-dot">+</span></span>
-      <span className="connector-zone bottom" onMouseDown={(e) => onConnectorMouseDown(e, "bottom")} onClick={(e) => e.stopPropagation()} title="Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác"><span className="connector-dot">+</span></span>
-      <span className="connector-zone left" onMouseDown={(e) => onConnectorMouseDown(e, "left")} onClick={(e) => e.stopPropagation()} title="Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác"><span className="connector-dot">+</span></span>
+      <span className="connector-zone top" onMouseDown={(e) => onConnectorMouseDown(e, "top")} onClick={(e) => e.stopPropagation()} title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot">+</span></span>
+      <span className="connector-zone right" onMouseDown={(e) => onConnectorMouseDown(e, "right")} onClick={(e) => e.stopPropagation()} title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot">+</span></span>
+      <span className="connector-zone bottom" onMouseDown={(e) => onConnectorMouseDown(e, "bottom")} onClick={(e) => e.stopPropagation()} title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot">+</span></span>
+      <span className="connector-zone left" onMouseDown={(e) => onConnectorMouseDown(e, "left")} onClick={(e) => e.stopPropagation()} title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot">+</span></span>
     </div>
   );
 }
