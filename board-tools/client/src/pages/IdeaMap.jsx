@@ -10,6 +10,7 @@ import BadgeEditor from "../components/BadgeEditor.jsx";
 import ColorMenu from "../components/ColorMenu.jsx";
 import FrameBox from "../components/FrameBox.jsx";
 import { nodesInFrame, edgeEndpoint, edgesMatch, rectForEndpoint, clipToRect } from "../lib/board-geometry.js";
+import { computeSnap } from "../lib/snap.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -47,6 +48,7 @@ export default function IdeaMap() {
   const [chipDrag, setChipDrag] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [marquee, setMarquee] = useState(null);
+  const [snapGuides, setSnapGuides] = useState([]);
   const [badgeUI, setBadgeUI] = useState(null); // { mode: "create"|"edit", kind, def?, x, y }
   const [colorMenu, setColorMenu] = useState(null); // { kind: "card"|"group", id, x, y }
   const [editingGroupTitleId, setEditingGroupTitleId] = useState(null);
@@ -356,9 +358,36 @@ export default function IdeaMap() {
     let moved = false;
 
     function onMove(ev) {
-      const dx = (ev.clientX - startX) / scale;
-      const dy = (ev.clientY - startY) / scale;
+      let dx = (ev.clientX - startX) / scale;
+      let dy = (ev.clientY - startY) / scale;
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
+
+      const frameX = startGroupPos.x + dx, frameY = startGroupPos.y + dy;
+      let minX = frameX, minY = frameY, maxX = frameX + group.w, maxY = frameY + group.h;
+      memberIds.forEach((id) => {
+        const start = startNodePositions.get(id);
+        const { w, h } = frameCardSize(id);
+        const nx = start.x + dx, ny = start.y + dy;
+        minX = Math.min(minX, nx); minY = Math.min(minY, ny);
+        maxX = Math.max(maxX, nx + w); maxY = Math.max(maxY, ny + h);
+      });
+      const movingRect = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+
+      if (ev.altKey) {
+        setSnapGuides([]);
+      } else {
+        const otherRects = [
+          ...board.nodes.filter((n) => !startNodePositions.has(n.id)).map((n) => {
+            const { w, h } = frameCardSize(n.id);
+            return { x: n.x, y: n.y, w, h };
+          }),
+          ...board.groups.filter((g) => g.id !== group.id).map((g) => ({ x: g.x, y: g.y, w: g.w, h: g.h }))
+        ];
+        const snap = computeSnap(movingRect, otherRects, 6 / scale);
+        dx += snap.dx; dy += snap.dy;
+        setSnapGuides(snap.guides);
+      }
+
       setBoard((prev) => {
         const next = {
           ...prev,
@@ -378,6 +407,7 @@ export default function IdeaMap() {
     function onUp() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      setSnapGuides([]);
       if (moved) recordHistory(boardBeforeDrag);
       saveNow(latest);
     }
@@ -737,9 +767,35 @@ export default function IdeaMap() {
     let moved = false;
 
     function onMove(ev) {
-      const dx = (ev.clientX - startX) / scale;
-      const dy = (ev.clientY - startY) / scale;
+      let dx = (ev.clientX - startX) / scale;
+      let dy = (ev.clientY - startY) / scale;
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
+
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      dragIds.forEach((id) => {
+        const start = startPositions.get(id);
+        const { w, h } = frameCardSize(id);
+        const nx = start.x + dx, ny = start.y + dy;
+        minX = Math.min(minX, nx); minY = Math.min(minY, ny);
+        maxX = Math.max(maxX, nx + w); maxY = Math.max(maxY, ny + h);
+      });
+      const movingRect = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+
+      if (ev.altKey) {
+        setSnapGuides([]);
+      } else {
+        const otherRects = [
+          ...baseBoard.nodes.filter((n) => !startPositions.has(n.id)).map((n) => {
+            const { w, h } = frameCardSize(n.id);
+            return { x: n.x, y: n.y, w, h };
+          }),
+          ...baseBoard.groups.map((g) => ({ x: g.x, y: g.y, w: g.w, h: g.h }))
+        ];
+        const snap = computeSnap(movingRect, otherRects, 6 / scale);
+        dx += snap.dx; dy += snap.dy;
+        setSnapGuides(snap.guides);
+      }
+
       setBoard((prev) => {
         const next = {
           ...prev,
@@ -756,6 +812,7 @@ export default function IdeaMap() {
     function onUp() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      setSnapGuides([]);
       if (moved) {
         recordHistory(boardBeforeDrag);
         saveNow(latest);
@@ -1207,6 +1264,9 @@ export default function IdeaMap() {
                 </g>
               );
             })}
+            {snapGuides.map((g, i) => (g.axis === "v"
+              ? <line key={i} className="snap-guide" x1={g.pos} y1={g.start} x2={g.pos} y2={g.end} />
+              : <line key={i} className="snap-guide" x1={g.start} y1={g.pos} x2={g.end} y2={g.pos} />))}
             {linkDraft && (() => {
               const from = edgeEndpoint(linkDraft.fromKind || "node", linkDraft.fromId, board.nodes, board.groups, frameCardSize);
               if (!from) return null;
