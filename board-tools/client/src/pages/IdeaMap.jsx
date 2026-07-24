@@ -349,7 +349,8 @@ export default function IdeaMap() {
       const n = board.nodes.find((nn) => nn.id === id);
       if (!n) return;
       idMap.set(id, nextId);
-      clones.push({ ...n, id: nextId, x: n.x + offset, y: n.y + offset });
+      const { locked, ...rest } = n;
+      clones.push({ ...rest, id: nextId, x: n.x + offset, y: n.y + offset });
       nextId++;
     });
     let nextEdgeId = board.nextEdgeId;
