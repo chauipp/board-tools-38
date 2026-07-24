@@ -232,6 +232,7 @@ export default function IdeaMap() {
       else if (key === "escape") {
         if (colorMenu) setColorMenu(null);
         else if (badgeUI) setBadgeUI(null);
+        else if (edgeMenu) setEdgeMenu(null);
         else if (linkMode) { setLinkMode(false); setPendingSource(null); }
         else if (focusId != null) setFocusId(null);
         else if (selectedIds.size > 0) setSelectedIds(new Set());
@@ -245,7 +246,7 @@ export default function IdeaMap() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [board, past, future, selectedIds, linkMode, colorMenu, badgeUI, focusId]);
+  }, [board, past, future, selectedIds, linkMode, colorMenu, badgeUI, edgeMenu, focusId]);
 
   useEffect(() => {
     function down(e) {
