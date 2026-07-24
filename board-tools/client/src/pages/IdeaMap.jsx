@@ -632,7 +632,7 @@ export default function IdeaMap() {
     } else {
       commitAndSave({
         ...board,
-        tags: board.tags.filter((t) => t.id !== id),
+        tags: board.tags.filter((tg) => tg.id !== id),
         nodes: board.nodes.map((n) => (n.tagId === id ? { ...n, tagId: null } : n))
       });
     }
