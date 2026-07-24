@@ -21,3 +21,7 @@ Base before Task 1: (recorded below per task)
   inotify exhaustion on this shared machine). `npm run build` passes.
 
 ## Tasks
+Task 1: complete (commits 6a61446..c874a31, review clean, no Critical/Important)
+  Minor noted: Home.jsx has two separate imports from @lingui/react/macro
+  (brief-mandated); new Lingui pkgs declare engines.node >=22.19.0.
+  OUTSTANDING: browser check never ran. Controller verifying now.
