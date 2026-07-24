@@ -492,8 +492,8 @@ export default function IdeaMap() {
     return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
   }
 
-  function createLinkedNode(sourceId, direction) {
-    const source = board.nodes.find((n) => n.id === sourceId);
+  function createLinkedNode(sourceId, direction, base = board) {
+    const source = base.nodes.find((n) => n.id === sourceId);
     if (!source) return;
     const sourceCard = canvasRef.current.querySelector(`.idea-card[data-id="${sourceId}"]`);
     const sw = sourceCard ? sourceCard.offsetWidth : CARD_W;
@@ -503,7 +503,7 @@ export default function IdeaMap() {
     const dir = { top: [0, -1], right: [1, 0], bottom: [0, 1], left: [-1, 0] }[direction] || [1, 0];
 
     function overlapsAny(px, py) {
-      return board.nodes.some((n) => {
+      return base.nodes.some((n) => {
         const card = canvasRef.current.querySelector(`.idea-card[data-id="${n.id}"]`);
         const w = card ? card.offsetWidth : CARD_W, h = card ? card.offsetHeight : estH;
         return rectsOverlap(px, py, CARD_W, estH, n.x, n.y, w, h);
@@ -511,7 +511,7 @@ export default function IdeaMap() {
     }
 
     const rect = viewportRef.current.getBoundingClientRect();
-    const view = board.view;
+    const view = base.view;
     const visX0 = (-view.panX + MARGIN) / view.scale;
     const visY0 = (-view.panY + MARGIN) / view.scale;
     const visX1 = (rect.width - view.panX - MARGIN) / view.scale - CARD_W;
@@ -552,15 +552,15 @@ export default function IdeaMap() {
       nextView = { scale: view.scale, panX: rect.width / 2 - cx * view.scale, panY: rect.height / 2 - cy * view.scale };
     }
 
-    const id = board.nextNodeId;
-    const newNode = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: board.statuses[0]?.id ?? null, x: Math.round(x), y: Math.round(y) };
+    const id = base.nextNodeId;
+    const newNode = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: base.statuses[0]?.id ?? null, x: Math.round(x), y: Math.round(y) };
     const next = {
-      ...board,
-      nodes: [...board.nodes, newNode],
-      edges: [...board.edges, { id: board.nextEdgeId, from: sourceId, to: id }],
+      ...base,
+      nodes: [...base.nodes, newNode],
+      edges: [...base.edges, { id: base.nextEdgeId, from: sourceId, to: id }],
       nextNodeId: id + 1,
-      nextEdgeId: board.nextEdgeId + 1,
-      view: nextView || board.view
+      nextEdgeId: base.nextEdgeId + 1,
+      view: nextView || base.view
     };
     setEditingId(id);
     commitAndSave(next);
@@ -707,8 +707,9 @@ export default function IdeaMap() {
   }
 
   function saveNodeEditAndNext(id, fields) {
-    saveNodeEdit(id, fields);          // commit 1: lưu nội dung
-    createLinkedNode(id, "right");     // commit 2: card mới + edge, editingId chuyển sang card mới
+    setEditingId(null);
+    const edited = { ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, ...fields } : n)) };
+    createLinkedNode(id, "right", edited);
   }
 
   function toggleEdge(a, aKind, b, bKind) {
