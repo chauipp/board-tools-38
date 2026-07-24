@@ -162,3 +162,30 @@
 @media (max-width: 640px) {
   .search-box input { width: 120px; }
 }
+
+.fb-add {
+  border: 1px dashed var(--line); border-radius: 999px; background: none;
+  color: var(--ink-dim); width: 22px; height: 22px; line-height: 1; cursor: pointer;
+  font-size: 14px; display: inline-flex; align-items: center; justify-content: center;
+}
+.fb-add:hover { color: var(--ink); border-color: var(--ink-dim); }
+.dot-empty { border: 1px dashed var(--ink-dim); background: transparent !important; }
+
+.badge-editor {
+  position: fixed; z-index: 90; width: 220px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: var(--shadow); padding: 10px; display: flex; flex-direction: column; gap: 8px;
+}
+.badge-editor .be-name {
+  width: 100%; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 4px; padding: 5px 7px; font-size: 12px;
+}
+.badge-editor .be-swatches { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.badge-editor .be-swatch {
+  width: 100%; aspect-ratio: 1; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0;
+}
+.badge-editor .be-swatch.on { border-color: var(--ink); }
+.badge-editor .be-actions { display: flex; gap: 6px; }
+.badge-editor .be-actions button { flex: 1; font-size: 11px; padding: 5px; border-radius: 4px; cursor: pointer; }
+.badge-editor .save-btn { background: var(--accent); color: var(--accent-ink); border: none; }
+.badge-editor .cancel-btn { background: transparent; color: var(--ink-dim); border: 1px solid var(--line); }

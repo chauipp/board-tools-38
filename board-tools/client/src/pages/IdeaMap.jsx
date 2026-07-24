@@ -6,6 +6,7 @@ import { useTheme } from "../lib/useTheme.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
 import LoadError from "../components/LoadError.jsx";
 import LocaleToggle from "../components/LocaleToggle.jsx";
+import BadgeEditor from "../components/BadgeEditor.jsx";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -43,6 +44,7 @@ export default function IdeaMap() {
   const [chipDrag, setChipDrag] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [marquee, setMarquee] = useState(null);
+  const [badgeUI, setBadgeUI] = useState(null); // { mode: "create"|"edit", kind, def?, x, y }
   const [, bump] = useState(0);
 
   const viewportRef = useRef(null);
@@ -588,7 +590,24 @@ export default function IdeaMap() {
   }
 
   function openBadgeMenu() {}
-  function openBadgeCreate() {}
+
+  function openBadgeCreate(e, kind) {
+    e.preventDefault();
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    setBadgeUI({ mode: "create", kind, x: r.left, y: r.bottom + 4 });
+  }
+
+  function createBadge(kind, name, color) {
+    if (kind === "status") {
+      const id = board.nextStatusId;
+      commitAndSave({ ...board, statuses: [...board.statuses, { id, name, color }], nextStatusId: id + 1 });
+    } else {
+      const id = board.nextTagId;
+      commitAndSave({ ...board, tags: [...board.tags, { id, name, color }], nextTagId: id + 1 });
+    }
+    setBadgeUI(null);
+  }
 
   return (
     <div className="shell">
@@ -641,6 +660,7 @@ export default function IdeaMap() {
             {hasNoStatus && (
               <span
                 className={"chip-toggle status" + (filterStatus["none"] ? " on" : "")}
+                onMouseDown={(e) => handleChipMouseDown(e, "status", "none")}
                 onClick={() => setFilterStatus((prev) => ({ ...prev, none: !prev["none"] }))}
                 title={t`Lọc thẻ chưa có trạng thái`}
               >
@@ -674,6 +694,7 @@ export default function IdeaMap() {
             {hasNoTag && (
               <span
                 className={"chip-toggle tag" + (filterTags["none"] ? " on" : "")}
+                onMouseDown={(e) => handleChipMouseDown(e, "tag", "none")}
                 onClick={() => setFilterTags((prev) => ({ ...prev, none: !prev["none"] }))}
                 title={t`Lọc thẻ chưa gắn nhãn`}
               >
@@ -810,6 +831,18 @@ export default function IdeaMap() {
             );
           })()}
         </div>
+      )}
+
+      {badgeUI && badgeUI.mode === "create" && (
+        <BadgeEditor
+          x={badgeUI.x}
+          y={badgeUI.y}
+          initialName=""
+          initialColor={BADGE_PALETTE[0]}
+          submitLabel={t`Tạo`}
+          onSubmit={(name, color) => createBadge(badgeUI.kind, name, color)}
+          onClose={() => setBadgeUI(null)}
+        />
       )}
     </div>
   );
