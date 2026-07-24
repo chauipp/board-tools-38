@@ -330,7 +330,7 @@ export default function IdeaMap() {
     if (!node) return;
     const nextVal = value === "none" ? null : Number(value);
     if (kind === "status") {
-      if (node.statusId === nextVal) return;
+      if ((node.statusId ?? null) === nextVal) return;
       commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, statusId: nextVal } : n)) });
     } else {
       if ((node.tagId ?? null) === nextVal) return;
@@ -629,12 +629,14 @@ export default function IdeaMap() {
         statuses: board.statuses.filter((s) => s.id !== id),
         nodes: board.nodes.map((n) => (n.statusId === id ? { ...n, statusId: null } : n))
       });
+      setFilterStatus((prev) => { const next = { ...prev }; delete next[String(id)]; return next; });
     } else {
       commitAndSave({
         ...board,
         tags: board.tags.filter((tg) => tg.id !== id),
         nodes: board.nodes.map((n) => (n.tagId === id ? { ...n, tagId: null } : n))
       });
+      setFilterTags((prev) => { const next = { ...prev }; delete next[String(id)]; return next; });
     }
     setBadgeUI(null);
   }
@@ -865,6 +867,7 @@ export default function IdeaMap() {
 
       {badgeUI && badgeUI.mode === "create" && (
         <BadgeEditor
+          key={badgeUI.mode + "-" + (badgeUI.def?.id ?? "new")}
           x={badgeUI.x}
           y={badgeUI.y}
           initialName=""
@@ -876,6 +879,7 @@ export default function IdeaMap() {
       )}
       {badgeUI && badgeUI.mode === "edit" && (
         <BadgeEditor
+          key={badgeUI.mode + "-" + (badgeUI.def?.id ?? "new")}
           x={badgeUI.x}
           y={badgeUI.y}
           initialName={badgeUI.def.name}
