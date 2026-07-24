@@ -1,10 +1,6 @@
-// Ứng viên mỗi trục: trái/giữa (dọc) và trên/giữa (ngang) của bbox đang kéo so với
-// cùng bộ mốc của mọi bbox khác. Trong ngưỡng → chỉnh theo ứng viên lệch ít nhất.
-// Cố ý bỏ mốc phải/dưới (pos + size): với hai bbox lệch chiều cao/rộng, mép đối
-// diện (vd. đáy-đáy) đôi khi tình cờ gần hơn mốc giữa mà không phải là ý định
-// người dùng muốn hút — bộ 2 mốc (đầu, giữa) tránh được va chạm giả đó và khớp
-// hợp đồng của snap.test.js (test "hút tâm-với-tâm theo trục dọc").
-function anchors1D(pos, size) { return [pos, pos + size / 2]; }
+// Ứng viên mỗi trục: trái/giữa/phải (dọc) và trên/giữa/dưới (ngang) của bbox đang kéo
+// so với cùng bộ mốc của mọi bbox khác. Trong ngưỡng → chỉnh theo ứng viên lệch ít nhất.
+function anchors1D(pos, size) { return [pos, pos + size / 2, pos + size]; }
 
 export function computeSnap(moving, others, threshold) {
   let best = { v: null, h: null };

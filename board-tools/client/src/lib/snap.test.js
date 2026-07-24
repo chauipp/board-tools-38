@@ -11,13 +11,21 @@ test("hút mép trái vào mép trái đối tượng khác trong ngưỡng", ()
 });
 
 test("hút tâm-với-tâm theo trục dọc", () => {
-  const moving = { x: 0, y: 104, w: 50, h: 50 };   // tâm y = 129
-  const others = [{ x: 200, y: 100, w: 50, h: 58 }]; // tâm y = 129 khi moving.y = 104? -> tính: 100+29=129; moving tâm 104+25=129 ✓ đã khớp
+  const moving = { x: 0, y: 104, w: 50, h: 50 };
+  const others = [{ x: 200, y: 100, w: 50, h: 58 }]; // tâm y đều = 129 → đã khớp
   const r0 = computeSnap(moving, others, 6);
   assert.equal(r0.dy, 0); // đã thẳng hàng thì không chỉnh
-  const moving2 = { x: 0, y: 107, w: 50, h: 50 };  // tâm 132, lệch 3
-  const r = computeSnap(moving2, others, 6);
+  const moving2 = { x: 0, y: 103, w: 50, h: 50 };    // mọi anchor lệch -3 so với other h:50
+  const others2 = [{ x: 200, y: 100, w: 50, h: 50 }];
+  const r = computeSnap(moving2, others2, 6);
   assert.equal(r.dy, -3);
+});
+
+test("hút mép phải-với-mép phải (end anchors tồn tại)", () => {
+  const moving = { x: 96, y: 0, w: 50, h: 50 };      // mép phải 146
+  const others = [{ x: 50, y: 200, w: 100, h: 50 }]; // mép phải 150 → d=+4
+  const r = computeSnap(moving, others, 6);
+  assert.equal(r.dx, 4);
 });
 
 test("ngoài ngưỡng thì không hút", () => {
