@@ -61,6 +61,7 @@ export default function IdeaMap() {
   const [colorMenu, setColorMenu] = useState(null); // { kind: "card"|"group", id, x, y }
   const [editingGroupTitleId, setEditingGroupTitleId] = useState(null);
   const [focusId, setFocusId] = useState(null);
+  const [flashId, setFlashId] = useState(null);
   const [, bump] = useState(0);
 
   const viewportRef = useRef(null);
@@ -71,16 +72,39 @@ export default function IdeaMap() {
   const nudgeTimerRef = useRef(null);
   const nudgeBaseRef = useRef(null);
   const spacePanRef = useRef(false);
+  const pendingJumpRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
     getIdeas()
-      .then((data) => { if (!cancelled) setBoard(data); })
+      .then((data) => {
+        if (cancelled) return;
+        const cardParam = new URLSearchParams(window.location.search).get("card");
+        if (cardParam && data.nodes.some((n) => n.id === Number(cardParam))) pendingJumpRef.current = Number(cardParam);
+        setBoard(data);
+      })
       .catch((e) => setLoadError(e.code || "UNKNOWN"));
     return () => { cancelled = true; };
   }, []);
 
   useEffect(() => { boardRef.current = board; }, [board]);
+
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    if (selectedIds.size === 1) url.searchParams.set("card", String(Array.from(selectedIds)[0]));
+    else url.searchParams.delete("card");
+    window.history.replaceState(null, "", url);
+  }, [selectedIds]);
+
+  useEffect(() => {
+    if (!board || pendingJumpRef.current == null) return;
+    const id = pendingJumpRef.current;
+    pendingJumpRef.current = null;
+    setSelectedIds(new Set([id]));
+    setFlashId(id);
+    zoomToNodes([id]);
+    setTimeout(() => setFlashId(null), 1600);
+  }, [board != null]);
 
   useEffect(() => {
     if (!board) return;
@@ -1463,6 +1487,7 @@ export default function IdeaMap() {
               linkPending={linkMode && pendingSource === node.id}
               dropTarget={!!dropTargetId && dropTargetId.kind === "node" && dropTargetId.id === node.id}
               selected={selectedIds.has(node.id)}
+              flash={flashId === node.id}
               onMouseDown={(e) => handleNodeMouseDown(e, node)}
               onClick={() => handleCardClick(node)}
               onContextMenu={(e) => openColorMenu(e, "card", node.id)}
@@ -1613,6 +1638,12 @@ export default function IdeaMap() {
             onGroup={selectedIds.size >= 2 && selectedIds.has(node.id) ? groupSelectedCards : undefined}
             onFocus={() => { setColorMenu(null); setFocusId(node.id); }}
             onDuplicate={() => { setColorMenu(null); const { next, cloneIds } = duplicateNodes([node.id]); commitAndSave(next); setSelectedIds(new Set(cloneIds)); }}
+            onCopyLink={() => {
+              const url = new URL(window.location.href);
+              url.searchParams.set("card", String(node.id));
+              navigator.clipboard.writeText(url.toString());
+              setColorMenu(null);
+            }}
             onDelete={() => { setColorMenu(null); deleteNode(node.id); }}
             onClose={() => setColorMenu(null)}
             locked={node.locked ?? false}
@@ -1715,7 +1746,7 @@ function MdLite({ text }) {
   );
 }
 
-function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, dropTarget, selected, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onToggleFavorite, onSave, onSaveAndNext, onCancel }) {
+function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, dropTarget, selected, flash, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onToggleFavorite, onSave, onSaveAndNext, onCancel }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(node.title);
   const [desc, setDesc] = useState(node.desc);
@@ -1734,6 +1765,7 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
   if (linkPending) classNames.push("link-pending");
   if (dropTarget) classNames.push("drop-target");
   if (selected) classNames.push("selected");
+  if (flash) classNames.push("flash");
 
   function handleEditKeyDown(e) {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
