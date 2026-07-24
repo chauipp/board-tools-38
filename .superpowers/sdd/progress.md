@@ -37,3 +37,8 @@ WIP commit 8fb20d2 "Redesign idea map interactions and filter bar" — the
   pre-existing uncommitted idea-map work (context-menu removal, right-drag
   pan, filter-bar redesign), committed on its own so Task 4 starts clean.
   Build passes with it. NOT part of the i18n feature per se.
+Task 3: complete (commits 69498f6..d2b8c29, review clean, no Critical/Important)
+  Freeze-fix verified structurally: DuelMessage is a pure <Trans> consumer,
+  no setDuelResult writes a string. stat.name left as data. Placeholder/tag
+  integrity clean across all 26 new msgid/msgstr pairs. Live toggle-click
+  after simulate still unverified (environment), low risk.
