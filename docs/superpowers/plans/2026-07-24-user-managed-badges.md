@@ -64,7 +64,7 @@ Bảng màu chọn được (13 token): `st-idea, st-considering, st-chosen, st-
 
 ## Task 1: Server — schema, lưu field mới, di trú, seed
 
-- [ ] **HOÀN THÀNH TASK 1** — tick sau khi xong và pass review
+- [x] **HOÀN THÀNH TASK 1** — tick sau khi xong và pass review
 
 **Files:**
 - Modify: `game-tools/server/index.js`

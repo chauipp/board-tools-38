@@ -102,3 +102,11 @@ Base: 81addd0 (branched from main after i18n merge)
   verify with a backup, under control.
 
 ## Tasks
+Task 1: complete (commits 5e3476b..49272b5, review clean, no Critical/Important)
+  Server schema+migration+seed+PUT-fix verified vs brief line-for-line.
+  node --check only (live DB untouched by design). Idempotent guards correct.
+  Minor (for final review): (1) defaultIdeas.statuses aliases DEFAULT_STATUSES
+  (seed-time only; client mutates+PUTs, server never mutates in place — low
+  risk). (2) GET inlines toObject+delete instead of stripMongoMeta (forced,
+  migrateBoard needs plain obj pre-strip).
+  RUNTIME MIGRATION not yet run against live DB — controller does with backup.
