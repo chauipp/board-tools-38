@@ -7,6 +7,7 @@ import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
 import LoadError from "../components/LoadError.jsx";
 import LocaleToggle from "../components/LocaleToggle.jsx";
 import BadgeEditor from "../components/BadgeEditor.jsx";
+import ColorMenu from "../components/ColorMenu.jsx";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -45,6 +46,7 @@ export default function IdeaMap() {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [marquee, setMarquee] = useState(null);
   const [badgeUI, setBadgeUI] = useState(null); // { mode: "create"|"edit", kind, def?, x, y }
+  const [colorMenu, setColorMenu] = useState(null); // { kind: "card"|"group", id, x, y }
   const [, bump] = useState(0);
 
   const viewportRef = useRef(null);
@@ -603,6 +605,17 @@ export default function IdeaMap() {
     setBadgeUI({ mode: "edit", kind, def, x: e.clientX, y: e.clientY });
   }
 
+  function openColorMenu(e, kind, id) {
+    e.preventDefault();
+    e.stopPropagation();
+    setColorMenu({ kind, id, x: e.clientX, y: e.clientY });
+  }
+
+  function applyNodeColor(nodeId, color) {
+    commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, color } : n)) });
+    setColorMenu(null);
+  }
+
   function openBadgeCreate(e, kind) {
     e.preventDefault();
     e.stopPropagation();
@@ -815,6 +828,7 @@ export default function IdeaMap() {
               selected={selectedIds.has(node.id)}
               onMouseDown={(e) => handleNodeMouseDown(e, node)}
               onClick={() => handleCardClick(node)}
+              onContextMenu={(e) => openColorMenu(e, "card", node.id)}
               onConnectorMouseDown={(e, direction) => handleConnectorMouseDown(e, node, direction)}
               onEdit={() => setEditingId(node.id)}
               onDelete={() => deleteNode(node.id)}
@@ -872,6 +886,21 @@ export default function IdeaMap() {
         </div>
       )}
 
+      {colorMenu && colorMenu.kind === "card" && (() => {
+        const node = board.nodes.find((n) => n.id === colorMenu.id);
+        if (!node) return null;
+        return (
+          <ColorMenu
+            x={colorMenu.x}
+            y={colorMenu.y}
+            color={node.color ?? null}
+            onPick={(color) => applyNodeColor(node.id, color)}
+            onEdit={() => { setColorMenu(null); setEditingId(node.id); }}
+            onClose={() => setColorMenu(null)}
+          />
+        );
+      })()}
+
       {badgeUI && badgeUI.mode === "create" && (
         <BadgeEditor
           key={badgeUI.mode + "-" + (badgeUI.def?.id ?? "new")}
@@ -901,7 +930,7 @@ export default function IdeaMap() {
   );
 }
 
-function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selected, onMouseDown, onClick, onConnectorMouseDown, onEdit, onDelete, onSave, onCancel }) {
+function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selected, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onSave, onCancel }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(node.title);
   const [desc, setDesc] = useState(node.desc);
@@ -950,9 +979,13 @@ function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selec
     <div
       className={classNames.join(" ")}
       data-id={node.id}
-      style={{ left: node.x, top: node.y }}
+      style={{
+        left: node.x, top: node.y,
+        ...(node.color ? { borderLeftColor: colorVar(node.color), borderLeftWidth: 4 } : {})
+      }}
       onMouseDown={onMouseDown}
       onClick={onClick}
+      onContextMenu={onContextMenu}
     >
       <div className="card-actions">
         <button className="icon-btn" title={t`Sửa`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(); }}>✎</button>
