@@ -189,3 +189,8 @@
 .badge-editor .be-actions button { flex: 1; font-size: 11px; padding: 5px; border-radius: 4px; cursor: pointer; }
 .badge-editor .save-btn { background: var(--accent); color: var(--accent-ink); border: none; }
 .badge-editor .cancel-btn { background: transparent; color: var(--ink-dim); border: 1px solid var(--line); }
+.badge-editor .be-delete {
+  background: transparent; border: 1px solid var(--line); color: var(--danger);
+  border-radius: 4px; padding: 5px 8px; font-size: 12px; cursor: pointer; flex: 0 0 auto;
+}
+.badge-editor .be-delete:hover { border-color: var(--danger); }

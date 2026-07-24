@@ -589,7 +589,11 @@ export default function IdeaMap() {
     setSearch("");
   }
 
-  function openBadgeMenu() {}
+  function openBadgeMenu(e, kind, def) {
+    e.preventDefault();
+    e.stopPropagation();
+    setBadgeUI({ mode: "edit", kind, def, x: e.clientX, y: e.clientY });
+  }
 
   function openBadgeCreate(e, kind) {
     e.preventDefault();
@@ -605,6 +609,32 @@ export default function IdeaMap() {
     } else {
       const id = board.nextTagId;
       commitAndSave({ ...board, tags: [...board.tags, { id, name, color }], nextTagId: id + 1 });
+    }
+    setBadgeUI(null);
+  }
+
+  function updateBadge(kind, id, name, color) {
+    if (kind === "status") {
+      commitAndSave({ ...board, statuses: board.statuses.map((s) => (s.id === id ? { ...s, name, color } : s)) });
+    } else {
+      commitAndSave({ ...board, tags: board.tags.map((tg) => (tg.id === id ? { ...tg, name, color } : tg)) });
+    }
+    setBadgeUI(null);
+  }
+
+  function deleteBadge(kind, id) {
+    if (kind === "status") {
+      commitAndSave({
+        ...board,
+        statuses: board.statuses.filter((s) => s.id !== id),
+        nodes: board.nodes.map((n) => (n.statusId === id ? { ...n, statusId: null } : n))
+      });
+    } else {
+      commitAndSave({
+        ...board,
+        tags: board.tags.filter((t) => t.id !== id),
+        nodes: board.nodes.map((n) => (n.tagId === id ? { ...n, tagId: null } : n))
+      });
     }
     setBadgeUI(null);
   }
@@ -841,6 +871,18 @@ export default function IdeaMap() {
           initialColor={BADGE_PALETTE[0]}
           submitLabel={t`Tạo`}
           onSubmit={(name, color) => createBadge(badgeUI.kind, name, color)}
+          onClose={() => setBadgeUI(null)}
+        />
+      )}
+      {badgeUI && badgeUI.mode === "edit" && (
+        <BadgeEditor
+          x={badgeUI.x}
+          y={badgeUI.y}
+          initialName={badgeUI.def.name}
+          initialColor={badgeUI.def.color}
+          submitLabel={t`Lưu`}
+          onDelete={() => deleteBadge(badgeUI.kind, badgeUI.def.id)}
+          onSubmit={(name, color) => updateBadge(badgeUI.kind, badgeUI.def.id, name, color)}
           onClose={() => setBadgeUI(null)}
         />
       )}
