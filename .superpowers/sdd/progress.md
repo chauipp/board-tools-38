@@ -170,3 +170,33 @@ Task 4: complete (commits 20beab3 + fix 9ef22b3, review APPROVED after fix).
   clamp (shared with Task 3 minor #1).
   DEFERRED: live right-click test — rename propagates to all cards, recolor
   updates pill+chip, delete → card back to no-status/no-tag (needs migration).
+Task 5: complete (sweep — no source change from sweep itself). Step 1 grep
+  (STATUS[/STATUS_ORDER/DOT_PALETTE/hashTag/TAG_SUGGESTIONS/node.status/
+  node.tag/tagOptions/tagLabel): ZERO hits — refactor fully complete. Step 2
+  (unwrapped VN): only LoadError.jsx:7 which is inside a multi-line <Trans>
+  (opening tag on line 6) — properly wrapped, grep false-positive. Step 3:
+  extract vi 80 / en 80 Missing 0, --clean produced NO .po diff, build ✓ 2.61s.
+  Step 4 (manual visual w/ Mongo) DEFERRED to controlled live-migration session.
+FINAL whole-branch review (opus, 81addd0..a3be003): "Ready to merge — With
+  fixes." NO Critical. Migration idempotent+non-destructive, every old key/tag
+  maps (unknown→null), nextIds can't collide, PUT round-trips all 9 fields,
+  id-refs degrade safely (no pill on missing id, no crash), delete is atomic
+  for undo, i18n boundary clean (badge names raw, UI wrapped, en 80/80). All
+  13 palette tokens exist in index.css. defaultIdeas alias confirmed NOT a
+  hazard. Trash-button CSS fix (9ef22b3) confirmed correct.
+  1 IMPORTANT FIXED (commit 56bf0fa): deleteBadge left a dangling active
+  filter key → filter-by-badge then delete-it dimmed the whole canvas
+  (matchCount 0/N, no chip). Fix drops the key from filterStatus/filterTags.
+  Same commit added 2 free robustness fixes from the review: key= on both
+  <BadgeEditor> (clean remount between opens) + (node.statusId ?? null) guard
+  in applyChipToNode status branch (mirrors tag branch). Fix diff verified by
+  controller hunk-by-hunk (exactly those 4 edits), extract 0/0, build ✓ 2.40s.
+  SHIP-ACCEPTABLE minors (documented, not fixed): BadgeEditor no viewport-edge
+  clamp (brief-specified positioning); en tooltip "assign the tag/status" is
+  natural English (reviewer: correct as-is).
+ALL TASKS COMPLETE + final review clean after fix. Branch code-ready.
+OUTSTANDING (needs USER + live DB, NOT a code gate): runtime migration verify.
+  The new server migrates the real board on first GET (node.status→statusId,
+  node.tag→tagId). Idempotent + non-destructive by review, but MUST run WITH a
+  JSON backup ("Xuất JSON") first, confirmed with user. Until then the whole
+  feature is code-verified but not runtime-verified. Do this before merge/deploy.
