@@ -700,23 +700,39 @@ export default function IdeaMap() {
     if (e.button !== 0) return;
     e.stopPropagation();
 
-    let groupIds = [node.id];
-    if (selectedIds.has(node.id) && selectedIds.size > 1) {
-      groupIds = Array.from(selectedIds);
+    const boardBeforeDrag = board;
+    let dragIds, baseBoard, isAlt = false;
+
+    if (e.altKey) {
+      isAlt = true;
+      const cloneSourceIds = selectedIds.has(node.id) && selectedIds.size > 1
+        ? Array.from(selectedIds)
+        : [node.id];
+      const dup = duplicateNodes(cloneSourceIds, 0);
+      setBoard(dup.next);
+      boardRef.current = dup.next;
+      setSelectedIds(new Set(dup.cloneIds));
+      dragIds = dup.cloneIds;
+      baseBoard = dup.next;
     } else {
-      setSelectedIds(new Set([node.id]));
+      dragIds = [node.id];
+      if (selectedIds.has(node.id) && selectedIds.size > 1) {
+        dragIds = Array.from(selectedIds);
+      } else {
+        setSelectedIds(new Set([node.id]));
+      }
+      baseBoard = board;
     }
 
     const startX = e.clientX, startY = e.clientY;
     const scale = board.view.scale;
-    const boardBeforeDrag = board;
     const startPositions = new Map(
-      groupIds.map((id) => {
-        const n = board.nodes.find((nn) => nn.id === id);
+      dragIds.map((id) => {
+        const n = baseBoard.nodes.find((nn) => nn.id === id);
         return [id, { x: n.x, y: n.y }];
       })
     );
-    let latest = board;
+    let latest = baseBoard;
     let moved = false;
 
     function onMove(ev) {
@@ -739,8 +755,17 @@ export default function IdeaMap() {
     function onUp() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      if (moved) recordHistory(boardBeforeDrag);
-      saveNow(latest);
+      if (moved) {
+        recordHistory(boardBeforeDrag);
+        saveNow(latest);
+      } else if (isAlt) {
+        // Alt-click without drag: roll back the clone so nothing is silently duplicated.
+        setBoard(boardBeforeDrag);
+        boardRef.current = boardBeforeDrag;
+        setSelectedIds(new Set([node.id]));
+      } else {
+        saveNow(latest);
+      }
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -1269,6 +1294,8 @@ export default function IdeaMap() {
             onPick={(color) => applyNodeColor(node.id, color)}
             onEdit={() => { setColorMenu(null); setEditingId(node.id); }}
             onGroup={selectedIds.size >= 2 && selectedIds.has(node.id) ? groupSelectedCards : undefined}
+            onDuplicate={() => { setColorMenu(null); const { next, cloneIds } = duplicateNodes([node.id]); commitAndSave(next); setSelectedIds(new Set(cloneIds)); }}
+            onDelete={() => { setColorMenu(null); deleteNode(node.id); }}
             onClose={() => setColorMenu(null)}
           />
         );
