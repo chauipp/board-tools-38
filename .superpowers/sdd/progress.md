@@ -305,3 +305,85 @@ FINAL whole-branch review (opus, a812f1a..317febb): feature well-architected, 1 
 ALL TASKS + FINAL REVIEW COMPLETE. Branch feature/idea-map-frames-card-colors ready.
   Full feature = a812f1a..df6bef5 (14 commits). Manual browser pass by user still pending
   (dev servers :3001/:5173 running hot — feature is live now).
+
+============================================================
+# SDD Progress — Wave 1 canvas feel (feature/idea-map-wave-features)
+Plan: docs/superpowers/plans/2026-07-24-idea-map-wave1-canvas-feel.md
+Spec: docs/superpowers/specs/2026-07-24-idea-map-wave1-canvas-feel-design.md
+Research: docs/research/2026-07-24-canvas-apps-feature-research.md
+Base: main @ 1886574 (frames+card-colors merged & pushed). User approved ALL 3 waves;
+waves 2-3 get their own spec/plan after wave 1 ships.
+
+## Pre-flight rulings (do NOT re-ask)
+- Same standing rules as prior features: no test framework (node --test for pure libs only),
+  lingui for all strings, dev servers running from this checkout (hot reload), browser
+  click-testing is controller/user job.
+- Task order: 2 before 3 (duplicateNodes) and before 6/7 (Escape chain, deleteSelection).
+  1, 4, 5 independent.
+
+## Tasks
+Base before W1-Task 1: 5a99d70
+W1-Task 1: complete (commit c1f8afb, review clean — spec ✅, Approved, no issues).
+  clipToRect math hand-traced all 4 cases; marker orientation correct; degenerate rects safe.
+  10/10 tests, build pass.
+Base before W1-Task 2: c1f8afb
+W1-Task 2: complete (commits 957b509 + fixes 8215565, 4417990, review APPROVED after fixes).
+  IMPORTANT (plan-bug in brief Step 3) FOUND & FIXED in 2 rounds: nudge-burst deferred
+  recordHistory could push stale base after an interleaved action's entry (non-chronological
+  undo stack). Fix: recordHistory wraps flushNudgeBurst (covers every caller); undo() handles
+  pending burst directly (jump to base, past untouched, board->future); redo() flush+no-op.
+  Re-review traced all paths: no bypass, idempotent, symmetric redo. APPROVED.
+  Minor for final review (PRE-EXISTING app-wide): saveNow doesn't cancel saveTimerRef, so a
+  pending debounced save can overwrite a just-undone state server-side. 1-line fix candidate:
+  clear saveTimerRef in saveNow.
+Base before W1-Task 3: 4417990
+W1-Task 3: complete (commits f2974b7 + fix 7729a65, review APPROVED after fix).
+  IMPORTANT (implementer's own deviation, imprecise) FIXED: alt-click-no-drag rollback now
+  restores the exact pre-drag selectedIds snapshot instead of collapsing to the clicked card.
+  All named-risk checks pass: non-alt path byte-identical, alt-drag = 1 undo step covering
+  clone+move, boardRef synced synchronously, group popover excluded, button order correct.
+  Note: 5 pre-existing missing en translations in .po (unrelated) — check at final review.
+Base before W1-Task 4: 7729a65
+W1-Task 4: complete (commits dfd66d9 + 2413a29 + 7b8e4b0, review APPROVED after 2 fix rounds).
+  PLAN BUGS (mine, both in test authoring): (1) brief test 2's second scenario encoded a wrong
+  expectation (bottom-bottom d=+1 legitimately beats center d=-3); implementer first resolved
+  by DROPPING end anchors (spec violation) — controller ruled spec governs, restored 3 anchors,
+  replaced fixture with unambiguous one. (2) controller's own pinning fixture had an algebraic
+  tie (other.w/2 === moving.w) — reviewer PROVED via mutation testing it passed without end
+  anchors; replaced with hand-verified unique-candidate fixture + guide-pos assertion; both
+  implementer and reviewer independently reproduced the mutation check (fails 0 !== 4).
+  Production code verified correct throughout: exclusion logic (clones excluded, originals
+  snappable), canvas-space guides, per-event altKey compose, d===0 no-guide rule.
+  Minors for final review: frameCardSize DOM query per node per mousemove (pre-existing
+  pattern, perf note); first-frame clone size fallback (pre-existing).
+Base before W1-Task 5: 7b8e4b0
+W1-Task 5: complete (commits 39b2f54 + fix cc75c3e, review APPROVED after fix).
+  CRITICAL (plan-bug in brief: two literal setBoard in one React 18 batch) FOUND & FIXED:
+  saveNodeEdit+createLinkedNode composition lost the just-typed edit (stale closure overwrite).
+  Fix: createLinkedNode(sourceId, direction, base = board) — all internal reads renamed;
+  saveNodeEditAndNext builds edited board and passes it as base; ONE commitAndSave.
+  SEMANTICS CHANGE (disclosed): one atomic history entry (edit+card) instead of brief's two.
+  Reviewer verified rename complete (awk-scoped grep), trace holds, 2-arg callers unaffected.
+  Minor: setEditingId(null) in saveNodeEditAndNext is dead code (superseded in batch).
+Base before W1-Task 6: cc75c3e
+W1-Task 6: complete (commit 6728373, review clean — spec ✅, Approved, no issues).
+  BFS traced correct (<=2 hops), no interaction trap (Escape via window listener, banner
+  outside .canvas), no render-loop hazard, .po hygiene clean.
+Base before W1-Task 7: 6728373
+W1-Task 7: complete (commit 03a92fb, review clean — spec ✅, Approved, no issues).
+  All 4 named-risk checks pass; dot-empty specificity concern investigated = pre-existing
+  pattern shared with ColorMenu, not a regression.
+ALL 7 WAVE-1 TASKS COMPLETE. Final whole-branch review next.
+FINAL W1 whole-branch review (opus, 1886574..03a92fb): 3 IMPORTANT found, ALL FIXED +
+  2 minors fixed + spec reconciled (5 commits 38d7c69/d19c5bb/fb7ab0e/20b8762/8ce7490):
+  (1) edit form never got DOM focus -> bare-key shortcuts fired while 'typing' (Backspace
+  could delete the edited card; T5's continuous-typing broken). Fix: autoFocus + shared
+  handleEditKeyDown with Escape-cancels-edit. (2) card created under focus mode rendered
+  dimmed+pointer-events:none IN EDIT MODE. Fix: && editingId !== node.id. (3) saveNow didn't
+  cancel saveTimerRef -> stale debounced PUT overwrote undo server-side. Fix: clear first.
+  Plus: all en .po gaps filled (zero empty msgstrs), spec Escape order aligned.
+  Re-verify by same reviewer: all fixes correct, no new issues — READY TO MERGE YES.
+  Ship-acceptable minors documented: redundant button-0 check, frameCardSize per-move DOM
+  query, first-frame clone size, dead setEditingId(null), edge-layer fixed-size (overflow
+  visible so non-issue).
+WAVE 1 COMPLETE.
