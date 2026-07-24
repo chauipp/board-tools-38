@@ -1,0 +1,58 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-07-24 10:25+0700\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: en\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#: src/pages/Home.jsx:40
+msgid "Bản đồ ý tưởng"
+msgstr "Idea map"
+
+#: src/pages/Home.jsx:56
+msgid "Bàn tính đối đầu"
+msgstr "Duel calculator"
+
+#: src/pages/Home.jsx:59
+msgid "Chia ngân sách điểm vào Máu / Giáp / Xuyên giáp / Tấn công cho hai build, rồi mô phỏng xem ai thắng."
+msgstr "Split a point budget across HP / Armor / Pierce / Attack for two builds, then simulate who wins."
+
+#: src/components/LocaleToggle.jsx:13
+msgid "Chuyển sang tiếng Anh"
+msgstr "Switch to English"
+
+#: src/components/LocaleToggle.jsx:13
+msgid "Chuyển sang tiếng Việt"
+msgstr "Switch to Vietnamese"
+
+#: src/pages/Home.jsx:25
+msgid "Đổi giao diện sáng/tối"
+msgstr "Toggle light/dark theme"
+
+#: src/pages/Home.jsx:15
+msgid "Dự án nhóm"
+msgstr "Team project"
+
+#: src/pages/Home.jsx:65
+msgid "Dữ liệu lưu chung trên server cho cả nhóm — ai mở link cũng thấy bản mới nhất."
+msgstr "Data lives on a shared server — anyone opening the link sees the latest version."
+
+#: src/pages/Home.jsx:20
+msgid "Hai công cụ nhẹ để quản lý ý tưởng và thử cân bằng số liệu trước khi bắt tay code thật. Dữ liệu dùng chung cho cả nhóm."
+msgstr "Two lightweight tools for managing ideas and testing number balance before writing real code. Data is shared across the team."
+
+#: src/pages/Home.jsx:43
+msgid "Sơ đồ tư duy tự do: kéo-thả, nối quan hệ, gắn nhãn/trạng thái, lọc và tìm kiếm — quản lý mọi ý tưởng liên quan đến game."
+msgstr "A free-form mind map: drag and drop, link relationships, assign tags and statuses, filter and search — manage every idea about the game."
+
+#: src/pages/Home.jsx:17
+msgid "Xưởng Game Của Tôi"
+msgstr "My Game Workshop"

@@ -1,0 +1,58 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-07-24 10:25+0700\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: vi\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#: src/pages/Home.jsx:40
+msgid "Bản đồ ý tưởng"
+msgstr "Bản đồ ý tưởng"
+
+#: src/pages/Home.jsx:56
+msgid "Bàn tính đối đầu"
+msgstr "Bàn tính đối đầu"
+
+#: src/pages/Home.jsx:59
+msgid "Chia ngân sách điểm vào Máu / Giáp / Xuyên giáp / Tấn công cho hai build, rồi mô phỏng xem ai thắng."
+msgstr "Chia ngân sách điểm vào Máu / Giáp / Xuyên giáp / Tấn công cho hai build, rồi mô phỏng xem ai thắng."
+
+#: src/components/LocaleToggle.jsx:13
+msgid "Chuyển sang tiếng Anh"
+msgstr "Chuyển sang tiếng Anh"
+
+#: src/components/LocaleToggle.jsx:13
+msgid "Chuyển sang tiếng Việt"
+msgstr "Chuyển sang tiếng Việt"
+
+#: src/pages/Home.jsx:25
+msgid "Đổi giao diện sáng/tối"
+msgstr "Đổi giao diện sáng/tối"
+
+#: src/pages/Home.jsx:15
+msgid "Dự án nhóm"
+msgstr "Dự án nhóm"
+
+#: src/pages/Home.jsx:65
+msgid "Dữ liệu lưu chung trên server cho cả nhóm — ai mở link cũng thấy bản mới nhất."
+msgstr "Dữ liệu lưu chung trên server cho cả nhóm — ai mở link cũng thấy bản mới nhất."
+
+#: src/pages/Home.jsx:20
+msgid "Hai công cụ nhẹ để quản lý ý tưởng và thử cân bằng số liệu trước khi bắt tay code thật. Dữ liệu dùng chung cho cả nhóm."
+msgstr "Hai công cụ nhẹ để quản lý ý tưởng và thử cân bằng số liệu trước khi bắt tay code thật. Dữ liệu dùng chung cho cả nhóm."
+
+#: src/pages/Home.jsx:43
+msgid "Sơ đồ tư duy tự do: kéo-thả, nối quan hệ, gắn nhãn/trạng thái, lọc và tìm kiếm — quản lý mọi ý tưởng liên quan đến game."
+msgstr "Sơ đồ tư duy tự do: kéo-thả, nối quan hệ, gắn nhãn/trạng thái, lọc và tìm kiếm — quản lý mọi ý tưởng liên quan đến game."
+
+#: src/pages/Home.jsx:17
+msgid "Xưởng Game Của Tôi"
+msgstr "Xưởng Game Của Tôi"
