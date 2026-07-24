@@ -57,6 +57,9 @@ export default function IdeaMap() {
   const saveTimerRef = useRef(null);
   const boardRef = useRef(null);
   const suppressContextMenuRef = useRef(false);
+  const nudgeTimerRef = useRef(null);
+  const nudgeBaseRef = useRef(null);
+  const spacePanRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -148,16 +151,46 @@ export default function IdeaMap() {
   useEffect(() => {
     function onKeyDown(e) {
       const tag = (e.target.tagName || "").toLowerCase();
-      if (tag === "input" || tag === "textarea" || tag === "select") return;
-      if (!e.ctrlKey && !e.metaKey) return;
+      if (tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable) return;
       const key = e.key.toLowerCase();
-      if (key === "z" && e.shiftKey) { e.preventDefault(); redo(); }
-      else if (key === "z") { e.preventDefault(); undo(); }
-      else if (key === "y") { e.preventDefault(); redo(); }
+      if (e.ctrlKey || e.metaKey) {
+        if (key === "z" && e.shiftKey) { e.preventDefault(); redo(); }
+        else if (key === "z") { e.preventDefault(); undo(); }
+        else if (key === "y") { e.preventDefault(); redo(); }
+        else if (key === "d") { e.preventDefault(); duplicateSelection(); }
+        return;
+      }
+      if (key === "delete" || key === "backspace") { e.preventDefault(); deleteSelection(); }
+      else if (key === "escape") {
+        if (colorMenu) setColorMenu(null);
+        else if (badgeUI) setBadgeUI(null);
+        else if (linkMode) { setLinkMode(false); setPendingSource(null); }
+        else if (selectedIds.size > 0) setSelectedIds(new Set());
+      }
+      else if (key === "n") { e.preventDefault(); handleAddClick(); }
+      else if (key === "f") { e.preventDefault(); zoomToSelection(); }
+      else if (key === "arrowleft") { e.preventDefault(); nudgeSelection(e.shiftKey ? -10 : -1, 0); }
+      else if (key === "arrowright") { e.preventDefault(); nudgeSelection(e.shiftKey ? 10 : 1, 0); }
+      else if (key === "arrowup") { e.preventDefault(); nudgeSelection(0, e.shiftKey ? -10 : -1); }
+      else if (key === "arrowdown") { e.preventDefault(); nudgeSelection(0, e.shiftKey ? 10 : 1); }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [board, past, future]);
+  }, [board, past, future, selectedIds, linkMode, colorMenu, badgeUI]);
+
+  useEffect(() => {
+    function down(e) {
+      if (e.code !== "Space") return;
+      const tag = (e.target.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable) return;
+      e.preventDefault();            // chặn page scroll
+      spacePanRef.current = true;
+    }
+    function up(e) { if (e.code === "Space") spacePanRef.current = false; }
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
+  }, []);
 
   if (loadError) {
     return <LoadError code={loadError} />;
@@ -247,8 +280,40 @@ export default function IdeaMap() {
     commitAndSave({ ...board, groups: [...board.groups, group], nextGroupId: id + 1 });
   }
 
+  function duplicateNodes(ids, offset = 24) {
+    let nextId = board.nextNodeId;
+    const idMap = new Map();
+    const clones = [];
+    ids.forEach((id) => {
+      const n = board.nodes.find((nn) => nn.id === id);
+      if (!n) return;
+      idMap.set(id, nextId);
+      clones.push({ ...n, id: nextId, x: n.x + offset, y: n.y + offset });
+      nextId++;
+    });
+    let nextEdgeId = board.nextEdgeId;
+    const clonedEdges = [];
+    board.edges.forEach((e) => {
+      if ((e.fromKind || "node") !== "node" || (e.toKind || "node") !== "node") return;
+      if (idMap.has(e.from) && idMap.has(e.to)) {
+        clonedEdges.push({ ...e, id: nextEdgeId++, from: idMap.get(e.from), to: idMap.get(e.to) });
+      }
+    });
+    return {
+      next: {
+        ...board,
+        nodes: [...board.nodes, ...clones],
+        edges: [...board.edges, ...clonedEdges],
+        nextNodeId: nextId,
+        nextEdgeId
+      },
+      cloneIds: Array.from(idMap.values())
+    };
+  }
+
   function handleGroupMouseDown(e, group) {
     if (e.button === 2) { e.stopPropagation(); startPan(e); return; }
+    if (e.button === 0 && spacePanRef.current) { e.stopPropagation(); startPan(e); return; }
     if (e.button !== 0) return;
     e.stopPropagation();
 
@@ -607,6 +672,7 @@ export default function IdeaMap() {
   function handleNodeMouseDown(e, node) {
     if (linkMode || editingId === node.id) return;
     if (e.button === 2) { e.stopPropagation(); startPan(e); return; }
+    if (e.button === 0 && spacePanRef.current) { e.stopPropagation(); startPan(e); return; }
     if (e.button !== 0) return;
     e.stopPropagation();
 
@@ -737,6 +803,7 @@ export default function IdeaMap() {
     if (linkMode) { setPendingSource(null); return; }
     if (e.button === 2) { startPan(e); return; }
     if (e.button !== 0) return;
+    if (e.button === 0 && spacePanRef.current) { startPan(e); return; }
     handleMarqueeMouseDown(e);
   }
 
@@ -770,6 +837,71 @@ export default function IdeaMap() {
         panY: -(minY - pad) * scale + (rect.height - bboxH * scale) / 2
       }
     }, { historical: false });
+  }
+
+  function deleteSelection() {
+    const ids = selectedIds;
+    if (ids.size === 0) return;
+    commitAndSave({
+      ...board,
+      nodes: board.nodes.filter((n) => !ids.has(n.id)),
+      edges: board.edges.filter((e) => !(
+        (ids.has(e.from) && (e.fromKind || "node") === "node") ||
+        (ids.has(e.to) && (e.toKind || "node") === "node")
+      ))
+    });
+    setSelectedIds(new Set());
+  }
+
+  function duplicateSelection() {
+    if (selectedIds.size === 0) return;
+    const { next, cloneIds } = duplicateNodes(Array.from(selectedIds));
+    commitAndSave(next);
+    setSelectedIds(new Set(cloneIds));
+  }
+
+  function zoomToSelection() {
+    const targets = selectedIds.size > 0
+      ? board.nodes.filter((n) => selectedIds.has(n.id))
+      : board.nodes;
+    if (targets.length === 0) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    targets.forEach((n) => {
+      const { w, h } = frameCardSize(n.id);
+      minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + w); maxY = Math.max(maxY, n.y + h);
+    });
+    const rect = viewportRef.current.getBoundingClientRect();
+    const pad = 60;
+    const bboxW = maxX - minX + pad * 2, bboxH = maxY - minY + pad * 2;
+    let scale = Math.min(rect.width / bboxW, rect.height / bboxH, MAX_SCALE);
+    scale = Math.max(scale, MIN_SCALE);
+    commitAndSave({
+      ...board,
+      view: {
+        scale,
+        panX: -(minX - pad) * scale + (rect.width - bboxW * scale) / 2,
+        panY: -(minY - pad) * scale + (rect.height - bboxH * scale) / 2
+      }
+    }, { historical: false });
+  }
+
+  function nudgeSelection(dx, dy) {
+    if (selectedIds.size === 0) return;
+    if (nudgeBaseRef.current == null) {
+      nudgeBaseRef.current = board;   // history recorded once per burst, at burst end
+    }
+    const next = {
+      ...board,
+      nodes: board.nodes.map((n) => (selectedIds.has(n.id) ? { ...n, x: n.x + dx, y: n.y + dy } : n))
+    };
+    setBoard(next);
+    saveDebounced(next);
+    if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
+    nudgeTimerRef.current = setTimeout(() => {
+      recordHistory(nudgeBaseRef.current);
+      nudgeBaseRef.current = null;
+    }, 600);
   }
 
   function handleImportConfirm() {
