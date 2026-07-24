@@ -114,12 +114,25 @@ export default function IdeaMap() {
   }
 
   const MAX_HISTORY = 50;
-  function recordHistory(prevBoard) {
+  function recordHistoryRaw(prevBoard) {
     setPast((p) => {
       const nextPast = [...p, prevBoard];
       return nextPast.length > MAX_HISTORY ? nextPast.slice(nextPast.length - MAX_HISTORY) : nextPast;
     });
     setFuture([]);
+  }
+
+  function flushNudgeBurst() {
+    if (nudgeBaseRef.current == null) return;
+    const base = nudgeBaseRef.current;
+    nudgeBaseRef.current = null;
+    if (nudgeTimerRef.current) { clearTimeout(nudgeTimerRef.current); nudgeTimerRef.current = null; }
+    recordHistoryRaw(base);
+  }
+
+  function recordHistory(prevBoard) {
+    flushNudgeBurst();
+    recordHistoryRaw(prevBoard);
   }
 
   function commitAndSave(next, opts) {
@@ -129,6 +142,7 @@ export default function IdeaMap() {
   }
 
   function undo() {
+    flushNudgeBurst();
     if (past.length === 0) return;
     const prev = past[past.length - 1];
     setPast((p) => p.slice(0, -1));
@@ -139,6 +153,7 @@ export default function IdeaMap() {
   }
 
   function redo() {
+    flushNudgeBurst();
     if (future.length === 0) return;
     const nextState = future[0];
     setFuture((f) => f.slice(1));
@@ -899,8 +914,7 @@ export default function IdeaMap() {
     saveDebounced(next);
     if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
     nudgeTimerRef.current = setTimeout(() => {
-      recordHistory(nudgeBaseRef.current);
-      nudgeBaseRef.current = null;
+      flushNudgeBurst();
     }, 600);
   }
 
