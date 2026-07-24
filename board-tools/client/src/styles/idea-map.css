@@ -111,6 +111,9 @@
   font-size: 11px; color: var(--ink-dim); margin-top: 5px; line-height: 1.35;
   display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
 }
+.idea-card .desc a { color: var(--accent); text-decoration: underline; word-break: break-all; }
+.idea-card .desc .md-bullet { padding-left: 10px; position: relative; }
+.idea-card .desc .md-bullet::before { content: "•"; position: absolute; left: 0; }
 .idea-card .meta-row { display: flex; align-items: center; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
 .tag-pill {
   display: inline-flex; align-items: center; gap: 4px; font-size: 9.5px;

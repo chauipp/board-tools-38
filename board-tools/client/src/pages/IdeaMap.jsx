@@ -13,6 +13,7 @@ import { nodesInFrame, edgeEndpoint, edgesMatch, rectForEndpoint, clipToRect } f
 import { computeSnap } from "../lib/snap.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout } from "../lib/layout.js";
+import { parseDesc } from "../lib/mdlite.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -1580,6 +1581,29 @@ export default function IdeaMap() {
   );
 }
 
+function MdLite({ text }) {
+  const blocks = parseDesc(text);
+  const renderInline = (tokens) => tokens.map((tk, i) => {
+    if (tk.type === "bold") return <strong key={i}>{tk.value}</strong>;
+    if (tk.type === "link") {
+      return (
+        <a key={i} href={tk.value} target="_blank" rel="noopener noreferrer"
+           onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+          {tk.value}
+        </a>
+      );
+    }
+    return tk.value;
+  });
+  return (
+    <>
+      {blocks.map((b, i) => b.type === "bullet"
+        ? <div key={i} className="md-bullet">{renderInline(b.inline)}</div>
+        : <div key={i}>{renderInline(b.inline)}</div>)}
+    </>
+  );
+}
+
 function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selected, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onSave, onSaveAndNext, onCancel }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(node.title);
@@ -1656,7 +1680,7 @@ function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selec
       <div className="card-top">
         <div className="title">{node.title}</div>
       </div>
-      <div className="desc">{node.desc}</div>
+      <div className="desc">{node.desc ? <MdLite text={node.desc} /> : null}</div>
       <div className="meta-row">
         {(() => {
           const s = statusById(board, node.statusId);
