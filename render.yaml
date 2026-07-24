@@ -20,5 +20,7 @@ services:
     envVars:
       - key: MONGODB_URI
         sync: false
+      # Node 22+ required: @lingui/cli imports fs.globSync, which does not
+      # exist before Node 22 (build fails on 20 with a node:fs SyntaxError).
       - key: NODE_VERSION
-        value: 20.18.0
+        value: 22.11.0
