@@ -91,7 +91,10 @@ export default function IdeaMap() {
 
   useEffect(() => {
     const url = new URL(window.location.href);
-    if (selectedIds.size === 1) url.searchParams.set("card", String(Array.from(selectedIds)[0]));
+    const want = selectedIds.size === 1 ? String(Array.from(selectedIds)[0]) : null;
+    const have = url.searchParams.get("card");
+    if (want === have) return;
+    if (want != null) url.searchParams.set("card", want);
     else url.searchParams.delete("card");
     window.history.replaceState(null, "", url);
   }, [selectedIds]);
