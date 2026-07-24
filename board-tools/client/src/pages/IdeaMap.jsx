@@ -75,20 +75,25 @@ export default function IdeaMap() {
       e.preventDefault();
       const current = boardRef.current;
       if (!current) return;
-      if (e.ctrlKey || e.metaKey) {
-        const factor = Math.pow(1.0015, -e.deltaY);
-        const next = computeZoom(current, el.getBoundingClientRect(), e.clientX, e.clientY, factor);
+      // Lăn chuột = thu phóng tại vị trí con trỏ. Giữ Shift để lia ngang/dọc
+      // (hữu ích cho trackpad hoặc khi muốn cuộn thay vì zoom).
+      if (e.shiftKey) {
+        const next = { ...current, view: { ...current.view, panX: current.view.panX - e.deltaX, panY: current.view.panY - e.deltaY } };
         setBoard(next);
         saveDebounced(next);
       } else {
-        const next = { ...current, view: { ...current.view, panX: current.view.panX - e.deltaX, panY: current.view.panY - e.deltaY } };
+        const factor = Math.pow(1.0015, -e.deltaY);
+        const next = computeZoom(current, el.getBoundingClientRect(), e.clientX, e.clientY, factor);
         setBoard(next);
         saveDebounced(next);
       }
     }
     el.addEventListener("wheel", wheelHandler, { passive: false });
     return () => el.removeEventListener("wheel", wheelHandler);
-  }, []);
+    // Re-chạy khi board tải xong: lúc mount đầu board còn null nên viewport
+    // chưa render (return "Đang tải…"), viewportRef.current == null và listener
+    // sẽ không được gắn nếu chỉ phụ thuộc [].
+  }, [board != null]);
 
   function saveNow(next) {
     saveIdeas(next).then(() => setSaveError(null)).catch(() => setSaveError(true));
@@ -197,7 +202,10 @@ export default function IdeaMap() {
     createNode(cx - CARD_W / 2, cy - 40);
   }
 
-  function handleViewportContextMenu(e) {
+  // Suppress the browser's native context menu across the whole page, so
+  // right-click is free for our own gestures (chip → badge editor, drag to
+  // pan). Text inputs keep the native menu so Copy/Paste still works there.
+  function handlePageContextMenu(e) {
     const tag = (e.target.tagName || "").toUpperCase();
     if (tag === "INPUT" || tag === "TEXTAREA" || e.target.isContentEditable) return;
     e.preventDefault();
@@ -642,7 +650,7 @@ export default function IdeaMap() {
   }
 
   return (
-    <div className="shell">
+    <div className="shell" onContextMenu={handlePageContextMenu}>
       <div className="topbar">
         <div>
           <div className="eyebrow"><Trans>Bản đồ ý tưởng</Trans></div>
@@ -755,7 +763,6 @@ export default function IdeaMap() {
         ref={viewportRef}
         onMouseDown={handleViewportMouseDown}
         onDoubleClick={handleViewportDoubleClick}
-        onContextMenu={handleViewportContextMenu}
       >
         <div
           className="canvas"

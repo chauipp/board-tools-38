@@ -200,3 +200,30 @@ OUTSTANDING (needs USER + live DB, NOT a code gate): runtime migration verify.
   node.tag→tagId). Idempotent + non-destructive by review, but MUST run WITH a
   JSON backup ("Xuất JSON") first, confirmed with user. Until then the whole
   feature is code-verified but not runtime-verified. Do this before merge/deploy.
+
+## FINISHING (user chose: "Giữ nhánh, test trước" — Option 3 Keep as-is)
+Branch feature/user-managed-badges kept, NOT merged/pushed. Normal repo (no
+worktree). Base main @ 81addd0. Tree clean of feature changes; untracked
+.playwright-mcp/ + game-tools/docs/pvp-ideas.md (user's PvP notes, NOT mine —
+left alone). Extra hygiene commits after final review: c7297dd (.po #: line-ref
+resync), 97370f5 (Task 5 + final-review ledger). Full feature = 81addd0..c7297dd.
+
+## RUNTIME MIGRATION VERIFY — progress
+- Backup captured (read-only GET :3001): scratchpad/board-backup-pre-migration.json
+  — 5 nodes (ids 1,2,3,4,10), OLD schema (node.status/node.tag, no statuses[]).
+- OFFLINE DRY-RUN (scratchpad/migrate-dryrun.mjs, migrateBoard copied verbatim
+  from index.js, NO DB write) → ALL CHECKS PASS on real data:
+  chosen→3, rejected→5, parked→4, parked→4, idea→1; tags Cơ chế→1(dot-1),
+  Nội dung→2(dot-5), Kỹ thuật→3(dot-7), empty→null; title/desc/x/y preserved;
+  idempotent (2nd run changed=false, deep-equal). Preview: board-migrated-preview.json.
+- LIVE MIGRATION DONE + VERIFIED (user chose Path A). Stopped old server
+  (pid 1462668), started NEW server (feature code) on :3001 (bg task ba843q6pa,
+  still running). First GET migrated real Atlas board. Verified vs dry-run
+  preview: nodes/statuses/tags ALL MATCH; 0 nodes keep old status/tag; IDEMPOTENT
+  on real DB (GET#1==GET#2). statuses=5 defaults, tags Cơ chế/Nội dung/Kỹ thuật
+  (dot-1/5/7), nextStatusId 6 nextTagId 4. Backup safe at board-backup-pre-
+  migration.json if rollback ever needed. Live snapshots: board-live-migrated-{1,2}.json.
+- STILL TODO (user, browser): rebuild+serve new client (cd game-tools/client &&
+  npm run build && npm run preview), open URL, eyeball all cards correct, then
+  click-test create "+" / right-click rename+recolor+delete / drag chip assign /
+  filter "none" / VI-EN toggle. New server already running for it.

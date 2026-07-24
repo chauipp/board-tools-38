@@ -14,7 +14,7 @@ msgstr ""
 "Plural-Forms: \n"
 
 #: src/pages/Calculator.jsx:173
-#: src/pages/IdeaMap.jsx:651
+#: src/pages/IdeaMap.jsx:659
 msgid "← Trang chủ"
 msgstr "← Home"
 
@@ -22,7 +22,7 @@ msgstr "← Home"
 msgid "+ Thêm chỉ số"
 msgstr "+ Add stat"
 
-#: src/pages/IdeaMap.jsx:652
+#: src/pages/IdeaMap.jsx:660
 msgid "+ Ý tưởng"
 msgstr "+ Idea"
 
@@ -30,23 +30,23 @@ msgstr "+ Idea"
 msgid "A gây <0>{dmgToB}</0> sát thương/lượt lên B  ·  B gây <1>{dmgToA}</1> sát thương/lượt lên A"
 msgstr "A deals <0>{dmgToB}</0> damage/turn to B  ·  B deals <1>{dmgToA}</1> damage/turn to A"
 
-#: src/pages/IdeaMap.jsx:719
+#: src/pages/IdeaMap.jsx:727
 msgid "Bấm để lọc — kéo thả vào thẻ để gán nhãn — chuột phải để sửa"
 msgstr "Click to filter — drag onto a card to assign the tag — right-click to edit"
 
-#: src/pages/IdeaMap.jsx:685
+#: src/pages/IdeaMap.jsx:693
 msgid "Bấm để lọc — kéo thả vào thẻ để gán trạng thái — chuột phải để sửa"
 msgstr "Click to filter — drag onto a card to assign the status — right-click to edit"
 
-#: src/pages/IdeaMap.jsx:973
-#: src/pages/IdeaMap.jsx:974
-#: src/pages/IdeaMap.jsx:975
-#: src/pages/IdeaMap.jsx:976
+#: src/pages/IdeaMap.jsx:980
+#: src/pages/IdeaMap.jsx:981
+#: src/pages/IdeaMap.jsx:982
+#: src/pages/IdeaMap.jsx:983
 msgid "Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác"
 msgstr "Click to create a follow-up idea — hold and drag to link to another card"
 
 #: src/pages/Home.jsx:40
-#: src/pages/IdeaMap.jsx:648
+#: src/pages/IdeaMap.jsx:656
 msgid "Bản đồ ý tưởng"
 msgstr "Idea map"
 
@@ -106,7 +106,7 @@ msgstr "Split a point budget across HP / Armor / Pierce / Attack for two builds,
 msgid "Chưa phân thắng bại sau {rounds} lượt — trận kéo dài, có thể cần xem lại tỉ lệ sát thương/máu."
 msgstr "No winner after {rounds} turns — the fight drags on; the damage-to-HP ratio may need revisiting."
 
-#: src/pages/IdeaMap.jsx:823
+#: src/pages/IdeaMap.jsx:830
 msgid "Chuột trái kéo để bôi đen chọn thẻ, chuột phải kéo để lia sa bàn, cuộn để lia, giữ Ctrl/⌘ + cuộn để phóng to."
 msgstr "Left-drag to marquee-select cards, right-drag to pan the board, scroll to pan, hold Ctrl/⌘ and scroll to zoom."
 
@@ -126,12 +126,12 @@ msgstr "Remaining — Build A"
 msgid "Còn lại — Build B"
 msgstr "Remaining — Build B"
 
-#: src/pages/IdeaMap.jsx:840
+#: src/pages/IdeaMap.jsx:847
 msgid "Dán JSON đã xuất trước đó, rồi bấm Nhập vào bản đồ."
 msgstr "Paste previously exported JSON, then click Import to map."
 
 #: src/pages/Calculator.jsx:106
-#: src/pages/IdeaMap.jsx:155
+#: src/pages/IdeaMap.jsx:160
 msgid "Đang tải…"
 msgstr "Loading…"
 
@@ -141,11 +141,11 @@ msgstr "Test duel"
 
 #: src/pages/Calculator.jsx:177
 #: src/pages/Home.jsx:25
-#: src/pages/IdeaMap.jsx:669
+#: src/pages/IdeaMap.jsx:677
 msgid "Đổi giao diện sáng/tối"
 msgstr "Toggle light/dark theme"
 
-#: src/pages/IdeaMap.jsx:845
+#: src/pages/IdeaMap.jsx:852
 msgid "Đóng"
 msgstr "Close"
 
@@ -157,7 +157,7 @@ msgstr "Team project"
 msgid "Dữ liệu lưu chung trên server cho cả nhóm — ai mở link cũng thấy bản mới nhất."
 msgstr "Data lives on a shared server — anyone opening the link sees the latest version."
 
-#: src/pages/IdeaMap.jsx:649
+#: src/pages/IdeaMap.jsx:657
 msgid "Game Của Tôi"
 msgstr "My Game"
 
@@ -170,31 +170,31 @@ msgid "Hai công cụ nhẹ để quản lý ý tưởng và thử cân bằng s
 msgstr "Two lightweight tools for managing ideas and testing number balance before writing real code. Data is shared across the team."
 
 #: src/pages/Calculator.jsx:174
-#: src/pages/IdeaMap.jsx:653
+#: src/pages/IdeaMap.jsx:661
 msgid "Hoàn tác (Ctrl+Z)"
 msgstr "Undo (Ctrl+Z)"
 
 #: src/components/BadgeEditor.jsx:57
-#: src/pages/IdeaMap.jsx:935
+#: src/pages/IdeaMap.jsx:942
 msgid "Hủy"
 msgstr "Cancel"
 
-#: src/pages/IdeaMap.jsx:839
+#: src/pages/IdeaMap.jsx:846
 msgid "JSON hiện tại — copy để sao lưu hoặc gửi cho người khác xem."
 msgstr "Current JSON — copy it to back up or share with someone."
 
-#: src/pages/IdeaMap.jsx:574
+#: src/pages/IdeaMap.jsx:582
 msgid "JSON không hợp lệ — kiểm tra lại nội dung đã dán."
 msgstr "Invalid JSON — check what you pasted."
 
 #: src/pages/Calculator.jsx:181
-#: src/pages/IdeaMap.jsx:665
+#: src/pages/IdeaMap.jsx:673
 msgid "Không lưu được lên server."
 msgstr "Could not save to the server."
 
-#: src/pages/IdeaMap.jsx:734
-#: src/pages/IdeaMap.jsx:861
-#: src/pages/IdeaMap.jsx:925
+#: src/pages/IdeaMap.jsx:742
+#: src/pages/IdeaMap.jsx:868
+#: src/pages/IdeaMap.jsx:932
 msgid "Không nhãn"
 msgstr "No tag"
 
@@ -202,32 +202,32 @@ msgstr "No tag"
 msgid "Không tải được dữ liệu. Kiểm tra server đã chạy chưa (npm run dev trong thư mục server) và biến MONGODB_URI đã đúng chưa."
 msgstr "Could not load data. Check that the server is running (npm run dev in the server folder) and that MONGODB_URI is correct."
 
-#: src/pages/IdeaMap.jsx:700
-#: src/pages/IdeaMap.jsx:861
-#: src/pages/IdeaMap.jsx:929
+#: src/pages/IdeaMap.jsx:708
+#: src/pages/IdeaMap.jsx:868
+#: src/pages/IdeaMap.jsx:936
 msgid "Không trạng thái"
 msgstr "No status"
 
 #. placeholder {0}: board.nodes.length
-#: src/pages/IdeaMap.jsx:746
+#: src/pages/IdeaMap.jsx:754
 msgid "Khớp {matchCount}/{0}"
 msgstr "{matchCount}/{0} match"
 
 #: src/pages/Calculator.jsx:175
-#: src/pages/IdeaMap.jsx:654
+#: src/pages/IdeaMap.jsx:662
 msgid "Làm lại (Ctrl+Shift+Z)"
 msgstr "Redo (Ctrl+Shift+Z)"
 
-#: src/pages/IdeaMap.jsx:697
+#: src/pages/IdeaMap.jsx:705
 msgid "Lọc thẻ chưa có trạng thái"
 msgstr "Filter cards with no status"
 
-#: src/pages/IdeaMap.jsx:731
+#: src/pages/IdeaMap.jsx:739
 msgid "Lọc thẻ chưa gắn nhãn"
 msgstr "Filter cards with no tag"
 
-#: src/pages/IdeaMap.jsx:887
-#: src/pages/IdeaMap.jsx:934
+#: src/pages/IdeaMap.jsx:894
+#: src/pages/IdeaMap.jsx:941
 msgid "Lưu"
 msgstr "Save"
 
@@ -235,7 +235,7 @@ msgstr "Save"
 msgid "Mô phỏng đối đầu"
 msgstr "Simulate duel"
 
-#: src/pages/IdeaMap.jsx:922
+#: src/pages/IdeaMap.jsx:929
 msgid "Mô tả ngắn"
 msgstr "Short description"
 
@@ -243,27 +243,27 @@ msgstr "Short description"
 msgid "Ngân sách điểm"
 msgstr "Point budget"
 
-#: src/pages/IdeaMap.jsx:708
+#: src/pages/IdeaMap.jsx:716
 msgid "Nhãn"
 msgstr "Tag"
 
-#: src/pages/IdeaMap.jsx:822
+#: src/pages/IdeaMap.jsx:829
 msgid "Nhấp đúp vào khoảng trống để tạo ý tưởng đầu tiên."
 msgstr "Double-click empty space to create your first idea."
 
-#: src/pages/IdeaMap.jsx:667
+#: src/pages/IdeaMap.jsx:675
 msgid "Nhập JSON"
 msgstr "Import JSON"
 
-#: src/pages/IdeaMap.jsx:844
+#: src/pages/IdeaMap.jsx:851
 msgid "Nhập vào bản đồ"
 msgstr "Import to map"
 
-#: src/pages/IdeaMap.jsx:659
+#: src/pages/IdeaMap.jsx:667
 msgid "Nối ý tưởng"
 msgstr "Link ideas"
 
-#: src/pages/IdeaMap.jsx:830
+#: src/pages/IdeaMap.jsx:837
 msgid "Phóng to"
 msgstr "Zoom in"
 
@@ -275,15 +275,15 @@ msgstr "Design sandbox"
 msgid "Sơ đồ tư duy tự do: kéo-thả, nối quan hệ, gắn nhãn/trạng thái, lọc và tìm kiếm — quản lý mọi ý tưởng liên quan đến game."
 msgstr "A free-form mind map: drag and drop, link relationships, assign tags and statuses, filter and search — manage every idea about the game."
 
-#: src/pages/IdeaMap.jsx:745
+#: src/pages/IdeaMap.jsx:753
 msgid "Số ý tưởng khớp bộ lọc"
 msgstr "Ideas matching the filter"
 
-#: src/pages/IdeaMap.jsx:951
+#: src/pages/IdeaMap.jsx:958
 msgid "Sửa"
 msgstr "Edit"
 
-#: src/pages/IdeaMap.jsx:875
+#: src/pages/IdeaMap.jsx:882
 msgid "Tạo"
 msgstr "Create"
 
@@ -291,15 +291,15 @@ msgstr "Create"
 msgid "Tên badge"
 msgstr "Badge name"
 
-#: src/pages/IdeaMap.jsx:921
+#: src/pages/IdeaMap.jsx:928
 msgid "Tên ý tưởng"
 msgstr "Idea name"
 
-#: src/pages/IdeaMap.jsx:737
+#: src/pages/IdeaMap.jsx:745
 msgid "Thêm nhãn"
 msgstr "Add tag"
 
-#: src/pages/IdeaMap.jsx:703
+#: src/pages/IdeaMap.jsx:711
 msgid "Thêm trạng thái"
 msgstr "Add status"
 
@@ -307,23 +307,23 @@ msgstr "Add status"
 msgid "Thiếu chỉ số Máu / Giáp / Tấn công — không mô phỏng được."
 msgstr "Missing HP / Armor / Attack stats — cannot simulate."
 
-#: src/pages/IdeaMap.jsx:828
+#: src/pages/IdeaMap.jsx:835
 msgid "Thu nhỏ"
 msgstr "Zoom out"
 
-#: src/pages/IdeaMap.jsx:662
+#: src/pages/IdeaMap.jsx:670
 msgid "Tìm theo tên/mô tả…"
 msgstr "Search by name or description…"
 
-#: src/pages/IdeaMap.jsx:674
+#: src/pages/IdeaMap.jsx:682
 msgid "Trạng thái"
 msgstr "Status"
 
-#: src/pages/IdeaMap.jsx:832
+#: src/pages/IdeaMap.jsx:839
 msgid "Vừa khung"
 msgstr "Fit to view"
 
-#: src/pages/IdeaMap.jsx:952
+#: src/pages/IdeaMap.jsx:959
 msgid "Xoá"
 msgstr "Delete"
 
@@ -335,11 +335,11 @@ msgstr "Delete badge"
 msgid "Xoá chỉ số"
 msgstr "Delete stat"
 
-#: src/pages/IdeaMap.jsx:748
+#: src/pages/IdeaMap.jsx:756
 msgid "Xoá lọc"
 msgstr "Clear filters"
 
-#: src/pages/IdeaMap.jsx:666
+#: src/pages/IdeaMap.jsx:674
 msgid "Xuất JSON"
 msgstr "Export JSON"
 
@@ -347,8 +347,8 @@ msgstr "Export JSON"
 msgid "Xưởng Game Của Tôi"
 msgstr "My Game Workshop"
 
-#: src/pages/IdeaMap.jsx:179
-#: src/pages/IdeaMap.jsx:271
-#: src/pages/IdeaMap.jsx:934
+#: src/pages/IdeaMap.jsx:184
+#: src/pages/IdeaMap.jsx:279
+#: src/pages/IdeaMap.jsx:941
 msgid "Ý tưởng mới"
 msgstr "New idea"
