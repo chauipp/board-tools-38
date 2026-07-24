@@ -1320,7 +1320,7 @@ export default function IdeaMap() {
               node={node}
               board={board}
               editing={editingId === node.id}
-              dimmed={!passesFilter(node) || (focusSet != null && !focusSet.has(node.id))}
+              dimmed={(!passesFilter(node) || (focusSet != null && !focusSet.has(node.id))) && editingId !== node.id}
               linkPending={linkMode && pendingSource === node.id}
               dropTarget={!!dropTargetId && dropTargetId.kind === "node" && dropTargetId.id === node.id}
               selected={selectedIds.has(node.id)}
