@@ -162,7 +162,7 @@ function stripMongoMeta(doc) {
 }
 
 const app = express();
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "10mb" }));
 
 app.get("/api/ideas", async (req, res) => {
   try {

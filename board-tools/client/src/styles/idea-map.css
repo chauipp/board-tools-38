@@ -115,6 +115,7 @@
 .idea-card .icon-btn:hover { color: var(--ink); }
 .fav-btn.on { color: #D9A514; }
 .lock-badge { position: absolute; top: 8px; left: 8px; font-size: 10px; opacity: 0.7; }
+.idea-card .card-img { width: 100%; border-radius: 4px; margin-top: 6px; max-height: 140px; object-fit: cover; }
 .idea-card .desc {
   font-size: 11px; color: var(--ink-dim); margin-top: 5px; line-height: 1.35;
   display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;

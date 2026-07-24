@@ -16,6 +16,7 @@ import { gridLayout } from "../lib/layout.js";
 import { parseDesc } from "../lib/mdlite.js";
 import { getUserName } from "../lib/user.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
+import { compressImage } from "../lib/image-utils.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -72,6 +73,7 @@ export default function IdeaMap() {
   const canvasRef = useRef(null);
   const saveTimerRef = useRef(null);
   const boardRef = useRef(null);
+  const selectedIdsRef = useRef(selectedIds);
   const suppressContextMenuRef = useRef(false);
   const nudgeTimerRef = useRef(null);
   const nudgeBaseRef = useRef(null);
@@ -93,6 +95,7 @@ export default function IdeaMap() {
   }, []);
 
   useEffect(() => { boardRef.current = board; }, [board]);
+  useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -262,6 +265,38 @@ export default function IdeaMap() {
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
     return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
+  }, []);
+
+  // Ảnh dán/thả vào thẻ: applyImageToNode phải đọc boardRef.current (không phải
+  // `board`) vì nó được gọi từ compressImage().then() bên trong listener "paste"
+  // gắn-một-lần (deps: []), nơi `board` luôn là giá trị đóng gói lúc mount (stale).
+  // commitAndSave cũng không dùng được ở đây vì nó tự gọi recordHistory(board) —
+  // cùng vấn đề đóng gói cũ; nên trình tự ghi lịch sử/lưu được lặp lại thủ công.
+  function applyImageToNode(nodeId, dataUrl) {
+    const current = boardRef.current;
+    if (!current) return;
+    const next = { ...current, nodes: current.nodes.map((n) => (n.id === nodeId ? { ...n, image: dataUrl } : n)) };
+    recordHistory(current);
+    setBoard(next);
+    boardRef.current = next;
+    saveNow(next);
+  }
+
+  useEffect(() => {
+    function onPaste(e) {
+      const tag = (e.target.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea") return;
+      const current = boardRef.current;
+      if (!current) return;
+      const sel = selectedIdsRef.current;
+      if (sel.size !== 1) return;
+      const item = Array.from(e.clipboardData?.items ?? []).find((i) => i.type.startsWith("image/"));
+      if (!item) return;
+      e.preventDefault();
+      compressImage(item.getAsFile()).then((dataUrl) => applyImageToNode(Array.from(sel)[0], dataUrl)).catch(() => {});
+    }
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
   }, []);
 
   if (loadError) {
@@ -788,6 +823,24 @@ export default function IdeaMap() {
     setEditingId(null);
     const edited = { ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, ...fields } : n)) };
     createLinkedNode(id, "right", edited);
+  }
+
+  function handleImageDrop(e, nodeId) {
+    e.preventDefault();
+    e.stopPropagation();
+    const f = Array.from(e.dataTransfer.files).find((x) => x.type.startsWith("image/"));
+    if (f) compressImage(f).then((d) => applyImageToNode(nodeId, d)).catch(() => {});
+  }
+
+  function removeNodeImage(id) {
+    commitAndSave({
+      ...board,
+      nodes: board.nodes.map((n) => {
+        if (n.id !== id) return n;
+        const { image, ...rest } = n;
+        return rest;
+      })
+    });
   }
 
   function toggleEdge(a, aKind, b, bKind) {
@@ -1547,6 +1600,8 @@ export default function IdeaMap() {
               onSave={(fields) => saveNodeEdit(node.id, fields)}
               onSaveAndNext={(fields) => saveNodeEditAndNext(node.id, fields)}
               onCancel={() => setEditingId(null)}
+              onDropImage={(e) => handleImageDrop(e, node.id)}
+              onRemoveImage={() => removeNodeImage(node.id)}
             />
           ))}
         </div>
@@ -1915,7 +1970,7 @@ function CommentsPopover({ x, y, comments, onAdd, onDelete, onClose }) {
   );
 }
 
-function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, dropTarget, selected, flash, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onToggleFavorite, onOpenComments, onSave, onSaveAndNext, onCancel }) {
+function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, dropTarget, selected, flash, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onToggleFavorite, onOpenComments, onSave, onSaveAndNext, onCancel, onDropImage, onRemoveImage }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(node.title);
   const [desc, setDesc] = useState(node.desc);
@@ -1966,6 +2021,7 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
           <div className="edit-actions">
             <button className="save-btn" onClick={() => onSave({ title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId })}><Trans>Lưu</Trans></button>
             <button className="cancel-btn" onClick={onCancel}><Trans>Hủy</Trans></button>
+            {node.image && <button className="cancel-btn" onClick={() => onRemoveImage()}><Trans>Xoá ảnh</Trans></button>}
           </div>
           <div className="edit-hint"><Trans>Ctrl+Enter: lưu & tạo ý nối tiếp</Trans></div>
         </div>
@@ -1984,6 +2040,8 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
       onMouseDown={onMouseDown}
       onClick={onClick}
       onContextMenu={onContextMenu}
+      onDragOver={(e) => e.preventDefault()}
+      onDrop={onDropImage}
     >
       <div className="card-actions">
         <button
@@ -2001,6 +2059,7 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
       <div className="card-top">
         <div className="title">{node.title}</div>
       </div>
+      {node.image && <img className="card-img" src={node.image} alt="" draggable={false} />}
       <div className="desc">{node.desc ? <MdLite text={node.desc} /> : null}</div>
       <div className="meta-row">
         {(() => {
