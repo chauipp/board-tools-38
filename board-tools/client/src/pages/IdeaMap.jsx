@@ -1202,6 +1202,15 @@ export default function IdeaMap() {
 
   function startPresentation() {
     if (board.groups.length === 0) return;
+    // Đóng mọi UI tạm thời trước khi trình chiếu — CSS chỉ ẩn được chrome cố
+    // định, còn popover/modal đang mở phải đóng bằng state.
+    setColorMenu(null);
+    setEdgeMenu(null);
+    setBadgeUI(null);
+    setCommentsFor(null);
+    setEditingId(null);
+    setIoOpen(false);
+    setCaptureOpen(false);
     prePresentViewRef.current = board.view;
     setPresentIndex(0);
     jumpToGroup(board.groups[0]);

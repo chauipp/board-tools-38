@@ -336,8 +336,9 @@
   font-size: 11px; padding: 5px 10px; border-radius: 4px; cursor: pointer; flex: 0 0 auto;
 }
 
-.shell.presenting .topbar,
-.shell.presenting .filterbar { display: none; }
+.shell.presenting .topbar, .shell.presenting .filterbar,
+.shell.presenting .zoom-ctrl, .shell.presenting .outline-panel,
+.shell.presenting .focus-banner, .shell.presenting .bulk-bar { display: none; }
 
 .present-bar {
   position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 96;
