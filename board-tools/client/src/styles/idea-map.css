@@ -335,3 +335,23 @@
   background: var(--accent); color: var(--accent-ink); border: none;
   font-size: 11px; padding: 5px 10px; border-radius: 4px; cursor: pointer; flex: 0 0 auto;
 }
+
+.shell.presenting .topbar,
+.shell.presenting .filterbar { display: none; }
+
+.present-bar {
+  position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); z-index: 96;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+  box-shadow: var(--shadow); padding: 6px 16px; display: flex; gap: 12px; align-items: center;
+  font-size: 12px;
+}
+.present-bar .pb-step { color: var(--ink-dim); }
+.present-bar .pb-title {
+  font-weight: 600; max-width: 320px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.present-bar .pb-exit {
+  background: none; border: none; cursor: pointer; color: var(--ink-dim);
+  font-size: 15px; line-height: 1; padding: 0 2px;
+}
+.present-bar .pb-exit:hover { color: var(--ink); }

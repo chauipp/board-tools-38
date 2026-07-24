@@ -67,6 +67,7 @@ export default function IdeaMap() {
   const [editingGroupTitleId, setEditingGroupTitleId] = useState(null);
   const [focusId, setFocusId] = useState(null);
   const [flashId, setFlashId] = useState(null);
+  const [presentIndex, setPresentIndex] = useState(null); // null = không trình chiếu
   const [initialCardParam] = useState(() => new URLSearchParams(window.location.search).get("card"));
   const [, bump] = useState(0);
 
@@ -80,6 +81,7 @@ export default function IdeaMap() {
   const nudgeBaseRef = useRef(null);
   const spacePanRef = useRef(false);
   const pendingJumpRef = useRef(null);
+  const prePresentViewRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -226,6 +228,13 @@ export default function IdeaMap() {
       const tag = (e.target.tagName || "").toLowerCase();
       if (tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable) return;
       const key = e.key.toLowerCase();
+      // Đang trình chiếu: ←/→/Esc được ưu tiên, mọi phím tắt khác tạm tắt.
+      if (presentIndex != null) {
+        if (key === "arrowright") { e.preventDefault(); stepPresentation(1); }
+        else if (key === "arrowleft") { e.preventDefault(); stepPresentation(-1); }
+        else if (key === "escape") { exitPresentation(); }
+        return;
+      }
       if (e.ctrlKey || e.metaKey) {
         if (key === "z" && e.shiftKey) { e.preventDefault(); redo(); }
         else if (key === "z") { e.preventDefault(); undo(); }
@@ -252,7 +261,7 @@ export default function IdeaMap() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [board, past, future, selectedIds, linkMode, colorMenu, badgeUI, edgeMenu, commentsFor, focusId]);
+  }, [board, past, future, selectedIds, linkMode, colorMenu, badgeUI, edgeMenu, commentsFor, focusId, presentIndex]);
 
   useEffect(() => {
     function down(e) {
@@ -1191,6 +1200,36 @@ export default function IdeaMap() {
     }, { historical: false });
   }
 
+  function startPresentation() {
+    if (board.groups.length === 0) return;
+    prePresentViewRef.current = board.view;
+    setPresentIndex(0);
+    jumpToGroup(board.groups[0]);
+  }
+
+  // Đọc thẳng `presentIndex` từ state (đã nằm trong deps của effect keydown)
+  // thay vì dùng setState updater: jumpToGroup tự setState + lưu, không được
+  // gọi bên trong updater (side effect trong updater bị cấm).
+  function stepPresentation(delta) {
+    if (board.groups.length === 0) { exitPresentation(); return; }
+    // Khung có thể bị xoá giữa chừng (canvas vẫn tương tác được) → kẹp lại
+    // chỉ số hiện tại trước khi bước.
+    const current = Math.min(presentIndex, board.groups.length - 1);
+    const next = Math.min(board.groups.length - 1, Math.max(0, current + delta));
+    if (next !== presentIndex) {
+      setPresentIndex(next);
+      jumpToGroup(board.groups[next]);
+    }
+  }
+
+  function exitPresentation() {
+    setPresentIndex(null);
+    if (prePresentViewRef.current) {
+      commitAndSave({ ...board, view: prePresentViewRef.current }, { historical: false });
+      prePresentViewRef.current = null;
+    }
+  }
+
   function exportMarkdown() {
     const md = outlineToMarkdown(board, frameCardSize, { other: t`Khác`, links: t`Liên kết` });
     const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
@@ -1402,7 +1441,7 @@ export default function IdeaMap() {
   }
 
   return (
-    <div className="shell" onContextMenu={handlePageContextMenu}>
+    <div className={"shell" + (presentIndex != null ? " presenting" : "")} onContextMenu={handlePageContextMenu}>
       <div className="topbar">
         <div>
           <div className="eyebrow"><Trans>Bản đồ ý tưởng</Trans></div>
@@ -1427,6 +1466,7 @@ export default function IdeaMap() {
         {saveError && <span style={{ fontSize: 11, color: "var(--danger)" }}><Trans>Không lưu được lên server.</Trans></span>}
         <button className="btn ghost" onClick={() => { setIoMode("export"); setIoText(JSON.stringify(board, null, 2)); setIoOpen(true); }}><Trans>Xuất JSON</Trans></button>
         <button className="btn ghost" onClick={() => { setIoMode("import"); setIoText(""); setIoOpen(true); }}><Trans>Nhập JSON</Trans></button>
+        <button className="btn ghost" disabled={board.groups.length === 0} onClick={startPresentation}><Trans>Trình chiếu</Trans></button>
         <button className={"btn ghost toggle" + (outlineOpen ? " active" : "")} onClick={() => setOutlineOpen((v) => !v)}><Trans>Mục lục</Trans></button>
         <LocaleToggle />
         <button className="btn ghost icon" onClick={toggleTheme} title={t`Đổi giao diện sáng/tối`}>◐</button>
@@ -1731,6 +1771,21 @@ export default function IdeaMap() {
         )}
 
       </div>
+
+      {presentIndex != null && (() => {
+        // Khung có thể bị xoá trong lúc trình chiếu → kẹp chỉ số khi render;
+        // nếu xoá hết khung vẫn giữ thanh (0/0) để nút thoát × còn bấm được
+        // (bên cạnh Esc).
+        const idx = Math.min(presentIndex, Math.max(0, board.groups.length - 1));
+        const group = board.groups[idx];
+        return (
+          <div className="present-bar" onMouseDown={(e) => e.stopPropagation()}>
+            <span className="pb-step mono">{group ? `${idx + 1}/${board.groups.length}` : "0/0"}</span>
+            {group && <span className="pb-title">{group.title}</span>}
+            <button className="pb-exit" onClick={exitPresentation}>×</button>
+          </div>
+        );
+      })()}
 
       {chipDrag && (
         <div className="chip-ghost" style={{ left: chipDrag.x, top: chipDrag.y }}>

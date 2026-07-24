@@ -456,6 +456,10 @@ msgstr "Status"
 msgid "Trạng thái…"
 msgstr "Status…"
 
+#: src/pages/IdeaMap.jsx:1469
+msgid "Trình chiếu"
+msgstr "Present"
+
 #: src/pages/IdeaMap.jsx:1963
 msgid "Viết bình luận…"
 msgstr "Write a comment…"

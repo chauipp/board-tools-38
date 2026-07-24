@@ -456,6 +456,10 @@ msgstr "Trạng thái"
 msgid "Trạng thái…"
 msgstr "Trạng thái…"
 
+#: src/pages/IdeaMap.jsx:1469
+msgid "Trình chiếu"
+msgstr "Trình chiếu"
+
 #: src/pages/IdeaMap.jsx:1963
 msgid "Viết bình luận…"
 msgstr "Viết bình luận…"
