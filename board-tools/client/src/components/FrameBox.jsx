@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLingui } from "@lingui/react/macro";
 import { colorVar } from "../lib/badges.js";
 
@@ -8,9 +8,10 @@ export default function FrameBox({
 }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(group.title);
+  const doneRef = useRef(false);
 
   useEffect(() => {
-    if (editingTitle) setTitle(group.title);
+    if (editingTitle) { setTitle(group.title); doneRef.current = false; }
   }, [editingTitle, group.title]);
 
   return (
@@ -39,10 +40,10 @@ export default function FrameBox({
           value={title}
           onMouseDown={(e) => e.stopPropagation()}
           onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => onTitleSave(title)}
+          onBlur={() => { if (!doneRef.current) onTitleSave(title); }}
           onKeyDown={(e) => {
-            if (e.key === "Enter") onTitleSave(title);
-            if (e.key === "Escape") onTitleCancel();
+            if (e.key === "Enter") { doneRef.current = true; onTitleSave(title); }
+            if (e.key === "Escape") { doneRef.current = true; onTitleCancel(); }
           }}
         />
       ) : (
