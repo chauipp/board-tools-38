@@ -227,3 +227,81 @@ resync), 97370f5 (Task 5 + final-review ledger). Full feature = 81addd0..c7297dd
   npm run build && npm run preview), open URL, eyeball all cards correct, then
   click-test create "+" / right-click rename+recolor+delete / drag chip assign /
   filter "none" / VI-EN toggle. New server already running for it.
+
+============================================================
+# SDD Progress — Idea-map frames + card colors (feature/idea-map-frames-card-colors)
+Plan: docs/superpowers/plans/2026-07-24-idea-map-frames-card-colors.md
+Spec: docs/superpowers/specs/2026-07-24-idea-map-frames-card-colors-design.md
+
+## Pre-flight rulings (do NOT re-ask)
+- NO test framework installed; human-ratified project-wide (see badges feature
+  above). This plan uses Node's BUILT-IN `node --test` runner for the pure
+  geometry helpers ONLY (Task 1) — zero new dependencies, consistent with the
+  ruling. Interactive code = manual browser verification per plan.
+- Dev servers already running from this checkout (server :3001 node --watch,
+  client :5173 vite). Working IN PLACE on the feature branch (no worktree) so
+  hot reload serves manual verification. Server schema change (Task 2)
+  auto-applies on save — safe, groups defaults to [], no migration.
+- Plan self-review already resolved: frames must NOT use pointer-events:none
+  (DOM order handles stacking); dropTargetId carries {id,kind} from Task 7.
+
+## Tasks
+Base before Task 1: fccfde6
+Task 1: complete (commit 696e53c, review clean — spec ✅, Approved, no Critical/Important).
+  Minors noted for final review: ||-vs-?? on fromKind default (theoretical only);
+  edgeEndpoint group-not-found branch not directly asserted.
+Base before Task 2: 696e53c
+Task 2: complete (commit 8ef2650, review clean — spec ✅, Approved, no Critical/Important).
+  Verified against LIVE server (:3001, node --watch auto-reload): GET has groups/nextGroupId,
+  PUT round-trip persisted a test frame, board restored to clean state after.
+Base before Task 3: 8ef2650
+Task 3: complete (commit 037f68a, review clean — spec ✅, Approved, no issues).
+  Byte-equivalent extraction confirmed by reviewer; build pass. Browser check of
+  BadgeEditor close behavior deferred to end-to-end manual pass (behavior identical by construction).
+Base before Task 4: 037f68a
+Task 4: complete (commits 4e635e4 + fix 316cb13, review APPROVED after fix — spec ✅).
+  IMPORTANT found & fixed: right-drag-pan starting on a card re-opened the color popover on
+  release (contextmenu fires after mouseup). Fix: suppressContextMenuRef set in startPan onUp
+  (only when dragging) + next-tick reset + consume-guard in openColorMenu. Reviewer confirmed
+  event-ordering sound, no staleness, plain right-click unaffected, native-menu block intact.
+  Minors for final review: brief Step-5 prose said popover stays open after pick but normative
+  code closes it (code correct, prose stale); openBadgeMenu safety is by guard scoping not
+  geometry. Build pass, lingui extract clean (new string 'Không màu').
+Base before Task 5: 316cb13
+Task 5: complete (commits ad8ce1c + CSS fix a937cfc, review APPROVED after fix — spec ✅).
+  IMPORTANT (plan-mandated, brief CSS incomplete) FIXED: .frame-delete now self-styled
+  (color/cursor/font/flex-centering + hover) — .icon-btn rule is scoped .idea-card only.
+  Reviewer verified: member-capture-once drag, no-drift delta math, resize floors 160x120,
+  delete-frame-keeps-cards, z-order frames<edges<cards, pan-guard covers frames, import backfill.
+  Minors for final review: 4th copy of drag-session boilerplate (pre-existing pattern);
+  frameCardSize duplicates size-fallback pattern; MIN_W/H local consts; title double-click
+  arms a no-op drag session (harmless, brief-mandated code).
+  USER ADDITION mid-run: Task 8 added to plan + spec (multi-select right-click -> Gom nhóm
+  button in card ColorMenu -> create frame around selection bbox). Dispatch after Task 7.
+Base before Task 6: a937cfc
+Task 6: complete (commit 615f4b4, review clean — spec ✅, Approved, no issues).
+  Specificity check confirmed no competing connector rules; .idea-card.dim scoping preserved.
+Base before Task 7: 615f4b4
+Task 7: complete (commit 6044bb3, review clean — spec ✅, Approved, no Critical/Important).
+  All 3 named-risk checks pass: toggleEdge 4-arg everywhere, dropTargetId {id,kind} at all
+  producer/consumer sites, linkMode path updated. deleteGroup kind-guard correct. Task 1
+  tests re-run 5/5. Minors (brief-inherited): toCanvas/targetAt duplication between the two
+  connector handlers; group connector has no 5px drag threshold.
+Base before Task 8: 6044bb3
+Task 8 (user addition): complete (commit 8a89eb1, review clean — spec ✅, Approved).
+  Gom nhóm button: card popover only, selectedIds.size>=2 && has(node.id); bbox PAD 28 +
+  TITLE_ROOM 20; single undo step; group popover confirmed untouched; en msgstr 'Group'.
+  Minor: bbox accumulation duplicates fitToView pattern (brief-mandated, different inputs).
+ALL 8 TASKS COMPLETE. Final whole-branch review next.
+FINAL whole-branch review (opus, a812f1a..317febb): feature well-architected, 1 CRITICAL
+  found & FIXED (58e505a): deleteNode edge filter was kind-blind — deleting a card could drop
+  a same-numbered frame's edges (reachable on seeded board: first frame gets id 1 = node 1).
+  Now mirrors deleteGroup's kind-aware filter. Minor also FIXED (df6bef5): FrameBox title
+  doneRef guard — Escape no longer persists via blur, Enter no longer double-commits.
+  Re-verify: reviewer confirmed both fixes correct, no regressions — Ready to merge YES.
+  Ship-acceptable minors (documented, not fixed): frame connector z-index over cards,
+  dblclick-inside-frame no longer creates card, redundant PUT on plain frame click,
+  import nextGroupId=1 backfill for hand-crafted JSON, kind-less edges from createLinkedNode.
+ALL TASKS + FINAL REVIEW COMPLETE. Branch feature/idea-map-frames-card-colors ready.
+  Full feature = a812f1a..df6bef5 (14 commits). Manual browser pass by user still pending
+  (dev servers :3001/:5173 running hot — feature is live now).
