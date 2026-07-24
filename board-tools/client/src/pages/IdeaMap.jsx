@@ -1000,6 +1000,13 @@ export default function IdeaMap() {
     setSelectedIds(new Set(cloneIds));
   }
 
+  function applyToSelection(patch) {
+    commitAndSave({
+      ...board,
+      nodes: board.nodes.map((n) => (selectedIds.has(n.id) ? { ...n, ...patch } : n))
+    });
+  }
+
   function zoomToSelection() {
     const targets = selectedIds.size > 0
       ? board.nodes.filter((n) => selectedIds.has(n.id))
@@ -1351,6 +1358,29 @@ export default function IdeaMap() {
           <div className="sep" />
           <button onClick={fitToView} style={{ width: "auto", padding: "0 8px", fontSize: 11 }}><Trans>Vừa khung</Trans></button>
         </div>
+
+        {selectedIds.size >= 2 && (
+          <div className="bulk-bar" onMouseDown={(e) => e.stopPropagation()}>
+            <span className="bb-count mono"><Trans>{selectedIds.size} thẻ</Trans></span>
+            <select value="" onChange={(e) => { if (e.target.value !== "") applyToSelection({ statusId: e.target.value === "none" ? null : Number(e.target.value) }); }}>
+              <option value="">{t`Trạng thái…`}</option>
+              <option value="none">{t`Không trạng thái`}</option>
+              {board.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <select value="" onChange={(e) => { if (e.target.value !== "") applyToSelection({ tagId: e.target.value === "none" ? null : Number(e.target.value) }); }}>
+              <option value="">{t`Nhãn…`}</option>
+              <option value="none">{t`Không nhãn`}</option>
+              {board.tags.map((tg) => <option key={tg.id} value={tg.id}>{tg.name}</option>)}
+            </select>
+            <div className="bb-swatches">
+              <button className="be-swatch dot-empty" onClick={() => applyToSelection({ color: null })} title={t`Không màu`} />
+              {BADGE_PALETTE.map((token) => (
+                <button key={token} className="be-swatch" style={{ background: colorVar(token) }} onClick={() => applyToSelection({ color: token })} title={token} />
+              ))}
+            </div>
+            <button className="bb-clear" onClick={() => setSelectedIds(new Set())}><Trans>Bỏ chọn</Trans></button>
+          </div>
+        )}
 
         {ioOpen && (
           <div className="io-drawer">

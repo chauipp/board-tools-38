@@ -155,6 +155,19 @@
 .zoom-ctrl .pct { font-size: 11px; width: 44px; text-align: center; color: var(--ink-dim); }
 .zoom-ctrl .sep { width: 1px; height: 18px; background: var(--line); }
 
+.bulk-bar {
+  position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; z-index: 40;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: var(--shadow); padding: 8px 12px;
+}
+.bulk-bar select { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; font-size: 11px; }
+.bulk-bar .bb-count { font-size: 11px; color: var(--ink-dim); white-space: nowrap; }
+.bulk-bar .bb-swatches { display: flex; gap: 4px; }
+.bulk-bar .be-swatch { width: 16px; height: 16px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+.bulk-bar .bb-clear { background: none; border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 10.5px; color: var(--ink-dim); cursor: pointer; }
+.bulk-bar .bb-clear:hover { color: var(--ink); border-color: var(--ink-dim); }
+
 .io-drawer {
   position: absolute; right: 14px; top: 14px; width: 320px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); padding: 10px; z-index: 30;
