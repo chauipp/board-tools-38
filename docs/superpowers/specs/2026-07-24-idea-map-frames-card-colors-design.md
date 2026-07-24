@@ -62,6 +62,16 @@ trong document `IdeaBoard` (Mongo) qua `board.nodes` / `board.edges` / `board.st
 - Nút ✎ (sửa) trên card giữ nguyên như hiện tại — không thay thế, chỉ thêm lối tắt qua
   chuột phải.
 
+## Gom nhóm từ multi-select
+
+- Khi đã bôi đen (marquee) từ 2 card trở lên, chuột phải vào một card đang được chọn →
+  popover màu của card có thêm nút **Gom nhóm**: tạo một khung mới bao quanh bounding box
+  của các card đã chọn (padding đều 4 phía, chừa chỗ cho tiêu đề), tiêu đề mặc định
+  `Khung mới`. Card giữ nguyên vị trí — khung ôm quanh chúng (membership theo hình học
+  như mọi khung khác).
+- Chuột phải vào card không thuộc selection, hoặc selection < 2 card → popover như cũ,
+  không có nút Gom nhóm.
+
 ## Ngoài phạm vi
 
 - Không animation kéo-thả cầu kỳ, không giới hạn số card/khung, không khung lồng khung,
