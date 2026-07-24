@@ -72,3 +72,13 @@ Task 5: complete (no source change — Step 1/2 sweep clean, no commit made).
   save-error-then-switch, click-drag tag suggestions) are structural-only —
   explicitly flagged as NOT click-verified, not claimed as tested.
   Full evidence: .superpowers/sdd/task-5-report.md.
+Task 5: complete (commit 23da7b9 checkbox/ledger; sweep clean, no source change
+  needed). extract 0/0, build pass, headless all 3 routes both locales.
+FINAL whole-branch review (opus, a8bff06..23da7b9): i18n feature CORRECT, no
+  issues. 1 Important in the BUNDLED UX refactor (not i18n):
+  handleViewportContextMenu preventDefault was unconditional, killing native
+  right-click Copy/Paste in JSON textarea + card edit inputs. Fixed in 4adf7fa
+  (guard skips INPUT/TEXTAREA/contentEditable). Also Minor: passesFilter now
+  trims search to match the counter. Build pass; final headless smoke all
+  3 routes/2 locales PASS (chrome EN, status labels + stat names stay VN).
+ALL TASKS COMPLETE. Branch ready to finish.
