@@ -26,6 +26,10 @@ function hashTag(tag) {
   return DOT_PALETTE[h % DOT_PALETTE.length];
 }
 
+function tagLabel(tag) {
+  return tag === "—" ? "Chưa gắn nhãn" : tag;
+}
+
 function computeZoom(currentBoard, rect, screenX, screenY, factor) {
   const mx = screenX - rect.left, my = screenY - rect.top;
   const oldScale = currentBoard.view.scale;
@@ -52,11 +56,9 @@ export default function IdeaMap() {
   const [isPanning, setIsPanning] = useState(false);
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
-  const [contextMenu, setContextMenu] = useState(null);
   const [linkDraft, setLinkDraft] = useState(null);
   const [dropTargetId, setDropTargetId] = useState(null);
   const [chipDrag, setChipDrag] = useState(null);
-  const [tool, setTool] = useState("hand");
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [marquee, setMarquee] = useState(null);
   const [, bump] = useState(0);
@@ -162,20 +164,6 @@ export default function IdeaMap() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [board, past, future]);
 
-  useEffect(() => {
-    if (!contextMenu) return;
-    function close() { setContextMenu(null); }
-    function onKey(e) { if (e.key === "Escape") setContextMenu(null); }
-    window.addEventListener("mousedown", close);
-    window.addEventListener("keydown", onKey);
-    window.addEventListener("scroll", close, true);
-    return () => {
-      window.removeEventListener("mousedown", close);
-      window.removeEventListener("keydown", onKey);
-      window.removeEventListener("scroll", close, true);
-    };
-  }, [contextMenu]);
-
   if (loadError) {
     return <LoadError code={loadError} />;
   }
@@ -219,29 +207,7 @@ export default function IdeaMap() {
   }
 
   function handleViewportContextMenu(e) {
-    if (e.target !== viewportRef.current && e.target !== canvasRef.current) return;
     e.preventDefault();
-    const rect = viewportRef.current.getBoundingClientRect();
-    const cx = (e.clientX - rect.left - board.view.panX) / board.view.scale;
-    const cy = (e.clientY - rect.top - board.view.panY) / board.view.scale;
-    setContextMenu({
-      type: "canvas",
-      x: Math.min(e.clientX, window.innerWidth - 200),
-      y: Math.min(e.clientY, window.innerHeight - 60),
-      canvasX: cx,
-      canvasY: cy
-    });
-  }
-
-  function handleCardContextMenu(e, node) {
-    e.preventDefault();
-    e.stopPropagation();
-    setContextMenu({
-      type: "node",
-      x: Math.min(e.clientX, window.innerWidth - 200),
-      y: Math.min(e.clientY, window.innerHeight - 140),
-      nodeId: node.id
-    });
   }
 
   function rectsOverlap(x1, y1, w1, h1, x2, y2, w2, h2) {
@@ -323,6 +289,7 @@ export default function IdeaMap() {
   }
 
   function handleConnectorMouseDown(e, node, direction) {
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
     const rect = viewportRef.current.getBoundingClientRect();
@@ -379,6 +346,7 @@ export default function IdeaMap() {
   }
 
   function handleChipMouseDown(e, kind, value) {
+    if (e.button !== 0) return;
     const startX = e.clientX, startY = e.clientY;
     let dragging = false;
     const THRESHOLD = 5;
@@ -439,15 +407,15 @@ export default function IdeaMap() {
 
   function handleNodeMouseDown(e, node) {
     if (linkMode || editingId === node.id) return;
+    if (e.button === 2) { e.stopPropagation(); startPan(e); return; }
+    if (e.button !== 0) return;
     e.stopPropagation();
 
     let groupIds = [node.id];
-    if (tool === "select") {
-      if (selectedIds.has(node.id) && selectedIds.size > 1) {
-        groupIds = Array.from(selectedIds);
-      } else {
-        setSelectedIds(new Set([node.id]));
-      }
+    if (selectedIds.has(node.id) && selectedIds.size > 1) {
+      groupIds = Array.from(selectedIds);
+    } else {
+      setSelectedIds(new Set([node.id]));
     }
 
     const startX = e.clientX, startY = e.clientY;
@@ -500,45 +468,49 @@ export default function IdeaMap() {
       return { x: (clientX - rect.left - view.panX) / view.scale, y: (clientY - rect.top - view.panY) / view.scale };
     }
 
+    function hitIdsFor(m) {
+      return boardRef.current.nodes
+        .filter((n) => {
+          const card = canvasRef.current.querySelector(`.idea-card[data-id="${n.id}"]`);
+          const w = card ? card.offsetWidth : CARD_W, h = card ? card.offsetHeight : 100;
+          return rectsOverlap(m.x, m.y, m.w, m.h, n.x, n.y, w, h);
+        })
+        .map((n) => n.id);
+    }
+
     function onMove(ev) {
       if (!dragging && Math.hypot(ev.clientX - startScreenX, ev.clientY - startScreenY) > THRESHOLD) dragging = true;
       if (!dragging) return;
       const a = toCanvas(startScreenX, startScreenY);
       const b = toCanvas(ev.clientX, ev.clientY);
-      setMarquee({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) });
+      const m = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
+      setMarquee(m);
+      setSelectedIds(new Set(hitIdsFor(m)));
     }
     function onUp() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       if (!dragging) { setSelectedIds(new Set()); return; }
-      setMarquee((m) => {
-        if (m) {
-          const hitIds = boardRef.current.nodes
-            .filter((n) => {
-              const card = canvasRef.current.querySelector(`.idea-card[data-id="${n.id}"]`);
-              const w = card ? card.offsetWidth : CARD_W, h = card ? card.offsetHeight : 100;
-              return rectsOverlap(m.x, m.y, m.w, m.h, n.x, n.y, w, h);
-            })
-            .map((n) => n.id);
-          setSelectedIds(new Set(hitIds));
-        }
-        return null;
-      });
+      setMarquee(null);
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }
 
-  function handleViewportMouseDown(e) {
-    if (e.target !== viewportRef.current && e.target !== canvasRef.current) return;
-    if (linkMode) { setPendingSource(null); return; }
-    if (tool === "select") { handleMarqueeMouseDown(e); return; }
-    setIsPanning(true);
+  function startPan(e) {
+    e.preventDefault();
     const startX = e.clientX, startY = e.clientY;
     const startPanX = board.view.panX, startPanY = board.view.panY;
+    let dragging = false;
+    const THRESHOLD = 4;
     let latest = board;
 
     function onMove(ev) {
+      if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) {
+        dragging = true;
+        setIsPanning(true);
+      }
+      if (!dragging) return;
       const nx = startPanX + (ev.clientX - startX);
       const ny = startPanY + (ev.clientY - startY);
       setBoard((prev) => {
@@ -550,11 +522,21 @@ export default function IdeaMap() {
     function onUp() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      setIsPanning(false);
-      saveNow(latest);
+      if (dragging) {
+        setIsPanning(false);
+        saveNow(latest);
+      }
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
+  }
+
+  function handleViewportMouseDown(e) {
+    if (e.target !== viewportRef.current && e.target !== canvasRef.current) return;
+    if (linkMode) { setPendingSource(null); return; }
+    if (e.button === 2) { startPan(e); return; }
+    if (e.button !== 0) return;
+    handleMarqueeMouseDown(e);
   }
 
   function zoomButton(factor) {
@@ -601,6 +583,17 @@ export default function IdeaMap() {
   }
 
   const distinctTags = Array.from(new Set(board.nodes.map((n) => n.tag || "—")));
+  const activeFilterCount =
+    Object.values(filterStatus).filter(Boolean).length +
+    Object.values(filterTags).filter(Boolean).length +
+    (search.trim() ? 1 : 0);
+  const matchCount = board.nodes.filter(passesFilter).length;
+
+  function clearFilters() {
+    setFilterStatus({});
+    setFilterTags({});
+    setSearch("");
+  }
 
   return (
     <div className="shell">
@@ -613,22 +606,6 @@ export default function IdeaMap() {
         <button className="btn" onClick={handleAddClick}>+ Ý tưởng</button>
         <button className="btn ghost icon" onClick={undo} disabled={past.length === 0} title="Hoàn tác (Ctrl+Z)">↶</button>
         <button className="btn ghost icon" onClick={redo} disabled={future.length === 0} title="Làm lại (Ctrl+Shift+Z)">↷</button>
-        <div className="tool-group">
-          <button
-            className={"btn ghost toggle" + (tool === "hand" ? " active" : "")}
-            onClick={() => setTool("hand")}
-            title="Bàn tay — giữ và kéo khoảng trống để lia sa bàn"
-          >
-            Bàn tay
-          </button>
-          <button
-            className={"btn ghost toggle" + (tool === "select" ? " active" : "")}
-            onClick={() => setTool("select")}
-            title="Con trỏ — kéo để bôi đen chọn nhiều thẻ rồi kéo cả nhóm đi"
-          >
-            Con trỏ
-          </button>
-        </div>
         <button
           className={"btn ghost toggle" + (linkMode ? " active" : "")}
           onClick={() => { setLinkMode((v) => !v); setPendingSource(null); }}
@@ -646,37 +623,58 @@ export default function IdeaMap() {
       </div>
 
       <div className="filterbar">
-        <span className="fb-label">Trạng thái</span>
-        {STATUS_ORDER.map((key) => (
-          <span
-            key={key}
-            className={"chip-toggle" + (filterStatus[key] ? " on" : "")}
-            onMouseDown={(e) => handleChipMouseDown(e, "status", key)}
-            onClick={() => setFilterStatus((prev) => ({ ...prev, [key]: !prev[key] }))}
-            title="Bấm để lọc — kéo thả vào thẻ để gán trạng thái"
-          >
-            <span className="dot" style={{ background: STATUS[key].color }}></span>
-            {STATUS[key].label}
-          </span>
-        ))}
-        <span className="fb-label" style={{ marginLeft: 10 }}>Nhãn</span>
-        {distinctTags.map((tag) => (
-          <span
-            key={tag}
-            className={"chip-toggle" + (filterTags[tag] ? " on" : "")}
-            style={{ marginLeft: 6 }}
-            onMouseDown={(e) => handleChipMouseDown(e, "tag", tag)}
-            onClick={() => setFilterTags((prev) => ({ ...prev, [tag]: !prev[tag] }))}
-            title="Bấm để lọc — kéo thả vào thẻ để gán nhãn"
-          >
-            <span className="dot" style={{ background: hashTag(tag) }}></span>
-            {tag}
-          </span>
-        ))}
+        <div className="fb-group">
+          <span className="fb-label">Trạng thái</span>
+          <div className="fb-chips">
+            {STATUS_ORDER.map((key) => (
+              <span
+                key={key}
+                className={"chip-toggle status" + (filterStatus[key] ? " on" : "")}
+                onMouseDown={(e) => handleChipMouseDown(e, "status", key)}
+                onClick={() => setFilterStatus((prev) => ({ ...prev, [key]: !prev[key] }))}
+                title="Bấm để lọc — kéo thả vào thẻ để gán trạng thái"
+              >
+                <span className="dot" style={{ background: STATUS[key].color }}></span>
+                {STATUS[key].label}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {distinctTags.length > 0 && (
+          <div className="fb-group">
+            <span className="fb-label">Nhãn</span>
+            <div className="fb-chips">
+              {distinctTags.map((tag) => (
+                <span
+                  key={tag}
+                  className={"chip-toggle tag" + (filterTags[tag] ? " on" : "")}
+                  onMouseDown={(e) => handleChipMouseDown(e, "tag", tag)}
+                  onClick={() => setFilterTags((prev) => ({ ...prev, [tag]: !prev[tag] }))}
+                  title="Bấm để lọc — kéo thả vào thẻ để gán nhãn"
+                >
+                  <span className="dot" style={{ background: hashTag(tag) }}></span>
+                  {tagLabel(tag)}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        <div className="spacer" />
+
+        {activeFilterCount > 0 && (
+          <div className="fb-tail">
+            <span className="fb-count mono" title="Số ý tưởng khớp bộ lọc">
+              Khớp {matchCount}/{board.nodes.length}
+            </span>
+            <button className="fb-clear" onClick={clearFilters}>Xoá lọc</button>
+          </div>
+        )}
       </div>
 
       <div
-        className={"viewport" + (isPanning ? " panning" : "") + (tool === "select" ? " select-tool" : "")}
+        className={"viewport" + (isPanning ? " panning" : "")}
         ref={viewportRef}
         onMouseDown={handleViewportMouseDown}
         onDoubleClick={handleViewportDoubleClick}
@@ -729,10 +727,9 @@ export default function IdeaMap() {
               dimmed={!passesFilter(node)}
               linkPending={linkMode && pendingSource === node.id}
               dropTarget={dropTargetId === node.id}
-              selected={tool === "select" && selectedIds.has(node.id)}
+              selected={selectedIds.has(node.id)}
               onMouseDown={(e) => handleNodeMouseDown(e, node)}
               onClick={() => handleCardClick(node)}
-              onContextMenu={(e) => handleCardContextMenu(e, node)}
               onConnectorMouseDown={(e, direction) => handleConnectorMouseDown(e, node, direction)}
               onEdit={() => setEditingId(node.id)}
               onDelete={() => deleteNode(node.id)}
@@ -745,7 +742,7 @@ export default function IdeaMap() {
         {board.nodes.length === 0 && (
           <div className="empty-hint">
             Nhấp đúp vào khoảng trống để tạo ý tưởng đầu tiên.<br />
-            Kéo để di chuyển sa bàn, cuộn để lia, giữ Ctrl/⌘ + cuộn để phóng to.
+            Chuột trái kéo để bôi đen chọn thẻ, chuột phải kéo để lia sa bàn, cuộn để lia, giữ Ctrl/⌘ + cuộn để phóng to.
           </div>
         )}
 
@@ -770,28 +767,12 @@ export default function IdeaMap() {
           </div>
         )}
 
-        {contextMenu && (
-          <div className="context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} onMouseDown={(e) => e.stopPropagation()}>
-            {contextMenu.type === "canvas" && (
-              <button onClick={() => { createNode(contextMenu.canvasX - CARD_W / 2, contextMenu.canvasY - 40); setContextMenu(null); }}>
-                + Thêm ý tưởng ở đây
-              </button>
-            )}
-            {contextMenu.type === "node" && (
-              <>
-                <button onClick={() => { setEditingId(contextMenu.nodeId); setContextMenu(null); }}>✎ Sửa</button>
-                <button onClick={() => { setLinkMode(true); setPendingSource(contextMenu.nodeId); setContextMenu(null); }}>⤳ Bắt đầu nối</button>
-                <button className="danger" onClick={() => { deleteNode(contextMenu.nodeId); setContextMenu(null); }}>× Xoá</button>
-              </>
-            )}
-          </div>
-        )}
       </div>
 
       {chipDrag && (
         <div className="chip-ghost" style={{ left: chipDrag.x, top: chipDrag.y }}>
           <span className="dot" style={{ background: chipDrag.kind === "status" ? STATUS[chipDrag.value].color : hashTag(chipDrag.value) }}></span>
-          {chipDrag.kind === "status" ? STATUS[chipDrag.value].label : chipDrag.value}
+          {chipDrag.kind === "status" ? STATUS[chipDrag.value].label : tagLabel(chipDrag.value)}
         </div>
       )}
 
@@ -802,7 +783,7 @@ export default function IdeaMap() {
   );
 }
 
-function IdeaCard({ node, editing, dimmed, linkPending, dropTarget, selected, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onSave, onCancel }) {
+function IdeaCard({ node, editing, dimmed, linkPending, dropTarget, selected, onMouseDown, onClick, onConnectorMouseDown, onEdit, onDelete, onSave, onCancel }) {
   const [title, setTitle] = useState(node.title);
   const [desc, setDesc] = useState(node.desc);
   const [tag, setTag] = useState(node.tag);
@@ -849,7 +830,6 @@ function IdeaCard({ node, editing, dimmed, linkPending, dropTarget, selected, on
       style={{ left: node.x, top: node.y }}
       onMouseDown={onMouseDown}
       onClick={onClick}
-      onContextMenu={onContextMenu}
     >
       <div className="card-actions">
         <button className="icon-btn" title="Sửa" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(); }}>✎</button>
