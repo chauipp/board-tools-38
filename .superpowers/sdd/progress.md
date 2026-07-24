@@ -42,3 +42,16 @@ Task 3: complete (commits 69498f6..d2b8c29, review clean, no Critical/Important)
   no setDuelResult writes a string. stat.name left as data. Placeholder/tag
   integrity clean across all 26 new msgid/msgstr pairs. Live toggle-click
   after simulate still unverified (environment), low risk.
+Task 4: complete (commits 568e9e7..62d78b1, review clean, no Critical/Important)
+  PLAN BUG FOUND & FIXED: tagLabel(tag, t) — passing macro t as a param — is
+  broken with Lingui (compiles to ""). Implementer fixed with module-scope
+  import { t } from "@lingui/core/macro"; call sites back to tagLabel(tag).
+  Reviewer + controller both confirmed correct & reactive; "Chưa gắn nhãn"
+  -> "No tag" is in the catalog and compiled into the bundle ("e1gXUn").
+  Plan Step 2 + call sites updated to match. Commit message accurately
+  documents the deviation (no stale template text).
+  Controller headless EN dump: topbar/filters English, all 5 status chips +
+  card titles stay Vietnamese, no leak. Non-regression PASS.
+  Minor (for final review): (1) TAG_SUGGESTIONS.map((t)=>...) at IdeaMap ~786
+  shadows the macro t — harmless now (no t`` inside), rename later.
+  (2) English "{matchCount}/{0} match" reads awkwardly for plurals.
