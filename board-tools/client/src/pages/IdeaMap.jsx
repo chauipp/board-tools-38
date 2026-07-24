@@ -9,7 +9,7 @@ import LocaleToggle from "../components/LocaleToggle.jsx";
 import BadgeEditor from "../components/BadgeEditor.jsx";
 import ColorMenu from "../components/ColorMenu.jsx";
 import FrameBox from "../components/FrameBox.jsx";
-import { nodesInFrame, edgeEndpoint, edgesMatch } from "../lib/board-geometry.js";
+import { nodesInFrame, edgeEndpoint, edgesMatch, rectForEndpoint, clipToRect } from "../lib/board-geometry.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -1004,10 +1004,17 @@ export default function IdeaMap() {
             />
           ))}
           <svg className="edge-layer">
+            <defs>
+              <marker id="edge-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ink-dim)" />
+              </marker>
+            </defs>
             {board.edges.map((edge) => {
-              const p1 = edgeEndpoint(edge.fromKind || "node", edge.from, board.nodes, board.groups, frameCardSize);
-              const p2 = edgeEndpoint(edge.toKind || "node", edge.to, board.nodes, board.groups, frameCardSize);
-              if (!p1 || !p2) return null;
+              const r1 = rectForEndpoint(edge.fromKind || "node", edge.from, board.nodes, board.groups, frameCardSize);
+              const r2 = rectForEndpoint(edge.toKind || "node", edge.to, board.nodes, board.groups, frameCardSize);
+              if (!r1 || !r2) return null;
+              const p1 = clipToRect(r1.cx, r1.cy, r1.w, r1.h, r2.cx, r2.cy);
+              const p2 = clipToRect(r2.cx, r2.cy, r2.w, r2.h, r1.cx, r1.cy);
               return (
                 <g key={edge.id}>
                   <line
@@ -1015,7 +1022,7 @@ export default function IdeaMap() {
                     x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                     onClick={() => commitAndSave({ ...board, edges: board.edges.filter((e) => e.id !== edge.id) })}
                   />
-                  <line className="visible" x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} />
+                  <line className="visible" x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} markerEnd="url(#edge-arrow)" />
                 </g>
               );
             })}
