@@ -18,8 +18,9 @@ Canvas/Heptabase). Người dùng duyệt làm cả 3 đợt; đợt 2-3 sẽ c�
 Mở rộng keydown handler hiện có (đang chỉ Ctrl+Z/Y). Tất cả bị bỏ qua khi đang gõ trong
 input/textarea/select/contentEditable:
 - `Delete`/`Backspace`: xoá mọi card đang chọn (kind-aware edge cleanup như `deleteNode`).
-- `Escape`: thoát lần lượt — đóng colorMenu/badgeUI nếu mở, nếu không thì tắt linkMode,
-  nếu không thì bỏ chọn (clear selectedIds), thoát focus mode (mục 6).
+- `Escape`: thoát lần lượt — đóng colorMenu/badgeUI nếu mở → tắt linkMode → thoát focus
+  mode (mục 6) → bỏ chọn (clear selectedIds). Khi đang gõ trong form edit card, Escape do
+  form xử lý: huỷ edit (không lan ra chain trên).
 - `N`: tạo card mới giữa viewport (cùng math `handleAddClick`), vào edit luôn.
 - `Ctrl/Cmd+D`: nhân bản selection (offset +24,+24, clone cả edge nội bộ giữa các card
   được chọn, chọn các bản sao, 1 undo step). `preventDefault` (chặn bookmark).
