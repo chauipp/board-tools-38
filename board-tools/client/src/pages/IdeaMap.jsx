@@ -4,6 +4,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { getIdeas, saveIdeas } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
+import { paletteCss, applyColorTo, removePaletteColor } from "../lib/palette.js";
 import LoadError from "../components/LoadError.jsx";
 import LocaleToggle from "../components/LocaleToggle.jsx";
 import BadgeEditor from "../components/BadgeEditor.jsx";
@@ -60,6 +61,8 @@ export default function IdeaMap() {
   // Mặc định mở Trạng thái + Nhãn để giữ đúng hành vi cũ khi mới vào; Bảng màu
   // đóng. Chỉ giữ trong state — không lưu qua reload.
   const [panels, setPanels] = useState({ status: true, tag: true, palette: false });
+  const [paletteUI, setPaletteUI] = useState(null); // { mode: "create"|"edit", id?, hex, x, y } | null
+  const [colorDrag, setColorDrag] = useState(null); // { token, x, y } | null
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [marquee, setMarquee] = useState(null);
   const [snapGuides, setSnapGuides] = useState([]);
@@ -1540,8 +1543,40 @@ export default function IdeaMap() {
     setBadgeUI(null);
   }
 
+  function openPaletteEditor(e, entry) {
+    e.preventDefault();
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    setPaletteUI(entry
+      ? { mode: "edit", id: entry.id, hex: entry.hex, x: r.left, y: r.bottom + 6 }
+      : { mode: "create", hex: "#888888", x: r.left, y: r.bottom + 6 });
+  }
+
+  function createPaletteColor(hex) {
+    const id = board.nextPaletteId;
+    commitAndSave({ ...board, palette: [...board.palette, { id, hex }], nextPaletteId: id + 1 });
+    setPaletteUI(null);
+  }
+
+  // Popover ở lại sau khi đổi màu: sửa xong còn có thể chọn lại hoặc xoá luôn.
+  function updatePaletteColor(id, hex) {
+    commitAndSave({ ...board, palette: board.palette.map((c) => (c.id === id ? { ...c, hex } : c)) });
+  }
+
+  function deletePaletteColor(id) {
+    commitAndSave(removePaletteColor(board, id));
+    setPaletteUI(null);
+  }
+
+  function handleColorMouseDown(e, token) {
+    // Kéo-thả màu gắn ở commit sau.
+  }
+
   return (
     <div className={"shell" + (presentIndex != null ? " presenting" : "")} onContextMenu={handlePageContextMenu}>
+      {/* Khai báo màu tự tạo trong cây React: sửa hex là mọi card/dây/badge dùng
+          var(--pal-N) repaint ngay, không cần đi ghi lại từng chỗ tham chiếu. */}
+      <style>{paletteCss(board.palette)}</style>
       <div className="topbar">
         <div>
           <div className="eyebrow"><Trans>Bản đồ ý tưởng</Trans></div>
@@ -1665,6 +1700,27 @@ export default function IdeaMap() {
               )}
               <button className="fb-add" onClick={(e) => openBadgeCreate(e, "tag")} title={t`Thêm nhãn`}>+</button>
             </div>
+          </div>
+        )}
+
+        {panels.palette && (
+          <div className="fb-panel">
+            <div className="fb-chips">
+              {board.palette.map((c) => (
+                <button
+                  key={c.id}
+                  className="pal-swatch"
+                  style={{ background: colorVar(`pal-${c.id}`) }}
+                  onMouseDown={(e) => handleColorMouseDown(e, `pal-${c.id}`)}
+                  onClick={(e) => openPaletteEditor(e, c)}
+                  title={t`Bấm để sửa màu — kéo thả vào thẻ / dây / badge để tô màu`}
+                />
+              ))}
+              <button className="fb-add" onClick={(e) => openPaletteEditor(e, null)} title={t`Thêm màu`}>+</button>
+            </div>
+            {board.palette.length === 0 && (
+              <span className="fb-count"><Trans>Chưa có màu nào — bấm + để tạo.</Trans></span>
+            )}
           </div>
         )}
       </div>
@@ -1982,6 +2038,18 @@ export default function IdeaMap() {
         />
       )}
 
+      {paletteUI && (
+        <PaletteEditor
+          key={paletteUI.mode + "-" + (paletteUI.id ?? "new")}
+          x={paletteUI.x}
+          y={paletteUI.y}
+          hex={paletteUI.hex}
+          onPick={(hex) => (paletteUI.mode === "create" ? createPaletteColor(hex) : updatePaletteColor(paletteUI.id, hex))}
+          onDelete={paletteUI.mode === "edit" ? () => deletePaletteColor(paletteUI.id) : undefined}
+          onClose={() => setPaletteUI(null)}
+        />
+      )}
+
       {edgeMenu && (() => {
         const edge = board.edges.find((e) => e.id === edgeMenu.id);
         if (!edge) return null;
@@ -2097,6 +2165,24 @@ function ReverseIcon() {
       <path d="M2 5h13M11 2l3 3-3 3" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
       <path d="M18 11H5M9 8l-3 3 3 3" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+function PaletteEditor({ x, y, hex, onPick, onDelete, onClose }) {
+  const { t } = useLingui();
+  const ref = useRef(null);
+  useCloseOnOutside(ref, onClose);
+
+  return (
+    <div className="badge-editor pal-editor" ref={ref} style={{ left: x, top: y }} onMouseDown={(e) => e.stopPropagation()}>
+      <div className="eyebrow">{onDelete ? t`Sửa màu` : t`Màu mới`}</div>
+      {/* Ghi ở "change", không phải "input": hộp chọn màu của Windows là modal nên
+          preview realtime vô nghĩa, mà mỗi bước kéo lại thành một entry undo. */}
+      <input className="pal-input" type="color" defaultValue={hex} onChange={(e) => onPick(e.target.value)} />
+      {onDelete && (
+        <button className="em-delete" onClick={onDelete}>🗑 <Trans>Xoá màu</Trans></button>
+      )}
+    </div>
   );
 }
 
