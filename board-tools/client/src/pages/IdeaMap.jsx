@@ -125,6 +125,14 @@ export default function IdeaMap() {
   useEffect(() => { boardRef.current = board; }, [board]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
 
+  // Chip danh tính được render ở AuthGate, ngoài `.shell`, nên selector
+  // `.shell.presenting` không với tới được. Đánh dấu trên body để ẩn nó khi
+  // trình chiếu, giống mọi thứ chrome khác của board.
+  useEffect(() => {
+    document.body.classList.toggle("presenting", presentIndex != null);
+    return () => document.body.classList.remove("presenting");
+  }, [presentIndex]);
+
   useEffect(() => {
     const url = new URL(window.location.href);
     const want = selectedIds.size === 1 ? String(Array.from(selectedIds)[0]) : null;

@@ -92,7 +92,7 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
 .login-error { color: var(--danger); font-size: 12px; margin-top: 12px; }
 
 .identity-chip {
-  position: fixed; z-index: 999; left: 12px; bottom: 12px;
+  position: fixed; z-index: 20; left: 12px; bottom: 12px;
   display: flex; align-items: center; gap: 8px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
   padding: 5px 8px 5px 5px; box-shadow: var(--shadow);
@@ -105,3 +105,4 @@ button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-
   text-overflow: ellipsis; white-space: nowrap;
 }
 .identity-chip-logout { padding: 3px 10px; font-size: 11px; border-radius: 999px; }
+body.presenting .identity-chip { display: none; }
