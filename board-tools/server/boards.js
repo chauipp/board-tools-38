@@ -1,0 +1,138 @@
+import { Router } from "express";
+import { Board, User } from "./models.js";
+import { getBoardRole, isEmailAllowed } from "./auth.js";
+
+const DEFAULT_STATUSES = [
+  { id: 1, name: "Ý tưởng mới", color: "st-idea" },
+  { id: 2, name: "Đang cân nhắc", color: "st-considering" },
+  { id: 3, name: "Đã chọn", color: "st-chosen" },
+  { id: 4, name: "Gác lại", color: "st-parked" },
+  { id: 5, name: "Đã loại", color: "st-rejected" }
+];
+
+const router = Router();
+
+// Trả 404 (không phải 403) khi người gọi không có role nào trên board —
+// tránh lộ việc board có tồn tại hay không cho người ngoài.
+async function loadBoardWithRole(req, res, minRole) {
+  const board = await Board.findById(req.params.id);
+  if (!board) {
+    res.status(404).json({ error: "not_found" });
+    return null;
+  }
+  const role = getBoardRole(board, req.user.email);
+  if (!role) {
+    res.status(404).json({ error: "not_found" });
+    return null;
+  }
+  if (minRole === "editor" && role === "viewer") {
+    res.status(403).json({ error: "read_only" });
+    return null;
+  }
+  if (minRole === "owner" && role !== "owner") {
+    res.status(403).json({ error: "owner_only" });
+    return null;
+  }
+  return { board, role };
+}
+
+router.get("/", async (req, res) => {
+  try {
+    const email = req.user.email.toLowerCase();
+    const boards = await Board.find({
+      $or: [{ ownerEmail: email }, { "members.email": email }]
+    })
+      .select("name ownerEmail members updatedAt")
+      .lean();
+    res.json(
+      boards.map((b) => ({
+        id: String(b._id),
+        name: b.name,
+        role: getBoardRole(b, email),
+        updatedAt: b.updatedAt
+      }))
+    );
+  } catch (e) {
+    res.status(500).json({ error: "Không đọc được danh sách board." });
+  }
+});
+
+router.post("/", async (req, res) => {
+  try {
+    const name = (req.body.name || "").trim() || "Untitled board";
+    const board = await Board.create({
+      name,
+      ownerEmail: req.user.email.toLowerCase(),
+      members: [],
+      statuses: DEFAULT_STATUSES.map((s) => ({ ...s })),
+      nextStatusId: 6
+    });
+    res.status(201).json({ id: String(board._id) });
+  } catch (e) {
+    res.status(500).json({ error: "Không tạo được board." });
+  }
+});
+
+router.get("/:id", async (req, res) => {
+  try {
+    const found = await loadBoardWithRole(req, res, "viewer");
+    if (!found) return;
+    const { board, role } = found;
+    const obj = board.toObject();
+    res.json({
+      id: String(obj._id),
+      name: obj.name,
+      role,
+      nodes: obj.nodes,
+      edges: obj.edges,
+      groups: obj.groups,
+      statuses: obj.statuses,
+      tags: obj.tags,
+      palette: obj.palette,
+      nextNodeId: obj.nextNodeId,
+      nextEdgeId: obj.nextEdgeId,
+      nextGroupId: obj.nextGroupId,
+      nextStatusId: obj.nextStatusId,
+      nextTagId: obj.nextTagId,
+      nextPaletteId: obj.nextPaletteId,
+      view: obj.view
+    });
+  } catch (e) {
+    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
+    res.status(500).json({ error: "Không đọc được dữ liệu board." });
+  }
+});
+
+router.put("/:id", async (req, res) => {
+  try {
+    const found = await loadBoardWithRole(req, res, "editor");
+    if (!found) return;
+    const {
+      nodes, edges, groups, statuses, tags, palette,
+      nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, view
+    } = req.body;
+    await Board.findByIdAndUpdate(req.params.id, {
+      nodes, edges, groups, statuses, tags, palette,
+      nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId,
+      view, updatedAt: new Date()
+    });
+    res.json({ ok: true });
+  } catch (e) {
+    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
+    res.status(500).json({ error: "Không lưu được dữ liệu board." });
+  }
+});
+
+router.delete("/:id", async (req, res) => {
+  try {
+    const found = await loadBoardWithRole(req, res, "owner");
+    if (!found) return;
+    await Board.findByIdAndDelete(req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
+    res.status(500).json({ error: "Không xoá được board." });
+  }
+});
+
+export default router;
