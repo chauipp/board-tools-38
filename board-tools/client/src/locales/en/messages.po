@@ -267,7 +267,7 @@ msgstr "Current JSON — copy it to back up or share with someone."
 msgid "JSON không hợp lệ — kiểm tra lại nội dung đã dán."
 msgstr "Invalid JSON — check what you pasted."
 
-#: src/components/DockPanel.jsx:73
+#: src/components/DockPanel.jsx:91
 msgid "Kéo để đặt vị trí — bấm để xoay ngang/dọc"
 msgstr "Drag to reposition — click to rotate"
 

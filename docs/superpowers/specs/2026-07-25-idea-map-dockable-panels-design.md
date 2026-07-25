@@ -16,8 +16,13 @@ Mỗi panel ở một trong hai trạng thái:
 - **Neo (mặc định)** — nằm trong filterbar như hiện tại, xếp hàng theo thứ tự cố định.
 - **Nổi** — `position: fixed` tại `{x, y}`, có nền + viền + shadow riêng.
 
-Kéo dấu 6 chấm ra khỏi filterbar → panel thành nổi. Thả **trở lại trong filterbar** → neo lại.
-Không có vùng thả (drop zone) vẽ riêng: chính filterbar là vùng thả, và nó luôn nhìn thấy được.
+Kéo dấu 6 chấm ra khỏi filterbar → panel thành nổi. Thả **lên hàng nút** (Trạng thái · Nhãn ·
+Bảng màu) → neo lại. Không có vùng thả vẽ riêng: hàng nút luôn hiện, kể cả khi cả ba panel
+đều nổi.
+
+Vùng thả là **hàng nút**, không phải cả filterbar. Lấy cả bar thì nó nuốt đúng dải mà người
+dùng muốn đặt panel nổi thẳng hàng với panel đang neo — mọi lần thả ở đó đều thành neo lại,
+và căn hàng ở dải đó không bao giờ xảy ra được.
 
 Cờ ngang/dọc **lưu độc lập** với neo/nổi — click dấu 6 chấm là xoay, bất kể panel đang ở đâu,
 và cờ đó theo panel khi kéo ra. Nhưng hướng dọc chỉ **áp dụng khi panel nổi**: panel neo trải
@@ -25,12 +30,25 @@ hết chiều ngang bar, xếp dọc chỉ làm bar cao vống lên với mỗi 
 ghép hai thứ (kiểu "nổi thì tự thành dọc") vì người dùng có thể muốn một panel dọc dựng ở mép
 phải trong khi hai panel kia vẫn ngang trong bar.
 
-## Snap = hút vào mép khung nhìn
+## Snap: mép khung nhìn + căn hàng với panel khác
 
-`snapToEdges` kẹp panel trong khung nhìn rồi hút vào mép nếu đã đủ gần (24px). Đó là toàn
-bộ cơ chế "kéo tới đúng chỗ thì dính": mép trái, mép phải, mép trên, mép dưới, cộng với
-filterbar để neo lại. Không làm lưới snap, không làm panel hút vào nhau — chưa yêu cầu, và
-mỗi vùng hút thêm là một chỗ panel "nhảy" ngoài ý muốn.
+Hai lớp hút, ngưỡng 24px:
+
+1. **Mép khung nhìn** — trái / phải / trên / dưới.
+2. **Căn hàng với các panel khác** — tái dùng `computeSnap` của kéo thẻ
+   ([`lib/snap.js`](../../../game-tools/client/src/lib/snap.js)): mốc trái/giữa/phải trên trục
+   ngang, trên/giữa/dưới trên trục dọc, chọn cặp lệch ít nhất. Panel neo cũng là mốc, nên kéo
+   một panel nổi tới ngang hàng với panel đang neo là nó dính vào đúng hàng.
+
+Thứ tự: hút mép **trước**, căn hàng **sau**, và bước cuối chỉ kẹp trong khung nhìn chứ không
+hút mép lần nữa. Nếu hút mép chạy sau thì một panel vừa căn thẳng hàng ở cách mép 20px sẽ bị
+mép giật ra khỏi hàng — căn hàng phải thắng.
+
+`computeSnap` trả sẵn guide; vẽ bằng div `position: fixed` 1px trong lúc kéo, xoá khi thả.
+Không có guide thì snap đọc như "panel tự nhảy" chứ không như "nó dính vào cái kia".
+
+Không làm lưới snap, không cho panel hút dính cạnh-kề-cạnh với nhau — mỗi vùng hút thêm là
+một chỗ panel nhảy ngoài ý muốn.
 
 Kẹp trong khung nhìn là bắt buộc, không phải tính năng phụ: panel thả ra ngoài mép là panel
 không lấy lại được.

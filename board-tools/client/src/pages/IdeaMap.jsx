@@ -81,7 +81,7 @@ export default function IdeaMap() {
   const [, bump] = useState(0);
 
   const viewportRef = useRef(null);
-  const filterbarRef = useRef(null);
+  const fbTabsRef = useRef(null);
   const canvasRef = useRef(null);
   const saveTimerRef = useRef(null);
   const boardRef = useRef(null);
@@ -1658,8 +1658,8 @@ export default function IdeaMap() {
         <button className="btn ghost icon" onClick={toggleTheme} title={t`Đổi giao diện sáng/tối`}>◐</button>
       </div>
 
-      <div className="filterbar" ref={filterbarRef}>
-        <div className="fb-tabs">
+      <div className="filterbar">
+        <div className="fb-tabs" ref={fbTabsRef}>
           <button className={"btn ghost toggle" + (panels.status ? " active" : "")} onClick={() => togglePanel("status")}><Trans>Trạng thái</Trans></button>
           <button className={"btn ghost toggle" + (panels.tag ? " active" : "")} onClick={() => togglePanel("tag")}><Trans>Nhãn</Trans></button>
           <button className={"btn ghost toggle" + (panels.palette ? " active" : "")} onClick={() => togglePanel("palette")}><Trans>Bảng màu</Trans></button>
@@ -1681,7 +1681,7 @@ export default function IdeaMap() {
         </div>
 
         {panels.status && (
-          <DockPanel title={t`Trạng thái`} layout={layouts.status} barRef={filterbarRef} onLayout={(l) => setLayout("status", l)}>
+          <DockPanel title={t`Trạng thái`} layout={layouts.status} barRef={fbTabsRef} onLayout={(l) => setLayout("status", l)}>
             <div className="fb-chips">
               {board.statuses.map((s) => {
                 const key = String(s.id);
@@ -1718,7 +1718,7 @@ export default function IdeaMap() {
         )}
 
         {panels.tag && (
-          <DockPanel title={t`Nhãn`} layout={layouts.tag} barRef={filterbarRef} onLayout={(l) => setLayout("tag", l)}>
+          <DockPanel title={t`Nhãn`} layout={layouts.tag} barRef={fbTabsRef} onLayout={(l) => setLayout("tag", l)}>
             <div className="fb-chips">
               {board.tags.map((tg) => {
                 const key = String(tg.id);
@@ -1755,7 +1755,7 @@ export default function IdeaMap() {
         )}
 
         {panels.palette && (
-          <DockPanel title={t`Bảng màu`} layout={layouts.palette} barRef={filterbarRef} onLayout={(l) => setLayout("palette", l)}>
+          <DockPanel title={t`Bảng màu`} layout={layouts.palette} barRef={fbTabsRef} onLayout={(l) => setLayout("palette", l)}>
             <div className="fb-chips">
               {board.palette.map((c) => (
                 <button
