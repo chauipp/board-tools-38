@@ -4,11 +4,14 @@ import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import cookieParser from "cookie-parser";
+import http from "node:http";
+import { Server } from "socket.io";
 import {
   requireAuth,
   isEmailAllowed,
   signSession,
   verifyGoogleIdToken,
+  parseSessionFromCookieHeader,
   SESSION_COOKIE_NAME,
   SESSION_COOKIE_MAX_AGE_MS
 } from "./auth.js";
@@ -283,6 +286,38 @@ app.get("*", (req, res, next) => {
   });
 });
 
-app.listen(PORT, () => {
+const server = http.createServer(app);
+const io = new Server(server);
+
+io.use((socket, next) => {
+  const user = parseSessionFromCookieHeader(socket.handshake.headers.cookie);
+  if (!user) return next(new Error("unauthorized"));
+  socket.data.user = user;
+  next();
+});
+
+const presencePeers = new Map(); // socket.id -> { socketId, email, name, picture, x, y }
+
+io.on("connection", (socket) => {
+  const peer = { socketId: socket.id, ...socket.data.user, x: 0, y: 0 };
+  presencePeers.set(socket.id, peer);
+  socket.emit("presence:sync", Array.from(presencePeers.values()));
+  socket.broadcast.emit("presence:join", peer);
+
+  socket.on("cursor:move", ({ x, y }) => {
+    const p = presencePeers.get(socket.id);
+    if (!p || typeof x !== "number" || typeof y !== "number") return;
+    p.x = x;
+    p.y = y;
+    socket.broadcast.emit("cursor:move", p);
+  });
+
+  socket.on("disconnect", () => {
+    presencePeers.delete(socket.id);
+    socket.broadcast.emit("presence:leave", { socketId: socket.id });
+  });
+});
+
+server.listen(PORT, () => {
   console.log("Game tools server đang chạy tại http://localhost:" + PORT);
 });
