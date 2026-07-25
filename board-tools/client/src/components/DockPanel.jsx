@@ -1,6 +1,15 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLingui } from "@lingui/react/macro";
-import { snapPanel } from "../lib/dock.js";
+import { snapPanel, clampToBounds } from "../lib/dock.js";
+
+// Panel nổi bị kẹp trong vùng vẽ, không phải trong cửa sổ — đó là thứ đảm bảo nó
+// không che một chút nào lên thanh trên hay bar.
+function canvasBounds() {
+  const el = document.querySelector(".viewport");
+  if (!el) return { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
+  const r = el.getBoundingClientRect();
+  return { x: r.x, y: r.y, w: r.width, h: r.height };
+}
 
 // Mốc căn hàng = các panel còn lại (neo hay nổi đều tính). Đọc trực tiếp từ DOM
 // thay vì truyền rect qua prop: chỉ một panel được kéo tại một thời điểm, và rect
@@ -32,6 +41,22 @@ export default function DockPanel({ title, layout, barRef, onLayout, children })
   const ref = useRef(null);
   const [guides, setGuides] = useState([]);
 
+  // Vị trí lưu từ phiên trước có thể đang đè lên bar (dữ liệu cũ, từ trước khi panel
+  // bị kẹp trong vùng vẽ) hoặc nằm ngoài cửa sổ đã thu nhỏ. Kẹp lại khi mount và mỗi
+  // lần đổi cỡ cửa sổ. Chỉ kẹp, không hút mép: một vị trí vẫn hợp lệ thì để nguyên.
+  useEffect(() => {
+    if (!layout.free) return;
+    function reclamp() {
+      const el = ref.current;
+      if (!el) return;
+      const p = clampToBounds(layout.x, layout.y, el.offsetWidth, el.offsetHeight, canvasBounds());
+      if (p.x !== layout.x || p.y !== layout.y) onLayout({ ...layout, x: p.x, y: p.y });
+    }
+    reclamp();
+    window.addEventListener("resize", reclamp);
+    return () => window.removeEventListener("resize", reclamp);
+  }, [layout.free, layout.x, layout.y]);
+
   function handleGripMouseDown(e) {
     if (e.button !== 0) return;
     e.stopPropagation();
@@ -57,7 +82,7 @@ export default function DockPanel({ title, layout, barRef, onLayout, children })
       const p = snapPanel(
         ev.clientX - grabX, ev.clientY - grabY,
         el.offsetWidth, el.offsetHeight,
-        window.innerWidth, window.innerHeight,
+        canvasBounds(),
         otherPanelRects(el)
       );
       setGuides(p.guides);

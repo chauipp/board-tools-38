@@ -10,36 +10,49 @@ export const DEFAULT_LAYOUTS = {
   palette: { free: false, vertical: false, x: 0, y: 0 }
 };
 
-// Kẹp trong khung nhìn. Bắt buộc, không phải tính năng phụ: panel thả ra ngoài
-// mép là panel không lấy lại được.
-function clamp1D(pos, size, viewport) {
-  return Math.min(Math.max(pos, MARGIN), Math.max(MARGIN, viewport - size - MARGIN));
+// `bounds` là hình chữ nhật VÙNG VẼ, không phải cả cửa sổ. Kẹp theo vùng vẽ là cách
+// duy nhất đảm bảo panel nổi không che một chút nào lên thanh trên / hàng nút / khay
+// neo: panel chỉ còn hai chỗ hợp lệ — dính sát mép ngoài bar, hoặc vào thẳng trong
+// khay. Chặn ở gốc, không phải đi dò từng ca chồng lấn.
+function clampAxis(pos, size, start, extent) {
+  const min = start + MARGIN;
+  return Math.min(Math.max(pos, min), Math.max(min, start + extent - size - MARGIN));
 }
 
-// Kẹp rồi hút vào mép nếu đã đủ gần.
-export function snapToEdges(x, y, w, h, vw, vh) {
-  const maxX = Math.max(MARGIN, vw - w - MARGIN);
-  const maxY = Math.max(MARGIN, vh - h - MARGIN);
-  let nx = clamp1D(x, w, vw);
-  let ny = clamp1D(y, h, vh);
-  if (nx - MARGIN < SNAP) nx = MARGIN;
+// Chỉ kẹp, không hút mép. Dùng cho vị trí đọc từ localStorage: vị trí cũ có thể
+// đang đè lên bar hoặc nằm ngoài cửa sổ đã thu nhỏ, nhưng không được tự dịch một
+// vị trí vẫn hợp lệ mà người dùng đã đặt.
+export function clampToBounds(x, y, w, h, bounds) {
+  return {
+    x: clampAxis(x, w, bounds.x, bounds.w),
+    y: clampAxis(y, h, bounds.y, bounds.h)
+  };
+}
+
+// Kẹp rồi hút vào mép vùng vẽ nếu đã đủ gần.
+export function snapToEdges(x, y, w, h, bounds) {
+  const maxX = Math.max(bounds.x + MARGIN, bounds.x + bounds.w - w - MARGIN);
+  const maxY = Math.max(bounds.y + MARGIN, bounds.y + bounds.h - h - MARGIN);
+  let nx = clampAxis(x, w, bounds.x, bounds.w);
+  let ny = clampAxis(y, h, bounds.y, bounds.h);
+  if (nx - (bounds.x + MARGIN) < SNAP) nx = bounds.x + MARGIN;
   else if (maxX - nx < SNAP) nx = maxX;
-  if (ny - MARGIN < SNAP) ny = MARGIN;
+  if (ny - (bounds.y + MARGIN) < SNAP) ny = bounds.y + MARGIN;
   else if (maxY - ny < SNAP) ny = maxY;
   return { x: nx, y: ny };
 }
 
-// Hút mép khung nhìn TRƯỚC, căn theo panel khác SAU, nên căn hàng thắng mép: một
-// panel thẳng hàng với panel khác ở cách mép 20px được kéo về hàng đó thay vì bị
-// mép giật đi. Bước cuối chỉ KẸP, không hút mép lần nữa — hút lại là phá đúng cái
-// hàng vừa căn xong. Tái dùng computeSnap của kéo thẻ: cùng bộ mốc trái/giữa/phải,
-// và trả sẵn guide để vẽ.
-export function snapPanel(x, y, w, h, vw, vh, others) {
-  const edge = snapToEdges(x, y, w, h, vw, vh);
+// Hút mép vùng vẽ TRƯỚC, căn theo panel khác SAU, nên căn hàng thắng mép: một panel
+// thẳng hàng với panel khác ở cách mép 20px được kéo về hàng đó thay vì bị mép giật
+// đi. Bước cuối chỉ KẸP, không hút mép lần nữa — hút lại là phá đúng cái hàng vừa
+// căn xong. Tái dùng computeSnap của kéo thẻ: cùng bộ mốc trái/giữa/phải, và trả sẵn
+// guide để vẽ.
+export function snapPanel(x, y, w, h, bounds, others) {
+  const edge = snapToEdges(x, y, w, h, bounds);
   const { dx, dy, guides } = computeSnap({ x: edge.x, y: edge.y, w, h }, others, SNAP);
   return {
-    x: clamp1D(edge.x + dx, w, vw),
-    y: clamp1D(edge.y + dy, h, vh),
+    x: clampAxis(edge.x + dx, w, bounds.x, bounds.w),
+    y: clampAxis(edge.y + dy, h, bounds.y, bounds.h),
     guides
   };
 }

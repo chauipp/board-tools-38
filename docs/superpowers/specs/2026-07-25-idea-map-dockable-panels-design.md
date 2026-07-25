@@ -47,15 +47,32 @@ chung một hàng với các panel neo khác, xếp dọc một cái là cả h�
 xuống. Không tự động ghép hai thứ (kiểu "nổi thì tự thành dọc") vì người dùng có thể muốn một
 panel dọc dựng ở mép phải trong khi hai panel kia vẫn ngang trong khay.
 
-## Snap: mép khung nhìn + căn hàng với panel khác
+## Panel nổi không được che bar, một chút cũng không
+
+Panel nổi bị kẹp trong **hình chữ nhật vùng vẽ**, không phải trong cửa sổ. Nên panel chỉ còn
+hai chỗ hợp lệ: **dính sát mép ngoài bar**, hoặc **vào thẳng trong khay**. Không có trạng thái
+thứ ba là "đè lên bar một phần".
+
+Kẹp theo vùng vẽ là chặn ở gốc, không phải đi dò từng ca chồng lấn: không có nhánh nào cần
+kiểm "panel có đang đè bar không" vì vị trí đè bar không bao giờ tính ra được.
+
+Hệ quả có ý thức: **không còn căn ngang hàng được với panel neo**, vì dải đó chính là bar.
+Kéo tới đó thì panel dính vào mép trên vùng vẽ, ngay dưới bar. Yêu cầu "không che một chút
+nào" mạnh hơn tiện lợi của việc căn hàng đó.
+
+Vị trí đọc từ `localStorage` được **kẹp lại khi mount và mỗi lần đổi cỡ cửa sổ** — chỉ kẹp,
+không hút mép, để không tự dịch một vị trí vẫn hợp lệ mà người dùng đã đặt. Không có bước này
+thì vị trí lưu từ phiên cũ (hoặc cửa sổ vừa thu nhỏ) vẫn hiện ra đè lên bar.
+
+## Snap: mép vùng vẽ + căn hàng với panel khác
 
 Hai lớp hút, ngưỡng 24px:
 
-1. **Mép khung nhìn** — trái / phải / trên / dưới.
+1. **Mép vùng vẽ** — trái / phải / trên / dưới.
 2. **Căn hàng với các panel khác** — tái dùng `computeSnap` của kéo thẻ
    ([`lib/snap.js`](../../../game-tools/client/src/lib/snap.js)): mốc trái/giữa/phải trên trục
-   ngang, trên/giữa/dưới trên trục dọc, chọn cặp lệch ít nhất. Panel neo cũng là mốc, nên kéo
-   một panel nổi tới ngang hàng với panel đang neo là nó dính vào đúng hàng.
+   ngang, trên/giữa/dưới trên trục dọc, chọn cặp lệch ít nhất. Panel neo vẫn là mốc, nhưng chỉ
+   mốc trục ngang dùng được — mốc trục dọc của nó nằm trong bar nên kẹp luôn thắng.
 
 Thứ tự: hút mép **trước**, căn hàng **sau**, và bước cuối chỉ kẹp trong khung nhìn chứ không
 hút mép lần nữa. Nếu hút mép chạy sau thì một panel vừa căn thẳng hàng ở cách mép 20px sẽ bị
@@ -67,8 +84,7 @@ Không có guide thì snap đọc như "panel tự nhảy" chứ không như "n�
 Không làm lưới snap, không cho panel hút dính cạnh-kề-cạnh với nhau — mỗi vùng hút thêm là
 một chỗ panel nhảy ngoài ý muốn.
 
-Kẹp trong khung nhìn là bắt buộc, không phải tính năng phụ: panel thả ra ngoài mép là panel
-không lấy lại được.
+Kẹp là bắt buộc, không phải tính năng phụ: panel thả ra ngoài mép là panel không lấy lại được.
 
 ## Lưu vị trí ở localStorage, không lưu vào board
 

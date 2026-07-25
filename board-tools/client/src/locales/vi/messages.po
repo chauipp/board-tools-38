@@ -267,7 +267,7 @@ msgstr "JSON hiện tại — copy để sao lưu hoặc gửi cho người khá
 msgid "JSON không hợp lệ — kiểm tra lại nội dung đã dán."
 msgstr "JSON không hợp lệ — kiểm tra lại nội dung đã dán."
 
-#: src/components/DockPanel.jsx:99
+#: src/components/DockPanel.jsx:124
 msgid "Kéo để đặt vị trí — bấm để xoay ngang/dọc"
 msgstr "Kéo để đặt vị trí — bấm để xoay ngang/dọc"
 
