@@ -370,12 +370,14 @@ export default function IdeaMap() {
   const currentUser = user.name;
 
   function handlePresenceMouseMove(e) {
-    const rect = viewportRef.current.getBoundingClientRect();
-    const view = boardRef.current.view;
-    sendCursor(
-      (e.clientX - rect.left - view.panX) / view.scale,
-      (e.clientY - rect.top - view.panY) / view.scale
-    );
+    sendCursor(() => {
+      const rect = viewportRef.current.getBoundingClientRect();
+      const view = boardRef.current.view;
+      return {
+        x: (e.clientX - rect.left - view.panX) / view.scale,
+        y: (e.clientY - rect.top - view.panY) / view.scale
+      };
+    });
   }
 
   function entityAtPoint(clientX, clientY) {

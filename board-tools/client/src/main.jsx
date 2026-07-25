@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { I18nProvider } from "@lingui/react";
+import { Trans } from "@lingui/react/macro";
 import { i18n } from "./lib/i18n.js";
 import "@fontsource/anton";
 import "@fontsource/ibm-plex-sans/400.css";
@@ -16,11 +17,39 @@ import Calculator from "./pages/Calculator.jsx";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 import LoginGate from "./components/LoginGate.jsx";
 
+function IdentityChip() {
+  const { user, logout } = useAuth();
+  const [imgOk, setImgOk] = React.useState(true);
+
+  return (
+    <div className="identity-chip">
+      {user.picture && imgOk && (
+        <img
+          className="identity-chip-avatar"
+          src={user.picture}
+          alt=""
+          referrerPolicy="no-referrer"
+          onError={() => setImgOk(false)}
+        />
+      )}
+      <span className="identity-chip-name">{user.name}</span>
+      <button type="button" className="btn ghost identity-chip-logout" onClick={logout}>
+        <Trans>Đăng xuất</Trans>
+      </button>
+    </div>
+  );
+}
+
 function AuthGate({ children }) {
   const { user, loading } = useAuth();
   if (loading) return null;
   if (!user) return <LoginGate />;
-  return children;
+  return (
+    <>
+      <IdentityChip />
+      {children}
+    </>
+  );
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(

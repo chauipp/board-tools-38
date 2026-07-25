@@ -77,12 +77,16 @@ export function usePresence(user) {
     };
   }, [user]);
 
-  function sendCursor(x, y) {
+  // Takes a lazy coordinate getter (rather than x/y directly) so callers can
+  // defer any expensive work (e.g. getBoundingClientRect()) until after the
+  // throttle gate below, instead of doing it on every raw mousemove.
+  function sendCursor(getXY) {
     const socket = socketRef.current;
     if (!socket) return;
     const now = Date.now();
     if (now - lastSentAtRef.current < CURSOR_THROTTLE_MS) return;
     lastSentAtRef.current = now;
+    const { x, y } = getXY();
     socket.emit("cursor:move", { x, y });
   }
 

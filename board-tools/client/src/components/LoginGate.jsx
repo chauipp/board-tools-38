@@ -24,10 +24,25 @@ function loadGsiScript() {
   });
 }
 
+// Decode-only (no signature check — the server is the one that verifies the
+// token). Used purely to show the user which account was rejected.
+function decodeEmailFromIdToken(idToken) {
+  try {
+    const payload = idToken.split(".")[1];
+    const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64 + "===".slice((base64.length + 3) % 4);
+    const json = atob(padded);
+    return JSON.parse(json).email || null;
+  } catch (e) {
+    return null;
+  }
+}
+
 export default function LoginGate() {
   const { setUser } = useAuth();
   const buttonRef = useRef(null);
   const [error, setError] = useState(null);
+  const [rejectedEmail, setRejectedEmail] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -41,7 +56,12 @@ export default function LoginGate() {
               const user = await loginWithGoogle(response.credential);
               setUser(user);
             } catch (e) {
-              setError(e.code === "NOT_ALLOWED" ? "not_allowed" : "login_failed");
+              if (e.code === "NOT_ALLOWED") {
+                setRejectedEmail(decodeEmailFromIdToken(response.credential));
+                setError("not_allowed");
+              } else {
+                setError("login_failed");
+              }
             }
           }
         });
@@ -67,7 +87,11 @@ export default function LoginGate() {
         <div ref={buttonRef} />
         {error === "not_allowed" && (
           <p className="login-error">
-            <Trans>Tài khoản này chưa được cấp quyền truy cập.</Trans>
+            {rejectedEmail ? (
+              <Trans>Tài khoản {rejectedEmail} chưa được cấp quyền truy cập.</Trans>
+            ) : (
+              <Trans>Tài khoản này chưa được cấp quyền truy cập.</Trans>
+            )}
           </p>
         )}
         {error === "login_failed" && (
