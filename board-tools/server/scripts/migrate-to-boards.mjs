@@ -10,6 +10,7 @@ import { User, Board } from "../models.js";
 dotenv.config();
 
 const OWNER_EMAIL = "chaupt2823@gmail.com";
+const BOARD_NAME = "Board của Châu";
 
 const DEFAULT_STATUSES = [
   { id: 1, name: "Ý tưởng mới", color: "st-idea" },
@@ -68,10 +69,11 @@ async function main() {
     process.exit(1);
   }
   await mongoose.connect(process.env.MONGODB_URI);
+  console.log(`Đang kết nối tới ${mongoose.connection.host}/${mongoose.connection.name} …`);
 
-  const existingBoardCount = await Board.countDocuments();
-  if (existingBoardCount > 0) {
-    console.log(`Đã có ${existingBoardCount} Board — migration có thể đã chạy rồi. Dừng lại, không tạo trùng.`);
+  const existingBoard = await Board.findOne({ ownerEmail: OWNER_EMAIL, name: BOARD_NAME });
+  if (existingBoard) {
+    console.log(`Board "${BOARD_NAME}" (id ${existingBoard._id}) đã tồn tại — migration có thể đã chạy rồi. Dừng lại, không tạo trùng.`);
     await mongoose.disconnect();
     return;
   }
@@ -92,7 +94,7 @@ async function main() {
   );
 
   const board = await Board.create({
-    name: "Board của Châu",
+    name: BOARD_NAME,
     ownerEmail: OWNER_EMAIL,
     members: [],
     nodes: legacy.nodes,
@@ -115,7 +117,10 @@ async function main() {
   await mongoose.disconnect();
 }
 
-main().catch((e) => {
+main().catch(async (e) => {
   console.error("Migration thất bại:", e);
+  if (mongoose.connection.readyState !== 0) {
+    await mongoose.disconnect().catch(() => {});
+  }
   process.exit(1);
 });
