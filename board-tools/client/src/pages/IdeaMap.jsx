@@ -81,7 +81,7 @@ export default function IdeaMap() {
   const [, bump] = useState(0);
 
   const viewportRef = useRef(null);
-  const fbTabsRef = useRef(null);
+  const fbDockRef = useRef(null);
   const canvasRef = useRef(null);
   const saveTimerRef = useRef(null);
   const boardRef = useRef(null);
@@ -1661,7 +1661,7 @@ export default function IdeaMap() {
       </div>
 
       <div className="filterbar">
-        <div className="fb-tabs" ref={fbTabsRef}>
+        <div className="fb-tabs">
           <button className={"btn ghost toggle" + (panels.status ? " active" : "")} onClick={() => togglePanel("status")}><Trans>Trạng thái</Trans></button>
           <button className={"btn ghost toggle" + (panels.tag ? " active" : "")} onClick={() => togglePanel("tag")}><Trans>Nhãn</Trans></button>
           <button className={"btn ghost toggle" + (panels.palette ? " active" : "")} onClick={() => togglePanel("palette")}><Trans>Bảng màu</Trans></button>
@@ -1682,13 +1682,13 @@ export default function IdeaMap() {
           )}
         </div>
 
-        {/* Panel neo chảy cùng một hàng, hết chỗ mới xuống dòng — bật panel thứ ba
-            không được đẩy hai panel kia thành ba tầng. Panel nổi vẫn render trong
-            đây nhưng position:fixed nên không tính vào chiều cao hàng; do đó khi
-            không còn panel neo nào thì hàng này cao 0 và không vẽ đường kẻ. */}
-        <div className={"fb-dock" + (hasDockedPanel ? " on" : "")}>
+        {/* Khay neo: LUÔN hiện, kể cả rỗng, và chính nó là vùng thả. Panel neo chảy
+            cùng một hàng, hết chỗ mới xuống dòng — bật panel thứ ba không được đẩy
+            hai panel kia thành ba tầng. Giữ chỗ cả khi rỗng để panel vừa bật lên
+            luôn có dải riêng của nó, không bị panel nổi đậu đè lên che mất. */}
+        <div className={"fb-dock" + (hasDockedPanel ? " on" : "")} ref={fbDockRef}>
         {panels.status && (
-          <DockPanel title={t`Trạng thái`} layout={layouts.status} barRef={fbTabsRef} onLayout={(l) => setLayout("status", l)}>
+          <DockPanel title={t`Trạng thái`} layout={layouts.status} barRef={fbDockRef} onLayout={(l) => setLayout("status", l)}>
             <div className="fb-chips">
               {board.statuses.map((s) => {
                 const key = String(s.id);
@@ -1725,7 +1725,7 @@ export default function IdeaMap() {
         )}
 
         {panels.tag && (
-          <DockPanel title={t`Nhãn`} layout={layouts.tag} barRef={fbTabsRef} onLayout={(l) => setLayout("tag", l)}>
+          <DockPanel title={t`Nhãn`} layout={layouts.tag} barRef={fbDockRef} onLayout={(l) => setLayout("tag", l)}>
             <div className="fb-chips">
               {board.tags.map((tg) => {
                 const key = String(tg.id);
@@ -1762,7 +1762,7 @@ export default function IdeaMap() {
         )}
 
         {panels.palette && (
-          <DockPanel title={t`Bảng màu`} layout={layouts.palette} barRef={fbTabsRef} onLayout={(l) => setLayout("palette", l)}>
+          <DockPanel title={t`Bảng màu`} layout={layouts.palette} barRef={fbDockRef} onLayout={(l) => setLayout("palette", l)}>
             <div className="fb-chips">
               {board.palette.map((c) => (
                 <button

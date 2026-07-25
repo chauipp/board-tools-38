@@ -41,9 +41,10 @@ export default function DockPanel({ title, layout, barRef, onLayout, children })
     const startX = e.clientX, startY = e.clientY;
     let dragging = false;
 
-    // Vùng thả để neo lại là hàng nút, không phải cả filterbar: lấy cả bar thì nó
-    // nuốt đúng dải mà người ta muốn đặt panel nổi thẳng hàng với panel đang neo,
-    // và không bao giờ căn hàng được ở đó.
+    // Vùng thả là khay neo — dải luôn hiện ngay dưới hàng nút, kể cả khi rỗng.
+    // Không lấy cả filterbar: hàng nút phải bấm được, và lấy cả bar thì mọi lần
+    // thả gần đó đều thành neo. Khay là đích duy nhất nên không còn nhập nhằng
+    // "đậu nổi ở đây" với "neo vào đây": ở trong khay là neo, ngoài khay là nổi.
     function overBar(ev) {
       const bar = barRef.current && barRef.current.getBoundingClientRect();
       return !!bar && ev.clientX >= bar.left && ev.clientX <= bar.right
