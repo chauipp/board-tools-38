@@ -62,6 +62,13 @@ export function usePresence(user) {
       warnedRef.current = true;
       console.warn("[presence] socket connection rejected:", err.message);
     });
+    socket.on("connect", () => {
+      // A genuine, later connect (e.g. after the session cookie is renewed
+      // or reconnection just succeeds) un-sticks the warn guard, so a
+      // subsequent real rejection (session expires again) warns again
+      // instead of being silently swallowed for the rest of the mount.
+      warnedRef.current = false;
+    });
 
     return () => {
       socket.disconnect();
