@@ -12,6 +12,7 @@ import {
   signSession,
   verifyGoogleIdToken,
   parseSessionFromCookieHeader,
+  getBoardRole,
   SESSION_COOKIE_NAME,
   SESSION_COOKIE_MAX_AGE_MS
 } from "./auth.js";
@@ -173,33 +174,63 @@ app.get("*", (req, res, next) => {
 const server = http.createServer(app);
 const io = new Server(server);
 
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   const user = parseSessionFromCookieHeader(socket.handshake.headers.cookie);
   if (!user || !isEmailAllowed(user.email)) return next(new Error("unauthorized"));
+  const boardId = socket.handshake.query.boardId;
+  if (!boardId) return next(new Error("missing_board"));
+  let board;
+  try {
+    board = await Board.findById(boardId).select("ownerEmail members").lean();
+  } catch (e) {
+    return next(new Error("forbidden"));
+  }
+  if (!board) return next(new Error("forbidden"));
+  const role = getBoardRole(board, user.email);
+  if (!role) return next(new Error("forbidden"));
   socket.data.user = user;
+  socket.data.boardId = String(boardId);
+  socket.data.role = role;
   next();
 });
 
-const presencePeers = new Map(); // socket.id -> { socketId, email, name, picture, x, y }
+// boardId -> Map<socket.id, { socketId, email, name, picture, x, y }>
+const presencePeers = new Map();
+
+function peersForBoard(boardId) {
+  let m = presencePeers.get(boardId);
+  if (!m) {
+    m = new Map();
+    presencePeers.set(boardId, m);
+  }
+  return m;
+}
 
 io.on("connection", (socket) => {
+  const room = "board:" + socket.data.boardId;
+  socket.join(room);
+  const peers = peersForBoard(socket.data.boardId);
   const peer = { socketId: socket.id, ...socket.data.user, x: 0, y: 0 };
-  presencePeers.set(socket.id, peer);
-  socket.emit("presence:sync", Array.from(presencePeers.values()));
-  socket.broadcast.emit("presence:join", peer);
+  peers.set(socket.id, peer);
+  socket.emit("presence:sync", Array.from(peers.values()));
+  socket.to(room).emit("presence:join", peer);
 
+  // Cursor position là presence, không phải chỉnh sửa dữ liệu — viewer vẫn
+  // được thấy và được người khác thấy con trỏ, chỉ bị chặn ghi dữ liệu thật
+  // ở PUT /api/boards/:id (403 read_only).
   socket.on("cursor:move", (payload) => {
     const { x, y } = payload || {};
-    const p = presencePeers.get(socket.id);
+    const p = peers.get(socket.id);
     if (!p || !Number.isFinite(x) || !Number.isFinite(y)) return;
     p.x = x;
     p.y = y;
-    socket.broadcast.emit("cursor:move", p);
+    socket.to(room).emit("cursor:move", p);
   });
 
   socket.on("disconnect", () => {
-    presencePeers.delete(socket.id);
-    socket.broadcast.emit("presence:leave", { socketId: socket.id });
+    peers.delete(socket.id);
+    if (peers.size === 0) presencePeers.delete(socket.data.boardId);
+    socket.to(room).emit("presence:leave", { socketId: socket.id });
   });
 });
 
