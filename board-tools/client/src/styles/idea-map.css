@@ -139,13 +139,13 @@
 }
 .connector-zone:hover .connector-dot { opacity: 1; transform: scale(1); }
 .idea-card.dim .connector-zone { display: none; }
-.idea-card .card-top { display: flex; justify-content: space-between; gap: 6px; align-items: flex-start; }
-.idea-card .title { font-size: 13px; line-height: 1.2; }
-.idea-card .card-actions { display: flex; gap: 3px; flex-shrink: 0; position: absolute; top: 8px; right: 8px; }
+.idea-card .card-top { display: flex; gap: 6px; align-items: flex-start; }
+.idea-card .title { font-size: 13px; line-height: 1.2; flex: 1; min-width: 0; overflow-wrap: break-word; }
+.idea-card .card-actions { display: flex; gap: 3px; flex-shrink: 0; }
 .idea-card .icon-btn { background: none; border: none; cursor: pointer; font-size: 12px; color: var(--ink-dim); padding: 1px 3px; line-height: 1; }
 .idea-card .icon-btn:hover { color: var(--ink); }
 .fav-btn.on { color: #D9A514; }
-.lock-badge { position: absolute; top: 8px; left: 8px; font-size: 10px; opacity: 0.7; }
+.lock-badge { font-size: 10px; opacity: 0.7; flex-shrink: 0; line-height: 1.4; }
 .idea-card .card-img-wrap { position: relative; margin-top: 6px; }
 .idea-card .card-img { width: 100%; height: auto; border-radius: 4px; display: block; }
 .idea-card .img-resize {
@@ -213,17 +213,33 @@
 .zoom-ctrl .pct { font-size: 11px; width: 44px; text-align: center; color: var(--ink-dim); }
 .zoom-ctrl .sep { width: 1px; height: 18px; background: var(--line); }
 
+/* Thanh giữa đáy, nút zoom góc phải: thanh dài ra là đè lên nút zoom. Chừa 200px
+   mỗi bên (nút zoom rộng ~180) rồi cho xuống dòng thay vì đè. Căn giữa bằng dải
+   left/right + margin auto, KHÔNG dùng left:50%: left:50% cắt chiều rộng khả dụng
+   còn nửa màn hình, thanh tràn ra ngoài hộp của nó và max-width thành vô nghĩa. */
 .bulk-bar {
-  position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+  position: absolute; bottom: 14px; left: 200px; right: 200px;
+  width: fit-content; margin: 0 auto;
+  flex-wrap: wrap; justify-content: center;
   display: flex; align-items: center; gap: 10px; z-index: 40;
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
   box-shadow: var(--shadow); padding: 8px 12px;
 }
-.bulk-bar select { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; font-size: 11px; }
+/* select mặc định của hệ thống bám màu sáng, để nguyên thì nền tối nhìn ra hai
+   khối xám lạc giữa thanh — phải nói rõ cả màu chữ. */
+.bulk-bar select {
+  background: var(--bg); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 4px; padding: 4px 6px; font-size: 11px;
+}
+.bulk-bar .bb-sep { width: 1px; align-self: stretch; background: var(--line); }
+.bulk-bar .bb-clear.danger { color: var(--danger); }
+.bulk-bar .bb-clear.danger:hover { border-color: var(--danger); color: var(--danger); }
 .bulk-bar .bb-count { font-size: 11px; color: var(--ink-dim); white-space: nowrap; }
-.bulk-bar .bb-swatches { display: flex; gap: 4px; }
+/* 15 ô màu một hàng ngang chiếm 300px, đủ để đẩy cả thanh xuống dòng — gấp thành
+   hai hàng 8 ô, đúng lưới của menu chuột phải. */
+.bulk-bar .bb-swatches { display: flex; gap: 4px; flex-wrap: wrap; width: 156px; }
 .bulk-bar .be-swatch { width: 16px; height: 16px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
-.bulk-bar .bb-clear { background: none; border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 10.5px; color: var(--ink-dim); cursor: pointer; }
+.bulk-bar .bb-clear { background: none; border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 10.5px; color: var(--ink-dim); cursor: pointer; white-space: nowrap; }
 .bulk-bar .bb-clear:hover { color: var(--ink); border-color: var(--ink-dim); }
 
 .io-drawer {
@@ -302,6 +318,18 @@
 }
 .badge-editor .be-actions .be-delete:hover { border-color: var(--danger); }
 
+/* Menu chuột phải: danh sách dọc, một hành động một dòng, việc phá huỷ tách riêng
+   dưới vạch. Hàng nút ngang cũ vỡ chữ và đẩy khung rộng quá 220px của chính nó. */
+.ctx-menu .cm-head { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim); }
+.ctx-menu .cm-items { display: flex; flex-direction: column; }
+.ctx-menu .cm-item {
+  display: block; width: 100%; text-align: left; background: none; border: none;
+  border-radius: 4px; padding: 6px 7px; font-size: 11.5px; color: var(--ink); cursor: pointer;
+}
+.ctx-menu .cm-item:hover { background: var(--bg); }
+.ctx-menu .cm-item.danger { color: var(--danger); }
+.ctx-menu .cm-sep { height: 1px; background: var(--line); margin: 4px 0; }
+
 .badge-editor .em-section { display: flex; flex-direction: column; gap: 5px; }
 .badge-editor .em-section + .em-section,
 .badge-editor .em-section + .em-delete { border-top: 1px solid var(--line); padding-top: 8px; }
@@ -357,8 +385,9 @@
   display: inline-flex; align-items: center; justify-content: center;
 }
 .frame-delete:hover { color: var(--ink); border-color: var(--ink-dim); }
+/* Ổ khoá của khung vẫn nổi trên viền; chỉ ổ khoá của thẻ mới vào hàng với tiêu đề. */
 .frame-box .frame-lock {
-  top: -13px; left: auto; right: 30px; background: var(--bg);
+  position: absolute; top: -13px; left: auto; right: 30px; background: var(--bg);
   border: 1px solid var(--line); border-radius: 50%; width: 20px; height: 20px;
   display: inline-flex; align-items: center; justify-content: center;
 }

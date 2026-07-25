@@ -1978,7 +1978,11 @@ export default function IdeaMap() {
                 <button key={token} className="be-swatch" style={{ background: colorVar(token) }} onClick={() => applyToSelection({ color: token })} title={token} />
               ))}
             </div>
+            <button className="bb-clear" onClick={groupSelectedCards}><Trans>Gom nhóm</Trans></button>
             <button className="bb-clear" onClick={tidySelection}><Trans>Xếp gọn</Trans></button>
+            <button className="bb-clear" onClick={duplicateSelection}><Trans>Nhân bản</Trans></button>
+            <button className="bb-clear danger" onClick={deleteSelection}><Trans>Xoá</Trans></button>
+            <span className="bb-sep" />
             <button className="bb-clear" onClick={() => setSelectedIds(new Set())}><Trans>Bỏ chọn</Trans></button>
           </div>
         )}
@@ -2040,27 +2044,40 @@ export default function IdeaMap() {
       {colorMenu && colorMenu.kind === "card" && (() => {
         const node = board.nodes.find((n) => n.id === colorMenu.id);
         if (!node) return null;
+        // Chuột phải vào thẻ đang nằm trong vùng chọn thì tác động lên cả vùng chọn.
+        // Trước đây nó chỉ đổi đúng một thẻ, im lặng — chọn 5 thẻ rồi bấm màu là ra
+        // một thẻ đổi màu. Lúc đó chỉ hiện những việc có nghĩa với nhiều thẻ.
+        const multi = selectedIds.size > 1 && selectedIds.has(node.id);
+        const one = (fn) => (multi ? undefined : fn);
         return (
           <ColorMenu
             x={colorMenu.x}
             y={colorMenu.y}
-            color={node.color ?? null}
-            onPick={(color) => applyNodeColor(node.id, color)}
-            onEdit={() => { setColorMenu(null); setEditingId(node.id); }}
-            onGroup={selectedIds.size >= 2 && selectedIds.has(node.id) ? groupSelectedCards : undefined}
-            onFocus={() => { setColorMenu(null); setFocusId(node.id); }}
-            onDuplicate={() => { setColorMenu(null); const { next, cloneIds } = duplicateNodes([node.id]); commitAndSave(next); setSelectedIds(new Set(cloneIds)); }}
-            onComments={() => { setColorMenu(null); setEdgeMenu(null); setCommentsFor({ id: node.id, x: colorMenu.x, y: colorMenu.y }); }}
-            onCopyLink={() => {
+            count={multi ? selectedIds.size : 1}
+            color={multi ? null : node.color ?? null}
+            onPick={(color) => (multi ? applyToSelection({ color }) : applyNodeColor(node.id, color))}
+            onEdit={one(() => { setColorMenu(null); setEditingId(node.id); })}
+            onGroup={multi ? groupSelectedCards : undefined}
+            onTidy={multi ? () => { setColorMenu(null); tidySelection(); } : undefined}
+            onFocus={one(() => { setColorMenu(null); setFocusId(node.id); })}
+            onDuplicate={() => {
+              setColorMenu(null);
+              if (multi) return duplicateSelection();
+              const { next, cloneIds } = duplicateNodes([node.id]);
+              commitAndSave(next);
+              setSelectedIds(new Set(cloneIds));
+            }}
+            onComments={one(() => { setColorMenu(null); setEdgeMenu(null); setCommentsFor({ id: node.id, x: colorMenu.x, y: colorMenu.y }); })}
+            onCopyLink={one(() => {
               const url = new URL(window.location.href);
               url.searchParams.set("card", String(node.id));
               navigator.clipboard.writeText(url.toString());
               setColorMenu(null);
-            }}
-            onDelete={() => { setColorMenu(null); deleteNode(node.id); }}
+            })}
+            onDelete={() => { setColorMenu(null); multi ? deleteSelection() : deleteNode(node.id); }}
             onClose={() => setColorMenu(null)}
             locked={node.locked ?? false}
-            onToggleLock={() => toggleNodeLock(node.id)}
+            onToggleLock={one(() => toggleNodeLock(node.id))}
           />
         );
       })()}
@@ -2463,21 +2480,23 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
       onDragOver={(e) => e.preventDefault()}
       onDrop={onDropImage}
     >
-      <div className="card-actions">
-        <button
-          className={"icon-btn fav-btn" + ((node.favorites ?? []).includes(currentUser) ? " on" : "")}
-          title={t`Yêu thích`}
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
-        >
-          ★{(node.favorites?.length ?? 0) > 0 ? node.favorites.length : ""}
-        </button>
-        <button className="icon-btn" title={t`Sửa`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(); }}>✎</button>
-        <button className="icon-btn" title={t`Xoá`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onDelete(); }}>×</button>
-      </div>
-      {node.locked && <span className="lock-badge">🔒</span>}
+      {/* Nút nằm cùng hàng với tiêu đề, không absolute: absolute thì tiêu đề dài
+          chạy xuống dưới ngôi sao và bị đè. Tiêu đề co lại, nút giữ nguyên. */}
       <div className="card-top">
+        {node.locked && <span className="lock-badge">🔒</span>}
         <div className="title">{node.title}</div>
+        <div className="card-actions">
+          <button
+            className={"icon-btn fav-btn" + ((node.favorites ?? []).includes(currentUser) ? " on" : "")}
+            title={t`Yêu thích`}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
+          >
+            ★{(node.favorites?.length ?? 0) > 0 ? node.favorites.length : ""}
+          </button>
+          <button className="icon-btn" title={t`Sửa`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(); }}>✎</button>
+          <button className="icon-btn" title={t`Xoá`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onDelete(); }}>×</button>
+        </div>
       </div>
       {node.image && (
         <div className="card-img-wrap">
