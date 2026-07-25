@@ -41,6 +41,15 @@ export default function DockPanel({ title, layout, barRef, onLayout, children })
     const startX = e.clientX, startY = e.clientY;
     let dragging = false;
 
+    // Vùng thả để neo lại là hàng nút, không phải cả filterbar: lấy cả bar thì nó
+    // nuốt đúng dải mà người ta muốn đặt panel nổi thẳng hàng với panel đang neo,
+    // và không bao giờ căn hàng được ở đó.
+    function overBar(ev) {
+      const bar = barRef.current && barRef.current.getBoundingClientRect();
+      return !!bar && ev.clientX >= bar.left && ev.clientX <= bar.right
+        && ev.clientY >= bar.top && ev.clientY <= bar.bottom;
+    }
+
     function onMove(ev) {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > 5) dragging = true;
       if (!dragging) return;
@@ -51,29 +60,27 @@ export default function DockPanel({ title, layout, barRef, onLayout, children })
         otherPanelRects(el)
       );
       setGuides(p.guides);
+      // Bật sáng hàng nút bằng classList thay vì state: đây là gợi ý hover thuần
+      // thị giác, không đáng kéo state xuyên qua IdeaMap để mỗi mousemove render lại.
+      if (barRef.current) barRef.current.classList.toggle("drop-target", overBar(ev));
       onLayout({ ...layout, free: true, x: p.x, y: p.y });
     }
     function onUp(ev) {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       setGuides([]);
+      if (barRef.current) barRef.current.classList.remove("drop-target");
       // Không kéo = click → xoay ngang/dọc.
       if (!dragging) return onLayout({ ...layout, vertical: !layout.vertical });
-      // Thả lên hàng nút thì neo về chỗ cũ. Vùng thả là hàng nút chứ không phải
-      // cả filterbar: lấy cả bar thì nó nuốt đúng dải mà người ta muốn đặt panel
-      // nổi thẳng hàng với panel đang neo, và không bao giờ căn hàng được ở đó.
-      const bar = barRef.current && barRef.current.getBoundingClientRect();
-      if (bar && ev.clientX >= bar.left && ev.clientX <= bar.right && ev.clientY >= bar.top && ev.clientY <= bar.bottom) {
-        onLayout({ ...layout, free: false });
-      }
+      if (overBar(ev)) onLayout({ ...layout, free: false });
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }
 
-  // Hướng dọc chỉ có nghĩa khi panel nổi: panel neo trải hết chiều ngang bar nên
-  // xếp dọc chỉ làm bar cao vống lên, mỗi chip một dòng. Cờ vẫn được lưu để kéo
-  // ra là dọc ngay.
+  // Hướng dọc chỉ áp dụng khi panel nổi. Panel neo dùng chung một hàng với các
+  // panel neo khác, xếp dọc một cái là cả hàng cao theo nó và đẩy canvas xuống.
+  // Cờ vẫn được lưu để kéo ra là dọc ngay.
   const cls = "fb-panel dock-panel"
     + (layout.free ? " free" : "")
     + (layout.free && layout.vertical ? " vertical" : "");

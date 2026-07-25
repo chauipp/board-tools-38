@@ -17,12 +17,26 @@ Mỗi panel ở một trong hai trạng thái:
 - **Nổi** — `position: fixed` tại `{x, y}`, có nền + viền + shadow riêng.
 
 Kéo dấu 6 chấm ra khỏi filterbar → panel thành nổi. Thả **lên hàng nút** (Trạng thái · Nhãn ·
-Bảng màu) → neo lại. Không có vùng thả vẽ riêng: hàng nút luôn hiện, kể cả khi cả ba panel
-đều nổi.
+Bảng màu) → neo lại. Hàng nút **luôn hiện**, kể cả khi cả ba panel đều nổi, nên luôn có một
+chỗ để kéo panel về. Trong lúc kéo, hàng nút sáng lên khi con trỏ vào tới — không có phản hồi
+đó thì người dùng phải đoán vùng thả ở đâu.
 
 Vùng thả là **hàng nút**, không phải cả filterbar. Lấy cả bar thì nó nuốt đúng dải mà người
 dùng muốn đặt panel nổi thẳng hàng với panel đang neo — mọi lần thả ở đó đều thành neo lại,
 và căn hàng ở dải đó không bao giờ xảy ra được.
+
+## Panel neo chảy cùng một hàng
+
+Các panel neo nằm trong **một hàng** `flex-wrap: wrap`, không phải mỗi panel một dòng. Bật
+panel thứ ba thì nó vào chỗ trống bên phải panel thứ hai, chỉ xuống dòng khi hết chiều ngang.
+Mỗi panel một dòng thì bật cả ba là bar cao ba tầng và canvas bị đẩy xuống tương ứng.
+
+Hàng này chỉ vẽ đường kẻ phân cách khi **còn panel neo**. Panel nổi vẫn render trong hàng
+nhưng `position: fixed` nên không tính vào chiều cao — cả ba panel nổi thì hàng cao 0 và biến
+mất, không để lại đường kẻ mồ côi.
+
+Panel nổi khi bật lại thì hiện đúng vị trí đã lưu — đó chính là điểm của việc lưu vị trí. Không
+tự tìm chỗ trống cho panel nổi.
 
 Cờ ngang/dọc **lưu độc lập** với neo/nổi — click dấu 6 chấm là xoay, bất kể panel đang ở đâu,
 và cờ đó theo panel khi kéo ra. Nhưng hướng dọc chỉ **áp dụng khi panel nổi**: panel neo trải

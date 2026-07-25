@@ -18,9 +18,16 @@
 }
 .filterbar .fb-tabs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 7px 0; min-width: 0; }
 .filterbar .fb-tabs .btn { padding: 5px 11px; font-size: 10.5px; }
+.filterbar .fb-tabs.drop-target {
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  border-radius: 6px;
+}
+.filterbar .fb-dock { display: flex; align-items: flex-start; flex-wrap: wrap; column-gap: 22px; min-width: 0; }
+.filterbar .fb-dock.on { border-top: 1px solid var(--line); }
 .filterbar .fb-panel {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 8px 0; border-top: 1px solid var(--line); min-width: 0;
+  padding: 8px 0; min-width: 0;
 }
 .filterbar .fb-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 

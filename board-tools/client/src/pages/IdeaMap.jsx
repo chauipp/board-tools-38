@@ -1442,6 +1442,8 @@ export default function IdeaMap() {
     setLayouts((prev) => ({ ...prev, [key]: layout }));
   }
 
+  const hasDockedPanel = Object.keys(layouts).some((k) => panels[k] && !layouts[k].free);
+
   function clearFilters() {
     setFilterStatus({});
     setFilterTags({});
@@ -1680,6 +1682,11 @@ export default function IdeaMap() {
           )}
         </div>
 
+        {/* Panel neo chảy cùng một hàng, hết chỗ mới xuống dòng — bật panel thứ ba
+            không được đẩy hai panel kia thành ba tầng. Panel nổi vẫn render trong
+            đây nhưng position:fixed nên không tính vào chiều cao hàng; do đó khi
+            không còn panel neo nào thì hàng này cao 0 và không vẽ đường kẻ. */}
+        <div className={"fb-dock" + (hasDockedPanel ? " on" : "")}>
         {panels.status && (
           <DockPanel title={t`Trạng thái`} layout={layouts.status} barRef={fbTabsRef} onLayout={(l) => setLayout("status", l)}>
             <div className="fb-chips">
@@ -1774,6 +1781,7 @@ export default function IdeaMap() {
             )}
           </DockPanel>
         )}
+        </div>
       </div>
 
       <div
