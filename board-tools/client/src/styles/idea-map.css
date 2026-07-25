@@ -471,17 +471,24 @@
   white-space: nowrap;
 }
 
-.shell.readonly .topbar,
-.shell.readonly .filterbar,
+/* Chế độ chỉ xem. Khoá cả .topbar/.filterbar thì tiện nhưng giết luôn tìm kiếm,
+   mục lục, trình chiếu và xuất JSON/MD/PNG — toàn thao tác đọc mà người chỉ xem
+   cần dùng. Nên chỉ chặn đúng những control ghi dữ liệu:
+     - .canvas: mọi thao tác lên thẻ/khung/dây
+     - [data-mutating]: các nút ghi dữ liệu trong .topbar (thêm ý tưởng/khung,
+       nhập nhanh, hoàn tác/làm lại, nối ý tưởng, nhập JSON)
+     - .fb-add / .pal-swatch: tạo & sửa trạng thái/nhãn/màu
+     - .bulk-bar: gom nhóm/xếp gọn/nhân bản/xoá hàng loạt
+   Kéo chip để gán badge và chuột phải để sửa badge không tách được bằng CSS
+   (cùng phần tử với click-để-lọc) nên chặn trong JS ở IdeaMap.jsx.
+   Đây chỉ là lớp UX; ranh giới bảo mật thật là 403 read_only ở server. */
 .shell.readonly .canvas { pointer-events: none; }
+/* Cửa thoát: viewport vẫn nhận chuột để người chỉ xem lia/thu phóng sa bàn. */
 .shell.readonly .viewport { pointer-events: auto; }
-/* Điều hướng và tuỳ chọn hiển thị không đụng tới dữ liệu board, nên người chỉ
-   xem vẫn phải bấm được — nếu không họ kẹt trong board, thoát ra chỉ còn nút
-   Back của trình duyệt. Chỉ mở lại đúng ba thứ này: link, đổi ngôn ngữ, đổi
-   sáng/tối. Mọi nút còn lại trong .topbar đều ghi dữ liệu nên vẫn bị chặn. */
-.shell.readonly .topbar a,
-.shell.readonly .topbar .lang,
-.shell.readonly .topbar .theme { pointer-events: auto; }
+.shell.readonly [data-mutating],
+.shell.readonly .fb-add,
+.shell.readonly .pal-swatch { pointer-events: none; opacity: 0.35; }
+.shell.readonly .bulk-bar { display: none; }
 
 /* Góc dưới trái: nằm trên .topbar thì che mất tiêu đề board và chính hàng nút
    mà nó đang nói tới; đáy giữa thì đụng .present-bar/.bulk-bar, đáy phải thì

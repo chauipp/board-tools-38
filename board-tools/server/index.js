@@ -16,7 +16,7 @@ import {
   SESSION_COOKIE_NAME,
   SESSION_COOKIE_MAX_AGE_MS
 } from "./auth.js";
-import { User, Board, upsertUser } from "./models.js";
+import { Board, upsertUser } from "./models.js";
 import boardsRouter from "./boards.js";
 
 dotenv.config();
@@ -183,13 +183,18 @@ io.use(async (socket, next) => {
   try {
     board = await Board.findById(boardId).select("ownerEmail members").lean();
   } catch (e) {
+    // Mongo chết và "board id không hợp lệ" cùng ra `forbidden` ở phía client;
+    // không log thì lỗi hạ tầng trông hệt như từ chối quyền và không debug được.
+    console.error("Socket handshake: không đọc được board", boardId, e);
     return next(new Error("forbidden"));
   }
   if (!board) return next(new Error("forbidden"));
   const role = getBoardRole(board, user.email);
   if (!role) return next(new Error("forbidden"));
   socket.data.user = user;
-  socket.data.boardId = String(boardId);
+  // Chuẩn hoá từ document, không từ query: hex id viết hoa/thường khác nhau vẫn
+  // trỏ về cùng board nhưng sẽ tạo hai phòng presence riêng nếu lấy nguyên chuỗi.
+  socket.data.boardId = String(board._id);
   socket.data.role = role;
   next();
 });

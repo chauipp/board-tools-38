@@ -12,10 +12,17 @@ const DEFAULT_STATUSES = [
 
 const router = Router();
 
+// Board nhúng ảnh base64 trong nodes[] (giới hạn body 10mb), nên đọc cả document
+// chỉ để xét quyền là rất đắt — nhất là ở PUT, nơi client autosave mỗi 500ms.
+// Route nào không cần nội dung board thì truyền AUTH_FIELDS.
+const AUTH_FIELDS = "ownerEmail members";
+
 // Trả 404 (không phải 403) khi người gọi không có role nào trên board —
 // tránh lộ việc board có tồn tại hay không cho người ngoài.
-async function loadBoardWithRole(req, res, minRole) {
-  const board = await Board.findById(req.params.id);
+async function loadBoardWithRole(req, res, minRole, projection) {
+  const query = Board.findById(req.params.id);
+  if (projection) query.select(projection);
+  const board = await query;
   if (!board) {
     res.status(404).json({ error: "not_found" });
     return null;
@@ -105,7 +112,7 @@ router.get("/:id", async (req, res) => {
 
 router.put("/:id", async (req, res) => {
   try {
-    const found = await loadBoardWithRole(req, res, "editor");
+    const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS);
     if (!found) return;
     const {
       nodes, edges, groups, statuses, tags, palette,
@@ -125,7 +132,7 @@ router.put("/:id", async (req, res) => {
 
 router.delete("/:id", async (req, res) => {
   try {
-    const found = await loadBoardWithRole(req, res, "owner");
+    const found = await loadBoardWithRole(req, res, "owner", AUTH_FIELDS);
     if (!found) return;
     await Board.findByIdAndDelete(req.params.id);
     res.json({ ok: true });
@@ -137,7 +144,7 @@ router.delete("/:id", async (req, res) => {
 
 router.get("/:id/members", async (req, res) => {
   try {
-    const found = await loadBoardWithRole(req, res, "owner");
+    const found = await loadBoardWithRole(req, res, "owner", AUTH_FIELDS);
     if (!found) return;
     const { board } = found;
     const emails = board.members.map((m) => m.email);
@@ -159,7 +166,7 @@ router.get("/:id/members", async (req, res) => {
 
 router.post("/:id/members", async (req, res) => {
   try {
-    const found = await loadBoardWithRole(req, res, "owner");
+    const found = await loadBoardWithRole(req, res, "owner", AUTH_FIELDS);
     if (!found) return;
     const { board } = found;
     const email = String(req.body.email || "").trim().toLowerCase();
@@ -189,7 +196,7 @@ router.post("/:id/members", async (req, res) => {
 
 router.patch("/:id/members/:email", async (req, res) => {
   try {
-    const found = await loadBoardWithRole(req, res, "owner");
+    const found = await loadBoardWithRole(req, res, "owner", AUTH_FIELDS);
     if (!found) return;
     const { board } = found;
     const email = req.params.email.toLowerCase();
@@ -210,7 +217,7 @@ router.patch("/:id/members/:email", async (req, res) => {
 
 router.delete("/:id/members/:email", async (req, res) => {
   try {
-    const found = await loadBoardWithRole(req, res, "owner");
+    const found = await loadBoardWithRole(req, res, "owner", AUTH_FIELDS);
     if (!found) return;
     const { board } = found;
     const email = req.params.email.toLowerCase();

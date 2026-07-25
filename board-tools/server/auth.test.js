@@ -61,6 +61,18 @@ test("getBoardRole: member email returns their stored role", () => {
   assert.equal(getBoardRole(board, "vw@x.com"), "viewer");
 });
 
+// Nhánh member là đường đi của mọi request không phải chủ sở hữu: email lưu
+// trong members[] có thể khác hoa/thường với email trong session JWT.
+test("getBoardRole: member email matches case-insensitively both ways", () => {
+  const board = {
+    ownerEmail: "owner@x.com",
+    members: [{ email: "Ed@X.com", role: "editor" }, { email: "vw@x.com", role: "viewer" }]
+  };
+  assert.equal(getBoardRole(board, "ed@x.com"), "editor");
+  assert.equal(getBoardRole(board, "ED@X.COM"), "editor");
+  assert.equal(getBoardRole(board, "VW@X.COM"), "viewer");
+});
+
 test("getBoardRole: unrelated email returns null", () => {
   const board = { ownerEmail: "owner@x.com", members: [] };
   assert.equal(getBoardRole(board, "stranger@x.com"), null);

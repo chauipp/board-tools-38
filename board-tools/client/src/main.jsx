@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useParams } from "react-router-dom";
 import { I18nProvider } from "@lingui/react";
 import { Trans } from "@lingui/react/macro";
 import { i18n } from "./lib/i18n.js";
@@ -41,6 +41,15 @@ function IdentityChip() {
   );
 }
 
+// Đổi :boardId mà element khớp vẫn là một, react-router v6 KHÔNG unmount — nó
+// chỉ re-render. IdeaMap giữ past/future/selectedIds/presentIndex là state cục
+// bộ, nên nếu không remount thì undo sau khi chuyển board sẽ ghi nội dung board
+// cũ đè lên board mới. `key` buộc React dựng lại từ đầu ở mỗi board.
+function IdeaMapRoute() {
+  const { boardId } = useParams();
+  return <IdeaMap key={boardId} />;
+}
+
 function AuthGate({ children }) {
   const { user, loading } = useAuth();
   if (loading) return null;
@@ -62,7 +71,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/idea-map" element={<BoardList />} />
-              <Route path="/idea-map/:boardId" element={<IdeaMap />} />
+              <Route path="/idea-map/:boardId" element={<IdeaMapRoute />} />
               <Route path="/calculator" element={<Calculator />} />
             </Routes>
           </BrowserRouter>

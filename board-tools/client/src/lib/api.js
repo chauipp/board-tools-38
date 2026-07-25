@@ -87,7 +87,7 @@ export async function updateMemberRole(boardId, email, role) {
     body: JSON.stringify({ role })
   });
   checkAuthExpired(res);
-  if (!res.ok) throw apiError("MEMBER_UPDATE_FAILED");
+  if (!res.ok) throw apiError(await parseErrorCode(res, "MEMBER_UPDATE_FAILED"));
   return res.json();
 }
 
@@ -96,7 +96,7 @@ export async function removeMember(boardId, email) {
     method: "DELETE"
   });
   checkAuthExpired(res);
-  if (!res.ok) throw apiError("MEMBER_REMOVE_FAILED");
+  if (!res.ok) throw apiError(await parseErrorCode(res, "MEMBER_REMOVE_FAILED"));
   return res.json();
 }
 

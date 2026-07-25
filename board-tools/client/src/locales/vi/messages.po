@@ -14,23 +14,23 @@ msgstr ""
 "Plural-Forms: \n"
 
 #. placeholder {0}: selectedIds.size
-#: src/pages/IdeaMap.jsx:2106
+#: src/pages/IdeaMap.jsx:2124
 msgid "{0} thẻ"
 msgstr "{0} thẻ"
 
-#: src/pages/IdeaMap.jsx:2517
+#: src/pages/IdeaMap.jsx:2535
 msgid "{d} ngày trước"
 msgstr "{d} ngày trước"
 
-#: src/pages/IdeaMap.jsx:2515
+#: src/pages/IdeaMap.jsx:2533
 msgid "{h} giờ trước"
 msgstr "{h} giờ trước"
 
-#: src/pages/IdeaMap.jsx:2514
+#: src/pages/IdeaMap.jsx:2532
 msgid "{m} phút trước"
 msgstr "{m} phút trước"
 
-#: src/pages/IdeaMap.jsx:1722
+#: src/pages/IdeaMap.jsx:1739
 msgid "← Danh sách board"
 msgstr "← Danh sách board"
 
@@ -38,11 +38,11 @@ msgstr "← Danh sách board"
 msgid "← Trang chủ"
 msgstr "← Trang chủ"
 
-#: src/pages/BoardList.jsx:53
+#: src/pages/BoardList.jsx:76
 msgid "+ Board mới"
 msgstr "+ Board mới"
 
-#: src/pages/IdeaMap.jsx:1727
+#: src/pages/IdeaMap.jsx:1746
 msgid "+ Khung"
 msgstr "+ Khung"
 
@@ -50,7 +50,7 @@ msgstr "+ Khung"
 msgid "+ Thêm chỉ số"
 msgstr "+ Thêm chỉ số"
 
-#: src/pages/IdeaMap.jsx:1726
+#: src/pages/IdeaMap.jsx:1745
 msgid "+ Ý tưởng"
 msgstr "+ Ý tưởng"
 
@@ -58,7 +58,7 @@ msgstr "+ Ý tưởng"
 msgid "A gây <0>{dmgToB}</0> sát thương/lượt lên B  ·  B gây <1>{dmgToA}</1> sát thương/lượt lên A"
 msgstr "A gây <0>{dmgToB}</0> sát thương/lượt lên B  ·  B gây <1>{dmgToA}</1> sát thương/lượt lên A"
 
-#: src/pages/IdeaMap.jsx:359
+#: src/pages/IdeaMap.jsx:368
 msgid "Ảnh"
 msgstr "Ảnh"
 
@@ -66,28 +66,28 @@ msgstr "Ảnh"
 msgid "Áp cho {count} thẻ"
 msgstr "Áp cho {count} thẻ"
 
-#: src/pages/IdeaMap.jsx:1830
+#: src/pages/IdeaMap.jsx:1848
 msgid "Bấm để lọc — kéo thả vào thẻ để gán nhãn — chuột phải để sửa"
 msgstr "Bấm để lọc — kéo thả vào thẻ để gán nhãn — chuột phải để sửa"
 
-#: src/pages/IdeaMap.jsx:1793
+#: src/pages/IdeaMap.jsx:1811
 msgid "Bấm để lọc — kéo thả vào thẻ để gán trạng thái — chuột phải để sửa"
 msgstr "Bấm để lọc — kéo thả vào thẻ để gán trạng thái — chuột phải để sửa"
 
-#: src/pages/IdeaMap.jsx:1863
+#: src/pages/IdeaMap.jsx:1881
 msgid "Bấm để sửa màu — kéo thả vào thẻ / dây / badge để tô màu"
 msgstr "Bấm để sửa màu — kéo thả vào thẻ / dây / badge để tô màu"
 
-#: src/pages/IdeaMap.jsx:2680
-#: src/pages/IdeaMap.jsx:2681
-#: src/pages/IdeaMap.jsx:2682
-#: src/pages/IdeaMap.jsx:2683
+#: src/pages/IdeaMap.jsx:2698
+#: src/pages/IdeaMap.jsx:2699
+#: src/pages/IdeaMap.jsx:2700
+#: src/pages/IdeaMap.jsx:2701
 msgid "Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác"
 msgstr "Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác"
 
-#: src/pages/BoardList.jsx:41
+#: src/pages/BoardList.jsx:64
 #: src/pages/Home.jsx:40
-#: src/pages/IdeaMap.jsx:1719
+#: src/pages/IdeaMap.jsx:1736
 msgid "Bản đồ ý tưởng"
 msgstr "Bản đồ ý tưởng"
 
@@ -99,8 +99,8 @@ msgstr "Bàn tính đối đầu"
 msgid "Bàn Tính Đối Đầu"
 msgstr "Bàn Tính Đối Đầu"
 
-#: src/pages/IdeaMap.jsx:1756
-#: src/pages/IdeaMap.jsx:1854
+#: src/pages/IdeaMap.jsx:1774
+#: src/pages/IdeaMap.jsx:1872
 msgid "Bảng màu"
 msgstr "Bảng màu"
 
@@ -112,15 +112,16 @@ msgstr "Bế tắc: không bên nào đủ tấn công xuyên phá giáp đối 
 msgid "Bình luận"
 msgstr "Bình luận"
 
-#: src/pages/IdeaMap.jsx:2128
+#: src/pages/IdeaMap.jsx:2146
 msgid "Bỏ chọn"
 msgstr "Bỏ chọn"
 
-#: src/pages/BoardList.jsx:43
+#: src/pages/BoardList.jsx:66
 msgid "Board của bạn"
 msgstr "Board của bạn"
 
-#: src/pages/BoardList.jsx:29
+#: src/pages/BoardList.jsx:33
+#: src/pages/BoardList.jsx:37
 msgid "Board mới"
 msgstr "Board mới"
 
@@ -162,10 +163,11 @@ msgstr "Chỉ số mới"
 
 #: src/components/InviteModal.jsx:90
 #: src/components/InviteModal.jsx:115
+#: src/pages/BoardList.jsx:21
 msgid "Chỉ xem"
 msgstr "Chỉ xem"
 
-#: src/pages/IdeaMap.jsx:1712
+#: src/pages/IdeaMap.jsx:1729
 msgid "Chỉ xem — bạn không có quyền chỉnh sửa board này."
 msgstr "Chỉ xem — bạn không có quyền chỉnh sửa board này."
 
@@ -181,11 +183,15 @@ msgstr "Chia ngân sách điểm vào chỉ số chiến đấu cho hai build, r
 msgid "Chia ngân sách điểm vào Máu / Giáp / Xuyên giáp / Tấn công cho hai build, rồi mô phỏng xem ai thắng."
 msgstr "Chia ngân sách điểm vào Máu / Giáp / Xuyên giáp / Tấn công cho hai build, rồi mô phỏng xem ai thắng."
 
-#: src/pages/BoardList.jsx:62
+#: src/pages/BoardList.jsx:19
+msgid "Chủ sở hữu"
+msgstr "Chủ sở hữu"
+
+#: src/pages/BoardList.jsx:85
 msgid "Chưa có board nào — bấm \"+ Board mới\" để bắt đầu."
 msgstr "Chưa có board nào — bấm \"+ Board mới\" để bắt đầu."
 
-#: src/pages/IdeaMap.jsx:1869
+#: src/pages/IdeaMap.jsx:1887
 msgid "Chưa có màu nào — bấm + để tạo."
 msgstr "Chưa có màu nào — bấm + để tạo."
 
@@ -197,7 +203,7 @@ msgstr "Chưa mời ai vào board này."
 msgid "Chưa phân thắng bại sau {rounds} lượt — trận kéo dài, có thể cần xem lại tỉ lệ sát thương/máu."
 msgstr "Chưa phân thắng bại sau {rounds} lượt — trận kéo dài, có thể cần xem lại tỉ lệ sát thương/máu."
 
-#: src/pages/IdeaMap.jsx:2040
+#: src/pages/IdeaMap.jsx:2058
 msgid "Chuột trái kéo để bôi đen chọn thẻ, chuột phải kéo để lia sa bàn, cuộn để lia, giữ Ctrl/⌘ + cuộn để phóng to."
 msgstr "Chuột trái kéo để bôi đen chọn thẻ, chuột phải kéo để lia sa bàn, cuộn để lia, giữ Ctrl/⌘ + cuộn để phóng to."
 
@@ -209,16 +215,17 @@ msgstr "Chuyển sang tiếng Anh"
 msgid "Chuyển sang tiếng Việt"
 msgstr "Chuyển sang tiếng Việt"
 
-#: src/pages/IdeaMap.jsx:2479
+#: src/pages/IdeaMap.jsx:2497
 msgid "Có hướng"
 msgstr "Có hướng"
 
-#: src/pages/BoardList.jsx:57
+#: src/pages/BoardList.jsx:80
 msgid "Có lỗi xảy ra, thử tải lại trang."
 msgstr "Có lỗi xảy ra, thử tải lại trang."
 
 #: src/components/InviteModal.jsx:89
 #: src/components/InviteModal.jsx:114
+#: src/pages/BoardList.jsx:20
 msgid "Có thể sửa"
 msgstr "Có thể sửa"
 
@@ -230,11 +237,11 @@ msgstr "Còn lại — Build A"
 msgid "Còn lại — Build B"
 msgstr "Còn lại — Build B"
 
-#: src/pages/IdeaMap.jsx:2608
+#: src/pages/IdeaMap.jsx:2626
 msgid "Ctrl+Enter: lưu & tạo ý nối tiếp"
 msgstr "Ctrl+Enter: lưu & tạo ý nối tiếp"
 
-#: src/pages/IdeaMap.jsx:2137
+#: src/pages/IdeaMap.jsx:2155
 msgid "Dán JSON đã xuất trước đó, rồi bấm Nhập vào bản đồ."
 msgstr "Dán JSON đã xuất trước đó, rồi bấm Nhập vào bản đồ."
 
@@ -247,13 +254,13 @@ msgid "Đăng nhập thất bại, thử lại."
 msgstr "Đăng nhập thất bại, thử lại."
 
 #: src/components/InviteModal.jsx:97
-#: src/pages/BoardList.jsx:59
+#: src/pages/BoardList.jsx:82
 #: src/pages/Calculator.jsx:106
-#: src/pages/IdeaMap.jsx:391
+#: src/pages/IdeaMap.jsx:401
 msgid "Đang tải…"
 msgstr "Đang tải…"
 
-#: src/pages/IdeaMap.jsx:2046
+#: src/pages/IdeaMap.jsx:2064
 msgid "Đang tập trung — Esc để thoát"
 msgstr "Đang tập trung — Esc để thoát"
 
@@ -261,7 +268,7 @@ msgstr "Đang tập trung — Esc để thoát"
 msgid "Đăng xuất"
 msgstr "Đăng xuất"
 
-#: src/pages/IdeaMap.jsx:2483
+#: src/pages/IdeaMap.jsx:2501
 msgid "Đảo chiều"
 msgstr "Đảo chiều"
 
@@ -269,14 +276,14 @@ msgstr "Đảo chiều"
 msgid "Đối đầu thử"
 msgstr "Đối đầu thử"
 
-#: src/pages/BoardList.jsx:48
+#: src/pages/BoardList.jsx:71
 #: src/pages/Calculator.jsx:177
 #: src/pages/Home.jsx:25
-#: src/pages/IdeaMap.jsx:1749
+#: src/pages/IdeaMap.jsx:1767
 msgid "Đổi giao diện sáng/tối"
 msgstr "Đổi giao diện sáng/tối"
 
-#: src/pages/IdeaMap.jsx:2142
+#: src/pages/IdeaMap.jsx:2160
 msgid "Đóng"
 msgstr "Đóng"
 
@@ -309,11 +316,11 @@ msgid "Giá / điểm"
 msgstr "Giá / điểm"
 
 #: src/components/ColorMenu.jsx:15
-#: src/pages/IdeaMap.jsx:2123
+#: src/pages/IdeaMap.jsx:2141
 msgid "Gom nhóm"
 msgstr "Gom nhóm"
 
-#: src/pages/IdeaMap.jsx:2549
+#: src/pages/IdeaMap.jsx:2567
 msgid "Gửi"
 msgstr "Gửi"
 
@@ -322,25 +329,25 @@ msgid "Hai công cụ nhẹ để quản lý ý tưởng và thử cân bằng s
 msgstr "Hai công cụ nhẹ để quản lý ý tưởng và thử cân bằng số liệu trước khi bắt tay code thật. Dữ liệu dùng chung cho cả nhóm."
 
 #: src/pages/Calculator.jsx:174
-#: src/pages/IdeaMap.jsx:1729
+#: src/pages/IdeaMap.jsx:1748
 msgid "Hoàn tác (Ctrl+Z)"
 msgstr "Hoàn tác (Ctrl+Z)"
 
-#: src/pages/IdeaMap.jsx:2474
+#: src/pages/IdeaMap.jsx:2492
 msgid "Hướng"
 msgstr "Hướng"
 
 #: src/components/BadgeEditor.jsx:44
-#: src/pages/IdeaMap.jsx:2335
-#: src/pages/IdeaMap.jsx:2605
+#: src/pages/IdeaMap.jsx:2353
+#: src/pages/IdeaMap.jsx:2623
 msgid "Hủy"
 msgstr "Hủy"
 
-#: src/pages/IdeaMap.jsx:2136
+#: src/pages/IdeaMap.jsx:2154
 msgid "JSON hiện tại — copy để sao lưu hoặc gửi cho người khác xem."
 msgstr "JSON hiện tại — copy để sao lưu hoặc gửi cho người khác xem."
 
-#: src/pages/IdeaMap.jsx:1479
+#: src/pages/IdeaMap.jsx:1495
 msgid "JSON không hợp lệ — kiểm tra lại nội dung đã dán."
 msgstr "JSON không hợp lệ — kiểm tra lại nội dung đã dán."
 
@@ -348,13 +355,13 @@ msgstr "JSON không hợp lệ — kiểm tra lại nội dung đã dán."
 msgid "Kéo để đặt vị trí — bấm để xoay ngang/dọc"
 msgstr "Kéo để đặt vị trí — bấm để xoay ngang/dọc"
 
-#: src/pages/IdeaMap.jsx:2651
+#: src/pages/IdeaMap.jsx:2669
 msgid "Kéo để đổi cỡ ảnh"
 msgstr "Kéo để đổi cỡ ảnh"
 
-#: src/pages/IdeaMap.jsx:1426
-#: src/pages/IdeaMap.jsx:2093
-#: src/pages/IdeaMap.jsx:2093
+#: src/pages/IdeaMap.jsx:1442
+#: src/pages/IdeaMap.jsx:2111
+#: src/pages/IdeaMap.jsx:2111
 msgid "Khác"
 msgstr "Khác"
 
@@ -367,12 +374,12 @@ msgid "Không đổi được vai trò thành viên."
 msgstr "Không đổi được vai trò thành viên."
 
 #: src/pages/Calculator.jsx:181
-#: src/pages/IdeaMap.jsx:1741
+#: src/pages/IdeaMap.jsx:1761
 msgid "Không lưu được lên server."
 msgstr "Không lưu được lên server."
 
 #: src/components/ColorMenu.jsx:31
-#: src/pages/IdeaMap.jsx:2118
+#: src/pages/IdeaMap.jsx:2136
 msgid "Không màu"
 msgstr "Không màu"
 
@@ -384,10 +391,10 @@ msgstr "Không mở được board này. Có thể board đã bị xoá, hoặc 
 msgid "Không mời được thành viên."
 msgstr "Không mời được thành viên."
 
-#: src/pages/IdeaMap.jsx:1845
-#: src/pages/IdeaMap.jsx:2114
-#: src/pages/IdeaMap.jsx:2173
-#: src/pages/IdeaMap.jsx:2595
+#: src/pages/IdeaMap.jsx:1863
+#: src/pages/IdeaMap.jsx:2132
+#: src/pages/IdeaMap.jsx:2191
+#: src/pages/IdeaMap.jsx:2613
 msgid "Không nhãn"
 msgstr "Không nhãn"
 
@@ -395,10 +402,10 @@ msgstr "Không nhãn"
 msgid "Không tải được dữ liệu. Kiểm tra server đã chạy chưa (npm run dev trong thư mục server) và biến MONGODB_URI đã đúng chưa."
 msgstr "Không tải được dữ liệu. Kiểm tra server đã chạy chưa (npm run dev trong thư mục server) và biến MONGODB_URI đã đúng chưa."
 
-#: src/pages/IdeaMap.jsx:1808
-#: src/pages/IdeaMap.jsx:2109
-#: src/pages/IdeaMap.jsx:2173
-#: src/pages/IdeaMap.jsx:2599
+#: src/pages/IdeaMap.jsx:1826
+#: src/pages/IdeaMap.jsx:2127
+#: src/pages/IdeaMap.jsx:2191
+#: src/pages/IdeaMap.jsx:2617
 msgid "Không trạng thái"
 msgstr "Không trạng thái"
 
@@ -407,55 +414,55 @@ msgid "Không xoá được thành viên khỏi board."
 msgstr "Không xoá được thành viên khỏi board."
 
 #. placeholder {0}: board.nodes.length
-#: src/pages/IdeaMap.jsx:1767
+#: src/pages/IdeaMap.jsx:1785
 msgid "Khớp {matchCount}/{0}"
 msgstr "Khớp {matchCount}/{0}"
 
 #: src/components/FrameBox.jsx:51
-#: src/pages/IdeaMap.jsx:664
+#: src/pages/IdeaMap.jsx:674
 msgid "Khung"
 msgstr "Khung"
 
-#: src/pages/IdeaMap.jsx:487
-#: src/pages/IdeaMap.jsx:506
+#: src/pages/IdeaMap.jsx:497
+#: src/pages/IdeaMap.jsx:516
 msgid "Khung mới"
 msgstr "Khung mới"
 
-#: src/pages/IdeaMap.jsx:2462
+#: src/pages/IdeaMap.jsx:2480
 msgid "Kiểu nét"
 msgstr "Kiểu nét"
 
 #: src/pages/Calculator.jsx:175
-#: src/pages/IdeaMap.jsx:1730
+#: src/pages/IdeaMap.jsx:1749
 msgid "Làm lại (Ctrl+Shift+Z)"
 msgstr "Làm lại (Ctrl+Shift+Z)"
 
-#: src/pages/IdeaMap.jsx:1426
+#: src/pages/IdeaMap.jsx:1442
 msgid "Liên kết"
 msgstr "Liên kết"
 
-#: src/pages/IdeaMap.jsx:1805
+#: src/pages/IdeaMap.jsx:1823
 msgid "Lọc thẻ chưa có trạng thái"
 msgstr "Lọc thẻ chưa có trạng thái"
 
-#: src/pages/IdeaMap.jsx:1842
+#: src/pages/IdeaMap.jsx:1860
 msgid "Lọc thẻ chưa gắn nhãn"
 msgstr "Lọc thẻ chưa gắn nhãn"
 
-#: src/pages/IdeaMap.jsx:2262
-#: src/pages/IdeaMap.jsx:2604
+#: src/pages/IdeaMap.jsx:2280
+#: src/pages/IdeaMap.jsx:2622
 msgid "Lưu"
 msgstr "Lưu"
 
-#: src/pages/IdeaMap.jsx:2493
+#: src/pages/IdeaMap.jsx:2511
 msgid "Mặc định"
 msgstr "Mặc định"
 
-#: src/pages/IdeaMap.jsx:2491
+#: src/pages/IdeaMap.jsx:2509
 msgid "Màu dây"
 msgstr "Màu dây"
 
-#: src/pages/IdeaMap.jsx:2421
+#: src/pages/IdeaMap.jsx:2439
 msgid "Màu mới"
 msgstr "Màu mới"
 
@@ -467,7 +474,7 @@ msgstr "Mở khoá"
 msgid "Mô phỏng đối đầu"
 msgstr "Mô phỏng đối đầu"
 
-#: src/pages/IdeaMap.jsx:2592
+#: src/pages/IdeaMap.jsx:2610
 msgid "Mô tả ngắn"
 msgstr "Mô tả ngắn"
 
@@ -475,24 +482,24 @@ msgstr "Mô tả ngắn"
 msgid "Mời"
 msgstr "Mời"
 
-#: src/pages/IdeaMap.jsx:2323
+#: src/pages/IdeaMap.jsx:2341
 msgid "Mỗi dòng một ý tưởng — xác nhận để tạo hàng loạt thẻ."
 msgstr "Mỗi dòng một ý tưởng — xác nhận để tạo hàng loạt thẻ."
 
 #: src/components/InviteModal.jsx:71
-#: src/pages/IdeaMap.jsx:1724
+#: src/pages/IdeaMap.jsx:1741
 msgid "Mời thành viên"
 msgstr "Mời thành viên"
 
-#: src/pages/IdeaMap.jsx:1745
+#: src/pages/IdeaMap.jsx:1765
 msgid "Mục lục"
 msgstr "Mục lục"
 
-#: src/pages/IdeaMap.jsx:2467
+#: src/pages/IdeaMap.jsx:2485
 msgid "Nét đứt"
 msgstr "Nét đứt"
 
-#: src/pages/IdeaMap.jsx:2464
+#: src/pages/IdeaMap.jsx:2482
 msgid "Nét liền"
 msgstr "Nét liền"
 
@@ -500,45 +507,45 @@ msgstr "Nét liền"
 msgid "Ngân sách điểm"
 msgstr "Ngân sách điểm"
 
-#: src/pages/IdeaMap.jsx:1755
-#: src/pages/IdeaMap.jsx:1817
+#: src/pages/IdeaMap.jsx:1773
+#: src/pages/IdeaMap.jsx:1835
 msgid "Nhãn"
 msgstr "Nhãn"
 
 #: src/components/ColorMenu.jsx:19
-#: src/pages/IdeaMap.jsx:2125
+#: src/pages/IdeaMap.jsx:2143
 msgid "Nhân bản"
 msgstr "Nhân bản"
 
-#: src/pages/IdeaMap.jsx:2456
+#: src/pages/IdeaMap.jsx:2474
 msgid "Nhãn edge…"
 msgstr "Nhãn edge…"
 
-#: src/pages/IdeaMap.jsx:2113
+#: src/pages/IdeaMap.jsx:2131
 msgid "Nhãn…"
 msgstr "Nhãn…"
 
-#: src/pages/IdeaMap.jsx:2039
+#: src/pages/IdeaMap.jsx:2057
 msgid "Nhấp đúp vào khoảng trống để tạo ý tưởng đầu tiên."
 msgstr "Nhấp đúp vào khoảng trống để tạo ý tưởng đầu tiên."
 
-#: src/pages/IdeaMap.jsx:1743
+#: src/pages/IdeaMap.jsx:1763
 msgid "Nhập JSON"
 msgstr "Nhập JSON"
 
-#: src/pages/IdeaMap.jsx:1728
+#: src/pages/IdeaMap.jsx:1747
 msgid "Nhập nhanh"
 msgstr "Nhập nhanh"
 
-#: src/pages/IdeaMap.jsx:2141
+#: src/pages/IdeaMap.jsx:2159
 msgid "Nhập vào bản đồ"
 msgstr "Nhập vào bản đồ"
 
-#: src/pages/IdeaMap.jsx:1735
+#: src/pages/IdeaMap.jsx:1755
 msgid "Nối ý tưởng"
 msgstr "Nối ý tưởng"
 
-#: src/pages/IdeaMap.jsx:2054
+#: src/pages/IdeaMap.jsx:2072
 msgid "Phóng to"
 msgstr "Phóng to"
 
@@ -550,16 +557,16 @@ msgstr "Sa bàn thiết kế"
 msgid "Sơ đồ tư duy tự do: kéo-thả, nối quan hệ, gắn nhãn/trạng thái, lọc và tìm kiếm — quản lý mọi ý tưởng liên quan đến game."
 msgstr "Sơ đồ tư duy tự do: kéo-thả, nối quan hệ, gắn nhãn/trạng thái, lọc và tìm kiếm — quản lý mọi ý tưởng liên quan đến game."
 
-#: src/pages/IdeaMap.jsx:1766
+#: src/pages/IdeaMap.jsx:1784
 msgid "Số ý tưởng khớp bộ lọc"
 msgstr "Số ý tưởng khớp bộ lọc"
 
 #: src/components/ColorMenu.jsx:14
-#: src/pages/IdeaMap.jsx:2643
+#: src/pages/IdeaMap.jsx:2661
 msgid "Sửa"
 msgstr "Sửa"
 
-#: src/pages/IdeaMap.jsx:2421
+#: src/pages/IdeaMap.jsx:2439
 msgid "Sửa màu"
 msgstr "Sửa màu"
 
@@ -571,11 +578,11 @@ msgstr "Tài khoản {rejectedEmail} chưa được cấp quyền truy cập."
 msgid "Tài khoản này chưa được cấp quyền truy cập."
 msgstr "Tài khoản này chưa được cấp quyền truy cập."
 
-#: src/pages/IdeaMap.jsx:2250
+#: src/pages/IdeaMap.jsx:2268
 msgid "Tạo"
 msgstr "Tạo"
 
-#: src/pages/IdeaMap.jsx:2334
+#: src/pages/IdeaMap.jsx:2352
 msgid "Tạo thẻ"
 msgstr "Tạo thẻ"
 
@@ -583,19 +590,23 @@ msgstr "Tạo thẻ"
 msgid "Tên badge"
 msgstr "Tên badge"
 
-#: src/pages/IdeaMap.jsx:2591
+#: src/pages/BoardList.jsx:33
+msgid "Tên board mới"
+msgstr "Tên board mới"
+
+#: src/pages/IdeaMap.jsx:2609
 msgid "Tên ý tưởng"
 msgstr "Tên ý tưởng"
 
-#: src/pages/IdeaMap.jsx:1866
+#: src/pages/IdeaMap.jsx:1884
 msgid "Thêm màu"
 msgstr "Thêm màu"
 
-#: src/pages/IdeaMap.jsx:1848
+#: src/pages/IdeaMap.jsx:1866
 msgid "Thêm nhãn"
 msgstr "Thêm nhãn"
 
-#: src/pages/IdeaMap.jsx:1811
+#: src/pages/IdeaMap.jsx:1829
 msgid "Thêm trạng thái"
 msgstr "Thêm trạng thái"
 
@@ -603,52 +614,52 @@ msgstr "Thêm trạng thái"
 msgid "Thiếu chỉ số Máu / Giáp / Tấn công — không mô phỏng được."
 msgstr "Thiếu chỉ số Máu / Giáp / Tấn công — không mô phỏng được."
 
-#: src/pages/IdeaMap.jsx:2052
+#: src/pages/IdeaMap.jsx:2070
 msgid "Thu nhỏ"
 msgstr "Thu nhỏ"
 
-#: src/pages/IdeaMap.jsx:1738
+#: src/pages/IdeaMap.jsx:1758
 msgid "Tìm theo tên/mô tả…"
 msgstr "Tìm theo tên/mô tả…"
 
-#: src/pages/IdeaMap.jsx:1754
-#: src/pages/IdeaMap.jsx:1780
+#: src/pages/IdeaMap.jsx:1772
+#: src/pages/IdeaMap.jsx:1798
 msgid "Trạng thái"
 msgstr "Trạng thái"
 
-#: src/pages/IdeaMap.jsx:2108
+#: src/pages/IdeaMap.jsx:2126
 msgid "Trạng thái…"
 msgstr "Trạng thái…"
 
-#: src/pages/IdeaMap.jsx:1744
+#: src/pages/IdeaMap.jsx:1764
 msgid "Trình chiếu"
 msgstr "Trình chiếu"
 
-#: src/pages/IdeaMap.jsx:2545
+#: src/pages/IdeaMap.jsx:2563
 msgid "Viết bình luận…"
 msgstr "Viết bình luận…"
 
-#: src/pages/IdeaMap.jsx:2476
+#: src/pages/IdeaMap.jsx:2494
 msgid "Vô hướng"
 msgstr "Vô hướng"
 
-#: src/pages/IdeaMap.jsx:2056
+#: src/pages/IdeaMap.jsx:2074
 msgid "Vừa khung"
 msgstr "Vừa khung"
 
-#: src/pages/IdeaMap.jsx:2513
+#: src/pages/IdeaMap.jsx:2531
 msgid "vừa xong"
 msgstr "vừa xong"
 
 #: src/components/ColorMenu.jsx:16
-#: src/pages/IdeaMap.jsx:2124
+#: src/pages/IdeaMap.jsx:2142
 msgid "Xếp gọn"
 msgstr "Xếp gọn"
 
 #: src/components/ColorMenu.jsx:51
-#: src/pages/IdeaMap.jsx:2126
-#: src/pages/IdeaMap.jsx:2534
-#: src/pages/IdeaMap.jsx:2644
+#: src/pages/IdeaMap.jsx:2144
+#: src/pages/IdeaMap.jsx:2552
+#: src/pages/IdeaMap.jsx:2662
 msgid "Xoá"
 msgstr "Xoá"
 
@@ -656,7 +667,7 @@ msgstr "Xoá"
 msgid "Xoá {count} thẻ"
 msgstr "Xoá {count} thẻ"
 
-#: src/pages/IdeaMap.jsx:2606
+#: src/pages/IdeaMap.jsx:2624
 msgid "Xoá ảnh"
 msgstr "Xoá ảnh"
 
@@ -664,7 +675,16 @@ msgstr "Xoá ảnh"
 msgid "Xoá badge"
 msgstr "Xoá badge"
 
-#: src/pages/IdeaMap.jsx:2500
+#: src/pages/BoardList.jsx:119
+msgid "Xoá board"
+msgstr "Xoá board"
+
+#. placeholder {0}: board.name
+#: src/pages/BoardList.jsx:48
+msgid "Xoá board \"{0}\"? Thao tác này không hoàn tác được."
+msgstr "Xoá board \"{0}\"? Thao tác này không hoàn tác được."
+
+#: src/pages/IdeaMap.jsx:2518
 msgid "Xoá cạnh"
 msgstr "Xoá cạnh"
 
@@ -680,23 +700,23 @@ msgstr "Xoá khỏi board"
 msgid "Xoá khung"
 msgstr "Xoá khung"
 
-#: src/pages/IdeaMap.jsx:1769
+#: src/pages/IdeaMap.jsx:1787
 msgid "Xoá lọc"
 msgstr "Xoá lọc"
 
-#: src/pages/IdeaMap.jsx:2424
+#: src/pages/IdeaMap.jsx:2442
 msgid "Xoá màu"
 msgstr "Xoá màu"
 
-#: src/pages/IdeaMap.jsx:1742
+#: src/pages/IdeaMap.jsx:1762
 msgid "Xuất JSON"
 msgstr "Xuất JSON"
 
-#: src/pages/IdeaMap.jsx:2077
+#: src/pages/IdeaMap.jsx:2095
 msgid "Xuất MD"
 msgstr "Xuất MD"
 
-#: src/pages/IdeaMap.jsx:2078
+#: src/pages/IdeaMap.jsx:2096
 msgid "Xuất PNG"
 msgstr "Xuất PNG"
 
@@ -705,7 +725,7 @@ msgstr "Xuất PNG"
 msgid "Xưởng Game Của Tôi"
 msgstr "Xưởng Game Của Tôi"
 
-#: src/pages/IdeaMap.jsx:2331
+#: src/pages/IdeaMap.jsx:2349
 msgid "Ý tưởng 1\n"
 "Ý tưởng 2\n"
 "…"
@@ -713,14 +733,14 @@ msgstr "Ý tưởng 1\n"
 "Ý tưởng 2\n"
 "…"
 
-#: src/pages/IdeaMap.jsx:463
-#: src/pages/IdeaMap.jsx:765
-#: src/pages/IdeaMap.jsx:2579
-#: src/pages/IdeaMap.jsx:2604
+#: src/pages/IdeaMap.jsx:473
+#: src/pages/IdeaMap.jsx:776
+#: src/pages/IdeaMap.jsx:2597
+#: src/pages/IdeaMap.jsx:2622
 msgid "Ý tưởng mới"
 msgstr "Ý tưởng mới"
 
-#: src/pages/IdeaMap.jsx:1761
-#: src/pages/IdeaMap.jsx:2637
+#: src/pages/IdeaMap.jsx:1779
+#: src/pages/IdeaMap.jsx:2655
 msgid "Yêu thích"
 msgstr "Yêu thích"
