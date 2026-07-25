@@ -15,7 +15,7 @@ import FrameBox from "../components/FrameBox.jsx";
 import { nodesInFrame, edgeEndpoint, edgesMatch, rectForEndpoint, clipToRect } from "../lib/board-geometry.js";
 import { computeSnap } from "../lib/snap.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
-import { gridLayout } from "../lib/layout.js";
+import { gridLayout, layerLayout } from "../lib/layout.js";
 import { parseDesc } from "../lib/mdlite.js";
 import { getUserName } from "../lib/user.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
@@ -1241,8 +1241,11 @@ export default function IdeaMap() {
       x: Math.min(...selected.map((n) => n.x)),
       y: Math.min(...selected.map((n) => n.y))
     };
-    const cols = Math.ceil(Math.sqrt(items.length));
-    const pos = gridLayout(items, origin, cols);
+    // Chỉ cạnh thẻ–thẻ mới định tầng; cạnh dính khung không nói gì về thứ tự thẻ.
+    const links = board.edges.filter(
+      (e) => (e.fromKind || "node") === "node" && (e.toKind || "node") === "node"
+    );
+    const pos = layerLayout(items, links, origin);
     commitAndSave({
       ...board,
       nodes: board.nodes.map((n) => (pos.has(n.id) ? { ...n, ...pos.get(n.id) } : n))
