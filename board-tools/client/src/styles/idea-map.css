@@ -101,7 +101,12 @@
 .edge-layer { position: absolute; left: 0; top: 0; width: 4200px; height: 3200px; overflow: visible; pointer-events: none; }
 .edge-layer .hit { stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
 .edge-layer .visible { stroke: var(--ink-dim); stroke-width: 1.6; opacity: 0.75; }
+.edge-layer .visible.hot { stroke: var(--accent); stroke-width: 2.4; opacity: 1; }
 .edge-layer .draft { stroke: var(--accent); stroke-width: 1.8; stroke-dasharray: 5 4; pointer-events: none; }
+.edge-handle-layer { position: absolute; left: 0; top: 0; width: 4200px; height: 3200px; overflow: visible; pointer-events: none; z-index: 5; }
+.edge-handle-layer .edge-handle { fill: var(--accent); stroke: var(--bg); stroke-width: 1.5; cursor: grab; pointer-events: all; }
+.edge-handle-layer .edge-handle:hover { r: 8; }
+.edge-handle-layer .edge-handle:active { cursor: grabbing; }
 .edge-layer .snap-guide { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 3; pointer-events: none; }
 .edge-layer .edge-label { font-size: 10px; fill: var(--ink-dim); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; pointer-events: none; }
 
