@@ -12,6 +12,7 @@ import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/600.css";
 import "./index.css";
 import Home from "./pages/Home.jsx";
+import BoardList from "./pages/BoardList.jsx";
 import IdeaMap from "./pages/IdeaMap.jsx";
 import Calculator from "./pages/Calculator.jsx";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
@@ -60,7 +61,8 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Home />} />
-              <Route path="/idea-map" element={<IdeaMap />} />
+              <Route path="/idea-map" element={<BoardList />} />
+              <Route path="/idea-map/:boardId" element={<IdeaMap />} />
               <Route path="/calculator" element={<Calculator />} />
             </Routes>
           </BrowserRouter>
