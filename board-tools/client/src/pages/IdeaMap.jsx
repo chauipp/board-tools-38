@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { getIdeas, saveIdeas } from "../lib/api.js";
+import { getBoard, saveBoard } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
 import { paletteCss, applyColorTo, removePaletteColor } from "../lib/palette.js";
@@ -9,6 +9,7 @@ import { loadLayouts, saveLayouts } from "../lib/dock.js";
 import DockPanel from "../components/DockPanel.jsx";
 import LoadError from "../components/LoadError.jsx";
 import LocaleToggle from "../components/LocaleToggle.jsx";
+import InviteModal from "../components/InviteModal.jsx";
 import BadgeEditor from "../components/BadgeEditor.jsx";
 import ColorMenu from "../components/ColorMenu.jsx";
 import FrameBox from "../components/FrameBox.jsx";
@@ -84,7 +85,11 @@ export default function IdeaMap() {
   const [, bump] = useState(0);
 
   const { user } = useAuth();
-  const { peers: presencePeers, sendCursor } = usePresence(user);
+  const { boardId } = useParams();
+  const [role, setRole] = useState(null);
+  const [boardName, setBoardName] = useState("");
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const { peers: presencePeers, sendCursor } = usePresence(user, boardId);
 
   const viewportRef = useRef(null);
   const fbDockRef = useRef(null);
@@ -101,19 +106,22 @@ export default function IdeaMap() {
 
   useEffect(() => {
     let cancelled = false;
-    getIdeas()
+    getBoard(boardId)
       .then((data) => {
         if (cancelled) return;
         if (initialCardParam && data.nodes.some((n) => n.id === Number(initialCardParam))) {
           pendingJumpRef.current = Number(initialCardParam);
         }
+        const { id, name, role: r, ...boardData } = data;
+        setRole(r);
+        setBoardName(name);
         // Board cũ chưa có palette → mặc định rỗng, để mọi chỗ đọc board.palette
         // không phải ?? [] khắp nơi.
-        setBoard({ palette: [], nextPaletteId: 1, ...data });
+        setBoard({ palette: [], nextPaletteId: 1, ...boardData });
       })
       .catch((e) => setLoadError(e.code || "UNKNOWN"));
     return () => { cancelled = true; };
-  }, []);
+  }, [boardId]);
 
   // Kéo panel cập nhật layouts mỗi mousemove; hoãn một nhịp để không ghi
   // localStorage 60 lần/giây.
@@ -189,7 +197,8 @@ export default function IdeaMap() {
 
   function saveNow(next) {
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-    saveIdeas(next).then(() => setSaveError(null)).catch(() => setSaveError(true));
+    if (role === "viewer") return;
+    saveBoard(boardId, next).then(() => setSaveError(null)).catch(() => setSaveError(true));
   }
 
   function saveDebounced(next) {
@@ -1691,16 +1700,22 @@ export default function IdeaMap() {
   }
 
   return (
-    <div className={"shell" + (presentIndex != null ? " presenting" : "")} onContextMenu={handlePageContextMenu}>
+    <div className={"shell" + (presentIndex != null ? " presenting" : "") + (role === "viewer" ? " readonly" : "")} onContextMenu={handlePageContextMenu}>
+      {role === "viewer" && (
+        <div className="readonly-banner"><Trans>Chỉ xem — bạn không có quyền chỉnh sửa board này.</Trans></div>
+      )}
       {/* Khai báo màu tự tạo trong cây React: sửa hex là mọi card/dây/badge dùng
           var(--pal-N) repaint ngay, không cần đi ghi lại từng chỗ tham chiếu. */}
       <style>{paletteCss(board.palette)}</style>
       <div className="topbar">
         <div>
           <div className="eyebrow"><Trans>Bản đồ ý tưởng</Trans></div>
-          <h1 className="display" style={{ fontSize: 19, margin: 0 }}><Trans>Game Của Tôi</Trans></h1>
+          <h1 className="display" style={{ fontSize: 19, margin: 0 }}>{boardName}</h1>
         </div>
-        <Link to="/" className="btn ghost"><Trans>← Trang chủ</Trans></Link>
+        <Link to="/idea-map" className="btn ghost"><Trans>← Danh sách board</Trans></Link>
+        {role === "owner" && (
+          <button className="btn ghost" onClick={() => setInviteOpen(true)}><Trans>Mời thành viên</Trans></button>
+        )}
         <button className="btn" onClick={handleAddClick}><Trans>+ Ý tưởng</Trans></button>
         <button className="btn ghost" onClick={createGroup}><Trans>+ Khung</Trans></button>
         <button className="btn ghost" onClick={() => setCaptureOpen(true)}><Trans>Nhập nhanh</Trans></button>
@@ -2312,6 +2327,10 @@ export default function IdeaMap() {
             </div>
           </div>
         </div>
+      )}
+
+      {inviteOpen && role === "owner" && (
+        <InviteModal boardId={boardId} onClose={() => setInviteOpen(false)} />
       )}
     </div>
   );
