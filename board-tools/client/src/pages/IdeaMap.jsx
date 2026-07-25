@@ -5,6 +5,8 @@ import { getIdeas, saveIdeas } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
 import { paletteCss, applyColorTo, removePaletteColor } from "../lib/palette.js";
+import { loadLayouts, saveLayouts } from "../lib/dock.js";
+import DockPanel from "../components/DockPanel.jsx";
 import LoadError from "../components/LoadError.jsx";
 import LocaleToggle from "../components/LocaleToggle.jsx";
 import BadgeEditor from "../components/BadgeEditor.jsx";
@@ -61,6 +63,7 @@ export default function IdeaMap() {
   // Mặc định mở Trạng thái + Nhãn để giữ đúng hành vi cũ khi mới vào; Bảng màu
   // đóng. Chỉ giữ trong state — không lưu qua reload.
   const [panels, setPanels] = useState({ status: true, tag: true, palette: false });
+  const [layouts, setLayouts] = useState(() => loadLayouts(window.localStorage));
   const [paletteUI, setPaletteUI] = useState(null); // { mode: "create"|"edit", id?, hex, x, y } | null
   const [colorDrag, setColorDrag] = useState(null); // { token, x, y } | null
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -78,6 +81,7 @@ export default function IdeaMap() {
   const [, bump] = useState(0);
 
   const viewportRef = useRef(null);
+  const filterbarRef = useRef(null);
   const canvasRef = useRef(null);
   const saveTimerRef = useRef(null);
   const boardRef = useRef(null);
@@ -104,6 +108,13 @@ export default function IdeaMap() {
       .catch((e) => setLoadError(e.code || "UNKNOWN"));
     return () => { cancelled = true; };
   }, []);
+
+  // Kéo panel cập nhật layouts mỗi mousemove; hoãn một nhịp để không ghi
+  // localStorage 60 lần/giây.
+  useEffect(() => {
+    const id = setTimeout(() => saveLayouts(window.localStorage, layouts), 200);
+    return () => clearTimeout(id);
+  }, [layouts]);
 
   useEffect(() => { boardRef.current = board; }, [board]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
@@ -1427,6 +1438,10 @@ export default function IdeaMap() {
     setPanels((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
+  function setLayout(key, layout) {
+    setLayouts((prev) => ({ ...prev, [key]: layout }));
+  }
+
   function clearFilters() {
     setFilterStatus({});
     setFilterTags({});
@@ -1643,7 +1658,7 @@ export default function IdeaMap() {
         <button className="btn ghost icon" onClick={toggleTheme} title={t`Đổi giao diện sáng/tối`}>◐</button>
       </div>
 
-      <div className="filterbar">
+      <div className="filterbar" ref={filterbarRef}>
         <div className="fb-tabs">
           <button className={"btn ghost toggle" + (panels.status ? " active" : "")} onClick={() => togglePanel("status")}><Trans>Trạng thái</Trans></button>
           <button className={"btn ghost toggle" + (panels.tag ? " active" : "")} onClick={() => togglePanel("tag")}><Trans>Nhãn</Trans></button>
@@ -1666,7 +1681,7 @@ export default function IdeaMap() {
         </div>
 
         {panels.status && (
-          <div className="fb-panel">
+          <DockPanel title={t`Trạng thái`} layout={layouts.status} barRef={filterbarRef} onLayout={(l) => setLayout("status", l)}>
             <div className="fb-chips">
               {board.statuses.map((s) => {
                 const key = String(s.id);
@@ -1699,11 +1714,11 @@ export default function IdeaMap() {
               )}
               <button className="fb-add" onClick={(e) => openBadgeCreate(e, "status")} title={t`Thêm trạng thái`}>+</button>
             </div>
-          </div>
+          </DockPanel>
         )}
 
         {panels.tag && (
-          <div className="fb-panel">
+          <DockPanel title={t`Nhãn`} layout={layouts.tag} barRef={filterbarRef} onLayout={(l) => setLayout("tag", l)}>
             <div className="fb-chips">
               {board.tags.map((tg) => {
                 const key = String(tg.id);
@@ -1736,11 +1751,11 @@ export default function IdeaMap() {
               )}
               <button className="fb-add" onClick={(e) => openBadgeCreate(e, "tag")} title={t`Thêm nhãn`}>+</button>
             </div>
-          </div>
+          </DockPanel>
         )}
 
         {panels.palette && (
-          <div className="fb-panel">
+          <DockPanel title={t`Bảng màu`} layout={layouts.palette} barRef={filterbarRef} onLayout={(l) => setLayout("palette", l)}>
             <div className="fb-chips">
               {board.palette.map((c) => (
                 <button
@@ -1757,7 +1772,7 @@ export default function IdeaMap() {
             {board.palette.length === 0 && (
               <span className="fb-count"><Trans>Chưa có màu nào — bấm + để tạo.</Trans></span>
             )}
-          </div>
+          </DockPanel>
         )}
       </div>
 
