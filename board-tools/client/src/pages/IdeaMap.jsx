@@ -17,7 +17,7 @@ import { computeSnap } from "../lib/snap.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout, layerLayout } from "../lib/layout.js";
 import { parseDesc } from "../lib/mdlite.js";
-import { getUserName } from "../lib/user.js";
+import { useAuth } from "../context/AuthContext.jsx";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 import { compressImage } from "../lib/image-utils.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
@@ -81,6 +81,8 @@ export default function IdeaMap() {
   const [presentIndex, setPresentIndex] = useState(null); // null = không trình chiếu
   const [initialCardParam] = useState(() => new URLSearchParams(window.location.search).get("card"));
   const [, bump] = useState(0);
+
+  const { user } = useAuth();
 
   const viewportRef = useRef(null);
   const fbDockRef = useRef(null);
@@ -363,7 +365,7 @@ export default function IdeaMap() {
     return <div style={{ padding: 40, color: "var(--ink-dim)" }}><Trans>Đang tải…</Trans></div>;
   }
 
-  const currentUser = window.localStorage.getItem("idea-map-user");
+  const currentUser = user.name;
 
   function entityAtPoint(clientX, clientY) {
     const el = document.elementFromPoint(clientX, clientY);
@@ -1526,25 +1528,22 @@ export default function IdeaMap() {
   }
 
   function toggleFavorite(nodeId) {
-    const user = getUserName(window.localStorage, () => window.prompt(t`Tên của bạn (hiện cạnh ⭐ và comment):`));
-    if (!user) return;
     commitAndSave({
       ...board,
       nodes: board.nodes.map((n) => {
         if (n.id !== nodeId) return n;
         const favs = n.favorites ?? [];
-        return { ...n, favorites: favs.includes(user) ? favs.filter((f) => f !== user) : [...favs, user] };
+        return { ...n, favorites: favs.includes(currentUser) ? favs.filter((f) => f !== currentUser) : [...favs, currentUser] };
       })
     });
   }
 
   function addComment(nodeId, text) {
-    const user = getUserName(window.localStorage, () => window.prompt(t`Tên của bạn (hiện cạnh ⭐ và comment):`));
-    if (!user || !text.trim()) return false;
+    if (!text.trim()) return false;
     commitAndSave({
       ...board,
       nodes: board.nodes.map((n) => (n.id === nodeId
-        ? { ...n, comments: [...(n.comments ?? []), { text: text.trim(), author: user, at: new Date().toISOString() }] }
+        ? { ...n, comments: [...(n.comments ?? []), { text: text.trim(), author: currentUser, at: new Date().toISOString() }] }
         : n))
     });
     return true;
