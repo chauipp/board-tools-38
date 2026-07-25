@@ -51,7 +51,9 @@ export function parseSessionFromCookieHeader(cookieHeader) {
 export function requireAuth(req, res, next) {
   const token = req.cookies && req.cookies[SESSION_COOKIE_NAME];
   const user = token && verifySession(token);
-  if (!user) return res.status(401).json({ error: "unauthorized" });
+  if (!user || !isEmailAllowed(user.email)) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
   req.user = user;
   next();
 }

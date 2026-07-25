@@ -30,6 +30,26 @@ if (!MONGODB_URI) {
   process.exit(1);
 }
 
+if (!process.env.VITE_GOOGLE_CLIENT_ID) {
+  console.error(
+    "Thiếu VITE_GOOGLE_CLIENT_ID. Copy server/.env.example thành server/.env rồi điền Google OAuth client ID."
+  );
+  process.exit(1);
+}
+
+if (!process.env.SESSION_SECRET) {
+  console.error(
+    "Thiếu SESSION_SECRET. Copy server/.env.example thành server/.env rồi điền một chuỗi ngẫu nhiên dài để ký session JWT."
+  );
+  process.exit(1);
+}
+
+if (!process.env.ALLOWED_EMAILS) {
+  console.error(
+    "Thiếu ALLOWED_EMAILS — mọi đăng nhập sẽ bị từ chối cho đến khi biến này được cấu hình trong server/.env."
+  );
+}
+
 await mongoose.connect(MONGODB_URI);
 
 const ideaBoardSchema = new mongoose.Schema(
@@ -193,11 +213,12 @@ app.post("/api/auth/google", async (req, res) => {
   try {
     token = signSession(googleUser);
   } catch (e) {
+    console.error("signSession thất bại:", e);
     return res.status(500).json({ error: "session_error" });
   }
   res.cookie(SESSION_COOKIE_NAME, token, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: process.env.COOKIE_SECURE === "true",
     sameSite: "lax",
     maxAge: SESSION_COOKIE_MAX_AGE_MS
   });
@@ -291,7 +312,7 @@ const io = new Server(server);
 
 io.use((socket, next) => {
   const user = parseSessionFromCookieHeader(socket.handshake.headers.cookie);
-  if (!user) return next(new Error("unauthorized"));
+  if (!user || !isEmailAllowed(user.email)) return next(new Error("unauthorized"));
   socket.data.user = user;
   next();
 });
@@ -304,9 +325,10 @@ io.on("connection", (socket) => {
   socket.emit("presence:sync", Array.from(presencePeers.values()));
   socket.broadcast.emit("presence:join", peer);
 
-  socket.on("cursor:move", ({ x, y }) => {
+  socket.on("cursor:move", (payload) => {
+    const { x, y } = payload || {};
     const p = presencePeers.get(socket.id);
-    if (!p || typeof x !== "number" || typeof y !== "number") return;
+    if (!p || !Number.isFinite(x) || !Number.isFinite(y)) return;
     p.x = x;
     p.y = y;
     socket.broadcast.emit("cursor:move", p);

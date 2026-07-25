@@ -31,6 +31,13 @@ services:
         sync: false
       - key: ALLOWED_EMAILS
         sync: false
+      # NODE_ENV can't be "production" here: the build command runs
+      # `npm install` for the client, and npm omits devDependencies under
+      # NODE_ENV=production, which would delete vite/@lingui/cli and break
+      # the build. So the session cookie's Secure flag is driven by this
+      # var instead — not a secret, so a plain value.
+      - key: COOKIE_SECURE
+        value: "true"
       # Node 22+ required: @lingui/cli imports fs.globSync, which does not
       # exist before Node 22 (build fails on 20 with a node:fs SyntaxError).
       - key: NODE_VERSION
