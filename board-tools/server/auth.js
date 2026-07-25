@@ -20,6 +20,16 @@ export function isEmailAllowed(email) {
   return allowed.includes(String(email || "").toLowerCase());
 }
 
+export function getBoardRole(board, email) {
+  const normalized = String(email || "").toLowerCase();
+  if (!normalized) return null;
+  if (String(board.ownerEmail || "").toLowerCase() === normalized) return "owner";
+  const member = (board.members || []).find(
+    (m) => String(m.email || "").toLowerCase() === normalized
+  );
+  return member ? member.role : null;
+}
+
 export function signSession(user) {
   return jwt.sign(
     { email: user.email, name: user.name, picture: user.picture },

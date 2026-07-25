@@ -5,7 +5,8 @@ import {
   signSession,
   verifySession,
   parseSessionFromCookieHeader,
-  SESSION_COOKIE_NAME
+  SESSION_COOKIE_NAME,
+  getBoardRole
 } from "./auth.js";
 
 before(() => {
@@ -43,4 +44,30 @@ test("parseSessionFromCookieHeader finds the session cookie among others", () =>
 test("parseSessionFromCookieHeader returns null when the cookie is absent", () => {
   assert.equal(parseSessionFromCookieHeader("theme-pref=dark"), null);
   assert.equal(parseSessionFromCookieHeader(undefined), null);
+});
+
+test("getBoardRole: owner email returns 'owner', case-insensitively", () => {
+  const board = { ownerEmail: "owner@x.com", members: [] };
+  assert.equal(getBoardRole(board, "owner@x.com"), "owner");
+  assert.equal(getBoardRole(board, "OWNER@X.COM"), "owner");
+});
+
+test("getBoardRole: member email returns their stored role", () => {
+  const board = {
+    ownerEmail: "owner@x.com",
+    members: [{ email: "ed@x.com", role: "editor" }, { email: "vw@x.com", role: "viewer" }]
+  };
+  assert.equal(getBoardRole(board, "ed@x.com"), "editor");
+  assert.equal(getBoardRole(board, "vw@x.com"), "viewer");
+});
+
+test("getBoardRole: unrelated email returns null", () => {
+  const board = { ownerEmail: "owner@x.com", members: [] };
+  assert.equal(getBoardRole(board, "stranger@x.com"), null);
+});
+
+test("getBoardRole: empty or missing email returns null", () => {
+  const board = { ownerEmail: "owner@x.com", members: [] };
+  assert.equal(getBoardRole(board, ""), null);
+  assert.equal(getBoardRole(board, undefined), null);
 });

@@ -15,6 +15,7 @@ import {
   SESSION_COOKIE_NAME,
   SESSION_COOKIE_MAX_AGE_MS
 } from "./auth.js";
+import { User, Board, upsertUser } from "./models.js";
 
 dotenv.config();
 
@@ -208,6 +209,11 @@ app.post("/api/auth/google", async (req, res) => {
   }
   if (!isEmailAllowed(googleUser.email)) {
     return res.status(403).json({ error: "not_allowed" });
+  }
+  try {
+    await upsertUser(googleUser);
+  } catch (e) {
+    console.error("Không lưu được thông tin user:", e);
   }
   let token;
   try {
