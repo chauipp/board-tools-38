@@ -9,8 +9,11 @@
     "dev": "node --watch index.js"
   },
   "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "mongoose": "^8.6.3",
-    "dotenv": "^16.4.5"
+    "google-auth-library": "^9.15.1",
+    "jsonwebtoken": "^9.0.3",
+    "mongoose": "^8.6.3"
   }
 }
