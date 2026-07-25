@@ -1690,7 +1690,7 @@ export default function IdeaMap() {
           <svg className="edge-layer">
             <defs>
               <marker id="edge-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ink-dim)" />
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
               </marker>
             </defs>
             {board.edges.map((edge) => {
@@ -1709,6 +1709,7 @@ export default function IdeaMap() {
                   <line
                     className="visible"
                     x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                    style={edge.color ? { stroke: colorVar(edge.color) } : undefined}
                     strokeDasharray={edge.style === "dashed" ? "6 5" : undefined}
                     markerEnd={edge.arrow === "none" ? undefined : "url(#edge-arrow)"}
                   />
@@ -1979,6 +1980,7 @@ export default function IdeaMap() {
             onArrowToggle={() => updateEdge(edge.id, { arrow: edge.arrow === "none" ? undefined : "none" })}
             onReverse={() => updateEdge(edge.id, { from: edge.to, fromKind: edge.toKind, to: edge.from, toKind: edge.fromKind })}
             onLabel={(label) => updateEdge(edge.id, { label: label.trim() || undefined })}
+            onColorChange={(color) => updateEdge(edge.id, { color: color || undefined })}
             onDelete={() => deleteEdge(edge.id)}
             onClose={() => setEdgeMenu(null)}
           />
@@ -2052,7 +2054,39 @@ function MdLite({ text }) {
   );
 }
 
-function EdgeMenu({ x, y, edge, onStyleToggle, onArrowToggle, onReverse, onLabel, onDelete, onClose }) {
+function LineSolidIcon() {
+  return <svg viewBox="0 0 20 12" width="20" height="12"><line x1="2" y1="6" x2="18" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>;
+}
+function LineDashedIcon() {
+  return <svg viewBox="0 0 20 12" width="20" height="12"><line x1="2" y1="6" x2="18" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="4 3" /></svg>;
+}
+function LineUndirectedIcon() {
+  return (
+    <svg viewBox="0 0 20 12" width="20" height="12">
+      <line x1="3" y1="6" x2="17" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="3" cy="6" r="1.8" fill="currentColor" />
+      <circle cx="17" cy="6" r="1.8" fill="currentColor" />
+    </svg>
+  );
+}
+function LineDirectedIcon() {
+  return (
+    <svg viewBox="0 0 20 12" width="20" height="12">
+      <line x1="2" y1="6" x2="14" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M12 2l5 4-5 4" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function ReverseIcon() {
+  return (
+    <svg viewBox="0 0 20 16" width="20" height="16">
+      <path d="M2 5h13M11 2l3 3-3 3" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M18 11H5M9 8l-3 3 3 3" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function EdgeMenu({ x, y, edge, onStyleToggle, onArrowToggle, onReverse, onLabel, onColorChange, onDelete, onClose }) {
   const { t } = useLingui();
   const ref = useRef(null);
   useCloseOnOutside(ref, onClose);
@@ -2068,6 +2102,9 @@ function EdgeMenu({ x, y, edge, onStyleToggle, onArrowToggle, onReverse, onLabel
     onLabel(rawValue);
   }
 
+  const isDashed = edge.style === "dashed";
+  const isDirected = edge.arrow !== "none";
+
   return (
     <div className="badge-editor edge-menu" ref={ref} style={{ left: x, top: y }} onMouseDown={(e) => e.stopPropagation()}>
       <input
@@ -2079,21 +2116,47 @@ function EdgeMenu({ x, y, edge, onStyleToggle, onArrowToggle, onReverse, onLabel
         onKeyDown={(e) => { if (e.key === "Enter") commitLabel(e.currentTarget.value); }}
         onBlur={(e) => commitLabel(e.target.value)}
       />
-      <div className="be-actions">
-        <button className="save-btn" onClick={onStyleToggle}>
-          {edge.style === "dashed" ? <Trans>Nét liền</Trans> : <Trans>Nét đứt</Trans>}
-        </button>
-        <button className="save-btn" onClick={onArrowToggle}>
-          {edge.arrow === "none" ? <Trans>Có hướng</Trans> : <Trans>Vô hướng</Trans>}
-        </button>
-        {edge.arrow !== "none" && (
-          <button className="save-btn" onClick={onReverse}><Trans>Đảo chiều</Trans></button>
-        )}
+
+      <div className="em-section">
+        <div className="eyebrow"><Trans>Kiểu nét</Trans></div>
+        <div className="em-toggle-group">
+          <button className={"em-icon-btn" + (!isDashed ? " on" : "")} onClick={() => isDashed && onStyleToggle()} title={t`Nét liền`}>
+            <LineSolidIcon />
+          </button>
+          <button className={"em-icon-btn" + (isDashed ? " on" : "")} onClick={() => !isDashed && onStyleToggle()} title={t`Nét đứt`}>
+            <LineDashedIcon />
+          </button>
+        </div>
       </div>
-      <div className="be-actions">
-        <button className="be-delete" onClick={onDelete} title={t`Xoá cạnh`}>🗑</button>
-        <button className="cancel-btn" onClick={onClose}><Trans>Đóng</Trans></button>
+
+      <div className="em-section">
+        <div className="eyebrow"><Trans>Hướng</Trans></div>
+        <div className="em-toggle-group">
+          <button className={"em-icon-btn" + (!isDirected ? " on" : "")} onClick={() => isDirected && onArrowToggle()} title={t`Vô hướng`}>
+            <LineUndirectedIcon />
+          </button>
+          <button className={"em-icon-btn" + (isDirected ? " on" : "")} onClick={() => !isDirected && onArrowToggle()} title={t`Có hướng`}>
+            <LineDirectedIcon />
+          </button>
+          {isDirected && (
+            <button className="em-icon-btn" onClick={onReverse} title={t`Đảo chiều`}>
+              <ReverseIcon />
+            </button>
+          )}
+        </div>
       </div>
+
+      <div className="em-section">
+        <div className="eyebrow"><Trans>Màu dây</Trans></div>
+        <div className="be-swatches">
+          <button className={"be-swatch dot-empty" + (!edge.color ? " on" : "")} onClick={() => onColorChange(null)} title={t`Mặc định`} />
+          {BADGE_PALETTE.map((token) => (
+            <button key={token} className={"be-swatch" + (edge.color === token ? " on" : "")} style={{ background: colorVar(token) }} onClick={() => onColorChange(token)} title={token} />
+          ))}
+        </div>
+      </div>
+
+      <button className="em-delete" onClick={onDelete}>🗑 <Trans>Xoá cạnh</Trans></button>
     </div>
   );
 }
