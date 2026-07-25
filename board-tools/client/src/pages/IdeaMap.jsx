@@ -106,6 +106,13 @@ export default function IdeaMap() {
 
   useEffect(() => {
     let cancelled = false;
+    // Đổi boardId mà không unmount (hiện router luôn unmount, nhưng đừng phụ
+    // thuộc vào đó): xoá sạch board/role/lỗi cũ trước khi tải, nếu không sẽ có
+    // một nhịp component hiển thị board A trong khi saveNow đã trỏ sang board B.
+    setBoard(null);
+    setRole(null);
+    setBoardName("");
+    setLoadError(null);
     getBoard(boardId)
       .then((data) => {
         if (cancelled) return;
@@ -119,7 +126,7 @@ export default function IdeaMap() {
         // không phải ?? [] khắp nơi.
         setBoard({ palette: [], nextPaletteId: 1, ...boardData });
       })
-      .catch((e) => setLoadError(e.code || "UNKNOWN"));
+      .catch((e) => { if (!cancelled) setLoadError(e.code || "UNKNOWN"); });
     return () => { cancelled = true; };
   }, [boardId]);
 
@@ -1737,7 +1744,9 @@ export default function IdeaMap() {
         <button className="btn ghost" disabled={board.groups.length === 0} onClick={startPresentation}><Trans>Trình chiếu</Trans></button>
         <button className={"btn ghost toggle" + (outlineOpen ? " active" : "")} onClick={() => setOutlineOpen((v) => !v)}><Trans>Mục lục</Trans></button>
         <LocaleToggle />
-        <button className="btn ghost icon" onClick={toggleTheme} title={t`Đổi giao diện sáng/tối`}>◐</button>
+        {/* .theme là móc để CSS mở lại pointer-events ở chế độ chỉ xem — "btn
+            ghost icon" trùng với nút hoàn tác/làm lại nên không dùng làm móc được. */}
+        <button className="btn ghost icon theme" onClick={toggleTheme} title={t`Đổi giao diện sáng/tối`}>◐</button>
       </div>
 
       <div className="filterbar">

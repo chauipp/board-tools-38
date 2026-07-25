@@ -2,14 +2,15 @@ import { useEffect, useState } from "react";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { getMembers, inviteMember, updateMemberRole, removeMember } from "../lib/api.js";
 
-const ERROR_MESSAGES = {
-  not_allowed: "Email này chưa được cấp quyền đăng nhập vào hệ thống.",
-  already_owner: "Email này đã là chủ sở hữu board.",
-  invalid_input: "Email hoặc vai trò không hợp lệ."
-};
-
 export default function InviteModal({ boardId, onClose }) {
   const { t } = useLingui();
+  // Dựng trong component: chuỗi phải đi qua t`` mới vào được catalog, ngoài
+  // component thì `t` chưa có và bản tiếng Anh sẽ hiện nguyên tiếng Việt.
+  const ERROR_MESSAGES = {
+    not_allowed: t`Email này chưa được cấp quyền đăng nhập vào hệ thống.`,
+    already_owner: t`Email này đã là chủ sở hữu board.`,
+    invalid_input: t`Email hoặc vai trò không hợp lệ.`
+  };
   const [members, setMembers] = useState(null);
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("editor");
@@ -31,19 +32,32 @@ export default function InviteModal({ boardId, onClose }) {
       setEmail("");
       reload();
     } catch (err) {
-      setError(ERROR_MESSAGES[err.code] || "Không mời được thành viên.");
+      setError(ERROR_MESSAGES[err.code] || t`Không mời được thành viên.`);
     } finally {
       setSubmitting(false);
     }
   }
 
+  // api.js ném lỗi cho mọi phản hồi không OK; không bắt ở đây thì PATCH/DELETE
+  // hỏng chỉ thành unhandled rejection: reload() không chạy, <select> lặng lẽ
+  // nhảy về giá trị cũ và người dùng không hiểu vì sao.
   async function handleRoleChange(memberEmail, newRole) {
-    await updateMemberRole(boardId, memberEmail, newRole);
+    setError(null);
+    try {
+      await updateMemberRole(boardId, memberEmail, newRole);
+    } catch (err) {
+      setError(ERROR_MESSAGES[err.code] || t`Không đổi được vai trò thành viên.`);
+    }
     reload();
   }
 
   async function handleRemove(memberEmail) {
-    await removeMember(boardId, memberEmail);
+    setError(null);
+    try {
+      await removeMember(boardId, memberEmail);
+    } catch (err) {
+      setError(ERROR_MESSAGES[err.code] || t`Không xoá được thành viên khỏi board.`);
+    }
     reload();
   }
 
