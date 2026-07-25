@@ -3,6 +3,15 @@ import mongoose from "mongoose";
 import dotenv from "dotenv";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import cookieParser from "cookie-parser";
+import {
+  requireAuth,
+  isEmailAllowed,
+  signSession,
+  verifyGoogleIdToken,
+  SESSION_COOKIE_NAME,
+  SESSION_COOKIE_MAX_AGE_MS
+} from "./auth.js";
 
 dotenv.config();
 
@@ -165,8 +174,43 @@ function stripMongoMeta(doc) {
 
 const app = express();
 app.use(express.json({ limit: "10mb" }));
+app.use(cookieParser());
 
-app.get("/api/ideas", async (req, res) => {
+app.post("/api/auth/google", async (req, res) => {
+  let googleUser;
+  try {
+    googleUser = await verifyGoogleIdToken(req.body.idToken);
+  } catch (e) {
+    return res.status(401).json({ error: "invalid_token" });
+  }
+  if (!isEmailAllowed(googleUser.email)) {
+    return res.status(403).json({ error: "not_allowed" });
+  }
+  let token;
+  try {
+    token = signSession(googleUser);
+  } catch (e) {
+    return res.status(500).json({ error: "session_error" });
+  }
+  res.cookie(SESSION_COOKIE_NAME, token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: SESSION_COOKIE_MAX_AGE_MS
+  });
+  res.json({ user: googleUser });
+});
+
+app.get("/api/auth/me", requireAuth, (req, res) => {
+  res.json({ user: req.user });
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  res.clearCookie(SESSION_COOKIE_NAME);
+  res.json({ ok: true });
+});
+
+app.get("/api/ideas", requireAuth, async (req, res) => {
   try {
     const doc = await IdeaBoard.findOne({ singleton: "main" });
     const obj = doc.toObject();
@@ -190,7 +234,7 @@ app.get("/api/ideas", async (req, res) => {
   }
 });
 
-app.put("/api/ideas", async (req, res) => {
+app.put("/api/ideas", requireAuth, async (req, res) => {
   try {
     const { nodes, edges, groups, statuses, tags, palette, nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, view } = req.body;
     await IdeaBoard.findOneAndUpdate(
@@ -204,7 +248,7 @@ app.put("/api/ideas", async (req, res) => {
   }
 });
 
-app.get("/api/calculator", async (req, res) => {
+app.get("/api/calculator", requireAuth, async (req, res) => {
   try {
     const doc = await Calculator.findOne({ singleton: "main" });
     res.json(stripMongoMeta(doc));
@@ -213,7 +257,7 @@ app.get("/api/calculator", async (req, res) => {
   }
 });
 
-app.put("/api/calculator", async (req, res) => {
+app.put("/api/calculator", requireAuth, async (req, res) => {
   try {
     const { budget, nextStatId, stats } = req.body;
     await Calculator.findOneAndUpdate(
