@@ -20,6 +20,17 @@ services:
     envVars:
       - key: MONGODB_URI
         sync: false
+      # Google Cloud Console OAuth client ID. Not secret (meant to be public/
+      # embedded in frontend code) but set via dashboard since it doesn't
+      # exist until the operator creates it — same value used by both the
+      # client build (Vite auto-exposes VITE_-prefixed vars) and the server's
+      # token-audience check.
+      - key: VITE_GOOGLE_CLIENT_ID
+        sync: false
+      - key: SESSION_SECRET
+        sync: false
+      - key: ALLOWED_EMAILS
+        sync: false
       # Node 22+ required: @lingui/cli imports fs.globSync, which does not
       # exist before Node 22 (build fails on 20 with a node:fs SyntaxError).
       - key: NODE_VERSION
