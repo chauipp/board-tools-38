@@ -28,11 +28,13 @@ const ideaBoardSchema = new mongoose.Schema(
     groups: { type: Array, default: [] },
     statuses: { type: Array, default: undefined },
     tags: { type: Array, default: undefined },
+    palette: { type: Array, default: [] },
     nextNodeId: { type: Number, default: 1 },
     nextEdgeId: { type: Number, default: 1 },
     nextGroupId: { type: Number, default: 1 },
     nextStatusId: { type: Number, default: 1 },
     nextTagId: { type: Number, default: 1 },
+    nextPaletteId: { type: Number, default: 1 },
     view: { type: Object, default: () => ({ panX: 0, panY: 0, scale: 1 }) }
   },
   { minimize: false, versionKey: false }
@@ -190,10 +192,10 @@ app.get("/api/ideas", async (req, res) => {
 
 app.put("/api/ideas", async (req, res) => {
   try {
-    const { nodes, edges, groups, statuses, tags, nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, view } = req.body;
+    const { nodes, edges, groups, statuses, tags, palette, nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, view } = req.body;
     await IdeaBoard.findOneAndUpdate(
       { singleton: "main" },
-      { nodes, edges, groups, statuses, tags, nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, view },
+      { nodes, edges, groups, statuses, tags, palette, nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, view },
       { upsert: true }
     );
     res.json({ ok: true });

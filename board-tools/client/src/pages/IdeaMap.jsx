@@ -91,7 +91,9 @@ export default function IdeaMap() {
         if (initialCardParam && data.nodes.some((n) => n.id === Number(initialCardParam))) {
           pendingJumpRef.current = Number(initialCardParam);
         }
-        setBoard(data);
+        // Board cũ chưa có palette → mặc định rỗng, để mọi chỗ đọc board.palette
+        // không phải ?? [] khắp nơi.
+        setBoard({ palette: [], nextPaletteId: 1, ...data });
       })
       .catch((e) => setLoadError(e.code || "UNKNOWN"));
     return () => { cancelled = true; };
