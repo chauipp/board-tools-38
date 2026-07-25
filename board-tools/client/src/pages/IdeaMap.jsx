@@ -18,6 +18,7 @@ import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout, layerLayout } from "../lib/layout.js";
 import { parseDesc } from "../lib/mdlite.js";
 import { useAuth } from "../context/AuthContext.jsx";
+import { usePresence, cursorColor } from "../lib/usePresence.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 import { compressImage } from "../lib/image-utils.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
@@ -83,6 +84,7 @@ export default function IdeaMap() {
   const [, bump] = useState(0);
 
   const { user } = useAuth();
+  const { peers: presencePeers, sendCursor } = usePresence(user);
 
   const viewportRef = useRef(null);
   const fbDockRef = useRef(null);
@@ -366,6 +368,15 @@ export default function IdeaMap() {
   }
 
   const currentUser = user.name;
+
+  function handlePresenceMouseMove(e) {
+    const rect = viewportRef.current.getBoundingClientRect();
+    const view = boardRef.current.view;
+    sendCursor(
+      (e.clientX - rect.left - view.panX) / view.scale,
+      (e.clientY - rect.top - view.panY) / view.scale
+    );
+  }
 
   function entityAtPoint(clientX, clientY) {
     const el = document.elementFromPoint(clientX, clientY);
@@ -1835,6 +1846,7 @@ export default function IdeaMap() {
         onDoubleClick={handleViewportDoubleClick}
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleViewportImageDrop}
+        onMouseMove={handlePresenceMouseMove}
       >
         <div
           className="canvas"
@@ -1941,6 +1953,19 @@ export default function IdeaMap() {
               onRemoveImage={() => removeNodeImage(node.id)}
               onImageResize={(e) => handleImageResizeMouseDown(e, node)}
             />
+          ))}
+
+          {Array.from(presencePeers.values()).map((peer) => (
+            <div
+              key={peer.socketId}
+              className="peer-cursor"
+              style={{ left: peer.x, top: peer.y, "--peer-color": cursorColor(peer.email) }}
+            >
+              <svg viewBox="0 0 20 20" width="16" height="16">
+                <path d="M2 2 L18 9 L10 11 L8 18 Z" fill="var(--peer-color)" stroke="var(--bg)" strokeWidth="1" />
+              </svg>
+              <span className="peer-cursor-label" style={{ background: "var(--peer-color)" }}>{peer.name}</span>
+            </div>
           ))}
 
           {/* Tay cầm nổi trên cùng, tách khỏi .edge-layer: đầu dây thường trùng

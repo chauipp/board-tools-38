@@ -459,3 +459,14 @@
   font-size: 15px; line-height: 1; padding: 0 2px;
 }
 .present-bar .pb-exit:hover { color: var(--ink); }
+
+.peer-cursor {
+  position: absolute; pointer-events: none; z-index: 6;
+  transform: translate(0, 0);
+}
+.peer-cursor-label {
+  display: inline-block; margin-left: 14px; margin-top: -4px;
+  padding: 1px 6px; border-radius: 4px;
+  font-size: 10px; font-weight: 600; color: var(--accent-ink);
+  white-space: nowrap;
+}
