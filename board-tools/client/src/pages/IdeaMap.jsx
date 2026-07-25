@@ -1569,7 +1569,43 @@ export default function IdeaMap() {
   }
 
   function handleColorMouseDown(e, token) {
-    // Kéo-thả màu gắn ở commit sau.
+    if (e.button !== 0) return;
+    const startX = e.clientX, startY = e.clientY;
+    let dragging = false;
+    const THRESHOLD = 5;
+
+    // Badge phải kiểm TRƯỚC thẻ: .status-pill nằm bên trong .idea-card, nếu xét
+    // thẻ trước thì thả vào pill sẽ tô thẻ chứ không đổi màu badge.
+    function colorTargetAt(clientX, clientY) {
+      const el = document.elementFromPoint(clientX, clientY);
+      if (!el) return null;
+      const badge = el.closest("[data-badge-kind][data-badge-id]");
+      if (badge) return { kind: badge.getAttribute("data-badge-kind"), id: Number(badge.getAttribute("data-badge-id")) };
+      const card = el.closest(".idea-card[data-id]");
+      if (card) return { kind: "node", id: Number(card.getAttribute("data-id")) };
+      const edge = el.closest("[data-edge-id]");
+      if (edge) return { kind: "edge", id: Number(edge.getAttribute("data-edge-id")) };
+      return null;
+    }
+
+    function onMove(ev) {
+      if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
+      if (!dragging) return;
+      setColorDrag({ token, x: ev.clientX, y: ev.clientY });
+      const target = colorTargetAt(ev.clientX, ev.clientY);
+      setDropTargetId(target && target.kind === "node" ? { id: target.id, kind: "node" } : null);
+    }
+    function onUp(ev) {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (!dragging) return;
+      const target = colorTargetAt(ev.clientX, ev.clientY);
+      setColorDrag(null);
+      setDropTargetId(null);
+      if (target) commitAndSave(applyColorTo(board, target, token));
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
   }
 
   return (
@@ -1773,6 +1809,7 @@ export default function IdeaMap() {
                 <g key={edge.id}>
                   <line
                     className="hit"
+                    data-edge-id={edge.id}
                     x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                     onClick={(e) => { setColorMenu(null); setCommentsFor(null); setEdgeMenu({ id: edge.id, x: e.clientX, y: e.clientY }); }}
                   />
@@ -1965,6 +2002,12 @@ export default function IdeaMap() {
               </>
             );
           })()}
+        </div>
+      )}
+
+      {colorDrag && (
+        <div className="chip-ghost" style={{ left: colorDrag.x, top: colorDrag.y }}>
+          <span className="dot" style={{ background: colorVar(colorDrag.token) }}></span>
         </div>
       )}
 
@@ -2171,14 +2214,23 @@ function ReverseIcon() {
 function PaletteEditor({ x, y, hex, onPick, onDelete, onClose }) {
   const { t } = useLingui();
   const ref = useRef(null);
+  const inputRef = useRef(null);
   useCloseOnOutside(ref, onClose);
+
+  // Listener "change" thật, không dùng onChange của React: React map onChange
+  // của input màu sang sự kiện "input", tức là mỗi bước kéo trong bộ chọn màu
+  // thành một entry undo + một lần lưu. "change" chỉ nổ một lần khi chốt màu.
+  useEffect(() => {
+    const el = inputRef.current;
+    const handler = (e) => onPick(e.target.value);
+    el.addEventListener("change", handler);
+    return () => el.removeEventListener("change", handler);
+  }, [onPick]);
 
   return (
     <div className="badge-editor pal-editor" ref={ref} style={{ left: x, top: y }} onMouseDown={(e) => e.stopPropagation()}>
       <div className="eyebrow">{onDelete ? t`Sửa màu` : t`Màu mới`}</div>
-      {/* Ghi ở "change", không phải "input": hộp chọn màu của Windows là modal nên
-          preview realtime vô nghĩa, mà mỗi bước kéo lại thành một entry undo. */}
-      <input className="pal-input" type="color" defaultValue={hex} onChange={(e) => onPick(e.target.value)} />
+      <input className="pal-input" type="color" defaultValue={hex} ref={inputRef} />
       {onDelete && (
         <button className="em-delete" onClick={onDelete}>🗑 <Trans>Xoá màu</Trans></button>
       )}
@@ -2413,12 +2465,12 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
       <div className="meta-row">
         {(() => {
           const s = statusById(board, node.statusId);
-          return s ? <span className="status-pill" style={{ background: colorVar(s.color) }}>{s.name}</span> : null;
+          return s ? <span className="status-pill" data-badge-kind="status" data-badge-id={s.id} style={{ background: colorVar(s.color) }}>{s.name}</span> : null;
         })()}
         {(() => {
           const tg = tagById(board, node.tagId);
           return tg ? (
-            <span className="tag-pill">
+            <span className="tag-pill" data-badge-kind="tag" data-badge-id={tg.id}>
               <span className="dot" style={{ background: colorVar(tg.color) }}></span>
               {tg.name}
             </span>
