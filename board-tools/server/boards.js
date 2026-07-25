@@ -182,6 +182,7 @@ router.post("/:id/members", async (req, res) => {
     await board.save();
     res.status(201).json({ ok: true });
   } catch (e) {
+    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
     res.status(500).json({ error: "Không mời được thành viên." });
   }
 });
@@ -202,6 +203,7 @@ router.patch("/:id/members/:email", async (req, res) => {
     await board.save();
     res.json({ ok: true });
   } catch (e) {
+    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
     res.status(500).json({ error: "Không đổi được vai trò." });
   }
 });
@@ -216,6 +218,7 @@ router.delete("/:id/members/:email", async (req, res) => {
     await board.save();
     res.json({ ok: true });
   } catch (e) {
+    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
     res.status(500).json({ error: "Không xoá được thành viên." });
   }
 });
