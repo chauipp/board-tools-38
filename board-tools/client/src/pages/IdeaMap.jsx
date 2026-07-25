@@ -57,6 +57,9 @@ export default function IdeaMap() {
   const [linkDraft, setLinkDraft] = useState(null);
   const [dropTargetId, setDropTargetId] = useState(null);
   const [chipDrag, setChipDrag] = useState(null);
+  // Mặc định mở Trạng thái + Nhãn để giữ đúng hành vi cũ khi mới vào; Bảng màu
+  // đóng. Chỉ giữ trong state — không lưu qua reload.
+  const [panels, setPanels] = useState({ status: true, tag: true, palette: false });
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [marquee, setMarquee] = useState(null);
   const [snapGuides, setSnapGuides] = useState([]);
@@ -1417,6 +1420,10 @@ export default function IdeaMap() {
     (search.trim() ? 1 : 0);
   const matchCount = board.nodes.filter(passesFilter).length;
 
+  function togglePanel(key) {
+    setPanels((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
   function clearFilters() {
     setFilterStatus({});
     setFilterTags({});
@@ -1566,93 +1573,98 @@ export default function IdeaMap() {
       </div>
 
       <div className="filterbar">
-        <div className="fb-group">
-          <span className="fb-label"><Trans>Trạng thái</Trans></span>
-          <div className="fb-chips">
-            {board.statuses.map((s) => {
-              const key = String(s.id);
-              return (
-                <span
-                  key={key}
-                  className={"chip-toggle status" + (filterStatus[key] ? " on" : "")}
-                  onMouseDown={(e) => handleChipMouseDown(e, "status", key)}
-                  onContextMenu={(e) => openBadgeMenu(e, "status", s)}
-                  onClick={() => setFilterStatus((prev) => ({ ...prev, [key]: !prev[key] }))}
-                  title={t`Bấm để lọc — kéo thả vào thẻ để gán trạng thái — chuột phải để sửa`}
-                >
-                  <span className="dot" style={{ background: colorVar(s.color) }}></span>
-                  {s.name}
-                </span>
-              );
-            })}
-            {hasNoStatus && (
-              <span
-                className={"chip-toggle status" + (filterStatus["none"] ? " on" : "")}
-                onMouseDown={(e) => handleChipMouseDown(e, "status", "none")}
-                onClick={() => setFilterStatus((prev) => ({ ...prev, none: !prev["none"] }))}
-                title={t`Lọc thẻ chưa có trạng thái`}
-              >
-                <span className="dot dot-empty"></span>
-                <Trans>Không trạng thái</Trans>
+        <div className="fb-tabs">
+          <button className={"btn ghost toggle" + (panels.status ? " active" : "")} onClick={() => togglePanel("status")}><Trans>Trạng thái</Trans></button>
+          <button className={"btn ghost toggle" + (panels.tag ? " active" : "")} onClick={() => togglePanel("tag")}><Trans>Nhãn</Trans></button>
+          <button className={"btn ghost toggle" + (panels.palette ? " active" : "")} onClick={() => togglePanel("palette")}><Trans>Bảng màu</Trans></button>
+          <span
+            className={"chip-toggle" + (filterFav ? " on" : "")}
+            onClick={() => setFilterFav((v) => !v)}
+          >
+            ★ <Trans>Yêu thích</Trans>
+          </span>
+          <div className="spacer" />
+          {activeFilterCount > 0 && (
+            <div className="fb-tail">
+              <span className="fb-count mono" title={t`Số ý tưởng khớp bộ lọc`}>
+                <Trans>Khớp {matchCount}/{board.nodes.length}</Trans>
               </span>
-            )}
-            <button className="fb-add" onClick={(e) => openBadgeCreate(e, "status")} title={t`Thêm trạng thái`}>+</button>
-          </div>
+              <button className="fb-clear" onClick={clearFilters}><Trans>Xoá lọc</Trans></button>
+            </div>
+          )}
         </div>
 
-        <div className="fb-group">
-          <span className="fb-label"><Trans>Nhãn</Trans></span>
-          <div className="fb-chips">
-            {board.tags.map((tg) => {
-              const key = String(tg.id);
-              return (
+        {panels.status && (
+          <div className="fb-panel">
+            <div className="fb-chips">
+              {board.statuses.map((s) => {
+                const key = String(s.id);
+                return (
+                  <span
+                    key={key}
+                    className={"chip-toggle status" + (filterStatus[key] ? " on" : "")}
+                    data-badge-kind="status"
+                    data-badge-id={s.id}
+                    onMouseDown={(e) => handleChipMouseDown(e, "status", key)}
+                    onContextMenu={(e) => openBadgeMenu(e, "status", s)}
+                    onClick={() => setFilterStatus((prev) => ({ ...prev, [key]: !prev[key] }))}
+                    title={t`Bấm để lọc — kéo thả vào thẻ để gán trạng thái — chuột phải để sửa`}
+                  >
+                    <span className="dot" style={{ background: colorVar(s.color) }}></span>
+                    {s.name}
+                  </span>
+                );
+              })}
+              {hasNoStatus && (
                 <span
-                  key={key}
-                  className={"chip-toggle tag" + (filterTags[key] ? " on" : "")}
-                  onMouseDown={(e) => handleChipMouseDown(e, "tag", key)}
-                  onContextMenu={(e) => openBadgeMenu(e, "tag", tg)}
-                  onClick={() => setFilterTags((prev) => ({ ...prev, [key]: !prev[key] }))}
-                  title={t`Bấm để lọc — kéo thả vào thẻ để gán nhãn — chuột phải để sửa`}
+                  className={"chip-toggle status" + (filterStatus["none"] ? " on" : "")}
+                  onMouseDown={(e) => handleChipMouseDown(e, "status", "none")}
+                  onClick={() => setFilterStatus((prev) => ({ ...prev, none: !prev["none"] }))}
+                  title={t`Lọc thẻ chưa có trạng thái`}
                 >
-                  <span className="dot" style={{ background: colorVar(tg.color) }}></span>
-                  {tg.name}
+                  <span className="dot dot-empty"></span>
+                  <Trans>Không trạng thái</Trans>
                 </span>
-              );
-            })}
-            {hasNoTag && (
-              <span
-                className={"chip-toggle tag" + (filterTags["none"] ? " on" : "")}
-                onMouseDown={(e) => handleChipMouseDown(e, "tag", "none")}
-                onClick={() => setFilterTags((prev) => ({ ...prev, none: !prev["none"] }))}
-                title={t`Lọc thẻ chưa gắn nhãn`}
-              >
-                <span className="dot dot-empty"></span>
-                <Trans>Không nhãn</Trans>
-              </span>
-            )}
-            <button className="fb-add" onClick={(e) => openBadgeCreate(e, "tag")} title={t`Thêm nhãn`}>+</button>
+              )}
+              <button className="fb-add" onClick={(e) => openBadgeCreate(e, "status")} title={t`Thêm trạng thái`}>+</button>
+            </div>
           </div>
-        </div>
+        )}
 
-        <div className="fb-group">
-          <div className="fb-chips">
-            <span
-              className={"chip-toggle" + (filterFav ? " on" : "")}
-              onClick={() => setFilterFav((v) => !v)}
-            >
-              ★ <Trans>Yêu thích</Trans>
-            </span>
-          </div>
-        </div>
-
-        <div className="spacer" />
-
-        {activeFilterCount > 0 && (
-          <div className="fb-tail">
-            <span className="fb-count mono" title={t`Số ý tưởng khớp bộ lọc`}>
-              <Trans>Khớp {matchCount}/{board.nodes.length}</Trans>
-            </span>
-            <button className="fb-clear" onClick={clearFilters}><Trans>Xoá lọc</Trans></button>
+        {panels.tag && (
+          <div className="fb-panel">
+            <div className="fb-chips">
+              {board.tags.map((tg) => {
+                const key = String(tg.id);
+                return (
+                  <span
+                    key={key}
+                    className={"chip-toggle tag" + (filterTags[key] ? " on" : "")}
+                    data-badge-kind="tag"
+                    data-badge-id={tg.id}
+                    onMouseDown={(e) => handleChipMouseDown(e, "tag", key)}
+                    onContextMenu={(e) => openBadgeMenu(e, "tag", tg)}
+                    onClick={() => setFilterTags((prev) => ({ ...prev, [key]: !prev[key] }))}
+                    title={t`Bấm để lọc — kéo thả vào thẻ để gán nhãn — chuột phải để sửa`}
+                  >
+                    <span className="dot" style={{ background: colorVar(tg.color) }}></span>
+                    {tg.name}
+                  </span>
+                );
+              })}
+              {hasNoTag && (
+                <span
+                  className={"chip-toggle tag" + (filterTags["none"] ? " on" : "")}
+                  onMouseDown={(e) => handleChipMouseDown(e, "tag", "none")}
+                  onClick={() => setFilterTags((prev) => ({ ...prev, none: !prev["none"] }))}
+                  title={t`Lọc thẻ chưa gắn nhãn`}
+                >
+                  <span className="dot dot-empty"></span>
+                  <Trans>Không nhãn</Trans>
+                </span>
+              )}
+              <button className="fb-add" onClick={(e) => openBadgeCreate(e, "tag")} title={t`Thêm nhãn`}>+</button>
+            </div>
           </div>
         )}
       </div>
