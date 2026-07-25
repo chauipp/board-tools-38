@@ -202,9 +202,13 @@ export default function IdeaMap() {
     // sẽ không được gắn nếu chỉ phụ thuộc [].
   }, [board != null]);
 
+  // Đọc roleRef chứ không đọc `role`: saveNow là chốt chặn cuối, nó phải đúng kể
+  // cả khi được gọi từ một closure cũ. Handler nào gắn với deps [] (listener
+  // paste, .then() của compressImage…) đóng gói `role` lúc mount — khi đó board
+  // chưa tải xong nên role vẫn null và chốt chặn sẽ hở. Ref thì luôn mới.
   function saveNow(next) {
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-    if (role === "viewer") return;
+    if (roleRef.current === "viewer") return;
     saveBoard(boardId, next).then(() => setSaveError(null)).catch(() => setSaveError(true));
   }
 
