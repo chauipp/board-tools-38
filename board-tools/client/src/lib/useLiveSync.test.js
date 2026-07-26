@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isStaleUpdate, mergeRemoteBoard } from "./useLiveSync.js";
+import { isStaleUpdate, mergeRemoteBoard, projectGeometry } from "./useLiveSync.js";
 
 test("isStaleUpdate: incoming with no timestamp is always stale", () => {
   assert.equal(isStaleUpdate("2026-01-01T00:00:00.000Z", undefined), true);
@@ -43,4 +43,19 @@ test("mergeRemoteBoard: editingId with no matching local node just takes incomin
   const incoming = { nodes: [{ id: 2, title: "new" }], view: {} };
   const merged = mergeRemoteBoard(local, incoming, 999);
   assert.deepEqual(merged.nodes, [{ id: 2, title: "new" }]);
+});
+
+test("projectGeometry strips content fields, keeps only position/size", () => {
+  const board = {
+    nodes: [{ id: 1, x: 10, y: 20, w: 210, title: "t", desc: "d", image: "data:image/png;base64,xxxx" }],
+    groups: [{ id: 5, x: 0, y: 0, w: 300, h: 200, title: "frame" }]
+  };
+  assert.deepEqual(projectGeometry(board), {
+    nodes: [{ id: 1, x: 10, y: 20, w: 210 }],
+    groups: [{ id: 5, x: 0, y: 0, w: 300, h: 200 }]
+  });
+});
+
+test("projectGeometry handles empty board content", () => {
+  assert.deepEqual(projectGeometry({ nodes: [], groups: [] }), { nodes: [], groups: [] });
 });

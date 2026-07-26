@@ -178,7 +178,7 @@ export default function IdeaMap() {
   useEffect(() => { editingIdRef.current = editingId; }, [editingId]);
   useEffect(() => { socketRef.current = socket; }, [socket]);
 
-  useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, setBoard);
+  const { geomOverlay } = useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, setBoard);
 
   // Chip danh tính được render ở AuthGate, ngoài `.shell`, nên selector
   // `.shell.presenting` không với tới được. Đánh dấu trên body để ẩn nó khi
@@ -1981,10 +1981,13 @@ export default function IdeaMap() {
           {marquee && (
             <div className="marquee-box" style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h }} />
           )}
-          {board.groups.map((group) => (
+          {board.groups.map((group) => {
+            const live = geomOverlay.get("group:" + group.id);
+            const renderGroup = live ? { ...group, x: live.x, y: live.y, w: live.w, h: live.h } : group;
+            return (
             <FrameBox
               key={group.id}
-              group={group}
+              group={renderGroup}
               editingTitle={editingGroupTitleId === group.id}
               onMouseDown={(e) => handleGroupMouseDown(e, group)}
               onResizeMouseDown={(e) => handleGroupResizeMouseDown(e, group)}
@@ -1996,7 +1999,8 @@ export default function IdeaMap() {
               onConnectorMouseDown={(e) => handleGroupConnectorMouseDown(e, group)}
               dropTarget={!!dropTargetId && dropTargetId.kind === "group" && dropTargetId.id === group.id}
             />
-          ))}
+            );
+          })}
           <svg className="edge-layer">
             <defs>
               <marker id="edge-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -2051,10 +2055,13 @@ export default function IdeaMap() {
             })()}
           </svg>
 
-          {board.nodes.map((node) => (
+          {board.nodes.map((node) => {
+            const live = geomOverlay.get("node:" + node.id);
+            const renderNode = live ? { ...node, x: live.x, y: live.y, ...(live.w != null ? { w: live.w } : {}) } : node;
+            return (
             <IdeaCard
               key={node.id}
-              node={node}
+              node={renderNode}
               board={board}
               currentUser={currentUser}
               editing={editingId === node.id}
@@ -2078,7 +2085,8 @@ export default function IdeaMap() {
               onRemoveImage={() => removeNodeImage(node.id)}
               onImageResize={(e) => handleImageResizeMouseDown(e, node)}
             />
-          ))}
+            );
+          })}
 
           {Array.from(presencePeers.values()).map((peer) => (
             <div

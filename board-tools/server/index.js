@@ -235,6 +235,12 @@ io.on("connection", (socket) => {
     socket.to(room).emit("cursor:move", p);
   });
 
+  // Vị trí/kích thước tạm thời lúc đang kéo — không lưu DB, không giữ
+  // state trên server, chỉ relay nguyên payload cho người khác trong room.
+  socket.on("live:geom", (payload) => {
+    socket.to(room).emit("live:geom", payload || {});
+  });
+
   socket.on("disconnect", () => {
     peers.delete(socket.id);
     if (peers.size === 0) presencePeers.delete(socket.data.boardId);
