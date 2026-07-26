@@ -13,7 +13,7 @@ import InviteModal from "../components/InviteModal.jsx";
 import BadgeEditor from "../components/BadgeEditor.jsx";
 import ColorMenu from "../components/ColorMenu.jsx";
 import FrameBox from "../components/FrameBox.jsx";
-import { nodesInFrame, edgeEndpoint, edgesMatch, rectForEndpoint, clipToRect } from "../lib/board-geometry.js";
+import { nodesInFrame, edgeEndpoint, edgesMatch, rectForEndpoint, clipToRect, segmentIntersectsRect } from "../lib/board-geometry.js";
 import { computeSnap } from "../lib/snap.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout, layerLayout } from "../lib/layout.js";
@@ -99,6 +99,7 @@ export default function IdeaMap() {
   const [paletteUI, setPaletteUI] = useState(null); // { mode: "create"|"edit", id?, hex, x, y } | null
   const [colorDrag, setColorDrag] = useState(null); // { token, x, y } | null
   const [selectedIds, setSelectedIds] = useState(new Set());
+  const [selectedEdgeIds, setSelectedEdgeIds] = useState(new Set());
   const [marquee, setMarquee] = useState(null);
   const [snapGuides, setSnapGuides] = useState([]);
   const [badgeUI, setBadgeUI] = useState(null); // { mode: "create"|"edit", kind, def?, x, y }
@@ -375,7 +376,7 @@ export default function IdeaMap() {
         else if (commentsFor) setCommentsFor(null);
         else if (linkMode) { setLinkMode(false); setPendingSource(null); }
         else if (focusId != null) setFocusId(null);
-        else if (selectedIds.size > 0) setSelectedIds(new Set());
+        else if (selectedIds.size > 0 || selectedEdgeIds.size > 0) { setSelectedIds(new Set()); setSelectedEdgeIds(new Set()); }
       }
       else if (key === "n") { if (role === "viewer") return; e.preventDefault(); handleAddClick(); }
       // `f` (vừa khung theo lựa chọn) chỉ đổi view — người chỉ xem vẫn dùng được.
@@ -387,7 +388,7 @@ export default function IdeaMap() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [board, past, future, selectedIds, linkMode, colorMenu, badgeUI, edgeMenu, commentsFor, focusId, presentIndex, role]);
+  }, [board, past, future, selectedIds, selectedEdgeIds, linkMode, colorMenu, badgeUI, edgeMenu, commentsFor, focusId, presentIndex, role]);
 
   useEffect(() => {
     function down(e) {
@@ -1278,6 +1279,20 @@ export default function IdeaMap() {
         .map((n) => n.id);
     }
 
+    function edgeHitIdsFor(m) {
+      const { nodes, groups, edges } = boardRef.current;
+      return edges
+        .filter((edge) => {
+          const r1 = rectForEndpoint(edge.fromKind || "node", edge.from, nodes, groups, frameCardSize);
+          const r2 = rectForEndpoint(edge.toKind || "node", edge.to, nodes, groups, frameCardSize);
+          if (!r1 || !r2) return false;
+          const p1 = clipToRect(r1.cx, r1.cy, r1.w, r1.h, r2.cx, r2.cy);
+          const p2 = clipToRect(r2.cx, r2.cy, r2.w, r2.h, r1.cx, r1.cy);
+          return segmentIntersectsRect(p1.x, p1.y, p2.x, p2.y, m);
+        })
+        .map((edge) => edge.id);
+    }
+
     function onMove(ev) {
       if (!dragging && Math.hypot(ev.clientX - startScreenX, ev.clientY - startScreenY) > THRESHOLD) dragging = true;
       if (!dragging) return;
@@ -1286,11 +1301,12 @@ export default function IdeaMap() {
       const m = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
       setMarquee(m);
       setSelectedIds(new Set(hitIdsFor(m)));
+      setSelectedEdgeIds(new Set(edgeHitIdsFor(m)));
     }
     function onUp() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      if (!dragging) { setSelectedIds(new Set()); return; }
+      if (!dragging) { setSelectedIds(new Set()); setSelectedEdgeIds(new Set()); return; }
       setMarquee(null);
     }
     window.addEventListener("mousemove", onMove);
@@ -1376,16 +1392,19 @@ export default function IdeaMap() {
 
   function deleteSelection() {
     const ids = selectedIds;
-    if (ids.size === 0) return;
+    const edgeIds = selectedEdgeIds;
+    if (ids.size === 0 && edgeIds.size === 0) return;
     commitAndSave({
       ...board,
       nodes: board.nodes.filter((n) => !ids.has(n.id)),
       edges: board.edges.filter((e) => !(
+        edgeIds.has(e.id) ||
         (ids.has(e.from) && (e.fromKind || "node") === "node") ||
         (ids.has(e.to) && (e.toKind || "node") === "node")
       ))
     });
     setSelectedIds(new Set());
+    setSelectedEdgeIds(new Set());
   }
 
   function duplicateSelection() {
@@ -2056,7 +2075,7 @@ export default function IdeaMap() {
                     onClick={(e) => { setColorMenu(null); setCommentsFor(null); setEdgeMenu({ id: edge.id, x: e.clientX, y: e.clientY }); }}
                   />
                   <line
-                    className={"visible" + (hot ? " hot" : "")}
+                    className={"visible" + (hot ? " hot" : "") + (selectedEdgeIds.has(edge.id) ? " selected" : "")}
                     x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                     style={edge.color ? { stroke: colorVar(edge.color) } : undefined}
                     strokeDasharray={edge.style === "dashed" ? "6 5" : undefined}
@@ -2294,7 +2313,7 @@ export default function IdeaMap() {
             <button className="bb-clear" onClick={duplicateSelection}><Trans>Nhân bản</Trans></button>
             <button className="bb-clear danger" onClick={deleteSelection}><Trans>Xoá</Trans></button>
             <span className="bb-sep" />
-            <button className="bb-clear" onClick={() => setSelectedIds(new Set())}><Trans>Bỏ chọn</Trans></button>
+            <button className="bb-clear" onClick={() => { setSelectedIds(new Set()); setSelectedEdgeIds(new Set()); }}><Trans>Bỏ chọn</Trans></button>
           </div>
         )}
 
@@ -2755,6 +2774,11 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
       e.preventDefault();
       onSaveAndNext({ title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId });
+    } else if (e.key === "Enter" && e.currentTarget.tagName === "INPUT") {
+      // Enter thường chỉ lưu ở ô tiêu đề (input 1 dòng) — textarea mô tả
+      // vẫn cần Enter để xuống dòng.
+      e.preventDefault();
+      onSave({ title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId });
     } else if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
@@ -2783,7 +2807,7 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
             <button className="cancel-btn" onClick={onCancel}><Trans>Hủy</Trans></button>
             {node.image && <button className="cancel-btn" onClick={() => onRemoveImage()}><Trans>Xoá ảnh</Trans></button>}
           </div>
-          <div className="edit-hint"><Trans>Ctrl+Enter: lưu & tạo ý nối tiếp</Trans></div>
+          <div className="edit-hint"><Trans>Enter: lưu · Ctrl+Enter: lưu & tạo ý nối tiếp</Trans></div>
         </div>
       </div>
     );
