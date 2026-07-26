@@ -2856,10 +2856,10 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
           </button>
         )}
       </div>
-      <span className="connector-zone top" onMouseDown={(e) => onConnectorMouseDown(e, "top")} onClick={(e) => e.stopPropagation()} title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot">+</span></span>
-      <span className="connector-zone right" onMouseDown={(e) => onConnectorMouseDown(e, "right")} onClick={(e) => e.stopPropagation()} title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot">+</span></span>
-      <span className="connector-zone bottom" onMouseDown={(e) => onConnectorMouseDown(e, "bottom")} onClick={(e) => e.stopPropagation()} title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot">+</span></span>
-      <span className="connector-zone left" onMouseDown={(e) => onConnectorMouseDown(e, "left")} onClick={(e) => e.stopPropagation()} title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot">+</span></span>
+      <span className="connector-zone top" title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot" onMouseDown={(e) => onConnectorMouseDown(e, "top")} onClick={(e) => e.stopPropagation()}>+</span></span>
+      <span className="connector-zone right" title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot" onMouseDown={(e) => onConnectorMouseDown(e, "right")} onClick={(e) => e.stopPropagation()}>+</span></span>
+      <span className="connector-zone bottom" title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot" onMouseDown={(e) => onConnectorMouseDown(e, "bottom")} onClick={(e) => e.stopPropagation()}>+</span></span>
+      <span className="connector-zone left" title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot" onMouseDown={(e) => onConnectorMouseDown(e, "left")} onClick={(e) => e.stopPropagation()}>+</span></span>
     </div>
   );
 }

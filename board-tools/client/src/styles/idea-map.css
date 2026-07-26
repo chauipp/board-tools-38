@@ -160,7 +160,7 @@
 .connector-zone {
   position: absolute; width: 46px; height: 46px;
   display: flex; align-items: center; justify-content: center;
-  cursor: crosshair; z-index: 5;
+  z-index: 5;
 }
 .connector-zone.top { top: -8px; left: 50%; transform: translate(-50%, -50%); }
 .connector-zone.right { top: 50%; left: calc(100% + 8px); transform: translate(-50%, -50%); }
@@ -170,10 +170,11 @@
   width: 16px; height: 16px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   background: var(--surface); border: 1.5px solid var(--accent); color: var(--accent);
-  font-size: 12px; font-weight: 700; line-height: 1;
+  font-size: 12px; font-weight: 700; line-height: 1; cursor: crosshair;
   opacity: 0; transform: scale(0.8); transition: opacity 0.12s ease, transform 0.12s ease;
+  pointer-events: none;
 }
-.connector-zone:hover .connector-dot { opacity: 1; transform: scale(1); }
+.connector-zone:hover .connector-dot { opacity: 1; transform: scale(1); pointer-events: auto; }
 .idea-card.dim .connector-zone { display: none; }
 .idea-card .card-top { display: flex; gap: 6px; align-items: flex-start; }
 .idea-card .title { font-size: 13px; line-height: 1.2; flex: 1; min-width: 0; overflow-wrap: break-word; }
@@ -218,7 +219,7 @@
 .edit-form input[type="text"], .edit-form textarea, .edit-form select {
   width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 3px; padding: 4px 5px; font-size: 11px;
 }
-.edit-form textarea { resize: vertical; height: 50px; }
+.edit-form textarea { field-sizing: content; min-height: 50px; max-height: 300px; }
 .edit-form .edit-row { display: flex; gap: 5px; }
 .edit-form .edit-row > * { flex: 1; min-width: 0; }
 .edit-form .edit-actions { display: flex; gap: 5px; margin-top: 2px; }
