@@ -178,7 +178,7 @@ export default function IdeaMap() {
   useEffect(() => { editingIdRef.current = editingId; }, [editingId]);
   useEffect(() => { socketRef.current = socket; }, [socket]);
 
-  const { geomOverlay } = useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, setBoard);
+  const { geomOverlay, textOverlay, sendLiveText } = useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, setBoard);
 
   // Chip danh tính được render ở AuthGate, ngoài `.shell`, nên selector
   // `.shell.presenting` không với tới được. Đánh dấu trên body để ẩn nó khi
@@ -2057,7 +2057,12 @@ export default function IdeaMap() {
 
           {board.nodes.map((node) => {
             const live = geomOverlay.get("node:" + node.id);
-            const renderNode = live ? { ...node, x: live.x, y: live.y, ...(live.w != null ? { w: live.w } : {}) } : node;
+            const liveText = editingId === node.id ? null : textOverlay.get(String(node.id));
+            const renderNode = (live || liveText) ? {
+              ...node,
+              ...(live ? { x: live.x, y: live.y, ...(live.w != null ? { w: live.w } : {}) } : {}),
+              ...(liveText ? { title: liveText.title ?? node.title, desc: liveText.desc ?? node.desc } : {})
+            } : node;
             return (
             <IdeaCard
               key={node.id}
@@ -2078,6 +2083,7 @@ export default function IdeaMap() {
               onDelete={() => deleteNode(node.id)}
               onToggleFavorite={() => toggleFavorite(node.id)}
               onOpenComments={(e) => { setColorMenu(null); setEdgeMenu(null); setCommentsFor({ id: node.id, x: e.clientX, y: e.clientY }); }}
+              onLiveTextChange={(field, value) => sendLiveText({ nodeId: node.id, field, value })}
               onSave={(fields) => saveNodeEdit(node.id, fields)}
               onSaveAndNext={(fields) => saveNodeEditAndNext(node.id, fields)}
               onCancel={() => setEditingId(null)}
@@ -2657,7 +2663,7 @@ function CommentsPopover({ x, y, comments, onAdd, onDelete, onClose }) {
   );
 }
 
-function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, dropTarget, selected, flash, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onToggleFavorite, onOpenComments, onSave, onSaveAndNext, onCancel, onDropImage, onRemoveImage, onImageResize }) {
+function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, dropTarget, selected, flash, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onToggleFavorite, onOpenComments, onSave, onSaveAndNext, onCancel, onDropImage, onRemoveImage, onImageResize, onLiveTextChange }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(node.title);
   const [desc, setDesc] = useState(node.desc);
@@ -2696,8 +2702,8 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
     return (
       <div className={classNames.join(" ")} data-id={node.id} style={{ left: node.x, top: node.y, ...(node.w ? { width: node.w } : {}) }} onMouseDown={(e) => e.stopPropagation()}>
         <div className="edit-form">
-          <input type="text" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t`Tên ý tưởng`} onKeyDown={handleEditKeyDown} />
-          <textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t`Mô tả ngắn`} onKeyDown={handleEditKeyDown} />
+          <input type="text" autoFocus value={title} onChange={(e) => { setTitle(e.target.value); onLiveTextChange("title", e.target.value); }} placeholder={t`Tên ý tưởng`} onKeyDown={handleEditKeyDown} />
+          <textarea value={desc} onChange={(e) => { setDesc(e.target.value); onLiveTextChange("desc", e.target.value); }} placeholder={t`Mô tả ngắn`} onKeyDown={handleEditKeyDown} />
           <div className="edit-row">
             <select value={tagId ?? ""} onChange={(e) => setTagId(e.target.value === "" ? null : Number(e.target.value))}>
               <option value="">{t`Không nhãn`}</option>

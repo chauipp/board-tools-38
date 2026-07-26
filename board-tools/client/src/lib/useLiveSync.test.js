@@ -59,3 +59,8 @@ test("projectGeometry strips content fields, keeps only position/size", () => {
 test("projectGeometry handles empty board content", () => {
   assert.deepEqual(projectGeometry({ nodes: [], groups: [] }), { nodes: [], groups: [] });
 });
+
+test("projectGeometry: node without a w (no explicit width set) omits w as undefined-passthrough", () => {
+  const board = { nodes: [{ id: 2, x: 1, y: 2 }], groups: [] };
+  assert.deepEqual(projectGeometry(board), { nodes: [{ id: 2, x: 1, y: 2, w: undefined }], groups: [] });
+});

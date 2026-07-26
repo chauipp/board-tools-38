@@ -241,6 +241,12 @@ io.on("connection", (socket) => {
     socket.to(room).emit("live:geom", payload || {});
   });
 
+  // Nội dung đang gõ dở — không lưu DB, chỉ relay để người khác thấy chữ
+  // chạy gần real-time; bản chính thức vẫn qua saveNodeEdit → PUT như cũ.
+  socket.on("live:text", (payload) => {
+    socket.to(room).emit("live:text", payload || {});
+  });
+
   socket.on("disconnect", () => {
     peers.delete(socket.id);
     if (peers.size === 0) presencePeers.delete(socket.data.boardId);

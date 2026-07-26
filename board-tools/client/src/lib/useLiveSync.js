@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 const GEOM_THROTTLE_MS = 80;
 const GEOM_TTL_MS = 400;
+const TEXT_THROTTLE_MS = 150;
+const TEXT_TTL_MS = 1800;
 
 // Gói board:update đến sau bản mới nhất mình đã áp dụng (mạng giao gói
 // không theo thứ tự, hoặc gói lặp) bị bỏ qua thay vì đè lùi board về
@@ -82,6 +84,35 @@ export function useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, ap
   const geom = useTtlOverlay(GEOM_TTL_MS);
   const lastGeomSentRef = useRef(0);
   const geomTimerRef = useRef(null);
+  const text = useTtlOverlay(TEXT_TTL_MS);
+  const lastTextSentRef = useRef(0);
+  const textTimerRef = useRef(null);
+
+  const sendLiveText = useCallback((payload) => {
+    if (!socket) return;
+    const elapsed = Date.now() - lastTextSentRef.current;
+    function send() {
+      lastTextSentRef.current = Date.now();
+      socket.emit("live:text", payload);
+    }
+    if (elapsed >= TEXT_THROTTLE_MS) {
+      send();
+    } else {
+      if (textTimerRef.current) clearTimeout(textTimerRef.current);
+      textTimerRef.current = setTimeout(send, TEXT_THROTTLE_MS - elapsed);
+    }
+  }, [socket]);
+
+  useEffect(() => {
+    if (!socket) return;
+    function onLiveText(payload) {
+      const { nodeId, field, value } = payload || {};
+      if (nodeId == null || !field) return;
+      text.upsert(String(nodeId), (prev) => ({ ...(prev || {}), [field]: value, at: Date.now() }));
+    }
+    socket.on("live:text", onLiveText);
+    return () => socket.off("live:text", onLiveText);
+  }, [socket, text.upsert]);
 
   useEffect(() => {
     if (!socket) return;
@@ -129,5 +160,5 @@ export function useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, ap
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, boardForGeom]);
 
-  return { geomOverlay: geom.map };
+  return { geomOverlay: geom.map, textOverlay: text.map, sendLiveText };
 }
