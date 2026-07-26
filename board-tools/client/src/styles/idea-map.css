@@ -502,12 +502,14 @@
   white-space: nowrap;
 }
 
-.peer-select-badge {
+/* Vùng người khác đang chọn: viền nét đứt bao quanh thẻ, màu theo người đó —
+   cùng ngôn ngữ hình ảnh với .idea-card.selected (viền liền, màu accent) của
+   chính mình, nét đứt để phân biệt "người khác chọn" với "mình chọn". */
+.peer-select-outline {
   position: absolute;
-  width: 14px;
-  height: 14px;
-  border-radius: 50%;
-  border: 2px solid var(--bg);
+  box-sizing: border-box;
+  border: 2px dashed;
+  border-radius: 10px;
   pointer-events: none;
   z-index: 5;
 }

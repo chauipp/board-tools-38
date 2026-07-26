@@ -2145,15 +2145,26 @@ export default function IdeaMap() {
             </div>
           ))}
 
-          {Array.from(presencePeers.values()).flatMap((peer) =>
+          {Array.from(presencePeers.values()).flatMap((peer, pi) =>
             (peer.selectedIds || []).map((id) => {
               const n = liveNodes.find((x) => x.id === id);
               if (!n) return null;
+              // Chiều cao thẻ phụ thuộc nội dung nên phải đo DOM, không suy ra
+              // được từ dữ liệu. Mỗi người lùi ra xa thêm một nấc để hai người
+              // cùng chọn một thẻ không vẽ đè khít nhau (chỉ còn thấy 1 màu).
+              const { w, h } = frameCardSize(id);
+              const pad = 4 + pi * 3;
               return (
                 <div
                   key={peer.socketId + ":sel:" + id}
-                  className="peer-select-badge"
-                  style={{ left: n.x + (n.w || CARD_W) - 10, top: n.y - 10, background: cursorColor(peer.email) }}
+                  className="peer-select-outline"
+                  style={{
+                    left: n.x - pad,
+                    top: n.y - pad,
+                    width: w + pad * 2,
+                    height: h + pad * 2,
+                    borderColor: cursorColor(peer.email)
+                  }}
                   title={peer.name}
                 />
               );
