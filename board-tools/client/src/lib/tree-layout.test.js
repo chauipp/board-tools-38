@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildTree, edgeKey, treeLayout } from "./tree-layout.js";
+import { buildTree, edgeKey, treeLayout, carryGroupMembers } from "./tree-layout.js";
 
 test("edgeKey ghép kind và id thành khoá chuỗi", () => {
   assert.equal(edgeKey("node", 3), "node:3");
@@ -247,6 +247,59 @@ test("treeLayout: gốc không có dây nào thì map chỉ chứa gốc", () =>
   });
   assert.equal(pos.size, 1);
   assert.deepEqual(pos.get("node:1"), { x: 7, y: 9 });
+});
+
+const CENTER_SIZE = () => ({ w: 0, h: 0 });   // tâm thẻ trùng x/y, dễ tính "nằm trong khung"
+
+test("carryGroupMembers: khung dời chỗ kéo theo thẻ không có dây nối riêng", () => {
+  const group = { id: 5, x: 0, y: 0, w: 200, h: 200 };
+  const node = { id: 1, x: 50, y: 50 };
+  const pos = new Map([[edgeKey("group", 5), { x: 100, y: 100 }]]);
+  const extra = carryGroupMembers(pos, [group], [node], CENTER_SIZE);
+  assert.deepEqual(extra.get(1), { x: 150, y: 150 });
+});
+
+test("carryGroupMembers: thẻ đã có chỗ riêng trong cây thì không bị dời thêm", () => {
+  const group = { id: 5, x: 0, y: 0, w: 200, h: 200 };
+  const node = { id: 2, x: 50, y: 50 };
+  const pos = new Map([
+    [edgeKey("group", 5), { x: 100, y: 100 }],
+    [edgeKey("node", 2), { x: 999, y: 999 }]
+  ]);
+  const extra = carryGroupMembers(pos, [group], [node], CENTER_SIZE);
+  assert.equal(extra.has(2), false);
+});
+
+test("carryGroupMembers: khung khoá thì không kéo theo thẻ", () => {
+  const group = { id: 5, x: 0, y: 0, w: 200, h: 200, locked: true };
+  const node = { id: 1, x: 50, y: 50 };
+  const pos = new Map([[edgeKey("group", 5), { x: 100, y: 100 }]]);
+  const extra = carryGroupMembers(pos, [group], [node], CENTER_SIZE);
+  assert.equal(extra.size, 0);
+});
+
+test("carryGroupMembers: thẻ khoá đứng yên dù khung của nó dời chỗ", () => {
+  const group = { id: 5, x: 0, y: 0, w: 200, h: 200 };
+  const node = { id: 1, x: 50, y: 50, locked: true };
+  const pos = new Map([[edgeKey("group", 5), { x: 100, y: 100 }]]);
+  const extra = carryGroupMembers(pos, [group], [node], CENTER_SIZE);
+  assert.equal(extra.size, 0);
+});
+
+test("carryGroupMembers: khung đứng yên (gốc của cây) thì không dời thẻ nào", () => {
+  const group = { id: 5, x: 0, y: 0, w: 200, h: 200 };
+  const node = { id: 1, x: 50, y: 50 };
+  const pos = new Map([[edgeKey("group", 5), { x: 0, y: 0 }]]);
+  const extra = carryGroupMembers(pos, [group], [node], CENTER_SIZE);
+  assert.equal(extra.size, 0);
+});
+
+test("carryGroupMembers: thẻ ngoài khung không bị ảnh hưởng", () => {
+  const group = { id: 5, x: 0, y: 0, w: 200, h: 200 };
+  const node = { id: 1, x: 500, y: 500 };
+  const pos = new Map([[edgeKey("group", 5), { x: 100, y: 100 }]]);
+  const extra = carryGroupMembers(pos, [group], [node], CENTER_SIZE);
+  assert.equal(extra.size, 0);
 });
 
 test("treeLayout: cây nhiều tầng nhiều nhánh không có hai thẻ nào chồng nhau", () => {

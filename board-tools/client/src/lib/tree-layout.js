@@ -1,3 +1,5 @@
+import { nodesInFrame } from "./board-geometry.js";
+
 // Cây dựng từ dây nối, không phải từ toạ độ: một thẻ là con của thẻ nào phụ
 // thuộc vào đường đi ngắn nhất từ gốc, nên duyệt theo chiều rộng (BFS).
 export function edgeKey(kind, id) {
@@ -118,4 +120,25 @@ export function treeLayout({ edges, rootKey, rootPos, sizeOf, direction, gap }) 
     positions.set(key, { x: Math.round(p.x + dx), y: Math.round(p.y + dy) });
   });
   return positions;
+}
+
+// Khung (group) trong cây bị treeLayout dời chỗ, nhưng thẻ nằm trong khung đó
+// mà không có dây nối riêng thì không nằm trong `pos` — đứng yên trong khi
+// khung dời đi, nên rớt ra ngoài khung. Hàm này dời thêm những thẻ đó theo
+// đúng độ lệch của khung chứa nó, để chúng đi theo khung.
+export function carryGroupMembers(pos, groups, nodes, sizeOf) {
+  const extra = new Map();
+  groups.forEach((g) => {
+    const p = pos.get(edgeKey("group", g.id));
+    if (!p || g.locked) return;
+    const dx = p.x - g.x, dy = p.y - g.y;
+    if (dx === 0 && dy === 0) return;
+    nodesInFrame(nodes, g, sizeOf).forEach((id) => {
+      if (pos.has(edgeKey("node", id)) || extra.has(id)) return;   // đã có chỗ riêng trong cây
+      const n = nodes.find((nn) => nn.id === id);
+      if (!n || n.locked) return;
+      extra.set(id, { x: n.x + dx, y: n.y + dy });
+    });
+  });
+  return extra;
 }
