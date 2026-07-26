@@ -48,8 +48,8 @@ if (!process.env.SESSION_SECRET) {
 }
 
 if (!process.env.ALLOWED_EMAILS) {
-  console.error(
-    "Thiếu ALLOWED_EMAILS — mọi đăng nhập sẽ bị từ chối cho đến khi biến này được cấu hình trong server/.env."
+  console.warn(
+    "ALLOWED_EMAILS trống — app đang public, ai có tài khoản Google cũng đăng nhập được. Điền ALLOWED_EMAILS trong server/.env nếu muốn giới hạn."
   );
 }
 

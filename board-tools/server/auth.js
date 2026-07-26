@@ -13,10 +13,7 @@ function getAllowedEmails() {
 
 export function isEmailAllowed(email) {
   const allowed = getAllowedEmails();
-  if (allowed.length === 0) {
-    console.error("ALLOWED_EMAILS chưa được cấu hình — từ chối mọi đăng nhập.");
-    return false;
-  }
+  if (allowed.length === 0) return true; // no allowlist configured = public app, anyone can log in
   return allowed.includes(String(email || "").toLowerCase());
 }
 

@@ -13,9 +13,9 @@ before(() => {
   process.env.SESSION_SECRET = "test-secret";
 });
 
-test("isEmailAllowed: denies everyone when ALLOWED_EMAILS is unset", () => {
+test("isEmailAllowed: allows everyone when ALLOWED_EMAILS is unset (public app)", () => {
   delete process.env.ALLOWED_EMAILS;
-  assert.equal(isEmailAllowed("anyone@gmail.com"), false);
+  assert.equal(isEmailAllowed("anyone@gmail.com"), true);
 });
 
 test("isEmailAllowed: matches case-insensitively against the list", () => {
