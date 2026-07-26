@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { getBoard, saveBoard } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
-import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
+import { BADGE_PALETTE, colorVar, contrastInk, statusById, tagById } from "../lib/badges.js";
 import { paletteCss, applyColorTo, removePaletteColor } from "../lib/palette.js";
 import { loadLayouts, saveLayouts } from "../lib/dock.js";
 import DockPanel from "../components/DockPanel.jsx";
@@ -2859,7 +2859,7 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
       <div className="meta-row">
         {(() => {
           const s = statusById(board, node.statusId);
-          return s ? <span className="status-pill" data-badge-kind="status" data-badge-id={s.id} style={{ background: colorVar(s.color) }}>{s.name}</span> : null;
+          return s ? <span className="status-pill" data-badge-kind="status" data-badge-id={s.id} style={{ background: colorVar(s.color), color: contrastInk(s.color) }}>{s.name}</span> : null;
         })()}
         {(() => {
           const tg = tagById(board, node.tagId);
