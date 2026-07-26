@@ -21,6 +21,11 @@ export function excludeSelf(list, selfId) {
 
 export function usePresence(user, boardId) {
   const [peers, setPeers] = useState(new Map());
+  // Socket vừa nằm ref (cho sendCursor đọc mà không cần deps) vừa nằm state:
+  // các hook khác (useLiveSync) nhận socket qua tham số nên phải có một lần
+  // render lại khi kết nối được tạo — đọc thẳng socketRef.current thì lần
+  // render đầu luôn là null và effect của chúng không bao giờ chạy lại.
+  const [socket, setSocket] = useState(null);
   const socketRef = useRef(null);
   const lastSentAtRef = useRef(0);
   const warnedRef = useRef(false);
@@ -30,6 +35,7 @@ export function usePresence(user, boardId) {
     warnedRef.current = false;
     const socket = io({ query: { boardId } });
     socketRef.current = socket;
+    setSocket(socket);
 
     socket.on("presence:sync", (list) => {
       // socket.id is only populated once the connection completes; reading
@@ -73,6 +79,7 @@ export function usePresence(user, boardId) {
     return () => {
       socket.disconnect();
       socketRef.current = null;
+      setSocket(null);
       setPeers(new Map());
     };
   }, [user, boardId]);
@@ -90,5 +97,5 @@ export function usePresence(user, boardId) {
     socket.emit("cursor:move", { x, y });
   }
 
-  return { peers, sendCursor };
+  return { peers, sendCursor, socket };
 }

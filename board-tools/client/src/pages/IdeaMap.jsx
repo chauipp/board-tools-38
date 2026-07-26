@@ -20,6 +20,7 @@ import { gridLayout, layerLayout } from "../lib/layout.js";
 import { parseDesc } from "../lib/mdlite.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { usePresence, cursorColor } from "../lib/usePresence.js";
+import { useLiveSync } from "../lib/useLiveSync.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 import { compressImage } from "../lib/image-utils.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
@@ -117,7 +118,7 @@ export default function IdeaMap() {
   const [role, setRole] = useState(null);
   const [boardName, setBoardName] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
-  const { peers: presencePeers, sendCursor } = usePresence(user, boardId);
+  const { peers: presencePeers, sendCursor, socket } = usePresence(user, boardId);
 
   const viewportRef = useRef(null);
   const fbDockRef = useRef(null);
@@ -127,6 +128,12 @@ export default function IdeaMap() {
   // Listener "paste" gắn-một-lần (deps: []) đóng gói `role` lúc mount, khi đó
   // board chưa tải xong nên role vẫn là null — phải đọc qua ref mới đúng.
   const roleRef = useRef(null);
+  const editingIdRef = useRef(null);
+  // socket.id gửi kèm mỗi lần lưu để server loại chính mình khỏi broadcast
+  // board:update; updatedAt của lần lưu/nhận gần nhất để so sánh gói đến
+  // sau có mới hơn không (useLiveSync.js: isStaleUpdate).
+  const socketRef = useRef(null);
+  const lastUpdatedAtRef = useRef(null);
   const selectedIdsRef = useRef(selectedIds);
   const suppressContextMenuRef = useRef(false);
   const nudgeTimerRef = useRef(null);
@@ -146,9 +153,10 @@ export default function IdeaMap() {
         if (initialCardParam && data.nodes.some((n) => n.id === Number(initialCardParam))) {
           pendingJumpRef.current = Number(initialCardParam);
         }
-        const { id, name, role: r, ...boardData } = data;
+        const { id, name, role: r, updatedAt, ...boardData } = data;
         setRole(r);
         setBoardName(name);
+        lastUpdatedAtRef.current = updatedAt;
         // Board cũ chưa có palette → mặc định rỗng, để mọi chỗ đọc board.palette
         // không phải ?? [] khắp nơi.
         setBoard({ palette: [], nextPaletteId: 1, ...boardData });
@@ -167,6 +175,10 @@ export default function IdeaMap() {
   useEffect(() => { boardRef.current = board; }, [board]);
   useEffect(() => { roleRef.current = role; }, [role]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
+  useEffect(() => { editingIdRef.current = editingId; }, [editingId]);
+  useEffect(() => { socketRef.current = socket; }, [socket]);
+
+  useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, setBoard);
 
   // Chip danh tính được render ở AuthGate, ngoài `.shell`, nên selector
   // `.shell.presenting` không với tới được. Đánh dấu trên body để ẩn nó khi
@@ -237,7 +249,9 @@ export default function IdeaMap() {
   function saveNow(next) {
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
     if (roleRef.current === "viewer") return;
-    saveBoard(boardId, next).then(() => setSaveError(null)).catch(() => setSaveError(true));
+    saveBoard(boardId, next, socketRef.current?.id)
+      .then((res) => { lastUpdatedAtRef.current = res.updatedAt; setSaveError(null); })
+      .catch(() => setSaveError(true));
   }
 
   function saveDebounced(next) {

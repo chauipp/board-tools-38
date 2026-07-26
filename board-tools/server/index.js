@@ -173,6 +173,9 @@ app.get("*", (req, res, next) => {
 
 const server = http.createServer(app);
 const io = new Server(server);
+// boards.js (router riêng, mount trước io tồn tại) cần phát board:update
+// sau khi lưu REST thành công — lấy io qua app, không import vòng.
+app.set("io", io);
 
 io.use(async (socket, next) => {
   const user = parseSessionFromCookieHeader(socket.handshake.headers.cookie);

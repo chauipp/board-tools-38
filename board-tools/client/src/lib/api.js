@@ -43,11 +43,11 @@ export async function getBoard(boardId) {
   return res.json();
 }
 
-export async function saveBoard(boardId, state) {
+export async function saveBoard(boardId, state, clientId) {
   const res = await fetch(`/api/boards/${boardId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(state)
+    body: JSON.stringify({ ...state, clientId })
   });
   checkAuthExpired(res);
   if (res.status === 403) throw apiError("READ_ONLY");
