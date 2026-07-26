@@ -17,6 +17,7 @@ import { nodesInFrame, edgeEndpoint, edgesMatch, rectForEndpoint, clipToRect, se
 import { computeSnap } from "../lib/snap.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout, layerLayout } from "../lib/layout.js";
+import { treeLayout, edgeKey } from "../lib/tree-layout.js";
 import { parseDesc } from "../lib/mdlite.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { usePresence, cursorColor } from "../lib/usePresence.js";
@@ -1443,6 +1444,44 @@ export default function IdeaMap() {
     });
   }
 
+  // Xếp lại thẻ gốc + toàn bộ con cháu nối với nó thành hình cây. Gốc đứng yên
+  // làm điểm neo; thẻ khoá giữ chỗ nhưng con cháu nó vẫn xếp quanh đúng chỗ đó.
+  function arrangeAsTree(rootKind, rootId, direction) {
+    if (role === "viewer") return;
+    const nodeById = new Map(board.nodes.map((n) => [n.id, n]));
+    const groupById = new Map(board.groups.map((g) => [g.id, g]));
+    const rootKey = edgeKey(rootKind, rootId);
+    const root = rootKind === "group" ? groupById.get(rootId) : nodeById.get(rootId);
+    if (!root) return;
+
+    function sizeOf(key) {
+      const [kind, rawId] = key.split(":");
+      const id = Number(rawId);
+      if (kind === "group") {
+        const g = groupById.get(id);
+        return g ? { w: g.w, h: g.h } : { w: CARD_W, h: 110 };
+      }
+      return frameCardSize(id);
+    }
+
+    const pos = treeLayout({
+      edges: board.edges, rootKey, rootPos: { x: root.x, y: root.y }, sizeOf, direction
+    });
+    if (pos.size < 2) return;                 // gốc trơ trọi: không có gì để xếp
+
+    function moved(kind, item) {
+      const p = pos.get(edgeKey(kind, item.id));
+      if (!p || item.locked) return item;     // thẻ khoá vẫn tính vào cây, chỉ không dời
+      return { ...item, x: p.x, y: p.y };
+    }
+    setColorMenu(null);
+    commitAndSave({
+      ...board,
+      nodes: board.nodes.map((n) => moved("node", n)),
+      groups: board.groups.map((g) => moved("group", g))
+    });
+  }
+
   function zoomToNodes(ids) {
     if (!ids || ids.length === 0) return;
     const targets = board.nodes.filter((n) => ids.includes(n.id));
@@ -2414,6 +2453,7 @@ export default function IdeaMap() {
             onSetDashed={one((dashed) => applyNodeDashed(node.id, dashed))}
             isRoot={multi ? false : !!node.isRoot}
             onToggleRoot={one(() => toggleNodeRoot(node.id))}
+            onArrangeTree={one((direction) => arrangeAsTree("node", node.id, direction))}
           />
         );
       })()}
@@ -2430,6 +2470,7 @@ export default function IdeaMap() {
             onClose={() => setColorMenu(null)}
             locked={group.locked ?? false}
             onToggleLock={() => toggleGroupLock(group.id)}
+            onArrangeTree={(direction) => arrangeAsTree("group", group.id, direction)}
           />
         );
       })()}
