@@ -40,6 +40,23 @@ export function projectGeometry(board) {
   };
 }
 
+// Áp overlay hình học lên một danh sách node/group CHỈ ĐỂ VẼ. Tách thành hàm
+// riêng vì thẻ, khung và lớp dây SVG bắt buộc phải nhìn cùng một toạ độ: nếu
+// dây vẫn tính từ board gốc thì lúc người khác kéo, thẻ chạy còn dây đứng im.
+// Item không có trong overlay được trả về nguyên tham chiếu cũ (và cả mảng
+// cũng vậy khi overlay rỗng) để React không phải dựng lại cây khi không ai kéo.
+export function applyGeomOverlay(items, overlay, prefix) {
+  if (!overlay.size) return items;
+  return items.map((it) => {
+    const live = overlay.get(prefix + it.id);
+    if (!live) return it;
+    const next = { ...it, x: live.x, y: live.y };
+    if (live.w != null) next.w = live.w;
+    if (live.h != null) next.h = live.h;
+    return next;
+  });
+}
+
 // Map<key, value> tự xoá entry sau `ttlMs` không có cập nhật mới — không
 // cần sự kiện "kết thúc kéo" riêng: nếu người kéo mất kết nối giữa chừng,
 // overlay tự hết hạn thay vì treo vị trí cũ mãi. upsert nhận value hoặc

@@ -20,7 +20,7 @@ import { gridLayout, layerLayout } from "../lib/layout.js";
 import { parseDesc } from "../lib/mdlite.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { usePresence, cursorColor } from "../lib/usePresence.js";
-import { useLiveSync } from "../lib/useLiveSync.js";
+import { useLiveSync, applyGeomOverlay } from "../lib/useLiveSync.js";
 import { loadCamera, saveCamera } from "../lib/camera.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 import { compressImage } from "../lib/image-utils.js";
@@ -470,6 +470,13 @@ export default function IdeaMap() {
   }
 
   const currentUser = user.name;
+
+  // Toạ độ dùng để VẼ: board thật + vị trí tạm của người khác đang kéo. Mọi
+  // thứ hiển thị (thẻ, khung, dây, tay cầm dây) phải đọc từ đây, còn handler
+  // tương tác vẫn đọc `board` gốc — nếu không, phép tính kéo sẽ lấy vị trí
+  // tạm của người khác làm mốc.
+  const liveNodes = applyGeomOverlay(board.nodes, geomOverlay, "node:");
+  const liveGroups = applyGeomOverlay(board.groups, geomOverlay, "group:");
 
   function handlePresenceMouseMove(e) {
     sendCursor(() => {
@@ -2003,9 +2010,8 @@ export default function IdeaMap() {
           {marquee && (
             <div className="marquee-box" style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h }} />
           )}
-          {board.groups.map((group) => {
-            const live = geomOverlay.get("group:" + group.id);
-            const renderGroup = live ? { ...group, x: live.x, y: live.y, w: live.w, h: live.h } : group;
+          {board.groups.map((group, i) => {
+            const renderGroup = liveGroups[i];
             return (
             <FrameBox
               key={group.id}
@@ -2031,8 +2037,8 @@ export default function IdeaMap() {
             </defs>
             {board.edges.map((edge) => {
               if (edgeDrag && edgeDrag.edgeId === edge.id) return null;
-              const r1 = rectForEndpoint(edge.fromKind || "node", edge.from, board.nodes, board.groups, frameCardSize);
-              const r2 = rectForEndpoint(edge.toKind || "node", edge.to, board.nodes, board.groups, frameCardSize);
+              const r1 = rectForEndpoint(edge.fromKind || "node", edge.from, liveNodes, liveGroups, frameCardSize);
+              const r2 = rectForEndpoint(edge.toKind || "node", edge.to, liveNodes, liveGroups, frameCardSize);
               if (!r1 || !r2) return null;
               const p1 = clipToRect(r1.cx, r1.cy, r1.w, r1.h, r2.cx, r2.cy);
               const p2 = clipToRect(r2.cx, r2.cy, r2.w, r2.h, r1.cx, r1.cy);
@@ -2066,18 +2072,18 @@ export default function IdeaMap() {
               ? <line key={i} className="snap-guide" x1={g.pos} y1={g.start} x2={g.pos} y2={g.end} />
               : <line key={i} className="snap-guide" x1={g.start} y1={g.pos} x2={g.end} y2={g.pos} />))}
             {linkDraft && (() => {
-              const from = edgeEndpoint(linkDraft.fromKind || "node", linkDraft.fromId, board.nodes, board.groups, frameCardSize);
+              const from = edgeEndpoint(linkDraft.fromKind || "node", linkDraft.fromId, liveNodes, liveGroups, frameCardSize);
               if (!from) return null;
               return <line className="draft" x1={from.x} y1={from.y} x2={linkDraft.x} y2={linkDraft.y} />;
             })()}
             {edgeDrag && (() => {
-              const fixed = edgeEndpoint(edgeDrag.fixedKind, edgeDrag.fixedId, board.nodes, board.groups, frameCardSize);
+              const fixed = edgeEndpoint(edgeDrag.fixedKind, edgeDrag.fixedId, liveNodes, liveGroups, frameCardSize);
               if (!fixed) return null;
               return <line className="draft" x1={fixed.x} y1={fixed.y} x2={edgeDrag.x} y2={edgeDrag.y} />;
             })()}
             {Array.from(presencePeers.values()).map((peer) => {
               if (!peer.edgeDraft) return null;
-              const from = edgeEndpoint(peer.edgeDraft.fromKind || "node", peer.edgeDraft.fromId, board.nodes, board.groups, frameCardSize);
+              const from = edgeEndpoint(peer.edgeDraft.fromKind || "node", peer.edgeDraft.fromId, liveNodes, liveGroups, frameCardSize);
               if (!from) return null;
               return (
                 <line
@@ -2090,14 +2096,11 @@ export default function IdeaMap() {
             })}
           </svg>
 
-          {board.nodes.map((node) => {
-            const live = geomOverlay.get("node:" + node.id);
+          {board.nodes.map((node, i) => {
             const liveText = editingId === node.id ? null : textOverlay.get(String(node.id));
-            const renderNode = (live || liveText) ? {
-              ...node,
-              ...(live ? { x: live.x, y: live.y, ...(live.w != null ? { w: live.w } : {}) } : {}),
-              ...(liveText ? { title: liveText.title ?? node.title, desc: liveText.desc ?? node.desc } : {})
-            } : node;
+            const renderNode = liveText
+              ? { ...liveNodes[i], title: liveText.title ?? node.title, desc: liveText.desc ?? node.desc }
+              : liveNodes[i];
             return (
             <IdeaCard
               key={node.id}
@@ -2144,7 +2147,7 @@ export default function IdeaMap() {
 
           {Array.from(presencePeers.values()).flatMap((peer) =>
             (peer.selectedIds || []).map((id) => {
-              const n = board.nodes.find((x) => x.id === id);
+              const n = liveNodes.find((x) => x.id === id);
               if (!n) return null;
               return (
                 <div
@@ -2164,8 +2167,8 @@ export default function IdeaMap() {
           {hoveredEdgeId != null && !edgeDrag && (() => {
             const edge = board.edges.find((e) => e.id === hoveredEdgeId);
             if (!edge) return null;
-            const r1 = rectForEndpoint(edge.fromKind || "node", edge.from, board.nodes, board.groups, frameCardSize);
-            const r2 = rectForEndpoint(edge.toKind || "node", edge.to, board.nodes, board.groups, frameCardSize);
+            const r1 = rectForEndpoint(edge.fromKind || "node", edge.from, liveNodes, liveGroups, frameCardSize);
+            const r2 = rectForEndpoint(edge.toKind || "node", edge.to, liveNodes, liveGroups, frameCardSize);
             if (!r1 || !r2) return null;
             const p1 = clipToRect(r1.cx, r1.cy, r1.w, r1.h, r2.cx, r2.cy);
             const p2 = clipToRect(r2.cx, r2.cy, r2.w, r2.h, r1.cx, r1.cy);

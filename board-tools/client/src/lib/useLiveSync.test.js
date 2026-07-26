@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { isStaleUpdate, mergeRemoteBoard, projectGeometry } from "./useLiveSync.js";
+import { isStaleUpdate, mergeRemoteBoard, projectGeometry, applyGeomOverlay } from "./useLiveSync.js";
 
 test("isStaleUpdate: incoming with no timestamp is always stale", () => {
   assert.equal(isStaleUpdate("2026-01-01T00:00:00.000Z", undefined), true);
@@ -63,4 +63,34 @@ test("projectGeometry handles empty board content", () => {
 test("projectGeometry: node without a w (no explicit width set) omits w as undefined-passthrough", () => {
   const board = { nodes: [{ id: 2, x: 1, y: 2 }], groups: [] };
   assert.deepEqual(projectGeometry(board), { nodes: [{ id: 2, x: 1, y: 2, w: undefined }], groups: [] });
+});
+
+test("applyGeomOverlay returns the very same array when nothing is live", () => {
+  const nodes = [{ id: 1, x: 0, y: 0 }];
+  assert.equal(applyGeomOverlay(nodes, new Map(), "node:"), nodes);
+});
+
+test("applyGeomOverlay moves only the items the overlay mentions", () => {
+  const nodes = [{ id: 1, x: 0, y: 0, title: "a" }, { id: 2, x: 5, y: 5, title: "b" }];
+  const out = applyGeomOverlay(nodes, new Map([["node:1", { x: 100, y: 200 }]]), "node:");
+  assert.deepEqual(out[0], { id: 1, x: 100, y: 200, title: "a" });
+  assert.equal(out[1], nodes[1], "untouched items keep their identity");
+});
+
+test("applyGeomOverlay takes w and h when the overlay carries them (frame resize)", () => {
+  const groups = [{ id: 7, x: 0, y: 0, w: 10, h: 10, title: "f" }];
+  const out = applyGeomOverlay(groups, new Map([["group:7", { x: 1, y: 2, w: 300, h: 200 }]]), "group:");
+  assert.deepEqual(out[0], { id: 7, x: 1, y: 2, w: 300, h: 200, title: "f" });
+});
+
+test("applyGeomOverlay keeps the committed w when the overlay carries none", () => {
+  const nodes = [{ id: 1, x: 0, y: 0, w: 210 }];
+  const out = applyGeomOverlay(nodes, new Map([["node:1", { x: 9, y: 9, w: undefined }]]), "node:");
+  assert.equal(out[0].w, 210);
+});
+
+test("applyGeomOverlay ignores overlay entries for a different kind (node vs group ids collide)", () => {
+  const nodes = [{ id: 7, x: 0, y: 0 }];
+  const out = applyGeomOverlay(nodes, new Map([["group:7", { x: 999, y: 999 }]]), "node:");
+  assert.equal(out[0], nodes[0]);
 });
