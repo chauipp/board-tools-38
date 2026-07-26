@@ -3,7 +3,20 @@ import { useLingui } from "@lingui/react/macro";
 import { BADGE_PALETTE, colorVar } from "../lib/badges.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 
-export default function ColorMenu({ x, y, color, count = 1, onPick, onEdit, onGroup, onTidy, onFocus, onDuplicate, onComments, onCopyLink, onDelete, onClose, locked, onToggleLock }) {
+function ShapeRectIcon() {
+  return <svg viewBox="0 0 20 14" width="20" height="14"><rect x="2" y="2" width="16" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>;
+}
+function ShapeEllipseIcon() {
+  return <svg viewBox="0 0 20 14" width="20" height="14"><ellipse cx="10" cy="7" rx="9" ry="6" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>;
+}
+function BorderSolidIcon() {
+  return <svg viewBox="0 0 20 14" width="20" height="14"><rect x="2" y="2" width="16" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>;
+}
+function BorderDashedIcon() {
+  return <svg viewBox="0 0 20 14" width="20" height="14"><rect x="2" y="2" width="16" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeDasharray="3 2.4" /></svg>;
+}
+
+export default function ColorMenu({ x, y, color, count = 1, onPick, onEdit, onGroup, onTidy, onFocus, onDuplicate, onComments, onCopyLink, onDelete, onClose, locked, onToggleLock, shape, onSetShape, dashed, onSetDashed, isRoot, onToggleRoot }) {
   const { t } = useLingui();
   const ref = useRef(null);
   useCloseOnOutside(ref, onClose);
@@ -16,6 +29,7 @@ export default function ColorMenu({ x, y, color, count = 1, onPick, onEdit, onGr
     onTidy && { label: t`Xếp gọn`, run: onTidy },
     onFocus && { label: t`Chỉ xem thẻ liên quan`, run: onFocus },
     onToggleLock && { label: locked ? t`Mở khoá` : t`Khoá`, run: onToggleLock },
+    onToggleRoot && { label: isRoot ? t`Bỏ thẻ gốc` : t`Đặt làm thẻ gốc`, run: onToggleRoot },
     onDuplicate && { label: t`Nhân bản`, run: onDuplicate },
     onComments && { label: t`Bình luận`, run: onComments },
     onCopyLink && { label: t`Chép liên kết`, run: onCopyLink }
@@ -40,6 +54,30 @@ export default function ColorMenu({ x, y, color, count = 1, onPick, onEdit, onGr
           />
         ))}
       </div>
+      {onSetShape && (
+        <div className="em-section">
+          <div className="em-toggle-group">
+            <button className={"em-icon-btn" + (shape !== "ellipse" ? " on" : "")} onClick={() => shape === "ellipse" && onSetShape("rect")} title={t`Vuông`}>
+              <ShapeRectIcon />
+            </button>
+            <button className={"em-icon-btn" + (shape === "ellipse" ? " on" : "")} onClick={() => shape !== "ellipse" && onSetShape("ellipse")} title={t`Elip / tròn`}>
+              <ShapeEllipseIcon />
+            </button>
+          </div>
+        </div>
+      )}
+      {onSetDashed && (
+        <div className="em-section">
+          <div className="em-toggle-group">
+            <button className={"em-icon-btn" + (!dashed ? " on" : "")} onClick={() => dashed && onSetDashed(false)} title={t`Viền liền`}>
+              <BorderSolidIcon />
+            </button>
+            <button className={"em-icon-btn" + (dashed ? " on" : "")} onClick={() => !dashed && onSetDashed(true)} title={t`Viền nét đứt`}>
+              <BorderDashedIcon />
+            </button>
+          </div>
+        </div>
+      )}
       <div className="cm-items">
         {items.map((it) => (
           <button key={it.label} className="cm-item" onClick={it.run}>{it.label}</button>

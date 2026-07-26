@@ -28,6 +28,34 @@ import "../styles/idea-map.css";
 const CARD_W = 210;
 const MIN_SCALE = 0.3, MAX_SCALE = 2.4;
 
+// Menu thanh công cụ kiểu VSCode: một nhãn, bấm mở danh sách hành động liên
+// quan — gom 10+ nút rời rạc trên .topbar thành vài cụm, đỡ rối mắt.
+function TopMenu({ label, active, align = "left", children }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useCloseOnOutside(ref, () => setOpen(false));
+  return (
+    <div className="menubar-item" ref={ref}>
+      <button
+        type="button"
+        className={"menubar-trigger" + (active ? " active" : "") + (open ? " open" : "")}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {label}
+      </button>
+      {open && (
+        // onClick (bubble), không phải onClickCapture: bubble chạy sau khi nút con
+        // đã xử lý xong click của chính nó — capture đóng menu (unmount) trước khi
+        // click kịp bubble tới nút, khiến hành động không chạy (vd bấm "+ Ý tưởng"
+        // không tạo thẻ nào).
+        <div className={"menubar-dropdown" + (align === "right" ? " align-right" : "")} onClick={() => setOpen(false)}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function computeZoom(currentBoard, rect, screenX, screenY, factor) {
   const mx = screenX - rect.left, my = screenY - rect.top;
   const oldScale = currentBoard.view.scale;
@@ -1580,6 +1608,17 @@ export default function IdeaMap() {
     commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, locked: !n.locked } : n)) });
     setColorMenu(null);
   }
+
+  function applyNodeShape(nodeId, shape) {
+    commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, shape } : n)) });
+  }
+  function applyNodeDashed(nodeId, dashed) {
+    commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, dashed } : n)) });
+  }
+  function toggleNodeRoot(id) {
+    commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, isRoot: !n.isRoot } : n)) });
+    setColorMenu(null);
+  }
   function toggleGroupLock(id) {
     commitAndSave({ ...board, groups: board.groups.map((g) => (g.id === id ? { ...g, locked: !g.locked } : g)) });
     setColorMenu(null);
@@ -1740,15 +1779,21 @@ export default function IdeaMap() {
           <div className="eyebrow"><Trans>Bản đồ ý tưởng</Trans></div>
           <h1 className="display" style={{ fontSize: 19, margin: 0 }}>{boardName}</h1>
         </div>
-        <Link to="/idea-map" className="btn ghost"><Trans>← Danh sách board</Trans></Link>
-        {role === "owner" && (
-          <button className="btn ghost" onClick={() => setInviteOpen(true)}><Trans>Mời thành viên</Trans></button>
-        )}
         {/* data-mutating = móc CSS đánh dấu control ghi dữ liệu board; ở chế độ
             chỉ xem chúng bị vô hiệu hoá, phần còn lại của thanh vẫn dùng được. */}
-        <button className="btn" data-mutating onClick={handleAddClick}><Trans>+ Ý tưởng</Trans></button>
-        <button className="btn ghost" data-mutating onClick={createGroup}><Trans>+ Khung</Trans></button>
-        <button className="btn ghost" data-mutating onClick={() => setCaptureOpen(true)}><Trans>Nhập nhanh</Trans></button>
+        <TopMenu label={t`Board`}>
+          <Link to="/idea-map" className="btn ghost"><Trans>← Danh sách board</Trans></Link>
+          {role === "owner" && (
+            <button className="btn ghost" onClick={() => setInviteOpen(true)}><Trans>Mời thành viên</Trans></button>
+          )}
+        </TopMenu>
+
+        <TopMenu label={t`Thêm`}>
+          <button className="btn" data-mutating onClick={handleAddClick}><Trans>+ Ý tưởng</Trans></button>
+          <button className="btn ghost" data-mutating onClick={createGroup}><Trans>+ Khung</Trans></button>
+          <button className="btn ghost" data-mutating onClick={() => setCaptureOpen(true)}><Trans>Nhập nhanh</Trans></button>
+        </TopMenu>
+
         <button className="btn ghost icon" data-mutating onClick={undo} disabled={past.length === 0} title={t`Hoàn tác (Ctrl+Z)`}>↶</button>
         <button className="btn ghost icon" data-mutating onClick={redo} disabled={future.length === 0} title={t`Làm lại (Ctrl+Shift+Z)`}>↷</button>
         <button
@@ -1758,17 +1803,27 @@ export default function IdeaMap() {
         >
           <Trans>Nối ý tưởng</Trans>
         </button>
+
         <div className="search-box">
           <input type="text" placeholder={t`Tìm theo tên/mô tả…`} value={search} onChange={(e) => setSearch(e.target.value)} />
         </div>
         <div className="spacer" />
         {saveError && <span style={{ fontSize: 11, color: "var(--danger)" }}><Trans>Không lưu được lên server.</Trans></span>}
-        <button className="btn ghost" onClick={() => { setIoMode("export"); setIoText(JSON.stringify(board, null, 2)); setIoOpen(true); }}><Trans>Xuất JSON</Trans></button>
-        <button className="btn ghost" data-mutating onClick={() => { setIoMode("import"); setIoText(""); setIoOpen(true); }}><Trans>Nhập JSON</Trans></button>
-        <button className="btn ghost" disabled={board.groups.length === 0} onClick={startPresentation}><Trans>Trình chiếu</Trans></button>
-        <button className={"btn ghost toggle" + (outlineOpen ? " active" : "")} onClick={() => setOutlineOpen((v) => !v)}><Trans>Mục lục</Trans></button>
-        <LocaleToggle />
-        <button className="btn ghost icon" onClick={toggleTheme} title={t`Đổi giao diện sáng/tối`}>◐</button>
+
+        <TopMenu label={t`Dữ liệu`} align="right">
+          <button className="btn ghost" onClick={() => { setIoMode("export"); setIoText(JSON.stringify(board, null, 2)); setIoOpen(true); }}><Trans>Xuất JSON</Trans></button>
+          <button className="btn ghost" data-mutating onClick={() => { setIoMode("import"); setIoText(""); setIoOpen(true); }}><Trans>Nhập JSON</Trans></button>
+        </TopMenu>
+
+        <TopMenu label={t`Xem`} align="right">
+          <button className="btn ghost" disabled={board.groups.length === 0} onClick={startPresentation}><Trans>Trình chiếu</Trans></button>
+          <button className={"btn ghost toggle" + (outlineOpen ? " active" : "")} onClick={() => setOutlineOpen((v) => !v)}><Trans>Mục lục</Trans></button>
+          <div className="menubar-sep" />
+          <div className="menubar-row">
+            <LocaleToggle />
+            <button className="btn ghost icon" onClick={toggleTheme} title={t`Đổi giao diện sáng/tối`}>◐</button>
+          </div>
+        </TopMenu>
       </div>
 
       <div className="filterbar">
@@ -2242,6 +2297,12 @@ export default function IdeaMap() {
             onClose={() => setColorMenu(null)}
             locked={node.locked ?? false}
             onToggleLock={one(() => toggleNodeLock(node.id))}
+            shape={multi ? "rect" : node.shape ?? "rect"}
+            onSetShape={one((shape) => applyNodeShape(node.id, shape))}
+            dashed={multi ? false : !!node.dashed}
+            onSetDashed={one((dashed) => applyNodeDashed(node.id, dashed))}
+            isRoot={multi ? false : !!node.isRoot}
+            onToggleRoot={one(() => toggleNodeRoot(node.id))}
           />
         );
       })()}
@@ -2594,6 +2655,9 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
   if (dropTarget) classNames.push("drop-target");
   if (selected) classNames.push("selected");
   if (flash) classNames.push("flash");
+  if (node.shape === "ellipse") classNames.push("shape-ellipse");
+  if (node.dashed) classNames.push("border-dashed");
+  if (node.isRoot) classNames.push("is-root");
 
   function handleEditKeyDown(e) {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
@@ -2651,6 +2715,7 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
       {/* Nút nằm cùng hàng với tiêu đề, không absolute: absolute thì tiêu đề dài
           chạy xuống dưới ngôi sao và bị đè. Tiêu đề co lại, nút giữ nguyên. */}
       <div className="card-top">
+        {node.isRoot && <span className="root-badge" title={t`Thẻ gốc`}>👑</span>}
         {node.locked && <span className="lock-badge">🔒</span>}
         <div className="title">{node.title}</div>
         <div className="card-actions">
