@@ -118,7 +118,7 @@ export default function IdeaMap() {
   const [role, setRole] = useState(null);
   const [boardName, setBoardName] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
-  const { peers: presencePeers, sendCursor, socket } = usePresence(user, boardId);
+  const { peers: presencePeers, sendCursor, sendSelection, sendEdgeDraft, socket } = usePresence(user, boardId);
 
   const viewportRef = useRef(null);
   const fbDockRef = useRef(null);
@@ -177,6 +177,15 @@ export default function IdeaMap() {
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
   useEffect(() => { editingIdRef.current = editingId; }, [editingId]);
   useEffect(() => { socketRef.current = socket; }, [socket]);
+  useEffect(() => { sendSelection(Array.from(selectedIds)); }, [selectedIds, sendSelection]);
+  useEffect(() => {
+    const draft = linkDraft
+      ? { fromKind: linkDraft.fromKind || "node", fromId: linkDraft.fromId, x: linkDraft.x, y: linkDraft.y }
+      : edgeDrag
+      ? { fromKind: edgeDrag.fixedKind, fromId: edgeDrag.fixedId, x: edgeDrag.x, y: edgeDrag.y }
+      : null;
+    sendEdgeDraft(draft);
+  }, [linkDraft, edgeDrag, sendEdgeDraft]);
 
   const { geomOverlay, textOverlay, sendLiveText } = useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, setBoard);
 
@@ -2053,6 +2062,19 @@ export default function IdeaMap() {
               if (!fixed) return null;
               return <line className="draft" x1={fixed.x} y1={fixed.y} x2={edgeDrag.x} y2={edgeDrag.y} />;
             })()}
+            {Array.from(presencePeers.values()).map((peer) => {
+              if (!peer.edgeDraft) return null;
+              const from = edgeEndpoint(peer.edgeDraft.fromKind || "node", peer.edgeDraft.fromId, board.nodes, board.groups, frameCardSize);
+              if (!from) return null;
+              return (
+                <line
+                  key={"peer-draft-" + peer.socketId}
+                  className="draft"
+                  x1={from.x} y1={from.y} x2={peer.edgeDraft.x} y2={peer.edgeDraft.y}
+                  style={{ stroke: cursorColor(peer.email) }}
+                />
+              );
+            })}
           </svg>
 
           {board.nodes.map((node) => {
@@ -2106,6 +2128,21 @@ export default function IdeaMap() {
               <span className="peer-cursor-label" style={{ background: "var(--peer-color)" }}>{peer.name}</span>
             </div>
           ))}
+
+          {Array.from(presencePeers.values()).flatMap((peer) =>
+            (peer.selectedIds || []).map((id) => {
+              const n = board.nodes.find((x) => x.id === id);
+              if (!n) return null;
+              return (
+                <div
+                  key={peer.socketId + ":sel:" + id}
+                  className="peer-select-badge"
+                  style={{ left: n.x + (n.w || CARD_W) - 10, top: n.y - 10, background: cursorColor(peer.email) }}
+                  title={peer.name}
+                />
+              );
+            })
+          )}
 
           {/* Tay cầm nổi trên cùng, tách khỏi .edge-layer: đầu dây thường trùng
               đúng chỗ connector-zone của thẻ (cả hai đều ở tâm cạnh), và thẻ

@@ -218,7 +218,7 @@ io.on("connection", (socket) => {
   const room = "board:" + socket.data.boardId;
   socket.join(room);
   const peers = peersForBoard(socket.data.boardId);
-  const peer = { socketId: socket.id, ...socket.data.user, x: 0, y: 0 };
+  const peer = { socketId: socket.id, ...socket.data.user, x: 0, y: 0, selectedIds: [], edgeDraft: null };
   peers.set(socket.id, peer);
   socket.emit("presence:sync", Array.from(peers.values()));
   socket.to(room).emit("presence:join", peer);
@@ -245,6 +245,25 @@ io.on("connection", (socket) => {
   // chạy gần real-time; bản chính thức vẫn qua saveNodeEdit → PUT như cũ.
   socket.on("live:text", (payload) => {
     socket.to(room).emit("live:text", payload || {});
+  });
+
+  // Vùng đang chọn của người này — presence nhẹ, không phải chỉnh sửa dữ
+  // liệu, viewer vẫn gửi/nhận được như cursor.
+  socket.on("selection:update", (payload) => {
+    const ids = Array.isArray(payload) ? payload.filter((id) => Number.isFinite(id)) : [];
+    const p = peers.get(socket.id);
+    if (!p) return;
+    p.selectedIds = ids;
+    socket.to(room).emit("selection:update", { socketId: socket.id, selectedIds: ids });
+  });
+
+  // Đầu dây đang được kéo (link mới hoặc kéo lại đầu dây có sẵn) — cùng
+  // bản chất với cursor: điểm bám theo chuột, không phải dữ liệu board.
+  socket.on("edge-draft:update", (payload) => {
+    const p = peers.get(socket.id);
+    if (!p) return;
+    p.edgeDraft = payload && Number.isFinite(payload.x) && Number.isFinite(payload.y) ? payload : null;
+    socket.to(room).emit("edge-draft:update", { socketId: socket.id, edgeDraft: p.edgeDraft });
   });
 
   socket.on("disconnect", () => {

@@ -502,6 +502,16 @@
   white-space: nowrap;
 }
 
+.peer-select-badge {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+  pointer-events: none;
+  z-index: 5;
+}
+
 /* Chế độ chỉ xem. Khoá cả .topbar/.filterbar thì tiện nhưng giết luôn tìm kiếm,
    mục lục, trình chiếu và xuất JSON/MD/PNG — toàn thao tác đọc mà người chỉ xem
    cần dùng. Nên chỉ chặn đúng những control ghi dữ liệu:
