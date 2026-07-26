@@ -5,8 +5,8 @@ export function edgeKey(kind, id) {
 }
 
 export function buildTree(edges, rootKey) {
-  // Dây coi là hai chiều: mũi tên chỉ hướng nào không nói gì về quan hệ cha-con
-  // trên bản đồ ý tưởng — nối là có quan hệ.
+  // Con là thẻ có mũi tên đi ra từ cha: dây vô hướng (arrow: "none") hoặc dây
+  // đi ngược (mũi tên chỉ vào cha) không tạo quan hệ cha-con trên cây.
   const neighbors = new Map();
   function link(a, b) {
     if (a === b) return;                      // dây tự nối: không phải quan hệ
@@ -14,10 +14,10 @@ export function buildTree(edges, rootKey) {
     neighbors.get(a).push(b);
   }
   edges.forEach((e) => {
+    if (e.arrow === "none") return;           // vô hướng: không thuộc cây
     const a = edgeKey(e.fromKind || "node", e.from);
     const b = edgeKey(e.toKind || "node", e.to);
     link(a, b);
-    link(b, a);
   });
 
   const order = [rootKey];

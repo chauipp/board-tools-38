@@ -19,10 +19,28 @@ test("buildTree: chuỗi thẳng 1→2→3 ra ba tầng", () => {
   assert.equal(children.has("node:3"), false);
 });
 
-test("buildTree: dây ngược chiều vẫn tính là quan hệ cha-con", () => {
-  // Dây vẽ từ 2 sang 1, nhưng gốc là 1 → 2 vẫn phải là con của 1.
+test("buildTree: mũi tên đi vào gốc không tạo quan hệ cha-con", () => {
+  // Dây vẽ từ 2 sang 1 (mũi tên chỉ vào gốc), nên 2 không phải con của 1.
   const edges = [{ id: 1, from: 2, to: 1, fromKind: "node", toKind: "node" }];
-  const { children } = buildTree(edges, "node:1");
+  const { order, children } = buildTree(edges, "node:1");
+  assert.deepEqual(order, ["node:1"]);
+  assert.equal(children.has("node:1"), false);
+});
+
+test("buildTree: dây vô hướng (arrow: none) không thuộc cây", () => {
+  const edges = [{ id: 1, from: 1, to: 2, fromKind: "node", toKind: "node", arrow: "none" }];
+  const { order } = buildTree(edges, "node:1");
+  assert.deepEqual(order, ["node:1"]);
+});
+
+test("buildTree: chỉ theo đúng chiều mũi tên đi ra, bỏ qua dây vô hướng và dây đi vào", () => {
+  const edges = [
+    { id: 1, from: 1, to: 2, fromKind: "node", toKind: "node" },              // 1 → 2: con hợp lệ
+    { id: 2, from: 3, to: 1, fromKind: "node", toKind: "node" },              // 3 → 1: mũi tên vào gốc, bỏ
+    { id: 3, from: 1, to: 4, fromKind: "node", toKind: "node", arrow: "none" } // 1 → 4 nhưng vô hướng, bỏ
+  ];
+  const { order, children } = buildTree(edges, "node:1");
+  assert.deepEqual(order, ["node:1", "node:2"]);
   assert.deepEqual(children.get("node:1"), ["node:2"]);
 });
 

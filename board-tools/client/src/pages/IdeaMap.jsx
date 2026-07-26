@@ -1464,8 +1464,11 @@ export default function IdeaMap() {
       return frameCardSize(id);
     }
 
+    // Lên/xuống dùng chiều cao thẻ (nhỏ) làm khoảng cách tầng nên nhìn chật hơn
+    // trái/phải (dùng chiều rộng thẻ) — nới thêm cho hai hướng dọc.
+    const gap = direction === "down" || direction === "up" ? { depth: 110 } : undefined;
     const pos = treeLayout({
-      edges: board.edges, rootKey, rootPos: { x: root.x, y: root.y }, sizeOf, direction
+      edges: board.edges, rootKey, rootPos: { x: root.x, y: root.y }, sizeOf, direction, gap
     });
     if (pos.size < 2) return;                 // gốc trơ trọi: không có gì để xếp
 
