@@ -21,6 +21,7 @@ import { parseDesc } from "../lib/mdlite.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { usePresence, cursorColor } from "../lib/usePresence.js";
 import { useLiveSync } from "../lib/useLiveSync.js";
+import { loadCamera, saveCamera } from "../lib/camera.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 import { compressImage } from "../lib/image-utils.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
@@ -157,9 +158,13 @@ export default function IdeaMap() {
         setRole(r);
         setBoardName(name);
         lastUpdatedAtRef.current = updatedAt;
+        // Camera riêng từng người: ưu tiên vị trí đã lưu local của chính
+        // trình duyệt này, bỏ qua `view` server trả về (giá trị cũ, không
+        // còn được ghi từ khi camera tách riêng — xem lib/camera.js).
+        const camera = loadCamera(window.localStorage, boardId);
         // Board cũ chưa có palette → mặc định rỗng, để mọi chỗ đọc board.palette
         // không phải ?? [] khắp nơi.
-        setBoard({ palette: [], nextPaletteId: 1, ...boardData });
+        setBoard({ palette: [], nextPaletteId: 1, ...boardData, ...(camera ? { view: camera } : {}) });
       })
       .catch((e) => { if (!cancelled) setLoadError(e.code || "UNKNOWN"); });
     return () => { cancelled = true; };
@@ -171,6 +176,16 @@ export default function IdeaMap() {
     const id = setTimeout(() => saveLayouts(window.localStorage, layouts), 200);
     return () => clearTimeout(id);
   }, [layouts]);
+
+  // Camera đổi từ nhiều chỗ (lăn chuột, kéo nền, zoom vừa khung, thoát trình
+  // chiếu). Lưu ở một effect theo board.view — rải saveCamera vào từng handler
+  // thì sót, mà `view` cũng không còn được PUT lên server nữa (api.js bỏ nó).
+  // Hoãn một nhịp như layouts ở trên: lăn chuột đổi view liên tục.
+  useEffect(() => {
+    if (!board?.view) return;
+    const id = setTimeout(() => saveCamera(window.localStorage, boardId, board.view), 200);
+    return () => clearTimeout(id);
+  }, [board?.view, boardId]);
 
   useEffect(() => { boardRef.current = board; }, [board]);
   useEffect(() => { roleRef.current = role; }, [role]);
@@ -236,12 +251,10 @@ export default function IdeaMap() {
       if (e.shiftKey) {
         const next = { ...current, view: { ...current.view, panX: current.view.panX - e.deltaX, panY: current.view.panY - e.deltaY } };
         setBoard(next);
-        saveDebounced(next);
       } else {
         const factor = Math.pow(1.0015, -e.deltaY);
         const next = computeZoom(current, el.getBoundingClientRect(), e.clientX, e.clientY, factor);
         setBoard(next);
-        saveDebounced(next);
       }
     }
     el.addEventListener("wheel", wheelHandler, { passive: false });

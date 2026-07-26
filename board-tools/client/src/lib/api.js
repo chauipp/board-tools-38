@@ -44,10 +44,12 @@ export async function getBoard(boardId) {
 }
 
 export async function saveBoard(boardId, state, clientId) {
+  // Camera (pan/zoom) không còn là dữ liệu đồng bộ — xem lib/camera.js.
+  const { view, ...rest } = state;
   const res = await fetch(`/api/boards/${boardId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...state, clientId })
+    body: JSON.stringify({ ...rest, clientId })
   });
   checkAuthExpired(res);
   if (res.status === 403) throw apiError("READ_ONLY");
