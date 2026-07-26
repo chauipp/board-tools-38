@@ -1465,8 +1465,13 @@ export default function IdeaMap() {
     }
 
     // Lên/xuống dùng chiều cao thẻ (nhỏ) làm khoảng cách tầng nên nhìn chật hơn
-    // trái/phải (dùng chiều rộng thẻ) — nới thêm cho hai hướng dọc.
-    const gap = direction === "down" || direction === "up" ? { depth: 110 } : undefined;
+    // trái/phải (dùng chiều rộng thẻ) — nới thêm cho hai hướng dọc. Breadth
+    // cũng nới rộng hơn mặc định để dây nối không bị đè lên thẻ khác đứng gần
+    // (thẻ ngoài cây không bị dịch nên có thể nằm sát vị trí mới của cây).
+    const gap = {
+      breadth: 56,
+      depth: direction === "down" || direction === "up" ? 110 : 70
+    };
     const pos = treeLayout({
       edges: board.edges, rootKey, rootPos: { x: root.x, y: root.y }, sizeOf, direction, gap
     });
