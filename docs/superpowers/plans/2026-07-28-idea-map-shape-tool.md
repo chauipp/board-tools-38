@@ -1566,7 +1566,7 @@ git commit -m "feat: server chuyển tiếp gói live:ink của hình khối"
 
 ---
 
-- [ ] ## Task 8: Realtime — hình khối chạy theo thời gian thực
+- [x] ## Task 8: Realtime — hình khối chạy theo thời gian thực
 
 **Files:**
 - Modify: `game-tools/client/src/lib/ink-live.js`
