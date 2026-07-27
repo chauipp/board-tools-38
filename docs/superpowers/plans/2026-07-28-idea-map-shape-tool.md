@@ -1587,7 +1587,7 @@ git commit -m "feat: server chuyển tiếp gói live:ink của hình khối"
     ở mọi gói; gói `seq: 0` thêm `color`, `w`, `fill`; gói cuối là
     `{ strokeId, done: true, drawingId }` — **giống hệt** gói `done` của nét bút.
 
-- [ ] **Step 1: Viết test thất bại cho `ink-live.js`**
+- [x] **Step 1: Viết test thất bại cho `ink-live.js`**
 
 Trong `game-tools/client/src/lib/ink-live.test.js`, **thay** test
 `"mergeInkPacket: gói đầu tạo entry đủ màu, độ dày, điểm"` bằng:
@@ -1654,7 +1654,7 @@ Sửa thêm test `"mergeInkPacket: gói erase gộp id qua nhiều gói"` — d�
 `assert.equal(m.get("s1:1").pts, null);` giữ nguyên, nhưng nếu nó dùng
 `deepEqual` cả entry thì thêm `kind: null, fill: false` vào giá trị mong đợi.
 
-- [ ] **Step 2: Chạy test để chắc chắn nó thất bại**
+- [x] **Step 2: Chạy test để chắc chắn nó thất bại**
 
 ```bash
 cd game-tools/client && npm test
@@ -1663,7 +1663,7 @@ cd game-tools/client && npm test
 Expected: FAIL — entry thiếu `kind` / `fill`, và gói sau của hình khối bị nối
 thành 6 số.
 
-- [ ] **Step 3: Sửa `mergeInkPacket`**
+- [x] **Step 3: Sửa `mergeInkPacket`**
 
 Trong `game-tools/client/src/lib/ink-live.js`:
 
@@ -1707,7 +1707,7 @@ Nhánh vẽ — **thay** khối cuối hàm (từ `const pts = Array.isArray(...
   return next;
 ```
 
-- [ ] **Step 4: Chạy test để chắc chắn nó xanh**
+- [x] **Step 4: Chạy test để chắc chắn nó xanh**
 
 ```bash
 cd game-tools/client && npm test
@@ -1715,7 +1715,7 @@ cd game-tools/client && npm test
 
 Expected: PASS.
 
-- [ ] **Step 5: Thêm `beginShape` / `pushShape` / `endShape` vào `useInkLive.js`**
+- [x] **Step 5: Thêm `beginShape` / `pushShape` / `endShape` vào `useInkLive.js`**
 
 Thêm một ref cạnh `seqRef`:
 
@@ -1794,7 +1794,7 @@ Cập nhật `useMemo` cuối hàm để trả và phụ thuộc thêm ba hàm m
   );
 ```
 
-- [ ] **Step 6: Bỏ optional chaining tạm trong `useInk.js`**
+- [x] **Step 6: Bỏ optional chaining tạm trong `useInk.js`**
 
 Ba hàm giờ đã tồn tại, nên đổi lại cho cùng khuôn với các lời gọi live khác:
 
@@ -1802,7 +1802,7 @@ Ba hàm giờ đã tồn tại, nên đổi lại cho cùng khuôn với các l�
 - `live?.pushShape?.(box)` → `live?.pushShape(box)`
 - `live?.endShape?.(drawingId)` → `live?.endShape(drawingId)`
 
-- [ ] **Step 7: Smoke test — phát và nhận gói hình khối**
+- [x] **Step 7: Smoke test — phát và nhận gói hình khối**
 
 Thêm vào **cuối** hàm `run` trong `game-tools/client/src/__smoke__/entry.jsx`,
 ngay **trước** `return true;`:
@@ -1862,7 +1862,7 @@ ngay **trước** `return true;`:
   if ((grown.getAttribute("d").match(/L /g) || []).length !== 3) throw new Error("hộp bị nối thêm thay vì thay: " + grown.getAttribute("d"));
 ```
 
-- [ ] **Step 8: Chạy smoke test**
+- [x] **Step 8: Chạy smoke test**
 
 ```bash
 cd game-tools/client && npm run test:smoke
@@ -1870,7 +1870,7 @@ cd game-tools/client && npm run test:smoke
 
 Expected: PASS.
 
-- [ ] **Step 9: Chạy cả bộ unit test**
+- [x] **Step 9: Chạy cả bộ unit test**
 
 ```bash
 cd game-tools/client && npm test
@@ -1878,7 +1878,7 @@ cd game-tools/client && npm test
 
 Expected: PASS.
 
-- [ ] **Step 10: Commit**
+- [x] **Step 10: Commit**
 
 ```bash
 git add game-tools/client/src/lib/ink-live.js game-tools/client/src/lib/ink-live.test.js \
