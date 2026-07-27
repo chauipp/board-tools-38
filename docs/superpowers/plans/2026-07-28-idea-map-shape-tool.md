@@ -1338,7 +1338,7 @@ git commit -m "feat: vẽ hình khối bằng cách kéo chuột trên bản đ�
 
 ---
 
-- [ ] ## Task 6: Cục gôm xoá được hình khối
+- [x] ## Task 6: Cục gôm xoá được hình khối
 
 **Files:**
 - Modify: `game-tools/client/src/__smoke__/entry.jsx` (thêm nhóm kiểm mới cuối hàm)
@@ -1348,7 +1348,7 @@ git commit -m "feat: vẽ hình khối bằng cách kéo chuột trên bản đ�
   lưu được từ Task 5. Task này **không thêm code sản phẩm** — nó chốt bằng test
   rằng hai mảnh đó ghép lại đúng, và sửa nếu không.
 
-- [ ] **Step 1: Viết bài kiểm chốt**
+- [x] **Step 1: Viết bài kiểm chốt**
 
 Thêm vào **cuối** hàm `run` trong `game-tools/client/src/__smoke__/entry.jsx`,
 ngay **trước** `return true;`:
@@ -1404,7 +1404,7 @@ ngay **trước** `return true;`:
   if (globalThis.__puts.length !== putsBeforeHollow) throw new Error("quét vùng rỗng không được tạo bước hoàn tác");
 ```
 
-- [ ] **Step 2: Chạy smoke test**
+- [x] **Step 2: Chạy smoke test**
 
 ```bash
 cd game-tools/client && npm run test:smoke
@@ -1414,14 +1414,14 @@ Expected: PASS. Nếu đỏ ở chỗ "hình tô đặc phải bị xoá" thì `
 đọc `d.fill` từ dữ liệu board — kiểm lại rằng Task 5 có ghi `fill` vào object
 truyền cho `onStrokeDone`.
 
-- [ ] **Step 3: Kiểm một lần quét xoá cả nét bút và hình khối là MỘT bước hoàn tác**
+- [x] **Step 3: Kiểm một lần quét xoá cả nét bút và hình khối là MỘT bước hoàn tác**
 
 Đây là bất biến đã có sẵn từ spec 1 (`commitErase` gom cả danh sách id vào một
 `recordHistory`), nên không cần thêm test mới — nhưng phải xác nhận nó chưa vỡ:
 nhóm kiểm gôm cũ ở giữa file (`một lần quét gôm phải đúng 1 lần lưu`) vẫn phải
 xanh trong lần chạy ở Step 2.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add game-tools/client/src/__smoke__/entry.jsx
