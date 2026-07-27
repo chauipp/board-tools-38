@@ -348,7 +348,7 @@ git commit -m "feat: module thuần hình học sáu hình khối"
 
 ---
 
-- [ ] ## Task 2: `drawingsHitBy` thay `strokesHitBy`
+- [x] ## Task 2: `drawingsHitBy` thay `strokesHitBy`
 
 **Files:**
 - Modify: `game-tools/client/src/lib/stroke.js` — thêm `polylineHitBy` và `pointInPolygon`, xoá `strokesHitBy`
