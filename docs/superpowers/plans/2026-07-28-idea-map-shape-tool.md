@@ -1037,7 +1037,7 @@ git commit -m "feat: khu 4 của thanh công cụ có bảng chọn hình và ch
 
 ---
 
-- [ ] ## Task 5: Vẽ hình khối — `useInk.js` và `InkLayer.jsx`
+- [x] ## Task 5: Vẽ hình khối — `useInk.js` và `InkLayer.jsx`
 
 **Files:**
 - Modify: `game-tools/client/src/lib/useInk.js`
@@ -1053,7 +1053,7 @@ git commit -m "feat: khu 4 của thanh công cụ có bảng chọn hình và ch
   - `InkLayer`'s `Stroke` nhận thêm `kind` và `fill`.
   - Các hàm live được gọi ở task này (`beginShape` / `pushShape` / `endShape`) **chưa tồn tại** — Task 8 mới thêm. Ở task này gọi qua optional chaining `live?.beginShape?.(…)` để không nổ, và Task 8 sẽ bỏ dấu `?` sau tên hàm.
 
-- [ ] **Step 1: `useInk.js` — nhánh vẽ hình khối**
+- [x] **Step 1: `useInk.js` — nhánh vẽ hình khối**
 
 Đổi dòng import ở đầu file (`shapePath` KHÔNG dùng trong file này, chỉ `InkLayer`
 mới cần nó):
@@ -1186,7 +1186,7 @@ Trong effect `onBlur` ở cuối hook, thêm hai dòng reset cạnh các dòng r
 
 **Không** đổi gì khác trong hook. Đặc biệt: không thêm chỗ nào gọi `setTool` —
 vẽ xong phải GIỮ tool hình khối, và điều đó đạt được bằng cách không làm gì.
-- [ ] **Step 2: `InkLayer.jsx` — vẽ được hình khối**
+- [x] **Step 2: `InkLayer.jsx` — vẽ được hình khối**
 
 Thay `game-tools/client/src/components/InkLayer.jsx`:
 
@@ -1241,7 +1241,7 @@ function InkLayer({ drawings, draft, eraseIds, liveStrokes }) {
 export default memo(InkLayer);
 ```
 
-- [ ] **Step 3: CSS — bỏ `fill: none`**
+- [x] **Step 3: CSS — bỏ `fill: none`**
 
 Trong `game-tools/client/src/styles/idea-map.css`, **thay**
 
@@ -1258,7 +1258,7 @@ bằng
 .ink-layer path { stroke-linecap: round; stroke-linejoin: round; }
 ```
 
-- [ ] **Step 4: Smoke test — kéo ra hình, lưu đúng một lần**
+- [x] **Step 4: Smoke test — kéo ra hình, lưu đúng một lần**
 
 Thêm vào **cuối** hàm `run` trong `game-tools/client/src/__smoke__/entry.jsx`,
 ngay **trước** `return true;` (sau nhóm kiểm của Task 4):
@@ -1312,7 +1312,7 @@ ngay **trước** `return true;` (sau nhóm kiểm của Task 4):
   if (globalThis.__puts.length !== putsBeforeTiny) throw new Error("hình quá nhỏ không được lưu");
 ```
 
-- [ ] **Step 5: Chạy smoke test**
+- [x] **Step 5: Chạy smoke test**
 
 ```bash
 cd game-tools/client && npm run test:smoke
@@ -1320,7 +1320,7 @@ cd game-tools/client && npm run test:smoke
 
 Expected: PASS. Nếu `fill` ra `"none"` thì dòng CSS ở Step 3 chưa được bỏ.
 
-- [ ] **Step 6: Chạy cả bộ unit test**
+- [x] **Step 6: Chạy cả bộ unit test**
 
 ```bash
 cd game-tools/client && npm test
@@ -1328,7 +1328,7 @@ cd game-tools/client && npm test
 
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add game-tools/client/src/lib/useInk.js game-tools/client/src/components/InkLayer.jsx \
