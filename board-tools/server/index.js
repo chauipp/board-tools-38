@@ -211,6 +211,50 @@ const presencePeers = new Map();
 const MAX_LIVE_GEOM_ITEMS = 200;
 const MAX_LIVE_TEXT_LEN = 20000;
 
+// Gói live:ink mang ĐIỂM MỚI THÊM của một nét đang vẽ. Trần này để một client
+// lỗi (hoặc cố tình) không bơm được mảng khổng lồ rồi bắt server phát cho cả
+// phòng — cùng lý do với MAX_LIVE_GEOM_ITEMS.
+const MAX_LIVE_INK_NUMBERS = 200;
+const MAX_LIVE_ERASE_IDS = 200;
+
+function sanitizeInk(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  if (!Number.isFinite(payload.strokeId)) return null;
+  const strokeId = payload.strokeId;
+  const done = payload.done === true;
+
+  if (payload.cancel === true) return { strokeId, cancel: true };
+
+  if (Array.isArray(payload.erase)) {
+    const erase = payload.erase
+      .filter((id) => Number.isFinite(id))
+      .slice(0, MAX_LIVE_ERASE_IDS);
+    return { strokeId, erase, done };
+  }
+
+  if (done) {
+    return {
+      strokeId, done: true,
+      drawingId: Number.isFinite(payload.drawingId) ? payload.drawingId : null
+    };
+  }
+
+  // pts phải là mảng số ĐỘ DÀI CHẴN: nó là [x0,y0,x1,y1,…], lẻ một số là dữ
+  // liệu hỏng chứ không phải thiếu điểm cuối.
+  if (!Array.isArray(payload.pts)) return null;
+  const pts = payload.pts.slice(0, MAX_LIVE_INK_NUMBERS);
+  if (pts.length < 2 || pts.length % 2 !== 0) return null;
+  if (!pts.every((v) => Number.isFinite(v))) return null;
+
+  const clean = { strokeId, seq: Number.isFinite(payload.seq) ? payload.seq : 0, pts };
+  if (clean.seq === 0) {
+    if (typeof payload.color !== "string" || !Number.isFinite(payload.w)) return null;
+    clean.color = payload.color;
+    clean.w = payload.w;
+  }
+  return clean;
+}
+
 function sanitizeGeom(payload) {
   if (!payload || typeof payload !== "object") return null;
   const nodes = [];
@@ -278,6 +322,22 @@ io.on("connection", (socket) => {
     // Các gói giữa chừng thì volatile.
     if (clean.done) socket.to(room).emit("live:geom", clean);
     else socket.volatile.to(room).emit("live:geom", clean);
+  });
+
+  // Nét đang vẽ dở — không lưu DB, chỉ relay. Khác cursor/geom/text: vẽ là GHI
+  // dữ liệu chứ không phải presence, nên chặn viewer ngay tại đây. Middleware
+  // trên đã đặt socket.data.role.
+  //
+  // KHÔNG dùng .volatile: gói này mang ĐIỂM MỚI THÊM, mất một gói là nét khuyết
+  // hẳn một khúc và không bao giờ tự lành (khác live:geom, nơi gói sau mang vị
+  // trí tuyệt đối và tự sửa cho gói bị mất).
+  socket.on("live:ink", (payload) => {
+    if (socket.data.role === "viewer") return;
+    const clean = sanitizeInk(payload);
+    if (!clean) return;
+    // socketId do SERVER đính vào, không tin id do client tự đặt — cùng cách
+    // selection:update và edge-draft:update đang làm.
+    socket.to(room).emit("live:ink", { ...clean, socketId: socket.id });
   });
 
   // Nội dung đang gõ dở — không lưu DB, chỉ relay để người khác thấy chữ
