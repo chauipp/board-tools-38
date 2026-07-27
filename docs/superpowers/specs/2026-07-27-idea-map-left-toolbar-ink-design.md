@@ -197,8 +197,9 @@ board.nextDrawingId = 2
 
 ## D. `lib/stroke.js` — module thuần
 
-Tách hẳn khỏi React, có `lib/stroke.test.js` đi kèm (vitest, cùng kiểu các test
-lib đang có):
+Tách hẳn khỏi React, có `lib/stroke.test.js` đi kèm (`node:test` +
+`node:assert/strict`, cùng kiểu các test lib đang có — `npm test` chạy
+`node --test "src/lib/*.test.js"`):
 
 ```js
 simplifyStroke(pts)                       -> pts'
@@ -298,7 +299,10 @@ Gói tin:
 { strokeId, cancel: true }                                            // huỷ giữa chừng
 ```
 
-- `strokeId` = `socketId + ":" + số tăng dần`, chỉ sống trong một nét.
+- `strokeId` là **số tăng dần cục bộ** của người vẽ, chỉ sống trong một nét.
+  Server đính thêm `socketId` khi phát lại (giống `selection:update` và
+  `edge-draft:update` đang làm) nên người xem khoá overlay theo
+  `socketId + ":" + strokeId` — không phải tin id do client tự đặt.
 - Chỉ gói `seq === 0` mang `color` / `w`; gói sau khoảng 4 điểm ≈ 30 byte.
 - Nhịp gửi **40ms** (~25 gói/giây) qua `trailingThrottle` đã có — nhanh hơn
   nhịp 60ms của kéo thẻ vì mắt bắt nét vẽ nhạy hơn bắt thẻ chạy. Một người vẽ
@@ -358,11 +362,16 @@ sót chỗ nào là nét vẽ bị âm thầm rụng:
 
 ```js
 socket.on("live:ink", (payload) => {
-  // kiểm: strokeId là chuỗi, pts là mảng số độ dài chẵn, erase là mảng số
-  // trần 200 số mỗi gói — một client hỏng không bơm được gói khổng lồ vào phòng
-  socket.to(room).emit("live:ink", clean);
+  // Khác cursor/geom/text: vẽ là ghi dữ liệu, không phải presence. Middleware
+  // đã đặt socket.data.role nên chặn viewer ở đây chỉ tốn một dòng.
+  if (socket.data.role === "viewer") return;
+  const clean = sanitizeInk(payload);   // strokeId là số; pts là mảng số độ dài
+  if (!clean) return;                   // chẵn, trần 200 số; erase là mảng số
+  socket.to(room).emit("live:ink", { ...clean, socketId: socket.id });
 });
 ```
+
+Phát tin cậy cho mọi gói (không `volatile`) vì gói mang điểm mới thêm.
 
 ## I. Chia file
 
@@ -387,7 +396,8 @@ chỉ giữ state `mode` / `tool` / `penPrefs` và nối dây.
   `strokesHitBy` chạm/không chạm quanh ngưỡng `w / 2 + radius`.
 - `lib/ink-live.test.js` — mới: gói `seq` liên tiếp nối đúng thứ tự điểm; gói
   `done` chuyển sang TTL dài; gói `cancel` bỏ entry; gói `erase` gom id.
-- `npm test` (vitest) toàn bộ phải xanh.
+- `npm test` trong `game-tools/client` toàn bộ phải xanh. Server không có bộ
+  test nào nên phần `server/` kiểm bằng tay khi chạy app.
 - Kiểm tay trên app đang chạy, **hai tab cùng board**:
   - Vẽ ở tab A → tab B thấy nét chạy theo, không khuyết khúc, không nháy lúc
     thả chuột.
@@ -406,10 +416,6 @@ chỉ giữ state `mode` / `tool` / `penPrefs` và nối dây.
   hiện tại (ảnh base64 nhúng trong node cũng vậy), nét vẽ chỉ làm nó nặng thêm.
   Sau `simplifyStroke` mỗi nét khoảng 0,5KB nên 500 nét thêm chừng 250KB. Đợt
   này **không** sửa kiến trúc lưu.
-- **Kênh live không kiểm `role`** — giống mọi kênh live hiện có
-  (`live:geom`, `live:text`, `cursor:move`). Người chỉ xem không vẽ được vì UI
-  chặn và PUT trả 403 nên nét không bao giờ lưu, nhưng nếu cố tình họ vẫn phát
-  được gói `live:ink` cho người khác thấy tạm.
 - **`nextDrawingId` trùng khi hai người vẽ cùng lúc** — cùng hạng rủi ro với
   `nextNodeId` khi hai người thêm thẻ cùng lúc, vì kiến trúc lưu là ghi cả
   board và bản sau thắng. Không xử lý riêng trong đợt này.
