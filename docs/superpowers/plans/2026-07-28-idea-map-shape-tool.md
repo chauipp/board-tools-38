@@ -1906,4 +1906,4 @@ spec ghi đầy đủ hơn:
 
 ## Kết quả
 
-*(Điền khi mọi task đã tick: đường dẫn tới file summary trong `../summaries/`.)*
+**→ [`docs/superpowers/summaries/2026-07-28-idea-map-shape-tool-summary.md`](../summaries/2026-07-28-idea-map-shape-tool-summary.md)**
