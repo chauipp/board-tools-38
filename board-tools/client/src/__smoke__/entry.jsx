@@ -139,5 +139,49 @@ export async function run(log) {
   });
   log(`bấm-nhả không di: PUT thêm ${globalThis.__puts.length - putsBeforeClick} lần (phải là 0)`);
   if (globalThis.__puts.length !== putsBeforeClick) throw new Error("bấm rồi nhả không được tạo nét rác");
+
+  // Vẽ thêm hai nét nữa để có ba nét, rồi quét gôm qua cả ba.
+  for (const y of [600, 620]) {
+    await act(async () => {
+      mouse("mousedown", 400, y, capture);
+      mouse("mousemove", 500, y);
+      await new Promise((r) => setTimeout(r, 50));
+    });
+    await act(async () => { mouse("mouseup", 500, y); await new Promise((r) => setTimeout(r, 30)); });
+  }
+  if (document.querySelectorAll(".ink-layer path").length !== 3) throw new Error("mong đợi 3 nét trước khi gôm");
+
+  // Bật cục gôm: nút thứ 4 trên thanh (2 mode + bút + gôm).
+  const eraserBtn = document.querySelectorAll(".tool-rail .tool-btn")[3];
+  await act(async () => { eraserBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
+
+  const putsBeforeErase = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", 420, 600, capture);
+    mouse("mousemove", 450, 610);
+    mouse("mousemove", 470, 620);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  // Trong lúc quét, nét bị đánh dấu phải mờ đi để thấy trước khi mất.
+  const dimmed = document.querySelectorAll(".ink-layer path.erasing").length;
+  log(`đang quét gôm: ${dimmed} nét đang mờ đi`);
+  if (dimmed < 2) throw new Error("quét qua 2 nét thì phải có ít nhất 2 nét mờ, có " + dimmed);
+
+  await act(async () => { mouse("mouseup", 470, 620); await new Promise((r) => setTimeout(r, 40)); });
+  const left = document.querySelectorAll(".ink-layer path").length;
+  log(`sau khi gôm: còn ${left} nét · PUT thêm ${globalThis.__puts.length - putsBeforeErase} lần`);
+  if (left !== 1) throw new Error("phải còn đúng 1 nét (nét đầu ở y≈400), có " + left);
+  if (globalThis.__puts.length - putsBeforeErase !== 1) throw new Error("một lần quét gôm phải đúng 1 lần lưu");
+
+  // Quét chỗ trống: không được tạo entry hoàn tác rác.
+  const putsBeforeEmpty = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", 1500, 1500, capture);
+    mouse("mousemove", 1560, 1560);
+    await new Promise((r) => setTimeout(r, 50));
+  });
+  await act(async () => { mouse("mouseup", 1560, 1560); await new Promise((r) => setTimeout(r, 30)); });
+  log(`quét gôm chỗ trống: PUT thêm ${globalThis.__puts.length - putsBeforeEmpty} lần (phải là 0)`);
+  if (globalThis.__puts.length !== putsBeforeEmpty) throw new Error("quét chỗ trống không được tạo bước hoàn tác");
   return true;
 }
