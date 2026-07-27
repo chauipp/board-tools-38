@@ -763,7 +763,7 @@ git commit -m "feat: prefs khu 4 nhớ thêm hình đang chọn và chế độ 
 
 ---
 
-- [ ] ## Task 4: Thanh công cụ — nút hình khối và bảng chọn ở khu 4
+- [x] ## Task 4: Thanh công cụ — nút hình khối và bảng chọn ở khu 4
 
 **Files:**
 - Modify: `game-tools/client/src/components/ToolRail.jsx`
@@ -781,7 +781,7 @@ git commit -m "feat: prefs khu 4 nhớ thêm hình đang chọn và chế độ 
   - Thứ tự nút trên `.tool-rail` ở mode Sửa: `[0]` Chuột, `[1]` Sửa, `[2]` Bút, `[3]` Cục gôm, `[4]` Hình khối, `[5..9]` năm nút thêm. **Tổng 10 nút.** Chỉ số `[3]` của cục gôm và `[2]` của bút giữ nguyên, nên smoke test cũ không phải đánh số lại.
   - Class CSS mới: `.shape-pick` (nút chọn hình), `.fill-pick` (nút chế độ tô).
 
-- [ ] **Step 1: Thêm nút Hình khối vào `ToolRail.jsx`**
+- [x] **Step 1: Thêm nút Hình khối vào `ToolRail.jsx`**
 
 Thêm hàm icon cạnh các icon khác (trước `export default`):
 
@@ -803,7 +803,7 @@ Trong khu 2, **sau** nút cục gôm và vẫn bên trong `{mode === "draw" && (
           ><IconShape /></button>
 ```
 
-- [ ] **Step 2: Viết lại `ToolOptions.jsx`**
+- [x] **Step 2: Viết lại `ToolOptions.jsx`**
 
 Thay toàn bộ nội dung file `game-tools/client/src/components/ToolOptions.jsx`:
 
@@ -911,7 +911,7 @@ export default function ToolOptions({ tool, prefs, onPrefs }) {
 }
 ```
 
-- [ ] **Step 3: CSS**
+- [x] **Step 3: CSS**
 
 Trong `game-tools/client/src/styles/idea-map.css`, khối `.tool-rail, .tool-options`
 (~dòng 625) giữ nguyên. **Thay** dòng
@@ -938,7 +938,7 @@ bằng
 .shape-pick svg, .fill-pick svg { display: block; }
 ```
 
-- [ ] **Step 4: Phím tắt `s` trong `IdeaMap.jsx`**
+- [x] **Step 4: Phím tắt `s` trong `IdeaMap.jsx`**
 
 Ngay **sau** dòng xử lý phím `e` (nhánh cục gôm), thêm:
 
@@ -946,7 +946,7 @@ Ngay **sau** dòng xử lý phím `e` (nhánh cục gôm), thêm:
       else if (key === "s") { if (role === "viewer") return; e.preventDefault(); enterMode("draw"); setTool("shape"); }
 ```
 
-- [ ] **Step 5: Bản dịch tiếng Anh**
+- [x] **Step 5: Bản dịch tiếng Anh**
 
 Thêm vào `game-tools/client/src/locales/en/messages.po` (cùng khuôn với các
 mục sẵn có trong file — mỗi mục là một cặp `msgid` / `msgstr`):
@@ -980,7 +980,7 @@ msgid "Tô cả hình"
 msgstr "Filled"
 ```
 
-- [ ] **Step 6: Cập nhật smoke test cũ và thêm nhóm kiểm mới**
+- [x] **Step 6: Cập nhật smoke test cũ và thêm nhóm kiểm mới**
 
 Trong `game-tools/client/src/__smoke__/entry.jsx`, **thay** dòng 105:
 
@@ -1018,7 +1018,7 @@ Rồi thêm vào **cuối** hàm `run`, ngay **trước** `return true;`:
   if (!fillBtns()[0].className.includes("on")) throw new Error("chọn hình mở phải tự về chế độ chỉ viền");
 ```
 
-- [ ] **Step 7: Chạy smoke test**
+- [x] **Step 7: Chạy smoke test**
 
 ```bash
 cd game-tools/client && npm run test:smoke
@@ -1026,7 +1026,7 @@ cd game-tools/client && npm run test:smoke
 
 Expected: PASS, log in ra `khu 4 của hình khối: 6 hình · 7 màu · 3 độ dày · 2 chế độ tô`.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add game-tools/client/src/components/ToolRail.jsx game-tools/client/src/components/ToolOptions.jsx \
