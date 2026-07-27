@@ -225,6 +225,12 @@ const MAX_LIVE_INK_COLOR_LEN = 32;
 const MIN_LIVE_INK_W = 1;
 const MAX_LIVE_INK_W = 64;
 
+// Bản sao TAY của SHAPE_KINDS trong game-tools/client/src/lib/shape.js, cộng
+// "pen". Server không import được lib của client. Thêm một kind mới thì phải
+// sửa cả hai chỗ — client sẽ vẽ được nhưng server sẽ chặn gói nếu quên.
+const LIVE_INK_KINDS = new Set(["pen", "rect", "ellipse", "line", "arrow", "triangle", "diamond"]);
+const LIVE_INK_BOX_NUMBERS = 4;
+
 function sanitizeInk(payload) {
   if (!payload || typeof payload !== "object") return null;
   if (!Number.isFinite(payload.strokeId)) return null;
@@ -250,16 +256,32 @@ function sanitizeInk(payload) {
   // pts phải là mảng số ĐỘ DÀI CHẴN: nó là [x0,y0,x1,y1,…], lẻ một số là dữ
   // liệu hỏng chứ không phải thiếu điểm cuối.
   if (!Array.isArray(payload.pts)) return null;
+
+  let kind = "pen";
+  if (payload.kind !== undefined) {
+    if (typeof payload.kind !== "string" || !LIVE_INK_KINDS.has(payload.kind)) return null;
+    kind = payload.kind;
+  }
+  // Hình khối: pts là hai góc đối, đúng 4 số. Kiểm ĐỘ DÀI GỐC trước khi slice —
+  // nếu kiểm sau thì một mảng 4000 số bị cắt còn MAX_LIVE_INK_NUMBERS rồi vẫn
+  // không phải 4, nhưng một mảng gửi kèm kind sai vẫn có thể lọt qua nhờ bị cắt.
+  if (kind !== "pen" && payload.pts.length !== LIVE_INK_BOX_NUMBERS) return null;
+
   const pts = payload.pts.slice(0, MAX_LIVE_INK_NUMBERS);
   if (pts.length < 2 || pts.length % 2 !== 0) return null;
   if (!pts.every((v) => Number.isFinite(v))) return null;
 
   const clean = { strokeId, seq: Number.isFinite(payload.seq) ? payload.seq : 0, pts };
+  // Nét bút không mang kind, đúng như client phát — giữ gói nhẹ và giữ
+  // mergeInkPacket mặc định về "pen".
+  if (kind !== "pen") clean.kind = kind;
   if (clean.seq === 0) {
     if (typeof payload.color !== "string" || payload.color.length > MAX_LIVE_INK_COLOR_LEN) return null;
     if (!Number.isFinite(payload.w) || payload.w < MIN_LIVE_INK_W || payload.w > MAX_LIVE_INK_W) return null;
     clean.color = payload.color;
     clean.w = payload.w;
+    // Không tin kiểu client gửi: chỉ đúng `true` mới là tô đặc.
+    if (kind !== "pen") clean.fill = payload.fill === true;
   }
   return clean;
 }
