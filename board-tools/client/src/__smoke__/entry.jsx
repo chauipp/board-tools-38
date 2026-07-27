@@ -409,5 +409,58 @@ export async function run(log) {
   if (document.querySelectorAll(".ink-layer path").length !== pathsWithOutlineRect) throw new Error("hình chỉ viền không được xoá khi quét vào vùng rỗng bên trong");
   if (globalThis.__puts.length !== putsBeforeHollow) throw new Error("quét vùng rỗng không được tạo bước hoàn tác");
 
+  // PHÁT: mọi gói của hình khối phải mang kind và pts đúng 4 số, và tổng số
+  // "số" đã gửi không được phình lên như gói nét bút.
+  await act(async () => { document.querySelectorAll(".tool-rail .tool-btn")[4].click(); await new Promise((r) => setTimeout(r, 20)); });
+  await act(async () => { shapePicks()[1].click(); await new Promise((r) => setTimeout(r, 20)); });   // ê-líp
+  const emittedBeforeShape = globalThis.__emitted.length;
+  await act(async () => {
+    mouse("mousedown", 200, 1200, capture);
+    mouse("mousemove", 260, 1250);
+    await new Promise((r) => setTimeout(r, 60));
+    mouse("mousemove", 320, 1300);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", 320, 1300); await new Promise((r) => setTimeout(r, 40)); });
+
+  const shapePkts = globalThis.__emitted.slice(emittedBeforeShape).filter((e) => e[0] === "live:ink").map((e) => e[1]);
+  log(`live:ink của hình khối: ${shapePkts.length} gói; seq = ${shapePkts.map((p) => (p.done ? "done" : p.seq)).join(",")}`);
+  if (shapePkts.length < 2) throw new Error("phải phát ít nhất gói đầu và gói done");
+  const shapeFirst = shapePkts[0];
+  if (shapeFirst.seq !== 0 || shapeFirst.kind !== "ellipse") throw new Error("gói đầu phải mang seq 0 và kind");
+  if (typeof shapeFirst.fill !== "boolean") throw new Error("gói đầu phải mang fill kiểu boolean");
+  for (const p of shapePkts) {
+    if (p.done) continue;
+    if (p.kind !== "ellipse") throw new Error("MỌI gói hình khối phải mang kind, gói seq " + p.seq + " thì không");
+    if (p.pts.length !== 4) throw new Error("gói hình khối phải mang đúng 4 số, gói seq " + p.seq + " có " + p.pts.length);
+  }
+  const shapeDone = shapePkts[shapePkts.length - 1];
+  if (shapeDone.done !== true || !Number.isFinite(shapeDone.drawingId)) throw new Error("gói cuối phải là done kèm drawingId");
+  if (shapePkts.filter((p) => p.done).length !== 1) throw new Error("một hình chỉ được có đúng 1 gói done");
+
+  // NHẬN: gói hình của người khác hiện ra ngay, và gói sau THAY hộp chứ không
+  // làm hình phình ra.
+  const pathsBeforePeerShape = document.querySelectorAll(".ink-layer path").length;
+  await act(async () => {
+    globalThis.__deliver("live:ink", { socketId: "peer9", strokeId: 5, seq: 0, kind: "rect", color: "pen-purple", w: 4, fill: false, pts: [2000, 100, 2100, 200] });
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  log(`hình của người khác đang vẽ: ${document.querySelectorAll(".ink-layer path").length} path (trước đó ${pathsBeforePeerShape})`);
+  if (document.querySelectorAll(".ink-layer path").length !== pathsBeforePeerShape + 1) throw new Error("gói hình khối của người khác không hiện ra");
+
+  const peerRect = () => Array.from(document.querySelectorAll(".ink-layer path")).find((p) => (p.getAttribute("d") || "").startsWith("M 2000 100"));
+  if (!peerRect()) throw new Error("không tìm thấy hình của người khác");
+  await act(async () => {
+    globalThis.__deliver("live:ink", { socketId: "peer9", strokeId: 5, seq: 1, kind: "rect", pts: [2000, 100, 2300, 400] });
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  const grown = peerRect();
+  log(`sau gói seq 1: d = ${grown?.getAttribute("d")}`);
+  if (!grown) throw new Error("hình của người khác biến mất sau gói seq 1");
+  if (!grown.getAttribute("d").includes("2300")) throw new Error("gói sau phải THAY hộp — hình phải lớn ra tới 2300");
+  // Bốn cạnh: chuỗi d của chữ nhật luôn có đúng 3 lệnh L. Nhiều hơn nghĩa là
+  // hộp đã bị NỐI thành 6 số thay vì thay.
+  if ((grown.getAttribute("d").match(/L /g) || []).length !== 3) throw new Error("hộp bị nối thêm thay vì thay: " + grown.getAttribute("d"));
+
   return true;
 }

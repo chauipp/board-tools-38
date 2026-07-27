@@ -34,6 +34,7 @@ export function mergeInkPacket(prev, packet, now) {
     }
     const next = new Map(prev);
     next.set(key, {
+      kind: null, fill: false,
       color: null, w: null, pts: null, drawingId: null, erase: merged,
       expiresAt: now + (packet.done === true ? INK_SETTLE_TTL_MS : INK_LIVE_TTL_MS)
     });
@@ -56,12 +57,21 @@ export function mergeInkPacket(prev, packet, now) {
   // Vào giữa nét: không có gói seq 0 nên thiếu màu và độ dày, bỏ qua.
   if (!cur && packet.seq !== 0) return prev;
 
+  // Gói hình khối mang kind ở MỌI gói, không chỉ gói đầu — nhờ vậy nhánh dưới
+  // không phải nhớ kind của entry, và server kiểm được pts đúng 4 số.
+  const kind = typeof packet.kind === "string" ? packet.kind : "pen";
+
   const next = new Map(prev);
   if (packet.seq === 0) {
     next.set(key, {
+      kind, fill: packet.fill === true,
       color: packet.color, w: packet.w, pts: pts.slice(),
       drawingId: null, erase: null, expiresAt: now + INK_LIVE_TTL_MS
     });
+  } else if (kind !== "pen") {
+    // Hộp mang trọn thông tin: THAY, không nối. Nối thì hộp dài ra và shapePath
+    // đọc sai hình.
+    next.set(key, { ...cur, pts: pts.slice(), expiresAt: now + INK_LIVE_TTL_MS });
   } else {
     next.set(key, { ...cur, pts: cur.pts.concat(pts), expiresAt: now + INK_LIVE_TTL_MS });
   }

@@ -80,7 +80,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       const box = normalizeBox(start.x, start.y, start.x, start.y);
       boxRef.current = box;
       pushDraft.current(penPrefs.color, penPrefs.w, box, kind, fill);
-      live?.beginShape?.(kind, penPrefs.color, penPrefs.w, fill, box);
+      live?.beginShape(kind, penPrefs.color, penPrefs.w, fill, box);
     } else {
       activeRef.current = "pen";
       ptsRef.current = [start.x, start.y];
@@ -117,7 +117,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
         const box = normalizeBox(s.x, s.y, p.x, p.y, closed ? { square: ev.shiftKey } : { snap: ev.shiftKey });
         boxRef.current = box;
         pushDraft.current(penPrefs.color, penPrefs.w, box, kind, closed && penPrefs.fill === true);
-        live?.pushShape?.(box);
+        live?.pushShape(box);
         return;
       }
 
@@ -161,7 +161,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
         // `fill` chỉ có ở hình đóng — nét bút và hình mở không mang field này.
         if (SHAPE_CLOSED.has(kind)) stroke.fill = penPrefs.fill === true;
         const drawingId = onStrokeDone(stroke);
-        live?.endShape?.(drawingId);
+        live?.endShape(drawingId);
         return;
       }
 
