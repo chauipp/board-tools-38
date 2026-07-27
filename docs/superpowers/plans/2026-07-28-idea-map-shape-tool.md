@@ -622,7 +622,7 @@ git commit -m "refactor: hit-test một đường cho cả nét bút và hình k
 
 ---
 
-- [ ] ## Task 3: `lib/pen.js` — prefs nhớ thêm hình và chế độ tô
+- [x] ## Task 3: `lib/pen.js` — prefs nhớ thêm hình và chế độ tô
 
 **Files:**
 - Modify: `game-tools/client/src/lib/pen.js`
