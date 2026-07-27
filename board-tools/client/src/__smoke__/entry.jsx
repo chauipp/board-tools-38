@@ -70,5 +70,22 @@ export async function run(log) {
   const geomAfter = globalThis.__emitted.slice(emittedBefore).filter((e) => e[0] === "live:geom");
   log(`gói live:geom phát ra do NHẬN board:update: ${geomAfter.length} (phải là 0 — đây chính là vòng vọng gây giật)`);
   if (geomAfter.length !== 0) throw new Error("nhận board:update mà vẫn phát geometry → vòng vọng còn nguyên");
+
+  // Thẻ đổi chiều cao thì dây nối phải bám theo NGAY.
+  //
+  // Cảnh này người dùng gặp mỗi lần tạo thẻ mới: lúc đang sửa, thẻ cao (có ô
+  // nhập + ô mô tả), lưu xong nó co lại. Số đo nằm trong một ref, còn EdgeLayer
+  // bọc memo — nếu tín hiệu "kích thước đã đổi" không lọt vào props của
+  // EdgeLayer thì cache mới nhưng dây vẫn vẽ theo số đo cũ, đầu dây lơ lửng
+  // cách thẻ cả trăm pixel.
+  const edgeY = () => Array.from(document.querySelectorAll(".edge-layer g line.visible")).map((l) => l.getAttribute("y2")).join(",");
+  const yBefore = edgeY();
+  await act(async () => {
+    globalThis.__resize(document.querySelector('.idea-card[data-id="2"]'), 210, 44);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  const yAfter = edgeY();
+  log(`thẻ 2 co từ 110px xuống 44px: đầu dây ${yBefore} → ${yAfter}`);
+  if (yBefore === yAfter) throw new Error("thẻ co lại mà dây không vẽ lại — đầu dây kẹt ở số đo cũ");
   return true;
 }

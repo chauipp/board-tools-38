@@ -25,7 +25,7 @@ export function useCardSizes() {
   const bumpFrameRef = useRef(0);
   // Đổi kích thước thẻ làm dây nối và khung bao phải vẽ lại → cần một lần render.
   // Gom vào một khung hình để 100 thẻ báo cùng lúc (lúc mới tải) chỉ tốn 1 render.
-  const [, setSizeVersion] = useState(0);
+  const [sizeVersion, setSizeVersion] = useState(0);
 
   const scheduleBump = useCallback(() => {
     if (bumpFrameRef.current) return;
@@ -82,9 +82,18 @@ export function useCardSizes() {
   // Tra cứu O(1), không chạm DOM. Thẻ vừa được tạo trong cùng một nhịp render
   // (ResizeObserver chưa kịp báo) rơi về kích thước mặc định — đúng như hành vi
   // cũ khi querySelector chưa tìm thấy phần tử.
+  //
+  // Phụ thuộc sizeVersion, dù thân hàm chỉ đọc ref: số đo nằm trong ref nên nó
+  // vô hình với React.memo. Người dùng cardSize (EdgeLayer, PeerLayer) đều bọc
+  // memo và nhận nó qua props — nếu định danh hàm không đổi thì mọi props của
+  // họ y nguyên, memo bỏ qua lượt render, và dây nối kẹt ở số đo cũ dù cache
+  // đã mới. Thấy rõ nhất lúc lưu thẻ vừa tạo: thẻ co lại, đầu dây ở nguyên chỗ
+  // mép dưới của ô nhập. Đổi định danh theo phiên bản là cách để "kích thước
+  // đã đổi" đi được vào phép so sánh props.
   const cardSize = useCallback((id) => {
     return sizesRef.current.get(id) || { w: DEFAULT_CARD_W, h: DEFAULT_CARD_H };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sizeVersion]);
 
   return { cardSize, observeCard, sizesRef };
 }

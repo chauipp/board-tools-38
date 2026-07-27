@@ -48,15 +48,27 @@ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 // jsdom không có ResizeObserver và cũng không có layout thật. Bản thay thế này
 // gán một kích thước cố định rồi gọi callback ngay — đủ để kiểm luồng dữ liệu,
 // không kiểm được số đo thật (số đo thật thuộc về trình duyệt).
+//
+// __resize() cho bài kiểm chạy lại observer với số đo khác, tức dựng lại đúng
+// tình huống thẻ co/giãn sau khi đã render (lưu thẻ mới xong, ảnh tải xong…).
+const observers = new Set();
 window.ResizeObserver = globalThis.ResizeObserver = class {
-  constructor(cb) { this.cb = cb; }
+  constructor(cb) { this.cb = cb; this.els = new Set(); observers.add(this); }
   observe(el) {
-    Object.defineProperty(el, "offsetWidth", { value: 210, configurable: true });
-    Object.defineProperty(el, "offsetHeight", { value: 110, configurable: true });
+    this.els.add(el);
+    setSize(el, 210, 110);
     this.cb([{ target: el }]);
   }
-  unobserve() {}
-  disconnect() {}
+  unobserve(el) { this.els.delete(el); }
+  disconnect() { this.els.clear(); observers.delete(this); }
+};
+function setSize(el, w, h) {
+  Object.defineProperty(el, "offsetWidth", { value: w, configurable: true });
+  Object.defineProperty(el, "offsetHeight", { value: h, configurable: true });
+}
+globalThis.__resize = (el, w, h) => {
+  setSize(el, w, h);
+  for (const o of observers) if (o.els.has(el)) o.cb([{ target: el }]);
 };
 
 globalThis.__board = board;
