@@ -1430,7 +1430,7 @@ git commit -m "test: chốt cục gôm xoá hình tô đặc và tha hình chỉ
 
 ---
 
-- [ ] ## Task 7: Server — `sanitizeInk` nhận `kind` và `fill`
+- [x] ## Task 7: Server — `sanitizeInk` nhận `kind` và `fill`
 
 **Files:**
 - Modify: `game-tools/server/index.js:217-265` (khối hằng số `MAX_LIVE_INK_*` và hàm `sanitizeInk`)
@@ -1441,7 +1441,7 @@ git commit -m "test: chốt cục gôm xoá hình tô đặc và tha hình chỉ
   gói `seq: 0` của hình khối). Handler `live:ink` **không đổi** — nó vẫn
   `socket.to(room).emit("live:ink", { ...clean, socketId: socket.id })`.
 
-- [ ] **Step 1: Thêm danh sách `kind` hợp lệ**
+- [x] **Step 1: Thêm danh sách `kind` hợp lệ**
 
 Trong `game-tools/server/index.js`, ngay sau `const MAX_LIVE_INK_W = 64;`:
 
@@ -1453,7 +1453,7 @@ const LIVE_INK_KINDS = new Set(["pen", "rect", "ellipse", "line", "arrow", "tria
 const LIVE_INK_BOX_NUMBERS = 4;
 ```
 
-- [ ] **Step 2: Sửa nhánh `pts` của `sanitizeInk`**
+- [x] **Step 2: Sửa nhánh `pts` của `sanitizeInk`**
 
 **Thay** khối cuối của `sanitizeInk` (từ ghi chú `// pts phải là mảng số ĐỘ DÀI
 CHẴN` tới `return clean;`) bằng:
@@ -1492,7 +1492,7 @@ CHẴN` tới `return clean;`) bằng:
   return clean;
 ```
 
-- [ ] **Step 3: Kiểm cú pháp**
+- [x] **Step 3: Kiểm cú pháp**
 
 ```bash
 cd game-tools/server && node --check index.js
@@ -1500,7 +1500,7 @@ cd game-tools/server && node --check index.js
 
 Expected: không in gì ra (cú pháp hợp lệ).
 
-- [ ] **Step 4: Kiểm tay logic `sanitizeInk` bằng một lần chạy nhỏ**
+- [x] **Step 4: Kiểm tay logic `sanitizeInk` bằng một lần chạy nhỏ**
 
 Vì `server/` không có bộ test, chạy tay bốn trường hợp bằng một script tạm rồi
 xoá nó. Tạo `game-tools/server/tmp-check-ink.mjs`:
@@ -1549,7 +1549,7 @@ cd game-tools/server && node tmp-check-ink.mjs && rm tmp-check-ink.mjs
 
 Expected: in ra `sanitizeInk: 8/8 OK`, rồi file tạm bị xoá.
 
-- [ ] **Step 5: Chắc chắn file tạm đã biến mất**
+- [x] **Step 5: Chắc chắn file tạm đã biến mất**
 
 ```bash
 cd game-tools/server && ls tmp-check-ink.mjs 2>&1
@@ -1557,7 +1557,7 @@ cd game-tools/server && ls tmp-check-ink.mjs 2>&1
 
 Expected: `No such file or directory`.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add game-tools/server/index.js
