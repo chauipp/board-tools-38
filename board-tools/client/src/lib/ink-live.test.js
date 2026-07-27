@@ -146,3 +146,21 @@ test("mergeInkPacket: gói không có kind vẫn là nét bút và vẫn NỐI �
   assert.equal(m.get("s1:1").kind, "pen");
   assert.deepEqual(m.get("s1:1").pts, [0, 0, 10, 10]);
 });
+
+// Fix round 1: gói seq > 0 của hình khối mà THIẾU kind (client cũ, hoặc field
+// bị rơi trên đường truyền) phải vẫn được nhận ra là hình khối qua kind của
+// entry đã lưu (cur.kind), không được mặc định về "pen" — mặc định sai sẽ rơi
+// vào nhánh NỐI và làm hộp phình từ 4 lên 8 số.
+test("mergeInkPacket: gói sau của hình khối THIẾU kind vẫn phải THAY hộp, không nối", () => {
+  let m = mergeInkPacket(new Map(), pkt({ seq: 0, kind: "rect", color: "pen-blue", w: 8, fill: false, pts: [0, 0, 10, 10] }), NOW);
+  m = mergeInkPacket(m, pkt({ seq: 1, pts: [0, 0, 50, 40] }), NOW + 40); // không có kind
+  assert.deepEqual(m.get("s1:1").pts, [0, 0, 50, 40]);
+});
+
+// Bài chốt hồi quy: nét bút vốn không mang kind ở gói nào cả (kể cả seq 0), nên
+// bản sửa fallback về cur.kind không được đổi hành vi NỐI của nét bút.
+test("mergeInkPacket: gói sau của nét bút (không kind) vẫn NỐI như cũ sau khi sửa fallback", () => {
+  let m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, pts: [0, 0] }), NOW);
+  m = mergeInkPacket(m, pkt({ seq: 1, pts: [10, 10] }), NOW + 40);
+  assert.deepEqual(m.get("s1:1").pts, [0, 0, 10, 10]);
+});

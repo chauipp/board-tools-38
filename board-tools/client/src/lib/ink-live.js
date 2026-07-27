@@ -59,18 +59,27 @@ export function mergeInkPacket(prev, packet, now) {
 
   // Gói hình khối mang kind ở MỌI gói, không chỉ gói đầu — nhờ vậy nhánh dưới
   // không phải nhớ kind của entry, và server kiểm được pts đúng 4 số.
-  const kind = typeof packet.kind === "string" ? packet.kind : "pen";
-
+  //
+  // Fix round 1: fallback "pen" chỉ áp cho gói seq 0 (lúc đó KHÔNG có cur nào
+  // đáng tin — dựng entry mới hoàn toàn nên phải theo đúng cái packet mang).
+  // Gói seq > 0 thì cur LUÔN tồn tại (chặn ở `if (!cur && packet.seq !== 0)`
+  // trên), nên nếu gói lỡ THIẾU kind (client cũ hơn tính năng này, hoặc field
+  // bị rơi trên đường truyền) phải tin kind của entry đã lưu (`cur.kind`) thay
+  // vì mặc định về "pen" — mặc định sai sẽ rơi vào nhánh NỐI dưới đây và làm
+  // hộp phình từ 4 lên 8, 12... số, hình đứng khựng/lệch tới khi board:update
+  // về dọn overlay.
   const next = new Map(prev);
   if (packet.seq === 0) {
+    const kind = typeof packet.kind === "string" ? packet.kind : "pen";
     next.set(key, {
       kind, fill: packet.fill === true,
       color: packet.color, w: packet.w, pts: pts.slice(),
       drawingId: null, erase: null, expiresAt: now + INK_LIVE_TTL_MS
     });
-  } else if (kind !== "pen") {
+  } else if ((typeof packet.kind === "string" ? packet.kind : cur.kind) !== "pen") {
     // Hộp mang trọn thông tin: THAY, không nối. Nối thì hộp dài ra và shapePath
-    // đọc sai hình.
+    // đọc sai hình. Điều kiện trên tự chấp nhận packet THIẾU kind bằng cách
+    // rơi về cur.kind — xem ghi chú "Fix round 1" ngay trên.
     next.set(key, { ...cur, pts: pts.slice(), expiresAt: now + INK_LIVE_TTL_MS });
   } else {
     next.set(key, { ...cur, pts: cur.pts.concat(pts), expiresAt: now + INK_LIVE_TTL_MS });

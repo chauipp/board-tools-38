@@ -458,9 +458,15 @@ export async function run(log) {
   log(`sau gói seq 1: d = ${grown?.getAttribute("d")}`);
   if (!grown) throw new Error("hình của người khác biến mất sau gói seq 1");
   if (!grown.getAttribute("d").includes("2300")) throw new Error("gói sau phải THAY hộp — hình phải lớn ra tới 2300");
-  // Bốn cạnh: chuỗi d của chữ nhật luôn có đúng 3 lệnh L. Nhiều hơn nghĩa là
-  // hộp đã bị NỐI thành 6 số thay vì thay.
-  if ((grown.getAttribute("d").match(/L /g) || []).length !== 3) throw new Error("hộp bị nối thêm thay vì thay: " + grown.getAttribute("d"));
+  // Fix round 1: đã bỏ assertion đếm lệnh "L" ở đây — nó nói dối. shapePath("rect", pts)
+  // luôn destructure đúng 4 số ĐẦU của pts, nên dù hộp bị NỐI thành 6/8 số thì
+  // chuỗi d vẫn ra đúng 3 lệnh L y như khi THAY; đếm L không phân biệt được hai
+  // trường hợp. Thứ thật sự chứng minh "THAY chứ không nối" ở tầng smoke này là
+  // assertion `includes("2300")` ngay trên — nếu bị NỐI thì shapePath đọc 4 số
+  // ĐẦU là hộp CŨ [2000,100,2100,200], chuỗi d sẽ không có "2300". Việc chốt độ
+  // dài `pts` phải đúng 4 số (không phình lên 6/8) là việc của unit test
+  // `mergeInkPacket` trong game-tools/client/src/lib/ink-live.test.js, không
+  // phải của smoke test này.
 
   return true;
 }
