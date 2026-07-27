@@ -41,6 +41,14 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
   // bên dưới phải tồn tại.
   const boxRef = useRef(null);
 
+  // Hàm dọn của lượt ĐANG chạy: gỡ hai listener window và xoá activeRef. Phải
+  // nằm trong ref vì onMove/finish là closure dựng lại mỗi lần mousedown, còn
+  // effect nghe `blur` gắn một lần với deps [] nên không có cách nào thấy được
+  // closure đó. Nhờ ref này chỉ có MỘT đường dọn: cả `finish` (mouseup bình
+  // thường) và `onBlur` (mất focus giữa nét) đều đi qua nó, không còn chuyện
+  // blur xoá state mà để listener sống rồi lượt đã chết vẫn commit được.
+  const cleanupRef = useRef(null);
+
   const pushDraft = useRef(null);
   if (!pushDraft.current) {
     pushDraft.current = rafThrottle((color, w, pts, kind, fill) => setDraft({ color, w, pts, kind, fill }));
@@ -129,11 +137,21 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       live?.pushPoints(unsentRef.current);
     }
 
-    function finish() {
+    function cleanup() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", finish);
-      const was = activeRef.current;
       activeRef.current = null;
+      cleanupRef.current = null;
+    }
+
+    function finish() {
+      const was = activeRef.current;
+      cleanup();
+      // Không có lượt nào đang chạy thì không có gì để commit. Chốt phòng thủ
+      // cho trường hợp `finish` vẫn bị gọi sau khi lượt đã bị huỷ bằng đường
+      // khác (mouseup tới sau blur chẳng hạn): thiếu chốt này thì `was === null`
+      // rơi xuống nhánh bút ở cuối hàm và lưu ra một nét chưa từng được vẽ.
+      if (!was) return;
 
       if (was === "eraser") {
         const ids = Array.from(eraseSetRef.current);
@@ -176,6 +194,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       live?.endStroke(drawingId);
     }
 
+    cleanupRef.current = cleanup;
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", finish);
   }, [tool, penPrefs, boardRef, viewportRef, onStrokeDone, onEraseDone, live]);
@@ -185,6 +204,10 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
   useEffect(() => {
     function onBlur() {
       if (!activeRef.current) return;
+      // Dọn qua ĐÚNG đường dọn của lượt hiện tại: xoá activeRef mà để listener
+      // mousemove/mouseup sống là cái đã sinh ra nét rác — mousemove sau đó vẫn
+      // bơm điểm và mouseup vẫn gọi `finish`.
+      cleanupRef.current?.();
       activeRef.current = null;
       ptsRef.current = [];
       unsentRef.current = [];

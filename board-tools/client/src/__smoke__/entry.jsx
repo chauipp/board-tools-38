@@ -413,6 +413,12 @@ export async function run(log) {
   // "số" đã gửi không được phình lên như gói nét bút.
   await act(async () => { document.querySelectorAll(".tool-rail .tool-btn")[4].click(); await new Promise((r) => setTimeout(r, 20)); });
   await act(async () => { shapePicks()[1].click(); await new Promise((r) => setTimeout(r, 20)); });   // ê-líp
+  // Bật TÔ CẢ HÌNH trước khi kéo. Nhóm trước vừa đặt chế độ chỉ viền, nên nếu
+  // không bật lại ở đây thì assertion `fill` dưới chỉ từng thấy `false` — và
+  // `beginShape` có thể phát `fill: false` vô điều kiện mà cả bộ test vẫn xanh,
+  // trong khi lỗi người dùng thấy là thật: hình tô đặc của người khác hiện ra
+  // chỉ-viền suốt lúc họ kéo rồi NHẢY thành tô đặc khi board:update về.
+  await act(async () => { fillBtns()[1].click(); await new Promise((r) => setTimeout(r, 20)); });
   const emittedBeforeShape = globalThis.__emitted.length;
   await act(async () => {
     mouse("mousedown", 200, 1200, capture);
@@ -428,7 +434,8 @@ export async function run(log) {
   if (shapePkts.length < 2) throw new Error("phải phát ít nhất gói đầu và gói done");
   const shapeFirst = shapePkts[0];
   if (shapeFirst.seq !== 0 || shapeFirst.kind !== "ellipse") throw new Error("gói đầu phải mang seq 0 và kind");
-  if (typeof shapeFirst.fill !== "boolean") throw new Error("gói đầu phải mang fill kiểu boolean");
+  log(`gói đầu của hình tô đặc: fill=${JSON.stringify(shapeFirst.fill)}`);
+  if (shapeFirst.fill !== true) throw new Error("đang bật tô cả hình thì gói live đầu phải mang fill = true, có " + JSON.stringify(shapeFirst.fill));
   for (const p of shapePkts) {
     if (p.done) continue;
     if (p.kind !== "ellipse") throw new Error("MỌI gói hình khối phải mang kind, gói seq " + p.seq + " thì không");
@@ -467,6 +474,57 @@ export async function run(log) {
   // dài `pts` phải đúng 4 số (không phình lên 6/8) là việc của unit test
   // `mergeInkPacket` trong game-tools/client/src/lib/ink-live.test.js, không
   // phải của smoke test này.
+
+  // Cửa sổ mất focus GIỮA nét rồi quay lại: không được sinh nét rác.
+  //
+  // Chuỗi này người dùng gặp thật: đang cầm tool, bấm chuột xuống → alt-tab /
+  // thông báo hệ điều hành / bấm vào devtools làm cửa sổ mất focus → quay lại,
+  // di chuột mà KHÔNG bấm → bấm một cái ở đâu đó ngoài lớp bắt chuột.
+  //
+  // Cái bẫy: `blur` dọn state nhưng nếu KHÔNG gỡ listener mousemove/mouseup thì
+  // hai listener của lượt đã chết vẫn sống. mousemove sau đó rơi vào nhánh bút
+  // và bơm điểm vào ptsRef, rồi mouseup gọi `finish` của lượt đã chết với
+  // activeRef = null — commit ra một nét `kind: "pen"` chưa từng được vẽ, PUT cả
+  // board nên nét rác lên server và sang màn hình mọi người. Với tool HÌNH KHỐI
+  // thì còn sai kiểu: đang cầm hình khối mà lưu ra nét bút.
+  //
+  // mousedown/mouseup cuối phát trên document.body (không phải trên `capture`)
+  // để mô phỏng đúng "bấm một cái ở chỗ khác": handleMouseDown gắn trên phần tử
+  // .ink-capture nên không chạy, còn listener mouseup gắn trên window thì chạy.
+  // Phát trên body chứ không trên window vì handler onDocMouseDown của IdeaMap
+  // gọi el.contains(e.target), mà window không phải Node.
+  for (const [name, btnIndex] of [["bút", 2], ["hình khối", 4]]) {
+    await act(async () => { document.querySelectorAll(".tool-rail .tool-btn")[btnIndex].click(); await new Promise((r) => setTimeout(r, 20)); });
+    const putsBeforeBlur = globalThis.__puts.length;
+    const pathsBeforeBlur = document.querySelectorAll(".ink-layer path").length;
+    await act(async () => {
+      mouse("mousedown", 2700, 2600, capture);
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    await act(async () => {
+      window.dispatchEvent(new window.Event("blur"));
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    await act(async () => {
+      mouse("mousemove", 2700, 2600);
+      mouse("mousemove", 2900, 2700);
+      mouse("mousemove", 3100, 2500);
+      await new Promise((r) => setTimeout(r, 60));
+    });
+    await act(async () => {
+      mouse("mousedown", 3100, 2500, document.body);
+      mouse("mouseup", 3100, 2500, document.body);
+      await new Promise((r) => setTimeout(r, 40));
+    });
+    const putsAfterBlur = globalThis.__puts.length - putsBeforeBlur;
+    const pathsAfterBlur = document.querySelectorAll(".ink-layer path").length;
+    log(`mất focus giữa nét (tool ${name}): PUT thêm ${putsAfterBlur} lần (phải là 0) · path ${pathsBeforeBlur} -> ${pathsAfterBlur}`);
+    if (putsAfterBlur !== 0) {
+      const junk = globalThis.__puts[globalThis.__puts.length - 1];
+      throw new Error(`mất focus giữa nét (tool ${name}) đã lưu nét rác: ${JSON.stringify(junk.drawings[junk.drawings.length - 1])}`);
+    }
+    if (pathsAfterBlur !== pathsBeforeBlur) throw new Error(`mất focus giữa nét (tool ${name}) làm số nét đổi ${pathsBeforeBlur} -> ${pathsAfterBlur}`);
+  }
 
   return true;
 }
