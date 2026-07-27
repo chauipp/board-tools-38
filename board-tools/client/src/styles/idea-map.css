@@ -634,14 +634,24 @@
    độ tô). Vì khối này canh giữa dọc bằng translateY(-50%), màn hình thấp sẽ
    tràn ra ngoài khung nhìn nếu không kẹp chiều cao lại.
    Rộng 62px thay vì 54px: .tool-grid xếp 2 cột, mà nút chọn hình phải lớn hơn ô
-   màu 18px mới nhìn ra hình. 62 - 12 padding = 50px cho hai cột 23px + gap 4. */
+   màu 18px mới nhìn ra hình.
+   Phép tính bề rộng — `* { box-sizing: border-box }` khai ở src/index.css nên
+   62px là bề rộng NGOÀI, đã gồm cả padding và border:
+     62 - 6*2 padding - 1*2 border = 48px vùng nội dung
+     48 = 22 + 4 gap + 22  →  hai cột của .tool-grid mỗi cột đúng 22px
+   Vậy .shape-pick/.fill-pick phải là 22px. Trước đây chúng là 23px (bỏ sót 2px
+   border) nên hàng rộng 50px > 48px; cộng với overflow-y: auto thì trục x tự
+   thành `auto` theo spec, sinh ra thanh cuộn ngang / cột phải bị cắt.
+   overflow-x: hidden khai thẳng để dù số có lệch lại thì cũng không mọc thanh
+   cuộn ngang trong một khối bé thế này. */
 .tool-options {
   left: 66px; width: 62px;
-  max-height: calc(100% - 24px); overflow-y: auto;
+  max-height: calc(100% - 24px); overflow-y: auto; overflow-x: hidden;
 }
 /* .tool-btn mặc định 34px — quá rộng cho một cột của .tool-grid, sẽ tràn ra
-   ngoài khối. Nút chọn hình và nút chế độ tô phải tự thu lại. */
-.shape-pick, .fill-pick { width: 23px; height: 23px; }
+   ngoài khối. Nút chọn hình và nút chế độ tô phải tự thu lại đúng bề rộng một
+   cột (22px, xem phép tính ở .tool-options). */
+.shape-pick, .fill-pick { width: 22px; height: 22px; }
 .shape-pick svg, .fill-pick svg { display: block; }
 
 .tool-btn {

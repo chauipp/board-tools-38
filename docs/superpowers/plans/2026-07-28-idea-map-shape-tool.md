@@ -364,7 +364,7 @@ git commit -m "feat: module thuần hình học sáu hình khối"
   - `shape.js`: `drawingsHitBy(drawings: object[], point: {x,y}, radius: number) -> number[]`
   - `stroke.js` **không còn** `strokesHitBy`.
 
-- [ ] **Step 1: Viết test thất bại**
+- [x] **Step 1: Viết test thất bại**
 
 Trong `game-tools/client/src/lib/stroke.test.js`: đổi dòng import thành
 
@@ -500,7 +500,7 @@ test("SHAPE_MIN_DIAGONAL: ngưỡng bỏ hình suy biến là 4", () => {
 });
 ```
 
-- [ ] **Step 2: Chạy test để chắc chắn nó thất bại**
+- [x] **Step 2: Chạy test để chắc chắn nó thất bại**
 
 ```bash
 cd game-tools/client && npm test
@@ -508,7 +508,7 @@ cd game-tools/client && npm test
 
 Expected: FAIL — `polylineHitBy is not a function`, `pointInPolygon is not a function`, `drawingsHitBy is not a function`.
 
-- [ ] **Step 3: Viết bản cài đặt tối thiểu**
+- [x] **Step 3: Viết bản cài đặt tối thiểu**
 
 Trong `game-tools/client/src/lib/stroke.js`, **thay** hàm `strokesHitBy` (dòng
 67-84) bằng hai hàm sau. `distToSegment` vẫn để nội bộ:
@@ -586,7 +586,7 @@ Trong `game-tools/client/src/lib/useInk.js`, đổi ba chỗ:
 - dòng 59 — `strokesHitBy(board.drawings || [], start, ERASE_RADIUS)` → `drawingsHitBy(...)`
 - dòng 78 — `strokesHitBy(b.drawings || [], p, ERASE_RADIUS)` → `drawingsHitBy(...)`
 
-- [ ] **Step 4: Chạy test để chắc chắn nó xanh**
+- [x] **Step 4: Chạy test để chắc chắn nó xanh**
 
 ```bash
 cd game-tools/client && npm test
@@ -594,7 +594,7 @@ cd game-tools/client && npm test
 
 Expected: PASS.
 
-- [ ] **Step 5: Chắc chắn không còn chỗ nào gọi `strokesHitBy`**
+- [x] **Step 5: Chắc chắn không còn chỗ nào gọi `strokesHitBy`**
 
 ```bash
 cd game-tools/client && grep -rn "strokesHitBy" src/ ; echo "exit=$?"
@@ -602,7 +602,7 @@ cd game-tools/client && grep -rn "strokesHitBy" src/ ; echo "exit=$?"
 
 Expected: không in ra dòng nào (`exit=1` từ grep là đúng).
 
-- [ ] **Step 6: Smoke test phải vẫn xanh — cục gôm nét bút không được đổi hành vi**
+- [x] **Step 6: Smoke test phải vẫn xanh — cục gôm nét bút không được đổi hành vi**
 
 ```bash
 cd game-tools/client && npm run test:smoke
@@ -611,7 +611,7 @@ cd game-tools/client && npm run test:smoke
 Expected: PASS như trước khi sửa. Nếu phần gôm đỏ thì `polylineHitBy` đã lệch
 khỏi vòng lặp gốc — so lại từng nhánh, đừng nới ngưỡng.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add game-tools/client/src/lib/stroke.js game-tools/client/src/lib/stroke.test.js \
@@ -634,7 +634,7 @@ git commit -m "refactor: hit-test một đường cho cả nét bút và hình k
   `loadPenPrefs(storage) -> { color, w, kind, fill }`; `savePenPrefs(storage, prefs)` ghi cả bốn key.
   Khoá localStorage **không đổi**: `"ideamap.pen"`.
 
-- [ ] **Step 1: Viết test thất bại**
+- [x] **Step 1: Viết test thất bại**
 
 Trong `game-tools/client/src/lib/pen.test.js`, **thay** test
 `"PEN_DEFAULT phải nằm trong danh sách hợp lệ"` bằng:
@@ -693,7 +693,7 @@ import { PEN_COLORS, PEN_WIDTHS, PEN_DEFAULT, penVar, loadPenPrefs, savePenPrefs
 import { SHAPE_KINDS } from "./shape.js";
 ```
 
-- [ ] **Step 2: Chạy test để chắc chắn nó thất bại**
+- [x] **Step 2: Chạy test để chắc chắn nó thất bại**
 
 ```bash
 cd game-tools/client && npm test
@@ -701,7 +701,7 @@ cd game-tools/client && npm test
 
 Expected: FAIL — `PEN_DEFAULT.kind` là `undefined`.
 
-- [ ] **Step 3: Viết bản cài đặt tối thiểu**
+- [x] **Step 3: Viết bản cài đặt tối thiểu**
 
 Trong `game-tools/client/src/lib/pen.js`: thêm import, đổi `PEN_DEFAULT`, và
 thêm hai key vào `loadPenPrefs` / `savePenPrefs`.
@@ -746,7 +746,7 @@ export function savePenPrefs(storage, prefs) {
 }
 ```
 
-- [ ] **Step 4: Chạy test để chắc chắn nó xanh**
+- [x] **Step 4: Chạy test để chắc chắn nó xanh**
 
 ```bash
 cd game-tools/client && npm test
@@ -754,7 +754,7 @@ cd game-tools/client && npm test
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add game-tools/client/src/lib/pen.js game-tools/client/src/lib/pen.test.js

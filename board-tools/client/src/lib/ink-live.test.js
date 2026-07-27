@@ -140,6 +140,9 @@ test("mergeInkPacket: gói done của hình khối giữ hộp và mang drawingI
   assert.equal(e.expiresAt, NOW + 50 + INK_SETTLE_TTL_MS);
 });
 
+// Bài này cũng là bài chốt hồi quy cho bản sửa fallback về `cur.kind` (fix
+// round 1, xem test ngay dưới): nét bút không mang kind ở gói nào cả, kể cả seq
+// 0, nên fallback không được đổi hành vi NỐI của nó.
 test("mergeInkPacket: gói không có kind vẫn là nét bút và vẫn NỐI điểm", () => {
   let m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, pts: [0, 0] }), NOW);
   m = mergeInkPacket(m, pkt({ seq: 1, pts: [10, 10] }), NOW + 40);
@@ -155,12 +158,4 @@ test("mergeInkPacket: gói sau của hình khối THIẾU kind vẫn phải THAY
   let m = mergeInkPacket(new Map(), pkt({ seq: 0, kind: "rect", color: "pen-blue", w: 8, fill: false, pts: [0, 0, 10, 10] }), NOW);
   m = mergeInkPacket(m, pkt({ seq: 1, pts: [0, 0, 50, 40] }), NOW + 40); // không có kind
   assert.deepEqual(m.get("s1:1").pts, [0, 0, 50, 40]);
-});
-
-// Bài chốt hồi quy: nét bút vốn không mang kind ở gói nào cả (kể cả seq 0), nên
-// bản sửa fallback về cur.kind không được đổi hành vi NỐI của nét bút.
-test("mergeInkPacket: gói sau của nét bút (không kind) vẫn NỐI như cũ sau khi sửa fallback", () => {
-  let m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, pts: [0, 0] }), NOW);
-  m = mergeInkPacket(m, pkt({ seq: 1, pts: [10, 10] }), NOW + 40);
-  assert.deepEqual(m.get("s1:1").pts, [0, 0, 10, 10]);
 });
