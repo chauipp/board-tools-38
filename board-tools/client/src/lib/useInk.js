@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { simplifyStroke, strokesHitBy } from "./stroke.js";
+import { simplifyStroke } from "./stroke.js";
+import { drawingsHitBy } from "./shape.js";
 import { rafThrottle } from "./raf-throttle.js";
 
 // Bán kính gôm, đơn vị toạ độ canvas. Cộng thêm w/2 của từng nét trong
-// strokesHitBy, nên nét dày dễ chạm hơn nét mảnh — đúng cảm giác mong đợi.
+// drawingsHitBy, nên nét dày dễ chạm hơn nét mảnh — đúng cảm giác mong đợi.
 const ERASE_RADIUS = 8;
 
 // Chuột → toạ độ canvas. Camera nằm trong board.view, đọc qua ref để handler
@@ -56,7 +57,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
 
     if (tool === "eraser") {
       activeRef.current = "eraser";
-      eraseSetRef.current = new Set(strokesHitBy(board.drawings || [], start, ERASE_RADIUS));
+      eraseSetRef.current = new Set(drawingsHitBy(board.drawings || [], start, ERASE_RADIUS));
       pushErase.current(Array.from(eraseSetRef.current));
       // Gọi cả khi rỗng: beginErase phải tăng strokeId để lượt quét này có khoá
       // overlay riêng, không nối tiếp vào lượt trước.
@@ -75,7 +76,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       const p = toCanvas(ev, viewportEl, b.view);
 
       if (activeRef.current === "eraser") {
-        const hit = strokesHitBy(b.drawings || [], p, ERASE_RADIUS);
+        const hit = drawingsHitBy(b.drawings || [], p, ERASE_RADIUS);
         let added = null;
         for (const id of hit) {
           if (eraseSetRef.current.has(id)) continue;

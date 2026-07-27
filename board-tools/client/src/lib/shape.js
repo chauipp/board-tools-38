@@ -4,6 +4,8 @@
 // pts của một hình khối là ĐÚNG 4 số — hai góc đối [x0,y0,x1,y1] — chứ không
 // phải danh sách điểm như nét bút.
 
+import { polylineHitBy, pointInPolygon } from "./stroke.js";
+
 export const SHAPE_KINDS = ["rect", "ellipse", "line", "arrow", "triangle", "diamond"];
 
 // Bốn hình có vùng trong nên tô được. Hai hình còn lại (line, arrow) là hình
@@ -129,4 +131,31 @@ export function shapeOutline(kind, pts) {
   // cuối của hình không bắt được chuột.
   corners.push(corners[0], corners[1]);
   return corners;
+}
+
+// Hit-test cho CẢ nét bút lẫn hình khối. Nó nằm ở shape.js chứ không ở stroke.js
+// vì nó phải biết hình học của từng `kind`, mà chỗ duy nhất biết điều đó là file
+// này. Chiều import một phía shape.js → stroke.js, không có vòng.
+//
+// MỌI kind chỉ có MỘT đường hit-test: đo tới các đoạn của đường bao, cộng
+// point-in-polygon trên chính đường bao đó khi `fill` bật.
+export function drawingsHitBy(drawings, point, radius) {
+  const out = [];
+  for (const d of drawings || []) {
+    const pts = d.pts || [];
+    if (pts.length < 2) continue;
+    const limit = (d.w || 0) / 2 + radius;
+    const kind = d.kind || "pen";
+
+    if (kind === "pen") {
+      if (polylineHitBy(pts, point, limit)) out.push(d.id);
+      continue;
+    }
+    const outline = shapeOutline(kind, pts);
+    if (!outline.length) continue;
+    const hit = polylineHitBy(outline, point, limit)
+      || (d.fill === true && pointInPolygon(outline, point.x, point.y));
+    if (hit) out.push(d.id);
+  }
+  return out;
 }

@@ -1,7 +1,10 @@
 // game-tools/client/src/lib/shape.test.js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { SHAPE_KINDS, SHAPE_CLOSED, normalizeBox, shapePath, shapeOutline } from "./shape.js";
+import {
+  SHAPE_KINDS, SHAPE_CLOSED, SHAPE_MIN_DIAGONAL,
+  normalizeBox, shapePath, shapeOutline, drawingsHitBy
+} from "./shape.js";
 
 test("SHAPE_KINDS: sáu hình, đúng thứ tự hiện ở khu 4", () => {
   assert.deepEqual(SHAPE_KINDS, ["rect", "ellipse", "line", "arrow", "triangle", "diamond"]);
@@ -123,4 +126,78 @@ test("shapeOutline: mọi điểm nằm trong hộp bao", () => {
 test("shapeOutline: kind lạ hoặc pts thiếu thì trả mảng rỗng", () => {
   assert.deepEqual(shapeOutline("star", [0, 0, 10, 10]), []);
   assert.deepEqual(shapeOutline("rect", [0, 0]), []);
+});
+
+test("drawingsHitBy: nét bút — ngưỡng chạm là w/2 + radius", () => {
+  const drawings = [{ id: 1, kind: "pen", color: "pen-red", w: 4, pts: [0, 0, 100, 0] }];
+  // ngưỡng = 4/2 + 8 = 10
+  assert.deepEqual(drawingsHitBy(drawings, { x: 50, y: 9 }, 8), [1]);
+  assert.deepEqual(drawingsHitBy(drawings, { x: 50, y: 11 }, 8), []);
+});
+
+test("drawingsHitBy: nét bút — đo khoảng cách tới đoạn thẳng chứ không tới đỉnh", () => {
+  const drawings = [{ id: 1, w: 2, pts: [0, 0, 100, 0] }];
+  assert.deepEqual(drawingsHitBy(drawings, { x: 50, y: 0 }, 3), [1]);
+});
+
+test("drawingsHitBy: trả nhiều id khi một điểm chạm nhiều nét", () => {
+  const drawings = [
+    { id: 1, w: 2, pts: [0, 0, 100, 0] },
+    { id: 2, w: 2, pts: [50, -20, 50, 20] },
+    { id: 3, w: 2, pts: [0, 500, 100, 500] }
+  ];
+  assert.deepEqual(drawingsHitBy(drawings, { x: 50, y: 0 }, 3), [1, 2]);
+});
+
+test("drawingsHitBy: nét bút một điểm vẫn hit-test được", () => {
+  assert.deepEqual(drawingsHitBy([{ id: 1, w: 4, pts: [10, 10] }], { x: 12, y: 10 }, 8), [1]);
+});
+
+test("drawingsHitBy: danh sách rỗng hoặc thiếu pts trả mảng rỗng", () => {
+  assert.deepEqual(drawingsHitBy([], { x: 0, y: 0 }, 8), []);
+  assert.deepEqual(drawingsHitBy([{ id: 1, w: 4 }], { x: 0, y: 0 }, 8), []);
+});
+
+// Chỉ viền: chạm viền thì trúng, giữa hình thì KHÔNG — không thì kéo gôm ngang
+// qua một khung rỗng sẽ xoá nó dù người dùng chỉ đi qua vùng trống.
+test("drawingsHitBy: chữ nhật chỉ viền — trúng viền, không trúng giữa", () => {
+  const rect = [{ id: 1, kind: "rect", w: 2, fill: false, pts: [0, 0, 100, 60] }];
+  assert.deepEqual(drawingsHitBy(rect, { x: 50, y: 1 }, 3), [1], "cạnh trên");
+  assert.deepEqual(drawingsHitBy(rect, { x: 0, y: 30 }, 3), [1], "cạnh trái — cạnh khép kín");
+  assert.deepEqual(drawingsHitBy(rect, { x: 50, y: 30 }, 3), [], "giữa hình rỗng");
+});
+
+test("drawingsHitBy: chữ nhật tô cả hình — chạm giữa cũng trúng", () => {
+  const rect = [{ id: 1, kind: "rect", w: 2, fill: true, pts: [0, 0, 100, 60] }];
+  assert.deepEqual(drawingsHitBy(rect, { x: 50, y: 30 }, 3), [1]);
+  assert.deepEqual(drawingsHitBy(rect, { x: 200, y: 30 }, 3), [], "ngoài hình vẫn không trúng");
+});
+
+test("drawingsHitBy: ê-líp phân biệt trong và ngoài", () => {
+  const el = [{ id: 1, kind: "ellipse", w: 2, fill: true, pts: [0, 0, 100, 60] }];
+  assert.deepEqual(drawingsHitBy(el, { x: 50, y: 30 }, 3), [1], "tâm");
+  // Góc trên-trái của hộp bao nằm NGOÀI ê-líp
+  assert.deepEqual(drawingsHitBy(el, { x: 3, y: 3 }, 3), [], "góc hộp bao");
+});
+
+test("drawingsHitBy: w lớn nới ngưỡng chạm của hình khối", () => {
+  const thin = [{ id: 1, kind: "rect", w: 2, fill: false, pts: [0, 0, 100, 60] }];
+  const thick = [{ id: 1, kind: "rect", w: 20, fill: false, pts: [0, 0, 100, 60] }];
+  assert.deepEqual(drawingsHitBy(thin, { x: 50, y: 8 }, 3), []);
+  assert.deepEqual(drawingsHitBy(thick, { x: 50, y: 8 }, 3), [1]);
+});
+
+test("drawingsHitBy: đường thẳng và mũi tên hit-test theo thân", () => {
+  const l = [{ id: 1, kind: "line", w: 2, pts: [0, 0, 100, 100] }];
+  assert.deepEqual(drawingsHitBy(l, { x: 50, y: 50 }, 3), [1]);
+  assert.deepEqual(drawingsHitBy(l, { x: 50, y: 90 }, 3), []);
+});
+
+test("drawingsHitBy: hình khối thiếu số hoặc kind lạ thì bỏ qua, không nổ", () => {
+  assert.deepEqual(drawingsHitBy([{ id: 1, kind: "rect", w: 2, pts: [0, 0] }], { x: 0, y: 0 }, 8), []);
+  assert.deepEqual(drawingsHitBy([{ id: 1, kind: "star", w: 2, pts: [0, 0, 9, 9] }], { x: 5, y: 5 }, 8), []);
+});
+
+test("SHAPE_MIN_DIAGONAL: ngưỡng bỏ hình suy biến là 4", () => {
+  assert.equal(SHAPE_MIN_DIAGONAL, 4);
 });
