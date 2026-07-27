@@ -430,3 +430,11 @@ chỉ giữ state `mode` / `tool` / `penPrefs` và nối dây.
   Spec 1 để nét vẽ ở một lớp cố định nằm trên tất cả.
 - Độ mờ nét, bút highlight, làm mượt nét kiểu bút áp lực.
 - Không tách nhỏ `IdeaMap.jsx` ngoài việc để logic mới ra file riêng.
+
+---
+
+## Plan thực thi
+
+Spec này đã được chuyển thành plan thực thi từng task:
+
+**→ [`docs/superpowers/plans/2026-07-27-idea-map-left-toolbar-ink.md`](../plans/2026-07-27-idea-map-left-toolbar-ink.md)**
