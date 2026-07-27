@@ -237,13 +237,16 @@ export async function run(log) {
   });
   const emittedBeforeUpdate = globalThis.__emitted.length;
   const boardNow = globalThis.__puts[globalThis.__puts.length - 1];
+  // Giữ lại board vừa áp để dùng làm mốc cho bài kiểm "board:update giữa
+  // chừng nét" ngay dưới đây.
+  const boardAfterPeerStroke = {
+    ...boardNow,
+    drawings: [...boardNow.drawings, { id: 99, kind: "pen", color: "pen-blue", w: 8, pts: [100, 900, 140, 940, 180, 900] }],
+    nextDrawingId: 100,
+    updatedAt: new Date(Date.now() + 20000).toISOString()
+  };
   await act(async () => {
-    globalThis.__deliver("board:update", {
-      ...boardNow,
-      drawings: [...boardNow.drawings, { id: 99, kind: "pen", color: "pen-blue", w: 8, pts: [100, 900, 140, 940, 180, 900] }],
-      nextDrawingId: 100,
-      updatedAt: new Date(Date.now() + 20000).toISOString()
-    });
+    globalThis.__deliver("board:update", boardAfterPeerStroke);
     await new Promise((r) => setTimeout(r, 30));
   });
   const dCount = Array.from(document.querySelectorAll(".ink-layer path")).filter((p) => (p.getAttribute("d") || "").startsWith("M 100 900")).length;
@@ -253,6 +256,42 @@ export async function run(log) {
   const inkAfterUpdate = globalThis.__emitted.slice(emittedBeforeUpdate).filter((e) => e[0] === "live:ink");
   log(`gói live:ink phát ra do NHẬN board:update: ${inkAfterUpdate.length} (phải là 0 — đây là vòng vọng)`);
   if (inkAfterUpdate.length !== 0) throw new Error("nhận board:update mà vẫn phát live:ink → vòng vọng");
+
+  // Đóng gói lúc mousedown giữ mãi commitStroke/commitErase của lượt render
+  // đó (finish() gắn vào window ngay từ mousedown, xem ghi chú tại
+  // commitStroke trong IdeaMap.jsx). Nếu board:update của người khác về
+  // GIỮA nét — hoàn toàn có thể xảy ra vì vẽ một nét mất cả giây — thì
+  // commitStroke phải build `next` từ boardRef.current (mới nhất), không
+  // phải từ `board` đóng gói cũ, nếu không PUT sẽ mang bản cũ và đè mất thay
+  // đổi người khác vừa lưu.
+  const putsBeforeMidStroke = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", 300, 300, capture);
+    mouse("mousemove", 330, 320);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  const peerNodeMove = {
+    ...boardAfterPeerStroke,
+    nodes: boardAfterPeerStroke.nodes.map((n) => (n.id === 3 ? { ...n, x: 999, y: 999 } : n)),
+    updatedAt: new Date(Date.now() + 30000).toISOString()
+  };
+  await act(async () => {
+    globalThis.__deliver("board:update", peerNodeMove);
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  await act(async () => {
+    mouse("mousemove", 360, 340);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", 360, 340); await new Promise((r) => setTimeout(r, 40)); });
+
+  log(`board:update giữa nét: PUT thêm ${globalThis.__puts.length - putsBeforeMidStroke} lần`);
+  if (globalThis.__puts.length - putsBeforeMidStroke !== 1) throw new Error("kết thúc nét phải đúng 1 lần lưu");
+  const savedMid = globalThis.__puts[globalThis.__puts.length - 1];
+  const node3 = savedMid.nodes.find((n) => n.id === 3);
+  log(`sau nét (board:update về giữa chừng): thẻ 3 x=${node3?.x} · số nét đã lưu=${savedMid.drawings.length}`);
+  if (!node3 || node3.x !== 999 || node3.y !== 999) throw new Error("PUT sau nét phải giữ thay đổi thẻ 3 của người khác đến giữa chừng, không được đè mất");
+  if (savedMid.drawings.length !== boardAfterPeerStroke.drawings.length + 1) throw new Error("PUT sau nét phải có thêm đúng 1 nét mới CHỒNG lên board mới nhất, không phải đè lên board cũ");
 
   return true;
 }

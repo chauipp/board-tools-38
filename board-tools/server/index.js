@@ -216,6 +216,14 @@ const MAX_LIVE_TEXT_LEN = 20000;
 // phòng — cùng lý do với MAX_LIVE_GEOM_ITEMS.
 const MAX_LIVE_INK_NUMBERS = 200;
 const MAX_LIVE_ERASE_IDS = 200;
+// color là token kiểu "pen-red" — 32 ký tự là quá rộng rãi cho nó. w hợp lệ từ
+// client hiện là 2/4/8; chấp một dải rộng hơn thay vì đúng ba giá trị đó để
+// không phải redeploy server mỗi khi client đổi danh sách độ dày. Chặn ở đây
+// để một client lỗi (hoặc cố tình) không bơm chuỗi màu khổng lồ hay w khổng lồ
+// rồi bắt server phát vệt bút phủ kín màn hình cho cả phòng tới khi hết TTL.
+const MAX_LIVE_INK_COLOR_LEN = 32;
+const MIN_LIVE_INK_W = 1;
+const MAX_LIVE_INK_W = 64;
 
 function sanitizeInk(payload) {
   if (!payload || typeof payload !== "object") return null;
@@ -248,7 +256,8 @@ function sanitizeInk(payload) {
 
   const clean = { strokeId, seq: Number.isFinite(payload.seq) ? payload.seq : 0, pts };
   if (clean.seq === 0) {
-    if (typeof payload.color !== "string" || !Number.isFinite(payload.w)) return null;
+    if (typeof payload.color !== "string" || payload.color.length > MAX_LIVE_INK_COLOR_LEN) return null;
+    if (!Number.isFinite(payload.w) || payload.w < MIN_LIVE_INK_W || payload.w > MAX_LIVE_INK_W) return null;
     clean.color = payload.color;
     clean.w = payload.w;
   }

@@ -584,7 +584,7 @@ msgstr "Import JSON"
 
 #: src/components/ToolRail.jsx:90
 msgid "Nhập nhanh"
-msgstr "Quick add"
+msgstr "Quick capture"
 
 #: src/pages/IdeaMap.jsx:2537
 msgid "Nhập vào bản đồ"

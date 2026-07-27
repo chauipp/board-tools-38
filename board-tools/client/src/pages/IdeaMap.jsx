@@ -35,7 +35,7 @@ import { loadCamera, saveCamera } from "../lib/camera.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 import { compressImage } from "../lib/image-utils.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
-import { PEN_DEFAULT, loadPenPrefs, savePenPrefs } from "../lib/pen.js";
+import { loadPenPrefs, savePenPrefs } from "../lib/pen.js";
 import InkLayer from "../components/InkLayer.jsx";
 import { useInk } from "../lib/useInk.js";
 import { useInkLive } from "../lib/useInkLive.js";
@@ -567,7 +567,7 @@ export default function IdeaMap() {
       else if (key === "v") { e.preventDefault(); setMode("select"); }
       else if (key === "b") { if (role === "viewer") return; e.preventDefault(); enterMode("draw"); setTool("pen"); }
       else if (key === "e") { if (role === "viewer") return; e.preventDefault(); enterMode("draw"); setTool("eraser"); }
-      else if (key === "l") { if (role === "viewer") return; e.preventDefault(); setLinkMode((v) => !v); setPendingSource(null); }
+      else if (key === "l") { if (role === "viewer") return; e.preventDefault(); toggleLinkMode(); }
       // `f` (vừa khung theo lựa chọn) chỉ đổi view — người chỉ xem vẫn dùng được.
       else if (key === "f") { e.preventDefault(); zoomToSelection(); }
       else if (key === "arrowleft") { if (role === "viewer") return; e.preventDefault(); nudgeSelection(e.shiftKey ? -10 : -1, 0); }
@@ -704,19 +704,45 @@ export default function IdeaMap() {
 
   // Trả về id đã cấp để useInk gửi kèm vào gói live `done` — người xem cần id
   // thật mới đối chiếu được overlay với board:update sắp về.
+  //
+  // Cùng kỷ luật refs-only như applyImageToNode (xem ghi chú ở đó): finish()
+  // trong useInk.js gắn listener "mouseup" vào window NGAY LÚC mousedown, nên
+  // closure của nó giữ commitStroke/commitErase của lượt render tại thời điểm
+  // đó. Vẽ một nét mất vài giây; nếu board:update của người khác về TRONG lúc
+  // đang vẽ, `board` đóng gói sẽ là bản cũ — build `next` từ nó rồi PUT cả bản
+  // cũ sẽ đè mất thay đổi của người kia, cả cục bộ, cả trên server, cả trên
+  // màn hình họ khi gói phát lại về tới. Phải đọc boardRef.current, và không
+  // dùng commitAndSave được vì nó tự gọi recordHistory(board) — cùng vấn đề
+  // đóng gói cũ; nên trình tự ghi lịch sử/lưu được lặp lại thủ công.
   function commitStroke(stroke) {
-    const id = board.nextDrawingId;
-    commitAndSave({
-      ...board,
-      drawings: [...board.drawings, { id, ...stroke }],
+    const current = boardRef.current;
+    // Không có board thì không có gì để commit — nhưng vẫn phải trả về một id
+    // hợp lệ cho useInk gọi live?.endStroke(drawingId): endStroke đã chịu được
+    // id null/undefined (`drawingId ?? null`), nên trả undefined ở đây là an
+    // toàn, không làm useInk hay useInkLive vỡ.
+    if (!current) return undefined;
+    const id = current.nextDrawingId;
+    const next = {
+      ...current,
+      drawings: [...current.drawings, { id, ...stroke }],
       nextDrawingId: id + 1
-    });
+    };
+    recordHistory(current);
+    setBoard(next);
+    boardRef.current = next;
+    saveNow(next);
     return id;
   }
 
   function commitErase(ids) {
+    const current = boardRef.current;
+    if (!current) return;
     const kill = new Set(ids);
-    commitAndSave({ ...board, drawings: board.drawings.filter((d) => !kill.has(d.id)) });
+    const next = { ...current, drawings: current.drawings.filter((d) => !kill.has(d.id)) };
+    recordHistory(current);
+    setBoard(next);
+    boardRef.current = next;
+    saveNow(next);
   }
 
   // Đổi sang mode Sửa thì bỏ lựa chọn và tắt nối dây: để lại một thẻ đang chọn
@@ -730,6 +756,18 @@ export default function IdeaMap() {
       setLinkMode(false);
       setPendingSource(null);
     }
+  }
+
+  // Bật "Nối ý tưởng" mà vẫn còn ở mode Sửa thì vô dụng: `.ink-capture` phủ
+  // kín viewport ở mode Sửa và nuốt hết click lên thẻ, nên không bấm chọn
+  // được thẻ nguồn/đích nào — bật lên rồi coi như chết. Bật link mode phải
+  // kéo về mode Chuột (select) trước; tắt link mode thì giữ nguyên mode hiện
+  // tại. Dùng chung cho cả phím tắt `l` và nút trên ToolRail.
+  function toggleLinkMode() {
+    const turningOn = !linkMode;
+    if (turningOn) enterMode("select");
+    setLinkMode(turningOn);
+    setPendingSource(null);
   }
 
   function addCenteredNode(extra) {
@@ -2375,7 +2413,7 @@ export default function IdeaMap() {
           onAddNode={handleAddClick}
           onAddRootNode={handleAddRootClick}
           onAddGroup={createGroup}
-          onToggleLink={() => { setLinkMode((v) => !v); setPendingSource(null); }}
+          onToggleLink={toggleLinkMode}
           onCapture={() => setCaptureOpen(true)}
         />
         {mode === "draw" && (

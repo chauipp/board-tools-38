@@ -110,9 +110,20 @@ export function useInkLive(socket) {
     emitNow({ strokeId: strokeIdRef.current, done: true, drawingId: drawingId ?? null });
   }, [emitNow]);
 
+  // Gọi từ onBlur trong useInk.js để bỏ dở BẤT KỲ thứ gì đang dở — bút hay cục
+  // gôm — nên phải huỷ cả hai bộ tích luỹ, không chỉ của bút. Chỉ một trong
+  // hai (pendingPtsRef/pendingEraseRef) thật sự có gì để huỷ tại một thời
+  // điểm (một phiên mousedown chỉ là "pen" hoặc "eraser", không bao giờ cả
+  // hai), nên huỷ luôn cả hai vô hại. Thiếu vế erase thì timer trailingThrottle
+  // của flushEraseRef còn treo có thể bắn SAU gói cancel, dựng lại đúng entry
+  // vừa bị xoá trong mergeInkPacket (packet.erase là mảng thì nó tạo/gộp lại
+  // entry, không quan tâm gói cancel trước đó) — nét/vệt gôm cũ sống lại trên
+  // màn hình người khác tới hết INK_LIVE_TTL_MS dù người vẽ đã rời tab.
   const cancelStroke = useCallback(() => {
     flushPtsRef.current.cancel();
     pendingPtsRef.current = [];
+    flushEraseRef.current.cancel();
+    pendingEraseRef.current = [];
     emitNow({ strokeId: strokeIdRef.current, cancel: true });
   }, [emitNow]);
 
