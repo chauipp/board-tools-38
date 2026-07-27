@@ -313,5 +313,52 @@ export async function run(log) {
   if (!fillBtns()[1].disabled) throw new Error("đường thẳng là hình mở, nút tô cả hình phải mờ đi");
   if (!fillBtns()[0].className.includes("on")) throw new Error("chọn hình mở phải tự về chế độ chỉ viền");
 
+  // Kéo chuột ở tool hình khối: ra đúng một path mới, pts đúng 4 số, tô đặc thì
+  // fill khác "none", và lưu đúng MỘT lần.
+  const shapePicks = () => document.querySelectorAll(".tool-options .shape-pick");
+  await act(async () => { shapePicks()[0].click(); await new Promise((r) => setTimeout(r, 20)); });   // chữ nhật
+  await act(async () => { fillBtns()[1].click(); await new Promise((r) => setTimeout(r, 20)); });     // tô cả hình
+
+  const pathsBeforeShape = document.querySelectorAll(".ink-layer path").length;
+  const putsBeforeShape = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", 1200, 300, capture);
+    mouse("mousemove", 1280, 360);
+    await new Promise((r) => setTimeout(r, 60));
+    mouse("mousemove", 1360, 420);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", 1360, 420); await new Promise((r) => setTimeout(r, 40)); });
+
+  const pathsAfterShape = document.querySelectorAll(".ink-layer path").length;
+  log(`vẽ hình khối: ${pathsBeforeShape} → ${pathsAfterShape} path · PUT thêm ${globalThis.__puts.length - putsBeforeShape} lần`);
+  if (pathsAfterShape !== pathsBeforeShape + 1) throw new Error("một hình phải ra đúng 1 path mới");
+  if (globalThis.__puts.length - putsBeforeShape !== 1) throw new Error("một hình phải đúng 1 lần lưu");
+
+  const savedShape = globalThis.__puts[globalThis.__puts.length - 1];
+  const lastDrawing = savedShape.drawings[savedShape.drawings.length - 1];
+  log(`hình đã lưu: kind=${lastDrawing.kind} fill=${lastDrawing.fill} pts=${JSON.stringify(lastDrawing.pts)}`);
+  if (lastDrawing.kind !== "rect") throw new Error("phải lưu kind = rect, có " + lastDrawing.kind);
+  if (lastDrawing.fill !== true) throw new Error("đang bật tô cả hình thì phải lưu fill = true");
+  if (lastDrawing.pts.length !== 4) throw new Error("pts của hình khối phải đúng 4 số, có " + lastDrawing.pts.length);
+  if (lastDrawing.pts.some((v) => !Number.isInteger(v))) throw new Error("toạ độ hình khối phải là số nguyên");
+
+  // fill trên <path> phải THẮNG được stylesheet — đây là cái bẫy CSS-vs-attribute.
+  const rectPath = Array.from(document.querySelectorAll(".ink-layer path")).find((p) => (p.getAttribute("d") || "").includes(" Z"));
+  if (!rectPath) throw new Error("không tìm thấy path của hình khối (chuỗi d phải khép kín bằng Z)");
+  log(`fill của hình tô đặc: ${rectPath.getAttribute("fill")}`);
+  if (!rectPath.getAttribute("fill") || rectPath.getAttribute("fill") === "none") throw new Error("hình tô đặc phải có fill khác none");
+
+  // Bấm rồi nhả gần như không di: hình suy biến, không được lưu.
+  const putsBeforeTiny = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", 1600, 300, capture);
+    mouse("mousemove", 1601, 301);
+    await new Promise((r) => setTimeout(r, 50));
+  });
+  await act(async () => { mouse("mouseup", 1601, 301); await new Promise((r) => setTimeout(r, 30)); });
+  log(`hình suy biến: PUT thêm ${globalThis.__puts.length - putsBeforeTiny} lần (phải là 0)`);
+  if (globalThis.__puts.length !== putsBeforeTiny) throw new Error("hình quá nhỏ không được lưu");
+
   return true;
 }

@@ -675,7 +675,10 @@
   position: absolute; left: 0; top: 0; width: 4200px; height: 3200px;
   overflow: visible; pointer-events: none; z-index: 7;
 }
-.ink-layer path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+/* KHÔNG khai `fill` ở đây: trong SVG, CSS thắng presentation attribute, nên một
+   dòng `fill: none` sẽ làm mọi hình khối tô đặc biến thành hình chỉ có viền.
+   `fill` do InkLayer truyền tường minh trên từng <path>. */
+.ink-layer path { stroke-linecap: round; stroke-linejoin: round; }
 .ink-layer path.erasing { opacity: 0.25; }
 
 /* Lớp bắt chuột phủ toàn khung nhìn, CHỈ tồn tại ở mode Sửa. Đây là lý do kéo
