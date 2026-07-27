@@ -27,7 +27,7 @@
 
 ---
 
-- [ ] ## Task 1: `lib/shape.js` — hình học thuần
+- [x] ## Task 1: `lib/shape.js` — hình học thuần
 
 **Files:**
 - Create: `game-tools/client/src/lib/shape.js`
@@ -43,7 +43,7 @@
   - `shapeOutline(kind: string, pts: number[]) -> number[]` (mảng số phẳng; `[]` nếu `pts` không đủ 4 số hoặc `kind` lạ)
   - `SHAPE_MIN_DIAGONAL: number` — `4`, ngưỡng đường chéo dưới đó thì Task 5 bỏ hình
 
-- [ ] **Step 1: Viết test thất bại**
+- [x] **Step 1: Viết test thất bại**
 
 Tạo `game-tools/client/src/lib/shape.test.js`:
 
@@ -176,7 +176,7 @@ test("shapeOutline: kind lạ hoặc pts thiếu thì trả mảng rỗng", () =
 });
 ```
 
-- [ ] **Step 2: Chạy test để chắc chắn nó thất bại**
+- [x] **Step 2: Chạy test để chắc chắn nó thất bại**
 
 ```bash
 cd game-tools/client && npm test
@@ -184,7 +184,7 @@ cd game-tools/client && npm test
 
 Expected: FAIL — `Cannot find module './shape.js'`.
 
-- [ ] **Step 3: Viết bản cài đặt tối thiểu**
+- [x] **Step 3: Viết bản cài đặt tối thiểu**
 
 Tạo `game-tools/client/src/lib/shape.js`:
 
@@ -323,7 +323,7 @@ export function shapeOutline(kind, pts) {
 }
 ```
 
-- [ ] **Step 4: Chạy test để chắc chắn nó xanh**
+- [x] **Step 4: Chạy test để chắc chắn nó xanh**
 
 ```bash
 cd game-tools/client && npm test
@@ -331,7 +331,7 @@ cd game-tools/client && npm test
 
 Expected: PASS — toàn bộ test trong `shape.test.js` xanh.
 
-- [ ] **Step 5: Chạy cả bộ test cho chắc**
+- [x] **Step 5: Chạy cả bộ test cho chắc**
 
 ```bash
 cd game-tools/client && npm test
@@ -339,7 +339,7 @@ cd game-tools/client && npm test
 
 Expected: mọi file `src/lib/*.test.js` xanh, không có test nào đỏ do file mới.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add game-tools/client/src/lib/shape.js game-tools/client/src/lib/shape.test.js
