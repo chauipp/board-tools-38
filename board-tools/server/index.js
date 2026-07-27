@@ -205,6 +205,34 @@ io.use(async (socket, next) => {
 // boardId -> Map<socket.id, { socketId, email, name, picture, x, y }>
 const presencePeers = new Map();
 
+// Kênh live:geom giờ chỉ mang ĐÚNG những item đang bị kéo (thường là 1), không
+// mang cả board như trước. Chặn ở đây để một client lỗi (hoặc cố tình) không
+// bơm được mảng khổng lồ rồi bắt server phát cho cả phòng.
+const MAX_LIVE_GEOM_ITEMS = 200;
+const MAX_LIVE_TEXT_LEN = 20000;
+
+function sanitizeGeom(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const nodes = [];
+  const groups = [];
+  for (const n of Array.isArray(payload.nodes) ? payload.nodes : []) {
+    if (nodes.length >= MAX_LIVE_GEOM_ITEMS) break;
+    if (!n || !Number.isFinite(n.id) || !Number.isFinite(n.x) || !Number.isFinite(n.y)) continue;
+    nodes.push({ id: n.id, x: n.x, y: n.y, w: Number.isFinite(n.w) ? n.w : undefined });
+  }
+  for (const g of Array.isArray(payload.groups) ? payload.groups : []) {
+    if (groups.length >= MAX_LIVE_GEOM_ITEMS) break;
+    if (!g || !Number.isFinite(g.id) || !Number.isFinite(g.x) || !Number.isFinite(g.y)) continue;
+    groups.push({
+      id: g.id, x: g.x, y: g.y,
+      w: Number.isFinite(g.w) ? g.w : undefined,
+      h: Number.isFinite(g.h) ? g.h : undefined
+    });
+  }
+  if (!nodes.length && !groups.length) return null;
+  return { nodes, groups, done: payload.done === true };
+}
+
 function peersForBoard(boardId) {
   let m = presencePeers.get(boardId);
   if (!m) {
@@ -226,25 +254,39 @@ io.on("connection", (socket) => {
   // Cursor position là presence, không phải chỉnh sửa dữ liệu — viewer vẫn
   // được thấy và được người khác thấy con trỏ, chỉ bị chặn ghi dữ liệu thật
   // ở PUT /api/boards/:id (403 read_only).
+  //
+  // `.volatile`: nếu đường truyền tới một người nào đó đang tắc, gói này bị BỎ
+  // thay vì xếp hàng đợi. Đúng thứ ta muốn cho dữ liệu "vị trí hiện tại": gói
+  // cũ xếp hàng rồi phát bù một lượt chính là cảnh con trỏ/thẻ chạy giật lùi
+  // qua cả chuỗi vị trí đã lỗi thời. Mạng chậm thì thà cập nhật thưa hơn.
   socket.on("cursor:move", (payload) => {
     const { x, y } = payload || {};
     const p = peers.get(socket.id);
     if (!p || !Number.isFinite(x) || !Number.isFinite(y)) return;
     p.x = x;
     p.y = y;
-    socket.to(room).emit("cursor:move", p);
+    socket.volatile.to(room).emit("cursor:move", p);
   });
 
   // Vị trí/kích thước tạm thời lúc đang kéo — không lưu DB, không giữ
-  // state trên server, chỉ relay nguyên payload cho người khác trong room.
+  // state trên server, chỉ relay cho người khác trong room.
   socket.on("live:geom", (payload) => {
-    socket.to(room).emit("live:geom", payload || {});
+    const clean = sanitizeGeom(payload);
+    if (!clean) return;
+    // Gói CUỐI (done) là gói giữ vị trí bên người xem cho tới khi bản lưu chính
+    // thức về — mất nó là thẻ nhảy về chỗ cũ, nên nó phải đi đường tin cậy.
+    // Các gói giữa chừng thì volatile.
+    if (clean.done) socket.to(room).emit("live:geom", clean);
+    else socket.volatile.to(room).emit("live:geom", clean);
   });
 
   // Nội dung đang gõ dở — không lưu DB, chỉ relay để người khác thấy chữ
   // chạy gần real-time; bản chính thức vẫn qua saveNodeEdit → PUT như cũ.
   socket.on("live:text", (payload) => {
-    socket.to(room).emit("live:text", payload || {});
+    const { nodeId, field, value } = payload || {};
+    if (!Number.isFinite(nodeId) || (field !== "title" && field !== "desc")) return;
+    if (typeof value !== "string" || value.length > MAX_LIVE_TEXT_LEN) return;
+    socket.volatile.to(room).emit("live:text", { nodeId, field, value });
   });
 
   // Vùng đang chọn của người này — presence nhẹ, không phải chỉnh sửa dữ
@@ -263,7 +305,11 @@ io.on("connection", (socket) => {
     const p = peers.get(socket.id);
     if (!p) return;
     p.edgeDraft = payload && Number.isFinite(payload.x) && Number.isFinite(payload.y) ? payload : null;
-    socket.to(room).emit("edge-draft:update", { socketId: socket.id, edgeDraft: p.edgeDraft });
+    // Bám theo chuột như cursor:move → cũng volatile. Riêng lúc BUÔNG dây
+    // (edgeDraft = null) phải tin cậy, không thì đầu dây nháp treo lại trên màn
+    // hình người khác cho tới lần kéo sau.
+    const target = p.edgeDraft ? socket.volatile.to(room) : socket.to(room);
+    target.emit("edge-draft:update", { socketId: socket.id, edgeDraft: p.edgeDraft });
   });
 
   socket.on("disconnect", () => {

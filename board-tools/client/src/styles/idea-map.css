@@ -160,7 +160,12 @@
   background: radial-gradient(var(--line) 1px, transparent 1px) 0 0 / 26px 26px, var(--bg);
 }
 .viewport.panning { cursor: grabbing; }
-.canvas { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
+/* will-change: giữ .canvas trên một lớp compositor riêng, nên lia/thu phóng
+   chỉ dịch lớp đã vẽ sẵn thay vì bắt vẽ lại cả sa bàn ở mỗi khung hình. */
+.canvas { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; will-change: transform; }
+/* Lớp dây nháp của người khác — tách khỏi .edge-layer chính (xem PeerLayer.jsx)
+   nên cần z-index riêng: trên thẻ, dưới marquee và tay cầm dây. */
+.peer-draft-layer { z-index: 3; }
 .marquee-box {
   position: absolute; border: 1.5px dashed var(--accent);
   background: color-mix(in srgb, var(--accent) 12%, transparent);
@@ -184,6 +189,10 @@
   background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px;
   box-shadow: var(--shadow); padding: 10px 10px 9px; cursor: grab; user-select: none;
   transition: box-shadow 0.12s ease, transform 0.12s ease, border-color 0.12s ease;
+  /* Cách ly layout: đổi left/top của MỘT thẻ đang kéo không bắt trình duyệt
+     tính lại vùng layout của những thẻ còn lại. Chỉ `layout style` — KHÔNG có
+     `paint`, vì connector-zone và các badge cố tình thò ra ngoài viền thẻ. */
+  contain: layout style;
 }
 .idea-card:hover { border-color: var(--ink-dim); box-shadow: var(--shadow), 0 4px 12px rgba(0,0,0,0.16); transform: translateY(-2px); }
 .idea-card.link-pending { outline: 2px solid var(--accent); outline-offset: 2px; }

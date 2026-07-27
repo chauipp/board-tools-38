@@ -90,3 +90,28 @@ test("rectForEndpoint: node dùng sizeOf, group dùng w/h, null khi không thấ
   assert.deepEqual(rectForEndpoint("group", 1, nodes, groups, sizeOf), { cx: 125, cy: 125, w: 50, h: 50 });
   assert.equal(rectForEndpoint("node", 99, nodes, groups, sizeOf), null);
 });
+
+test("rectForEndpoint nhận Map id→thẻ (lớp dây tra O(1) thay vì quét mảng)", () => {
+  const nodes = new Map([[1, { id: 1, x: 10, y: 20 }]]);
+  const r = rectForEndpoint("node", 1, nodes, new Map(), () => ({ w: 100, h: 50 }));
+  assert.deepEqual(r, { cx: 60, cy: 45, w: 100, h: 50 });
+});
+
+test("rectForEndpoint với Map: khung dùng kích thước của chính nó", () => {
+  const groups = new Map([[3, { id: 3, x: 0, y: 0, w: 300, h: 200 }]]);
+  const r = rectForEndpoint("group", 3, new Map(), groups, () => ({ w: 1, h: 1 }));
+  assert.deepEqual(r, { cx: 150, cy: 100, w: 300, h: 200 });
+});
+
+test("rectForEndpoint với Map: id không có → null (thẻ vừa bị người khác xoá)", () => {
+  assert.equal(rectForEndpoint("node", 99, new Map(), new Map(), () => ({ w: 1, h: 1 })), null);
+});
+
+test("edgeEndpoint nhận Map và cho cùng kết quả như khi nhận mảng", () => {
+  const arr = [{ id: 1, x: 10, y: 20 }];
+  const sizeOf = () => ({ w: 100, h: 50 });
+  assert.deepEqual(
+    edgeEndpoint("node", 1, new Map(arr.map((n) => [n.id, n])), new Map(), sizeOf),
+    edgeEndpoint("node", 1, arr, [], sizeOf)
+  );
+});

@@ -1,6 +1,6 @@
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { cursorColor } from "../lib/usePresence.js";
+import { cursorColor, usePeers } from "../lib/usePresence.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 
 // Ảnh Google hay hỏng (hết hạn, chặn referrer) và chỉ biết lúc <img> báo lỗi —
@@ -33,18 +33,31 @@ function Avatar({ name, email, picture, color, title, onClick }) {
  * Chỉ hiện người đang kết nối (nguồn là presence socket). Thành viên được mời
  * nhưng chưa vào không xuất hiện ở đây — thanh này trả lời "ai đang ở đây",
  * không phải "board có những ai".
+ *
+ * Tự đăng ký usePeers thay vì nhận danh sách từ IdeaMap, cùng lý do với
+ * PeerLayer: nhịp con trỏ 20 lần/giây/người không được phép kéo cả bản đồ
+ * render lại. Ở đây nhịp đó chỉ chạm tới vài cái avatar.
  */
-export default function PresenceBar({ user, peers, canInvite, onInvite, onJumpToPeer, onLogout }) {
+export default function PresenceBar({ user, socket, canInvite, onInvite, onJumpToPeer, onLogout }) {
   const { t } = useLingui();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
   useCloseOnOutside(menuRef, () => setMenuOpen(false));
 
+  const peers = usePeers(socket);
+  // Avatar chỉ phụ thuộc danh tính, không phụ thuộc toạ độ con trỏ — dựng lại
+  // mảng theo chữ ký socketId để mỗi gói cursor:move không tạo mảng mới.
+  const identities = useMemo(
+    () => Array.from(peers.values()).map((p) => ({ socketId: p.socketId, email: p.email, name: p.name, picture: p.picture })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [Array.from(peers.keys()).join(",")]
+  );
+
   return (
     <div className="presence-bar">
-      {peers.length > 0 && (
+      {identities.length > 0 && (
         <div className="presence-peers">
-          {peers.map((peer) => (
+          {identities.map((peer) => (
             <Avatar
               key={peer.socketId}
               name={peer.name}
@@ -52,7 +65,9 @@ export default function PresenceBar({ user, peers, canInvite, onInvite, onJumpTo
               picture={peer.picture}
               color={cursorColor(peer.email)}
               title={t`${peer.name} — bấm để nhảy tới con trỏ`}
-              onClick={() => onJumpToPeer(peer)}
+              // Lấy bản mới nhất từ Map lúc bấm: `peer` ở đây là bản danh tính
+              // đã memo, không mang toạ độ con trỏ hiện thời.
+              onClick={() => { const live = peers.get(peer.socketId); if (live) onJumpToPeer(live); }}
             />
           ))}
         </div>
