@@ -300,8 +300,10 @@
 }
 .focus-banner button { background: none; border: none; cursor: pointer; color: var(--ink-dim); font-size: 13px; line-height: 1; padding: 0 4px; }
 
+/* Lớp bắt chuột vẽ (.ink-capture) nằm ở z-index 8; không nâng z-index ở đây
+   thì mode Sửa che mất nút zoom, giống lý do .focus-banner đã có z-index 40. */
 .zoom-ctrl {
-  position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center;
+  position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center; z-index: 40;
   background: var(--surface); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); overflow: hidden;
 }
 .zoom-ctrl button { background: none; border: none; color: var(--ink); width: 30px; height: 30px; cursor: pointer; font-size: 15px; }
