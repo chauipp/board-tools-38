@@ -183,5 +183,76 @@ export async function run(log) {
   await act(async () => { mouse("mouseup", 1560, 1560); await new Promise((r) => setTimeout(r, 30)); });
   log(`quét gôm chỗ trống: PUT thêm ${globalThis.__puts.length - putsBeforeEmpty} lần (phải là 0)`);
   if (globalThis.__puts.length !== putsBeforeEmpty) throw new Error("quét chỗ trống không được tạo bước hoàn tác");
+
+  // PHÁT: một nét bút phải ra gói seq 0 mang màu/độ dày, rồi các gói mang ĐIỂM
+  // MỚI THÊM, rồi đúng một gói done mang drawingId.
+  const penBtn = document.querySelectorAll(".tool-rail .tool-btn")[2];
+  await act(async () => { penBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
+
+  const emittedBeforeInk = globalThis.__emitted.length;
+  await act(async () => {
+    mouse("mousedown", 900, 200, capture);
+    mouse("mousemove", 930, 220);
+    await new Promise((r) => setTimeout(r, 60));
+    mouse("mousemove", 960, 200);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", 960, 200); await new Promise((r) => setTimeout(r, 40)); });
+
+  const inkPkts = globalThis.__emitted.slice(emittedBeforeInk).filter((e) => e[0] === "live:ink").map((e) => e[1]);
+  log(`live:ink đã phát: ${inkPkts.length} gói; seq = ${inkPkts.map((p) => (p.done ? "done" : p.seq)).join(",")}`);
+  if (inkPkts.length < 2) throw new Error("phải phát ít nhất gói đầu và gói done");
+  const first = inkPkts[0];
+  if (first.seq !== 0 || first.color !== "pen-red" || first.w !== 4) throw new Error("gói đầu phải mang seq 0, màu và độ dày");
+  const last = inkPkts[inkPkts.length - 1];
+  if (last.done !== true || !Number.isFinite(last.drawingId)) throw new Error("gói cuối phải là done kèm drawingId");
+  if (inkPkts.filter((p) => p.done).length !== 1) throw new Error("một nét chỉ được có đúng 1 gói done");
+  // Điểm không được gửi lặp: tổng số điểm đã phát phải bằng số điểm nét thô,
+  // không phải bằng tổng luỹ tiến của cả nét ở mỗi gói.
+  const sentNumbers = inkPkts.filter((p) => p.pts).reduce((n, p) => n + p.pts.length, 0);
+  if (sentNumbers > 10) throw new Error("gói phải mang điểm MỚI THÊM, không mang lại cả nét (đã gửi " + sentNumbers + " số)");
+
+  // NHẬN: gói của người khác phải hiện thành nét ngay, và biến mất khi
+  // board:update mang nét thật về.
+  const pathsBeforePeer = document.querySelectorAll(".ink-layer path").length;
+  await act(async () => {
+    globalThis.__deliver("live:ink", { socketId: "peer1", strokeId: 1, seq: 0, color: "pen-blue", w: 8, pts: [100, 900, 140, 940] });
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  log(`nét của người khác đang vẽ: ${document.querySelectorAll(".ink-layer path").length} path (trước đó ${pathsBeforePeer})`);
+  if (document.querySelectorAll(".ink-layer path").length !== pathsBeforePeer + 1) throw new Error("gói live:ink của người khác không hiện ra");
+
+  await act(async () => {
+    globalThis.__deliver("live:ink", { socketId: "peer1", strokeId: 1, seq: 1, pts: [180, 900] });
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  const peerPath = Array.from(document.querySelectorAll(".ink-layer path")).find((p) => (p.getAttribute("d") || "").startsWith("M 100 900"));
+  if (!peerPath) throw new Error("không tìm thấy nét của người khác");
+  if (!peerPath.getAttribute("d").includes("L 180 900")) throw new Error("gói sau phải NỐI THÊM điểm vào nét đang vẽ");
+
+  // Bản lưu chính thức về, mang đúng nét đó → overlay phải bỏ ngay, không nháy.
+  await act(async () => {
+    globalThis.__deliver("live:ink", { socketId: "peer1", strokeId: 1, done: true, drawingId: 99 });
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  const emittedBeforeUpdate = globalThis.__emitted.length;
+  const boardNow = globalThis.__puts[globalThis.__puts.length - 1];
+  await act(async () => {
+    globalThis.__deliver("board:update", {
+      ...boardNow,
+      drawings: [...boardNow.drawings, { id: 99, kind: "pen", color: "pen-blue", w: 8, pts: [100, 900, 140, 940, 180, 900] }],
+      nextDrawingId: 100,
+      updatedAt: new Date(Date.now() + 20000).toISOString()
+    });
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  const dCount = Array.from(document.querySelectorAll(".ink-layer path")).filter((p) => (p.getAttribute("d") || "").startsWith("M 100 900")).length;
+  log(`sau board:update mang nét thật: ${dCount} bản của nét đó (phải là 1 — 2 là overlay chưa bỏ, 0 là nháy mất)`);
+  if (dCount !== 1) throw new Error("overlay không được đối chiếu với board:update");
+
+  const inkAfterUpdate = globalThis.__emitted.slice(emittedBeforeUpdate).filter((e) => e[0] === "live:ink");
+  log(`gói live:ink phát ra do NHẬN board:update: ${inkAfterUpdate.length} (phải là 0 — đây là vòng vọng)`);
+  if (inkAfterUpdate.length !== 0) throw new Error("nhận board:update mà vẫn phát live:ink → vòng vọng");
+
   return true;
 }

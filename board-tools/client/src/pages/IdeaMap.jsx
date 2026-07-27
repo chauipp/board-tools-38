@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { getBoard, saveBoard } from "../lib/api.js";
@@ -38,6 +38,7 @@ import { drawBoardToCanvas } from "../lib/png-export.js";
 import { PEN_DEFAULT, loadPenPrefs, savePenPrefs } from "../lib/pen.js";
 import InkLayer from "../components/InkLayer.jsx";
 import { useInk } from "../lib/useInk.js";
+import { useInkLive } from "../lib/useInkLive.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -143,6 +144,7 @@ export default function IdeaMap() {
   const [boardName, setBoardName] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
   const { sendCursor, sendSelection, sendEdgeDraft, socket } = usePresence(user, boardId);
+  const inkLive = useInkLive(socket);
   // Kích thước thẻ đo bằng ResizeObserver thay cho querySelector + offsetWidth
   // tại chỗ (xem lib/card-sizes.js). `frameCardSize` giữ nguyên tên cũ vì nó là
   // tham số `sizeOf` của rất nhiều hàm hình học.
@@ -175,7 +177,7 @@ export default function IdeaMap() {
     tool, penPrefs, boardRef, viewportRef,
     onStrokeDone: commitStroke,
     onEraseDone: commitErase,
-    live: null            // Task 8 thay bằng object từ useInkLive
+    live: inkLive
   });
 
   useEffect(() => {
@@ -243,8 +245,15 @@ export default function IdeaMap() {
     sendEdgeDraft(draft);
   }, [linkDraft, edgeDrag, sendEdgeDraft]);
 
+  // Overlay nào đã được board thật bắt kịp phải bỏ NGAY. Giữ lại nghĩa là tiếp
+  // tục vẽ một bản tạm đè lên dữ liệu thật vừa nhận — nét nhấp nháy.
+  const applyRemoteBoard = useCallback((next) => {
+    setBoard(next);
+    inkLive.reconcile(next);
+  }, [inkLive.reconcile]);
+
   const { geomOverlay, textOverlay, sendLiveText, publishGeom, finishGeom } =
-    useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, setBoard);
+    useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, applyRemoteBoard);
 
   // Toạ độ dùng để VẼ: board thật + vị trí tạm của người khác đang kéo. Mọi thứ
   // hiển thị (thẻ, khung, dây, tay cầm dây) phải đọc từ đây, còn handler tương
@@ -2441,7 +2450,7 @@ export default function IdeaMap() {
             drawings={board.drawings}
             draft={ink.draft}
             eraseIds={ink.eraseIds}
-            liveStrokes={EMPTY_MAP}
+            liveStrokes={inkLive.liveStrokes}
           />
 
           {/* Tay cầm nổi trên cùng, tách khỏi .edge-layer: đầu dây thường trùng
