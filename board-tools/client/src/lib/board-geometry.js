@@ -34,12 +34,20 @@ export function nodesInFrame(nodes, frame, sizeOf) {
     .map((n) => n.id);
 }
 
+// Nhận mảng (tiện cho test và cho những chỗ gọi một lần) HOẶC Map id→item.
+// Lớp dây gọi hàm này 2 lần cho mỗi cạnh ở mỗi lần render; với mảng đó là
+// O(cạnh × thẻ) — bảng 150 cạnh/100 thẻ tốn 30.000 phép so sánh mỗi khung hình
+// chỉ để tìm lại hai đầu dây. Truyền Map vào là O(1).
+function lookup(collection, id) {
+  return collection instanceof Map ? collection.get(id) : collection.find((it) => it.id === id);
+}
+
 export function edgeEndpoint(kind, id, nodes, groups, sizeOf) {
   if (kind === "group") {
-    const g = groups.find((gr) => gr.id === id);
+    const g = lookup(groups, id);
     return g ? { x: g.x + g.w / 2, y: g.y + g.h / 2 } : null;
   }
-  const n = nodes.find((nn) => nn.id === id);
+  const n = lookup(nodes, id);
   if (!n) return null;
   const { w, h } = sizeOf(id);
   return { x: n.x + w / 2, y: n.y + h / 2 };
@@ -66,10 +74,10 @@ export function clipToRect(cx, cy, w, h, tx, ty) {
 
 export function rectForEndpoint(kind, id, nodes, groups, sizeOf) {
   if (kind === "group") {
-    const g = groups.find((gr) => gr.id === id);
+    const g = lookup(groups, id);
     return g ? { cx: g.x + g.w / 2, cy: g.y + g.h / 2, w: g.w, h: g.h } : null;
   }
-  const n = nodes.find((nn) => nn.id === id);
+  const n = lookup(nodes, id);
   if (!n) return null;
   const { w, h } = sizeOf(id);
   return { cx: n.x + w / 2, cy: n.y + h / 2, w, h };
