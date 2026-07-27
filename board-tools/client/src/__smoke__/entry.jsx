@@ -87,5 +87,23 @@ export async function run(log) {
   const yAfter = edgeY();
   log(`thẻ 2 co từ 110px xuống 44px: đầu dây ${yBefore} → ${yAfter}`);
   if (yBefore === yAfter) throw new Error("thẻ co lại mà dây không vẽ lại — đầu dây kẹt ở số đo cũ");
+
+  // Thanh công cụ bên trái: khu 1 và khu 3 luôn hiện, khu 2 và khu 4 chỉ hiện ở
+  // mode Sửa. Đây là bất biến dễ vỡ nhất của vỏ giao diện này.
+  const railBtns = () => document.querySelectorAll(".tool-rail .tool-btn").length;
+  log(`thanh công cụ: ${railBtns()} nút ở mode Chuột`);
+  if (railBtns() !== 7) throw new Error("mode Chuột phải có 7 nút (2 mode + 5 thêm), có " + railBtns());
+  if (document.querySelector(".tool-options")) throw new Error("mode Chuột không được hiện khu 4");
+
+  // Menu THÊM và nút Nối ý tưởng phải đã rời khỏi topbar — mỗi việc một chỗ bấm.
+  const topbarText = document.querySelector(".topbar").textContent;
+  if (topbarText.includes("Nối ý tưởng")) throw new Error("nút Nối ý tưởng vẫn còn trên topbar");
+
+  const drawBtn = document.querySelectorAll(".tool-rail .tool-btn")[1];
+  await act(async () => { drawBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
+  log(`sau khi bật mode Sửa: ${railBtns()} nút, khu 4 = ${document.querySelectorAll(".tool-options .pen-swatch").length} ô màu`);
+  if (railBtns() !== 9) throw new Error("mode Sửa phải có 9 nút (2 mode + 2 tool + 5 thêm), có " + railBtns());
+  if (document.querySelectorAll(".tool-options .pen-swatch").length !== 7) throw new Error("khu 4 phải có 7 ô màu");
+  if (document.querySelectorAll(".tool-options .pen-width").length !== 3) throw new Error("khu 4 phải có 3 nút độ dày");
   return true;
 }

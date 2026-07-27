@@ -17,6 +17,8 @@ import FrameBox from "../components/FrameBox.jsx";
 import IdeaCard from "../components/IdeaCard.jsx";
 import EdgeLayer from "../components/EdgeLayer.jsx";
 import PeerLayer from "../components/PeerLayer.jsx";
+import ToolRail from "../components/ToolRail.jsx";
+import ToolOptions from "../components/ToolOptions.jsx";
 import { nodesInFrame, edgesMatch, rectForEndpoint, clipToRect, segmentIntersectsRect } from "../lib/board-geometry.js";
 import { computeSnap } from "../lib/snap.js";
 import { placeLinkedNode, parentNodeId } from "../lib/place-node.js";
@@ -33,6 +35,7 @@ import { loadCamera, saveCamera } from "../lib/camera.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 import { compressImage } from "../lib/image-utils.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
+import { PEN_DEFAULT, loadPenPrefs, savePenPrefs } from "../lib/pen.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -106,6 +109,12 @@ export default function IdeaMap() {
   // đóng. Chỉ giữ trong state — không lưu qua reload.
   const [panels, setPanels] = useState({ status: true, tag: true, palette: false });
   const [layouts, setLayouts] = useState(() => loadLayouts(window.localStorage));
+  // mode: "select" (thao tác thẻ như cũ) | "draw" (vẽ lên bảng).
+  // KHÔNG nhớ qua lần mở sau: mở board ra mà con trỏ đang là cây bút là điều
+  // gây bất ngờ vô cớ. Riêng màu bút và độ dày thì nhớ.
+  const [mode, setMode] = useState("select");
+  const [tool, setTool] = useState("pen");
+  const [penPrefs, setPenPrefs] = useState(() => loadPenPrefs(window.localStorage));
   const [paletteUI, setPaletteUI] = useState(null); // { mode: "create"|"edit", id?, hex, x, y } | null
   const [colorDrag, setColorDrag] = useState(null); // { token, x, y } | null
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -193,6 +202,8 @@ export default function IdeaMap() {
     const id = setTimeout(() => saveLayouts(window.localStorage, layouts), 200);
     return () => clearTimeout(id);
   }, [layouts]);
+
+  useEffect(() => { savePenPrefs(window.localStorage, penPrefs); }, [penPrefs]);
 
   // Camera đổi từ nhiều chỗ (lăn chuột, kéo nền, zoom vừa khung, thoát trình
   // chiếu). Lưu ở một effect theo board.view — rải saveCamera vào từng handler
@@ -507,7 +518,8 @@ export default function IdeaMap() {
         deleteSelection();
       }
       else if (key === "escape") {
-        if (colorMenu) setColorMenu(null);
+        if (mode === "draw") setMode("select");
+        else if (colorMenu) setColorMenu(null);
         else if (badgeUI) setBadgeUI(null);
         else if (edgeMenu) setEdgeMenu(null);
         else if (commentsFor) setCommentsFor(null);
@@ -527,7 +539,17 @@ export default function IdeaMap() {
         if (e.shiftKey) createSiblingNode(id);
         else createLinkedNode(id, "right");
       }
-      else if (key === "n") { if (role === "viewer") return; e.preventDefault(); handleAddClick(); }
+      else if (key === "n") {
+        if (role === "viewer") return;
+        e.preventDefault();
+        if (e.shiftKey) handleAddRootClick();
+        else handleAddClick();
+      }
+      // v chỉ đổi mode, không ghi gì — người chỉ xem vẫn dùng được.
+      else if (key === "v") { e.preventDefault(); setMode("select"); }
+      else if (key === "b") { if (role === "viewer") return; e.preventDefault(); enterMode("draw"); setTool("pen"); }
+      else if (key === "e") { if (role === "viewer") return; e.preventDefault(); enterMode("draw"); setTool("eraser"); }
+      else if (key === "l") { if (role === "viewer") return; e.preventDefault(); setLinkMode((v) => !v); setPendingSource(null); }
       // `f` (vừa khung theo lựa chọn) chỉ đổi view — người chỉ xem vẫn dùng được.
       else if (key === "f") { e.preventDefault(); zoomToSelection(); }
       else if (key === "arrowleft") { if (role === "viewer") return; e.preventDefault(); nudgeSelection(e.shiftKey ? -10 : -1, 0); }
@@ -537,7 +559,7 @@ export default function IdeaMap() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [board, past, future, selectedIds, selectedEdgeIds, linkMode, colorMenu, badgeUI, edgeMenu, commentsFor, focusId, presentIndex, role, editingId]);
+  }, [board, past, future, selectedIds, selectedEdgeIds, linkMode, colorMenu, badgeUI, edgeMenu, commentsFor, focusId, presentIndex, role, editingId, mode]);
 
   useEffect(() => {
     function down(e) {
@@ -641,20 +663,16 @@ export default function IdeaMap() {
     return null;
   }
 
-  function createNode(x, y) {
+  function createNode(x, y, extra) {
     const id = board.nextNodeId;
-    const node = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: null, x: Math.round(x), y: Math.round(y) };
+    const node = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: null, x: Math.round(x), y: Math.round(y), ...extra };
     const next = { ...board, nodes: [...board.nodes, node], nextNodeId: id + 1 };
     setEditingId(id);
     commitAndSave(next);
   }
 
-  function handleAddClick() {
-    const rect = viewportRef.current.getBoundingClientRect();
-    const cx = (rect.width / 2 - board.view.panX) / board.view.scale;
-    const cy = (rect.height / 2 - board.view.panY) / board.view.scale;
-    createNode(cx - CARD_W / 2, cy - 40);
-  }
+  function handleAddClick() { addCenteredNode(null); }
+  function handleAddRootClick() { addCenteredNode({ isRoot: true }); }
 
   function createGroup() {
     const rect = viewportRef.current.getBoundingClientRect();
@@ -664,6 +682,26 @@ export default function IdeaMap() {
     const id = board.nextGroupId;
     const group = { id, title: t`Khung mới`, x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), w, h, color: null };
     commitAndSave({ ...board, groups: [...board.groups, group], nextGroupId: id + 1 });
+  }
+
+  // Đổi sang mode Sửa thì bỏ lựa chọn và tắt nối dây: để lại một thẻ đang chọn
+  // trong lúc vẽ nghĩa là bấm Delete sẽ xoá thẻ đó, trong khi người dùng đang
+  // nghĩ mình xoá nét vẽ.
+  function enterMode(next) {
+    setMode(next);
+    if (next === "draw") {
+      setSelectedIds(new Set());
+      setSelectedEdgeIds(new Set());
+      setLinkMode(false);
+      setPendingSource(null);
+    }
+  }
+
+  function addCenteredNode(extra) {
+    const rect = viewportRef.current.getBoundingClientRect();
+    const cx = (rect.width / 2 - board.view.panX) / board.view.scale;
+    const cy = (rect.height / 2 - board.view.panY) / board.view.scale;
+    createNode(cx - CARD_W / 2, cy - 40, extra);
   }
 
   function groupSelectedCards() {
@@ -2098,21 +2136,8 @@ export default function IdeaMap() {
           <Link to="/idea-map" className="btn ghost"><Trans>← Danh sách board</Trans></Link>
         </TopMenu>
 
-        <TopMenu label={t`Thêm`}>
-          <button className="btn" data-mutating onClick={handleAddClick}><Trans>+ Ý tưởng</Trans></button>
-          <button className="btn ghost" data-mutating onClick={createGroup}><Trans>+ Khung</Trans></button>
-          <button className="btn ghost" data-mutating onClick={() => setCaptureOpen(true)}><Trans>Nhập nhanh</Trans></button>
-        </TopMenu>
-
         <button className="btn ghost icon" data-mutating onClick={undo} disabled={past.length === 0} title={t`Hoàn tác (Ctrl+Z)`}>↶</button>
         <button className="btn ghost icon" data-mutating onClick={redo} disabled={future.length === 0} title={t`Làm lại (Ctrl+Shift+Z)`}>↷</button>
-        <button
-          className={"btn ghost toggle" + (linkMode ? " active" : "")}
-          data-mutating
-          onClick={() => { setLinkMode((v) => !v); setPendingSource(null); }}
-        >
-          <Trans>Nối ý tưởng</Trans>
-        </button>
 
         <div className="search-box">
           <input
@@ -2295,6 +2320,22 @@ export default function IdeaMap() {
         onDrop={handleViewportImageDrop}
         onMouseMove={handlePresenceMouseMove}
       >
+        <ToolRail
+          mode={mode}
+          tool={tool}
+          canEdit={role !== "viewer"}
+          linkMode={linkMode}
+          onMode={enterMode}
+          onTool={(next) => { setMode("draw"); setTool(next); }}
+          onAddNode={handleAddClick}
+          onAddRootNode={handleAddRootClick}
+          onAddGroup={createGroup}
+          onToggleLink={() => { setLinkMode((v) => !v); setPendingSource(null); }}
+          onCapture={() => setCaptureOpen(true)}
+        />
+        {mode === "draw" && (
+          <ToolOptions tool={tool} prefs={penPrefs} onPrefs={setPenPrefs} />
+        )}
         <div
           className="canvas"
           ref={canvasRef}

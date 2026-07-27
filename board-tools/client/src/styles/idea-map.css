@@ -615,3 +615,39 @@
   padding: 5px 14px; font-size: 11.5px; color: var(--ink-dim); z-index: 50;
   box-shadow: var(--shadow); pointer-events: none;
 }
+
+/* Thanh công cụ bên trái NỔI trên canvas chứ không chiếm chỗ trong layout:
+   đổi mode không làm khung nhìn co giãn, nên thẻ trên bảng không xê dịch.
+   z-index 30: trên mọi thứ trong .canvas (cao nhất ở đó là 7), dưới panel neo
+   (45) và menu popover (90). */
+.tool-rail, .tool-options {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 6px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--line);
+  box-shadow: var(--shadow); z-index: 30;
+}
+.tool-rail { left: 12px; width: 46px; }
+.tool-options { left: 66px; width: 54px; }
+
+.tool-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; margin: 0 auto; padding: 0;
+  background: none; border: 1px solid transparent; border-radius: 8px;
+  color: var(--ink-dim); cursor: pointer;
+}
+.tool-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.tool-btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tool-btn:disabled { opacity: 0.35; cursor: default; }
+
+.tool-sep { height: 1px; margin: 3px 2px; background: var(--line); }
+
+/* Ô màu và nút độ dày xếp 2 cột cho khu 4 khỏi dài quá một màn hình. */
+.tool-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+.pen-swatch {
+  width: 18px; height: 18px; margin: 0 auto; padding: 0;
+  border: 2px solid transparent; border-radius: 50%; cursor: pointer;
+}
+.pen-swatch.on { border-color: var(--ink); }
+.pen-width { display: flex; align-items: center; justify-content: center; height: 22px; }
+.pen-width .bar { width: 22px; border-radius: 99px; background: currentColor; }

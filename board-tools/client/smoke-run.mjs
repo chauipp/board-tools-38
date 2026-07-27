@@ -23,7 +23,8 @@ const board = {
   statuses: [{ id: 1, name: "Mới", color: "st-idea" }, { id: 2, name: "Xong", color: "st-chosen" }],
   tags: [{ id: 1, name: "Nhãn", color: "dot-1" }],
   palette: [{ id: 1, hex: "#ff0000" }],
-  nextNodeId: 4, nextEdgeId: 3, nextGroupId: 2, nextStatusId: 3, nextTagId: 2, nextPaletteId: 2,
+  drawings: [],
+  nextNodeId: 4, nextEdgeId: 3, nextGroupId: 2, nextStatusId: 3, nextTagId: 2, nextPaletteId: 2, nextDrawingId: 1,
   view: { panX: 0, panY: 0, scale: 1 }
 };
 
