@@ -105,5 +105,39 @@ export async function run(log) {
   if (railBtns() !== 9) throw new Error("mode Sửa phải có 9 nút (2 mode + 2 tool + 5 thêm), có " + railBtns());
   if (document.querySelectorAll(".tool-options .pen-swatch").length !== 7) throw new Error("khu 4 phải có 7 ô màu");
   if (document.querySelectorAll(".tool-options .pen-width").length !== 3) throw new Error("khu 4 phải có 3 nút độ dày");
+
+  // Vẽ một nét: kéo chuột trên lớp bắt chuột phải ra path trong .ink-layer và
+  // đúng MỘT lần lưu.
+  const capture = document.querySelector(".ink-capture");
+  if (!capture) throw new Error("mode Sửa phải có lớp bắt chuột .ink-capture");
+  const putsBeforeDraw = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", 400, 400, capture);
+    mouse("mousemove", 440, 420);
+    mouse("mousemove", 480, 400);
+    mouse("mousemove", 520, 430);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", 520, 430); await new Promise((r) => setTimeout(r, 40)); });
+
+  const paths = document.querySelectorAll(".ink-layer path");
+  log(`sau khi vẽ: ${paths.length} path trong .ink-layer · PUT thêm ${globalThis.__puts.length - putsBeforeDraw} lần`);
+  if (paths.length !== 1) throw new Error("mong đợi 1 nét đã lưu, có " + paths.length);
+  if (globalThis.__puts.length - putsBeforeDraw !== 1) throw new Error("một nét phải đúng 1 lần lưu");
+  const saved = globalThis.__puts[globalThis.__puts.length - 1];
+  if (saved.drawings.length !== 1) throw new Error("payload lưu phải có 1 nét");
+  if (saved.nextDrawingId !== 2) throw new Error("nextDrawingId phải tăng lên 2");
+  if (saved.drawings[0].color !== "pen-red" || saved.drawings[0].w !== 4) throw new Error("nét phải mang màu và độ dày đang chọn");
+  if (saved.drawings[0].pts.some((v) => !Number.isInteger(v))) throw new Error("toạ độ nét phải là số nguyên");
+
+  // Bấm rồi nhả không di chuyển: một điểm, không phải nét — không được lưu.
+  const putsBeforeClick = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", 700, 700, capture);
+    mouse("mouseup", 700, 700);
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  log(`bấm-nhả không di: PUT thêm ${globalThis.__puts.length - putsBeforeClick} lần (phải là 0)`);
+  if (globalThis.__puts.length !== putsBeforeClick) throw new Error("bấm rồi nhả không được tạo nét rác");
   return true;
 }

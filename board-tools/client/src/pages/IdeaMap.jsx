@@ -36,6 +36,8 @@ import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 import { compressImage } from "../lib/image-utils.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
 import { PEN_DEFAULT, loadPenPrefs, savePenPrefs } from "../lib/pen.js";
+import InkLayer from "../components/InkLayer.jsx";
+import { useInk } from "../lib/useInk.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -169,6 +171,13 @@ export default function IdeaMap() {
   const pendingJumpRef = useRef(null);
   const prePresentViewRef = useRef(null);
 
+  const ink = useInk({
+    tool, penPrefs, boardRef, viewportRef,
+    onStrokeDone: commitStroke,
+    onEraseDone: commitErase,
+    live: null            // Task 8 thay bằng object từ useInkLive
+  });
+
   useEffect(() => {
     let cancelled = false;
     // Không reset state ở đây: IdeaMapRoute (main.jsx) truyền key={boardId} nên
@@ -190,7 +199,7 @@ export default function IdeaMap() {
         const camera = loadCamera(window.localStorage, boardId);
         // Board cũ chưa có palette → mặc định rỗng, để mọi chỗ đọc board.palette
         // không phải ?? [] khắp nơi.
-        setBoard({ palette: [], nextPaletteId: 1, ...boardData, ...(camera ? { view: camera } : {}) });
+        setBoard({ palette: [], nextPaletteId: 1, drawings: [], nextDrawingId: 1, ...boardData, ...(camera ? { view: camera } : {}) });
       })
       .catch((e) => { if (!cancelled) setLoadError(e.code || "UNKNOWN"); });
     return () => { cancelled = true; };
@@ -682,6 +691,23 @@ export default function IdeaMap() {
     const id = board.nextGroupId;
     const group = { id, title: t`Khung mới`, x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), w, h, color: null };
     commitAndSave({ ...board, groups: [...board.groups, group], nextGroupId: id + 1 });
+  }
+
+  // Trả về id đã cấp để useInk gửi kèm vào gói live `done` — người xem cần id
+  // thật mới đối chiếu được overlay với board:update sắp về.
+  function commitStroke(stroke) {
+    const id = board.nextDrawingId;
+    commitAndSave({
+      ...board,
+      drawings: [...board.drawings, { id, ...stroke }],
+      nextDrawingId: id + 1
+    });
+    return id;
+  }
+
+  function commitErase(ids) {
+    const kill = new Set(ids);
+    commitAndSave({ ...board, drawings: board.drawings.filter((d) => !kill.has(d.id)) });
   }
 
   // Đổi sang mode Sửa thì bỏ lựa chọn và tắt nối dây: để lại một thẻ đang chọn
@@ -1540,6 +1566,16 @@ export default function IdeaMap() {
     handleMarqueeMouseDown(e);
   }
 
+  // Nhường đường cho lia bảng TRƯỚC khi nghĩ tới việc vẽ — đúng thứ tự
+  // handleViewportMouseDown đang dùng, nên chuột phải và Space+trái vẫn lia
+  // bảng bình thường ở mode Sửa.
+  function handleInkCaptureMouseDown(e) {
+    if (e.button === 2) { startPan(e); return; }
+    if (e.button === 0 && spacePanRef.current) { startPan(e); return; }
+    if (e.button !== 0) return;
+    ink.handleMouseDown(e);
+  }
+
   // Mọi thao tác CHỈ đổi camera đều đi qua đây. Camera là riêng từng người: nó
   // được lưu vào localStorage bằng effect theo board.view, còn api.js thì đã cắt
   // `view` khỏi payload PUT từ lâu. Vì vậy gọi saveNow/commitAndSave ở nhóm hàm
@@ -2336,6 +2372,9 @@ export default function IdeaMap() {
         {mode === "draw" && (
           <ToolOptions tool={tool} prefs={penPrefs} onPrefs={setPenPrefs} />
         )}
+        {mode === "draw" && (
+          <div className="ink-capture" onMouseDown={handleInkCaptureMouseDown} />
+        )}
         <div
           className="canvas"
           ref={canvasRef}
@@ -2397,6 +2436,13 @@ export default function IdeaMap() {
           })}
 
           <PeerLayer socket={socket} nodeById={nodeById} groupById={groupById} cardSize={frameCardSize} spotlightPeerId={spotlightPeerId} />
+
+          <InkLayer
+            drawings={board.drawings}
+            draft={ink.draft}
+            eraseIds={ink.eraseIds}
+            liveStrokes={EMPTY_MAP}
+          />
 
           {/* Tay cầm nổi trên cùng, tách khỏi .edge-layer: đầu dây thường trùng
               đúng chỗ connector-zone của thẻ (cả hai đều ở tâm cạnh), và thẻ

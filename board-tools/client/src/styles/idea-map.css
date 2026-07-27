@@ -651,3 +651,20 @@
 .pen-swatch.on { border-color: var(--ink); }
 .pen-width { display: flex; align-items: center; justify-content: center; height: 22px; }
 .pen-width .bar { width: 22px; border-radius: 99px; background: currentColor; }
+
+/* .canvas có width/height = 0 nên lớp con phải tự khai kích thước và
+   overflow: visible — cùng khuôn với .edge-handle-layer ở trên.
+   z-index 7 là cao nhất trong .canvas: trên .marquee-box (4),
+   .edge-handle-layer (5), .connector-zone (5) và .peer-cursor (6).
+   .idea-card không đặt z-index nên vẽ theo thứ tự DOM, cũng nằm dưới. */
+.ink-layer {
+  position: absolute; left: 0; top: 0; width: 4200px; height: 3200px;
+  overflow: visible; pointer-events: none; z-index: 7;
+}
+.ink-layer path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.ink-layer path.erasing { opacity: 0.25; }
+
+/* Lớp bắt chuột phủ toàn khung nhìn, CHỈ tồn tại ở mode Sửa. Đây là lý do kéo
+   ngang qua trên một thẻ vẫn ra nét chứ không bị thẻ ăn mất chuột. z-index 8
+   nằm dưới .tool-rail (30) nên thanh công cụ vẫn bấm được. */
+.ink-capture { position: absolute; inset: 0; z-index: 8; cursor: crosshair; }
