@@ -88,6 +88,41 @@ function json(body) { return { ok: true, status: 200, json: async () => body }; 
 
 setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process.exit(2); }, 60000).unref();
 
+// Bẫy CSS-vs-attribute của hình khối (Task 5): nếu rule `.ink-layer path`
+// khai lại `fill` thì trong SVG, CSS thắng presentation attribute, nên mọi
+// hình tô đặc mà InkLayer gán `fill` tường minh trên <path> sẽ biến thành
+// chỉ-viền. Bài kiểm `getAttribute("fill")` trong entry.jsx KHÔNG bắt được
+// lỗi này: nó chạy trong jsdom, đọc lại đúng attribute InkLayer vừa gán, chứ
+// không phải kết quả cascade — mà smoke-run.mjs này cũng không nạp CSS nào
+// vào jsdom nên cascade thật cũng không có ở đó để soi. Cách duy nhất là đọc
+// trực tiếp FILE CSS thật, và việc đó chỉ làm được ở đây (chạy trong node),
+// không làm được trong entry.jsx (chạy trong bundle jsdom).
+{
+  const fs = await import("node:fs");
+  const cssPath = new URL("./src/styles/idea-map.css", import.meta.url);
+  const css = fs.readFileSync(cssPath, "utf8");
+  // Tìm rule chọn ĐÚNG ".ink-layer path" — không phải ".ink-layer path.erasing".
+  // Chỉ lấy DÒNG CUỐI trước "{": rule này có một ghi chú nhiều dòng đứng ngay
+  // trên nó, và split("}") gộp cả ghi chú vào cùng một khối với selector.
+  let body = null;
+  for (const block of css.split("}")) {
+    const open = block.indexOf("{");
+    if (open < 0) continue;
+    const lastLine = block.slice(0, open).split("\n").pop().trim();
+    const selectors = lastLine.split(",").map((s) => s.trim());
+    if (selectors.includes(".ink-layer path")) { body = block.slice(open + 1); break; }
+  }
+  if (body === null) {
+    console.log("\n❌ SMOKE FAIL: không tìm thấy rule `.ink-layer path` trong idea-map.css — rule bị đổi tên hay xoá thì bài kiểm fill-vs-CSS này vô nghĩa mà vẫn xanh");
+    process.exit(1);
+  }
+  if (/fill\s*:/.test(body)) {
+    console.log("\n❌ SMOKE FAIL: rule `.ink-layer path` trong idea-map.css khai `fill` — trong SVG, CSS thắng presentation attribute, nên dòng này sẽ làm mọi hình khối tô đặc biến thành chỉ-viền; bài kiểm getAttribute(\"fill\") trong entry.jsx chạy trong jsdom (không nạp CSS) không bắt được lỗi này");
+    process.exit(1);
+  }
+  console.log("  ·", "CSS: rule `.ink-layer path` không khai `fill` (đúng — fill do InkLayer gán tường minh trên từng <path>)");
+}
+
 const { run } = await import("./smoke-dist/smoke.js");
 try {
   await run((m) => console.log("  ·", m));
