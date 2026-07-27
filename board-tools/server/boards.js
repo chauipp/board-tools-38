@@ -96,12 +96,14 @@ router.get("/:id", async (req, res) => {
       statuses: obj.statuses,
       tags: obj.tags,
       palette: obj.palette,
+      drawings: obj.drawings,
       nextNodeId: obj.nextNodeId,
       nextEdgeId: obj.nextEdgeId,
       nextGroupId: obj.nextGroupId,
       nextStatusId: obj.nextStatusId,
       nextTagId: obj.nextTagId,
       nextPaletteId: obj.nextPaletteId,
+      nextDrawingId: obj.nextDrawingId,
       view: obj.view,
       updatedAt: obj.updatedAt
     });
