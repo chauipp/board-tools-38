@@ -102,7 +102,7 @@ export async function run(log) {
   const drawBtn = document.querySelectorAll(".tool-rail .tool-btn")[1];
   await act(async () => { drawBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
   log(`sau khi bật mode Sửa: ${railBtns()} nút, khu 4 = ${document.querySelectorAll(".tool-options .pen-swatch").length} ô màu`);
-  if (railBtns() !== 9) throw new Error("mode Sửa phải có 9 nút (2 mode + 2 tool + 5 thêm), có " + railBtns());
+  if (railBtns() !== 10) throw new Error("mode Sửa phải có 10 nút (2 mode + 3 tool + 5 thêm), có " + railBtns());
   if (document.querySelectorAll(".tool-options .pen-swatch").length !== 7) throw new Error("khu 4 phải có 7 ô màu");
   if (document.querySelectorAll(".tool-options .pen-width").length !== 3) throw new Error("khu 4 phải có 3 nút độ dày");
 
@@ -292,6 +292,26 @@ export async function run(log) {
   log(`sau nét (board:update về giữa chừng): thẻ 3 x=${node3?.x} · số nét đã lưu=${savedMid.drawings.length}`);
   if (!node3 || node3.x !== 999 || node3.y !== 999) throw new Error("PUT sau nét phải giữ thay đổi thẻ 3 của người khác đến giữa chừng, không được đè mất");
   if (savedMid.drawings.length !== boardAfterPeerStroke.drawings.length + 1) throw new Error("PUT sau nét phải có thêm đúng 1 nét mới CHỒNG lên board mới nhất, không phải đè lên board cũ");
+
+  // Tool hình khối: khu 4 phải mọc thêm bảng chọn hình và hai nút chế độ tô,
+  // và nút "tô cả hình" phải mờ đi khi đang chọn một hình MỞ.
+  const shapeBtn = document.querySelectorAll(".tool-rail .tool-btn")[4];
+  await act(async () => { shapeBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
+  const picks = document.querySelectorAll(".tool-options .shape-pick").length;
+  const fills = document.querySelectorAll(".tool-options .fill-pick").length;
+  log(`khu 4 của hình khối: ${picks} hình · ${document.querySelectorAll(".tool-options .pen-swatch").length} màu · ${document.querySelectorAll(".tool-options .pen-width").length} độ dày · ${fills} chế độ tô`);
+  if (picks !== 6) throw new Error("khu 4 phải có 6 nút chọn hình, có " + picks);
+  if (fills !== 2) throw new Error("khu 4 phải có 2 nút chế độ tô, có " + fills);
+  if (document.querySelectorAll(".tool-options .pen-swatch").length !== 7) throw new Error("khu 4 của hình khối vẫn phải có 7 ô màu");
+  if (document.querySelectorAll(".tool-options .pen-width").length !== 3) throw new Error("khu 4 của hình khối vẫn phải có 3 nút độ dày");
+
+  const fillBtns = () => document.querySelectorAll(".tool-options .fill-pick");
+  if (fillBtns()[1].disabled) throw new Error("chữ nhật là hình đóng, nút tô cả hình phải bấm được");
+  // Nút chọn hình thứ 3 là "đường thẳng" — hình mở.
+  await act(async () => { document.querySelectorAll(".tool-options .shape-pick")[2].click(); await new Promise((r) => setTimeout(r, 20)); });
+  log(`chọn đường thẳng: nút tô cả hình disabled = ${fillBtns()[1].disabled}`);
+  if (!fillBtns()[1].disabled) throw new Error("đường thẳng là hình mở, nút tô cả hình phải mờ đi");
+  if (!fillBtns()[0].className.includes("on")) throw new Error("chọn hình mở phải tự về chế độ chỉ viền");
 
   return true;
 }

@@ -630,7 +630,19 @@
   box-shadow: var(--shadow); z-index: 30;
 }
 .tool-rail { left: 12px; width: 46px; }
-.tool-options { left: 66px; width: 54px; }
+/* Khu 4 của tool hình khối cao chừng 300px (6 hình + 7 màu + 3 độ dày + 2 chế
+   độ tô). Vì khối này canh giữa dọc bằng translateY(-50%), màn hình thấp sẽ
+   tràn ra ngoài khung nhìn nếu không kẹp chiều cao lại.
+   Rộng 62px thay vì 54px: .tool-grid xếp 2 cột, mà nút chọn hình phải lớn hơn ô
+   màu 18px mới nhìn ra hình. 62 - 12 padding = 50px cho hai cột 23px + gap 4. */
+.tool-options {
+  left: 66px; width: 62px;
+  max-height: calc(100% - 24px); overflow-y: auto;
+}
+/* .tool-btn mặc định 34px — quá rộng cho một cột của .tool-grid, sẽ tràn ra
+   ngoài khối. Nút chọn hình và nút chế độ tô phải tự thu lại. */
+.shape-pick, .fill-pick { width: 23px; height: 23px; }
+.shape-pick svg, .fill-pick svg { display: block; }
 
 .tool-btn {
   display: flex; align-items: center; justify-content: center;

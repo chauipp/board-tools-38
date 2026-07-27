@@ -29,6 +29,9 @@ function IconLink() {
 function IconCapture() {
   return <svg viewBox="0 0 20 20" width="18" height="18"><path d="M4 5.5 L16 5.5 M4 10 L16 10 M4 14.5 L11 14.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>;
 }
+function IconShape() {
+  return <svg viewBox="0 0 20 20" width="18" height="18"><rect x="2.5" y="2.5" width="10" height="10" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.6" /><circle cx="13" cy="13" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>;
+}
 
 export default function ToolRail({
   mode, tool, canEdit, linkMode,
@@ -72,6 +75,13 @@ export default function ToolRail({
             disabled={!canEdit}
             onClick={() => onTool("eraser")}
           ><IconEraser /></button>
+          <button
+            type="button"
+            className={"tool-btn" + (tool === "shape" ? " on" : "")}
+            title={t`Hình khối (S)`}
+            disabled={!canEdit}
+            onClick={() => onTool("shape")}
+          ><IconShape /></button>
         </>
       )}
 
