@@ -360,5 +360,54 @@ export async function run(log) {
   log(`hình suy biến: PUT thêm ${globalThis.__puts.length - putsBeforeTiny} lần (phải là 0)`);
   if (globalThis.__puts.length !== putsBeforeTiny) throw new Error("hình quá nhỏ không được lưu");
 
+  // Cục gôm phải xoá được hình khối, và với hình TÔ ĐẶC thì quét vào GIỮA hình
+  // cũng xoá — không chỉ chạm viền.
+  const putsBeforeShapeErase = globalThis.__puts.length;
+  const pathsBeforeShapeErase = document.querySelectorAll(".ink-layer path").length;
+  await act(async () => { document.querySelectorAll(".tool-rail .tool-btn")[3].click(); await new Promise((r) => setTimeout(r, 20)); });
+  await act(async () => {
+    // (1280,360) nằm giữa hình chữ nhật tô đặc vẽ ở nhóm trước (1200,300)-(1360,420)
+    mouse("mousedown", 1280, 360, capture);
+    mouse("mousemove", 1285, 365);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  const dimmedShape = document.querySelectorAll(".ink-layer path.erasing").length;
+  log(`quét gôm vào giữa hình tô đặc: ${dimmedShape} hình đang mờ đi`);
+  if (dimmedShape < 1) throw new Error("quét vào giữa hình tô đặc phải làm nó mờ đi");
+
+  await act(async () => { mouse("mouseup", 1285, 365); await new Promise((r) => setTimeout(r, 40)); });
+  const pathsAfterShapeErase = document.querySelectorAll(".ink-layer path").length;
+  log(`sau khi gôm hình: ${pathsBeforeShapeErase} → ${pathsAfterShapeErase} path · PUT thêm ${globalThis.__puts.length - putsBeforeShapeErase} lần`);
+  if (pathsAfterShapeErase !== pathsBeforeShapeErase - 1) throw new Error("hình tô đặc phải bị xoá");
+  if (globalThis.__puts.length - putsBeforeShapeErase !== 1) throw new Error("một lần quét gôm phải đúng 1 lần lưu");
+
+  // Hình CHỈ VIỀN: quét vào giữa vùng rỗng thì KHÔNG được xoá.
+  await act(async () => { document.querySelectorAll(".tool-rail .tool-btn")[4].click(); await new Promise((r) => setTimeout(r, 20)); });
+  await act(async () => { fillBtns()[0].click(); await new Promise((r) => setTimeout(r, 20)); });
+  await act(async () => {
+    mouse("mousedown", 1200, 700, capture);
+    mouse("mousemove", 1300, 780);
+    await new Promise((r) => setTimeout(r, 60));
+    // Hộp chỉ được cập nhật ở mousemove — mouseup KHÔNG cập nhật. Nên điểm cuối
+    // phải là một mousemove, không thì hình dừng ở hộp của lần nhích trước.
+    mouse("mousemove", 1360, 820);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", 1360, 820); await new Promise((r) => setTimeout(r, 40)); });
+  const pathsWithOutlineRect = document.querySelectorAll(".ink-layer path").length;
+
+  await act(async () => { document.querySelectorAll(".tool-rail .tool-btn")[3].click(); await new Promise((r) => setTimeout(r, 20)); });
+  const putsBeforeHollow = globalThis.__puts.length;
+  await act(async () => {
+    // giữa hình chỉ viền → không chạm gì
+    mouse("mousedown", 1270, 750, capture);
+    mouse("mousemove", 1275, 755);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", 1275, 755); await new Promise((r) => setTimeout(r, 40)); });
+  log(`quét vào giữa hình CHỈ VIỀN: còn ${document.querySelectorAll(".ink-layer path").length} path · PUT thêm ${globalThis.__puts.length - putsBeforeHollow} lần (phải là 0)`);
+  if (document.querySelectorAll(".ink-layer path").length !== pathsWithOutlineRect) throw new Error("hình chỉ viền không được xoá khi quét vào vùng rỗng bên trong");
+  if (globalThis.__puts.length !== putsBeforeHollow) throw new Error("quét vùng rỗng không được tạo bước hoàn tác");
+
   return true;
 }
