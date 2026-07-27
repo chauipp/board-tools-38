@@ -10,11 +10,13 @@ import DockPanel from "../components/DockPanel.jsx";
 import LoadError from "../components/LoadError.jsx";
 import LocaleToggle from "../components/LocaleToggle.jsx";
 import InviteModal from "../components/InviteModal.jsx";
+import PresenceBar from "../components/PresenceBar.jsx";
 import BadgeEditor from "../components/BadgeEditor.jsx";
 import ColorMenu from "../components/ColorMenu.jsx";
 import FrameBox from "../components/FrameBox.jsx";
 import { nodesInFrame, edgeEndpoint, edgesMatch, rectForEndpoint, clipToRect, segmentIntersectsRect } from "../lib/board-geometry.js";
 import { computeSnap } from "../lib/snap.js";
+import { placeLinkedNode, parentNodeId } from "../lib/place-node.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout, layerLayout } from "../lib/layout.js";
 import { treeLayout, edgeKey, carryGroupMembers } from "../lib/tree-layout.js";
@@ -112,12 +114,13 @@ export default function IdeaMap() {
   const [editingGroupTitleId, setEditingGroupTitleId] = useState(null);
   const [focusId, setFocusId] = useState(null);
   const [flashId, setFlashId] = useState(null);
+  const [spotlightPeerId, setSpotlightPeerId] = useState(null);
   const [matchIdx, setMatchIdx] = useState(-1);
   const [presentIndex, setPresentIndex] = useState(null); // null = không trình chiếu
   const [initialCardParam] = useState(() => new URLSearchParams(window.location.search).get("card"));
   const [, bump] = useState(0);
 
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { boardId } = useParams();
   const [role, setRole] = useState(null);
   const [boardName, setBoardName] = useState("");
@@ -127,6 +130,7 @@ export default function IdeaMap() {
   const viewportRef = useRef(null);
   const fbDockRef = useRef(null);
   const canvasRef = useRef(null);
+  const searchInputRef = useRef(null);
   const saveTimerRef = useRef(null);
   const boardRef = useRef(null);
   // Listener "paste" gắn-một-lần (deps: []) đóng gói `role` lúc mount, khi đó
@@ -361,6 +365,14 @@ export default function IdeaMap() {
       // được (saveNow chặn) nhưng vẫn làm thẻ nhảy trên màn hình rồi biến mất
       // khi tải lại — nên chặn thẳng ở đây.
       if (e.ctrlKey || e.metaKey) {
+        // Ctrl+F chỉ dời con trỏ vào ô tìm kiếm, không ghi gì — người chỉ xem
+        // vẫn phải dùng được, nên xử lý TRƯỚC guard viewer bên dưới.
+        if (key === "f") {
+          e.preventDefault();
+          const el = searchInputRef.current;
+          if (el) { el.focus(); el.select(); }
+          return;
+        }
         if (role === "viewer") return;
         if (key === "z" && e.shiftKey) { e.preventDefault(); redo(); }
         else if (key === "z") { e.preventDefault(); undo(); }
@@ -382,6 +394,18 @@ export default function IdeaMap() {
         else if (focusId != null) setFocusId(null);
         else if (selectedIds.size > 0 || selectedEdgeIds.size > 0) { setSelectedIds(new Set()); setSelectedEdgeIds(new Set()); }
       }
+      // Enter trên thẻ đang chọn = tạo thẻ con bên phải, Shift+Enter = tạo thẻ
+      // cùng cấp bên dưới. Handler đã thoát sớm khi con trỏ nằm trong
+      // input/textarea, nên thẻ đang mở ô sửa không rơi vào đây.
+      else if (key === "enter") {
+        if (role === "viewer") return;
+        if (editingId != null || selectedIds.size !== 1) return;
+        if (colorMenu || badgeUI || edgeMenu || commentsFor) return;
+        e.preventDefault();
+        const [id] = selectedIds;
+        if (e.shiftKey) createSiblingNode(id);
+        else createLinkedNode(id, "right");
+      }
       else if (key === "n") { if (role === "viewer") return; e.preventDefault(); handleAddClick(); }
       // `f` (vừa khung theo lựa chọn) chỉ đổi view — người chỉ xem vẫn dùng được.
       else if (key === "f") { e.preventDefault(); zoomToSelection(); }
@@ -392,7 +416,7 @@ export default function IdeaMap() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [board, past, future, selectedIds, selectedEdgeIds, linkMode, colorMenu, badgeUI, edgeMenu, commentsFor, focusId, presentIndex, role]);
+  }, [board, past, future, selectedIds, selectedEdgeIds, linkMode, colorMenu, badgeUI, edgeMenu, commentsFor, focusId, presentIndex, role, editingId]);
 
   useEffect(() => {
     function down(e) {
@@ -792,78 +816,64 @@ export default function IdeaMap() {
     return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
   }
 
-  function createLinkedNode(sourceId, direction, base = board) {
+  // `sourceId` quyết định dây nối, `anchorId` quyết định chỗ đặt. Hai thứ này
+  // tách nhau vì Shift+Enter tạo thẻ CÙNG CẤP: dây đi từ thẻ cha, nhưng vị trí
+  // phải nằm ngay dưới thẻ đang chọn chứ không phải dưới cha.
+  function createLinkedNode(sourceId, direction, base = board, { anchorId = sourceId } = {}) {
     const source = base.nodes.find((n) => n.id === sourceId);
-    if (!source) return;
-    const sourceCard = canvasRef.current.querySelector(`.idea-card[data-id="${sourceId}"]`);
-    const sw = sourceCard ? sourceCard.offsetWidth : CARD_W;
-    const sh = sourceCard ? sourceCard.offsetHeight : 110;
-    const estH = 180;
-    const GAP = 70, STEP = 60, MARGIN = 24;
-    const dir = { top: [0, -1], right: [1, 0], bottom: [0, 1], left: [-1, 0] }[direction] || [1, 0];
+    const anchor = base.nodes.find((n) => n.id === anchorId);
+    if (!source || !anchor) return;
 
-    function overlapsAny(px, py) {
-      return base.nodes.some((n) => {
-        const card = canvasRef.current.querySelector(`.idea-card[data-id="${n.id}"]`);
-        const w = card ? card.offsetWidth : CARD_W, h = card ? card.offsetHeight : estH;
-        return rectsOverlap(px, py, CARD_W, estH, n.x, n.y, w, h);
-      });
-    }
+    // Thẻ chưa tồn tại nên chưa đo được: 180 là chiều cao ước lượng của một thẻ
+    // có tiêu đề + mô tả, dùng làm ô giữ chỗ khi kiểm va chạm.
+    const NEW_SIZE = { w: CARD_W, h: 180 };
+    const MARGIN = 24;
 
     const rect = viewportRef.current.getBoundingClientRect();
     const view = base.view;
-    const visX0 = (-view.panX + MARGIN) / view.scale;
-    const visY0 = (-view.panY + MARGIN) / view.scale;
-    const visX1 = (rect.width - view.panX - MARGIN) / view.scale - CARD_W;
-    const visY1 = (rect.height - view.panY - MARGIN) / view.scale - estH;
-    function inViewport(px, py) { return px >= visX0 && px <= visX1 && py >= visY0 && py <= visY1; }
+    const { x, y, panTo } = placeLinkedNode({
+      anchor: { x: anchor.x, y: anchor.y, ...frameCardSize(anchor.id) },
+      size: NEW_SIZE,
+      direction,
+      obstacles: base.nodes.map((n) => ({ x: n.x, y: n.y, ...frameCardSize(n.id) })),
+      viewport: {
+        x0: (-view.panX + MARGIN) / view.scale,
+        y0: (-view.panY + MARGIN) / view.scale,
+        x1: (rect.width - view.panX - MARGIN) / view.scale,
+        y1: (rect.height - view.panY - MARGIN) / view.scale
+      }
+    });
 
-    let x = source.x + sw / 2 - CARD_W / 2 + dir[0] * (sw / 2 + GAP + CARD_W / 2);
-    let y = source.y + sh / 2 - estH / 2 + dir[1] * (sh / 2 + GAP + estH / 2);
-    let placed = false;
-    let attempts = 0;
-    while (attempts < 10 && inViewport(x, y)) {
-      if (!overlapsAny(x, y)) { placed = true; break; }
-      x += dir[0] * STEP + (dir[0] === 0 ? STEP : 0);
-      y += dir[1] * STEP + (dir[1] === 0 ? STEP : 0);
-      attempts++;
-    }
-
-    if (!placed && visX1 >= visX0 && visY1 >= visY0) {
-      search:
-      for (let gy = visY0; gy <= visY1; gy += STEP) {
-        for (let gx = visX0; gx <= visX1; gx += STEP) {
-          if (!overlapsAny(gx, gy)) { x = gx; y = gy; placed = true; break search; }
+    // Chỗ trống rơi ra ngoài màn hình là chuyện thường khi board dày — dời
+    // camera theo thẻ mới thay vì đặt thẻ ở chỗ khác cho vừa khung nhìn.
+    const nextView = panTo
+      ? {
+          scale: view.scale,
+          panX: rect.width / 2 - panTo.x * view.scale,
+          panY: rect.height / 2 - panTo.y * view.scale
         }
-      }
-    }
-
-    let nextView = null;
-    if (!placed) {
-      x = source.x + sw / 2 - CARD_W / 2 + dir[0] * (sw / 2 + GAP + CARD_W / 2);
-      y = source.y + sh / 2 - estH / 2 + dir[1] * (sh / 2 + GAP + estH / 2);
-      attempts = 0;
-      while (overlapsAny(x, y) && attempts < 30) {
-        x += dir[0] * STEP + (dir[0] === 0 ? STEP : 0);
-        y += dir[1] * STEP + (dir[1] === 0 ? STEP : 0);
-        attempts++;
-      }
-      const cx = x + CARD_W / 2, cy = y + estH / 2;
-      nextView = { scale: view.scale, panX: rect.width / 2 - cx * view.scale, panY: rect.height / 2 - cy * view.scale };
-    }
+      : base.view;
 
     const id = base.nextNodeId;
-    const newNode = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: null, x: Math.round(x), y: Math.round(y) };
+    const newNode = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: null, x, y };
     const next = {
       ...base,
       nodes: [...base.nodes, newNode],
       edges: [...base.edges, { id: base.nextEdgeId, from: sourceId, to: id }],
       nextNodeId: id + 1,
       nextEdgeId: base.nextEdgeId + 1,
-      view: nextView || base.view
+      view: nextView
     };
     setEditingId(id);
     commitAndSave(next);
+  }
+
+  // Thẻ cùng cấp = cùng cha. Không có cha (thẻ gốc) thì không có "cùng cấp"
+  // nào để tạo — bỏ qua, chứ không âm thầm tạo thẻ rời.
+  function createSiblingNode(nodeId) {
+    const parentId = parentNodeId(board.edges, nodeId);
+    if (parentId == null) return;
+    createLinkedNode(parentId, "bottom", board, { anchorId: nodeId });
   }
 
   function handleConnectorMouseDown(e, node, direction) {
@@ -1533,6 +1543,22 @@ export default function IdeaMap() {
     setTimeout(() => setFlashId((cur) => (cur === id ? null : cur)), 1600);
   }
 
+  // Đưa con trỏ của một người khác vào giữa màn hình. Camera là dữ liệu riêng
+  // từng máy (lib/camera.js) nên chỉ setBoard, không commit vào lịch sử undo —
+  // nhìn sang chỗ đồng đội không phải là một thao tác sửa board.
+  function jumpToPeer(peer) {
+    const rect = viewportRef.current.getBoundingClientRect();
+    const { scale } = board.view;
+    setBoard({
+      ...board,
+      view: { scale, panX: rect.width / 2 - peer.x * scale, panY: rect.height / 2 - peer.y * scale }
+    });
+    // Con trỏ peer nhỏ và có thể đang đứng yên giữa một rừng thẻ — nháy sáng
+    // một nhịp để mắt bắt được sau khi màn hình vừa nhảy.
+    setSpotlightPeerId(peer.socketId);
+    setTimeout(() => setSpotlightPeerId((cur) => (cur === peer.socketId ? null : cur)), 1600);
+  }
+
   function jumpToGroup(group) {
     const rect = viewportRef.current.getBoundingClientRect();
     const pad = 60;
@@ -1909,11 +1935,10 @@ export default function IdeaMap() {
         </div>
         {/* data-mutating = móc CSS đánh dấu control ghi dữ liệu board; ở chế độ
             chỉ xem chúng bị vô hiệu hoá, phần còn lại của thanh vẫn dùng được. */}
+        {/* "Mời thành viên" đã chuyển xuống PresenceBar, nằm cạnh danh sách
+            người đang mở board — mời ai đó là việc của cùng một mạch suy nghĩ. */}
         <TopMenu label={t`Board`}>
           <Link to="/idea-map" className="btn ghost"><Trans>← Danh sách board</Trans></Link>
-          {role === "owner" && (
-            <button className="btn ghost" onClick={() => setInviteOpen(true)}><Trans>Mời thành viên</Trans></button>
-          )}
         </TopMenu>
 
         <TopMenu label={t`Thêm`}>
@@ -1934,8 +1959,9 @@ export default function IdeaMap() {
 
         <div className="search-box">
           <input
+            ref={searchInputRef}
             type="text"
-            placeholder={t`Tìm theo tên/mô tả…`}
+            placeholder={t`Tìm theo tên/mô tả… (Ctrl+F)`}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => {
@@ -1961,12 +1987,14 @@ export default function IdeaMap() {
         <TopMenu label={t`Xem`} align="right">
           <button className="btn ghost" disabled={board.groups.length === 0} onClick={startPresentation}><Trans>Trình chiếu</Trans></button>
           <button className={"btn ghost toggle" + (outlineOpen ? " active" : "")} onClick={() => setOutlineOpen((v) => !v)}><Trans>Mục lục</Trans></button>
-          <div className="menubar-sep" />
-          <div className="menubar-row">
-            <LocaleToggle />
-            <button className="btn ghost icon" onClick={toggleTheme} title={t`Đổi giao diện sáng/tối`}>◐</button>
-          </div>
         </TopMenu>
+
+        {/* Ngôn ngữ và sáng/tối là thứ đổi rồi nhìn thấy kết quả ngay, nên nằm
+            thẳng trên thanh chứ không giấu sau một lần bấm mở menu. */}
+        <div className="topbar-prefs">
+          <LocaleToggle />
+          <button className="btn ghost icon" onClick={toggleTheme} title={t`Đổi giao diện sáng/tối`}>◐</button>
+        </div>
       </div>
 
       <div className="filterbar">
@@ -1989,6 +2017,14 @@ export default function IdeaMap() {
               <button className="fb-clear" onClick={clearFilters}><Trans>Xoá lọc</Trans></button>
             </div>
           )}
+          <PresenceBar
+            user={user}
+            peers={Array.from(presencePeers.values())}
+            canInvite={role === "owner"}
+            onInvite={() => setInviteOpen(true)}
+            onJumpToPeer={jumpToPeer}
+            onLogout={logout}
+          />
         </div>
 
         {/* Khay neo: LUÔN hiện, kể cả rỗng, và chính nó là vùng thả. Panel neo chảy
@@ -2235,7 +2271,7 @@ export default function IdeaMap() {
           {Array.from(presencePeers.values()).map((peer) => (
             <div
               key={peer.socketId}
-              className="peer-cursor"
+              className={"peer-cursor" + (spotlightPeerId === peer.socketId ? " spotlight" : "")}
               style={{ left: peer.x, top: peer.y, "--peer-color": cursorColor(peer.email) }}
             >
               <svg viewBox="0 0 20 20" width="16" height="16">
