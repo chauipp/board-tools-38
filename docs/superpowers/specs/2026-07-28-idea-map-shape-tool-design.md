@@ -154,7 +154,10 @@ Hit-test phải biết mọi `kind`, mà chỗ duy nhất biết hình học c�
 `shape.js`. Nên:
 
 - `stroke.js` hạ xuống thành nơi giữ hai phép tính gốc: nó **xuất thêm**
-  `distToSegment` (đang là hàm nội bộ) và `pointInPolygon` (mới, ray casting).
+  `polylineHitBy(pts, point, limit)` — đúng vòng lặp đang nằm trong
+  `strokesHitBy`, tách ra nguyên vẹn kể cả nhánh nét một điểm — và
+  `pointInPolygon(pts, px, py)` (mới, ray casting). `distToSegment` vẫn để nội
+  bộ: tách `polylineHitBy` thì `shape.js` không phải chép lại vòng lặp đó.
 - `shape.js` import hai hàm đó. Chiều import một phía `shape.js → stroke.js`,
   không có vòng.
 - `strokesHitBy` bị xoá. Chỗ gọi là `useInk.js` hai dòng (59 và 78), đổi sang
@@ -375,3 +378,11 @@ về mặc định của riêng key đó, không làm mất `color`/`w` đang l�
 - Chữ bên trong hình khối — muốn có chữ thì dùng thẻ.
 - Hình khối bám (snap) vào thẻ hoặc vào lưới.
 - Không tách nhỏ `IdeaMap.jsx` ngoài việc để logic mới ra file riêng.
+
+---
+
+## Plan thực thi
+
+Spec này đã được chuyển thành plan thực thi từng task:
+
+**→ [`docs/superpowers/plans/2026-07-28-idea-map-shape-tool.md`](../plans/2026-07-28-idea-map-shape-tool.md)**
