@@ -56,9 +56,16 @@ sạch — **server không sửa một dòng nào**, đúng như thiết kế.
   jsdom, làm smoke test ném lỗi và trắng cả trang. Thêm nhánh ước lượng thô
   (`độ dài × cỡ × 0.55`) — hộp chỉ dùng cho vùng chạm nên sai vài phần trăm còn
   hơn làm sập trang vì không đo được một dòng chữ.
-- **Bấm ra ngoài khi đang gõ chỉ kết thúc, không mở luôn ô mới.** Excalidraw mở
-  luôn; ở đây cố ý không, vì thứ tự `blur` / `mousedown` khác nhau giữa các trình
-  duyệt và cái sai sẽ là **mất chữ vừa gõ**. Bấm phát nữa là ra ô mới.
+- **Bấm sang chỗ khác lúc đang gõ thì ô nhập nhảy theo** (chốt cái cũ, mở ngay ô
+  mới tại đó) — như Excalidraw. Ban đầu cố tình không làm vì sợ thứ tự
+  `blur` / `mousedown` khác nhau giữa các trình duyệt sẽ làm **mất chữ vừa gõ**;
+  nhưng chính `preventDefault()` thêm vào khi sửa lỗi tiêu điểm đã gỡ bỏ nỗi lo
+  đó — tiêu điểm không rời textarea nữa nên `blur` không xen vào giữa. Kèm theo
+  là `textEditRef` chống chốt hai lần: `commitText` vừa là `onBlur` vừa được gọi
+  tường minh, hai đường cùng đọc `textEdit` từ một closure.
+- **Mở một text ra rồi đóng lại mà không sửa gì thì không ghi gì.** Không có chốt
+  này thì mỗi lần bấm nhầm vào một dòng chú thích là một lượt PUT *và* một bước
+  hoàn tác rỗng — Ctrl+Z mấy lần liền mà màn hình không đổi gì.
 - **Không cần chặn phím tắt trong ô nhập** như plan lo: handler `keydown` chung
   của bảng đã bỏ qua mọi sự kiện phát từ `input` / `textarea` / `select` từ trước.
 - Smoke test phải sửa thêm một chỗ không có trong plan: nó đếm cứng "mode Sửa
