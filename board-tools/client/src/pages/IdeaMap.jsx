@@ -2887,6 +2887,7 @@ export default function IdeaMap() {
             nodeById={nodeById}
             groupById={groupById}
             cardSize={frameCardSize}
+            sketch={skin === "sketch"}
             hoveredEdgeId={hoveredEdgeId}
             selectedEdgeIds={selectedEdgeIds}
             edgeDragId={edgeDrag ? edgeDrag.edgeId : null}
@@ -2931,6 +2932,7 @@ export default function IdeaMap() {
             draft={ink.draft}
             eraseIds={ink.eraseIds}
             liveStrokes={inkLive.liveStrokes}
+            sketch={skin === "sketch"}
           />
 
           {/* Tay cầm nổi trên cùng, tách khỏi .edge-layer: đầu dây thường trùng
