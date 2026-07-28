@@ -103,9 +103,9 @@ export async function run(log) {
     throw new Error("có nút nằm ngoài .tool-group — nút đó sẽ không có khung");
   }
 
-  // Menu THÊM và nút Nối ý tưởng phải đã rời khỏi topbar — mỗi việc một chỗ bấm.
-  const topbarText = document.querySelector(".topbar").textContent;
-  if (topbarText.includes("Nối ý tưởng")) throw new Error("nút Nối ý tưởng vẫn còn trên topbar");
+  // Menu THÊM và nút Nối ý tưởng phải đã rời khỏi đảo to — mỗi việc một chỗ bấm.
+  const islandText = document.querySelector(".island.tl").textContent;
+  if (islandText.includes("Nối ý tưởng")) throw new Error("nút Nối ý tưởng vẫn còn trên đảo to");
 
   const drawBtn = document.querySelectorAll(".tool-rail .tool-btn")[1];
   await act(async () => { drawBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
@@ -935,16 +935,30 @@ export async function run(log) {
   });
 
   // Skin vẽ tay: lưới an toàn cho việc đổi <line> thành <path> ở lớp dây. Bấm
-  // đúng cái nút trong topbar thay vì tự đặt data-skin — làm vậy mới đi qua
-  // useSkin (nạp font lười, ghi localStorage) và mới bắt được lỗi ở đó.
+  // đúng cái nút thật thay vì tự đặt data-skin — làm vậy mới đi qua useSkin (nạp
+  // font lười, ghi localStorage) và mới bắt được lỗi ở đó.
+  // Nút giờ nằm trong menu ☰ của đảo to, phải mở menu ra trước; menu chỉ được
+  // render khi đang mở nên không có đường tắt nào tới thẳng cái nút.
   const edgesClean = document.querySelectorAll(".edge-layer .visible").length;
-  const skinBtn = Array.from(document.querySelectorAll(".topbar-prefs .btn"))
-    .find((b) => b.querySelector("svg"));
-  if (!skinBtn) throw new Error("không tìm thấy nút đổi skin trong topbar");
-  await act(async () => {
-    skinBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    await new Promise((r) => setTimeout(r, 80));
-  });
+  // Bấm một mục trong menu là menu tự đóng, phần tử nút rời khỏi cây. Nên phải
+  // mở lại và tìm lại nút cho MỖI lần bấm — giữ tham chiếu cũ thì cú bấm thứ hai
+  // rơi vào một node đã lìa cây và không làm gì cả, mà test vẫn chạy tiếp.
+  async function clickSkinBtn() {
+    const burger = document.querySelector(".island.tl .menubar-trigger");
+    if (!burger) throw new Error("không tìm thấy nút ☰ trên đảo to");
+    await act(async () => {
+      burger.click();
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    const btn = Array.from(document.querySelectorAll(".island.tl .menubar-dropdown .btn"))
+      .find((b) => b.querySelector("svg"));
+    if (!btn) throw new Error("không tìm thấy nút đổi skin trong menu ☰");
+    await act(async () => {
+      btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 80));
+    });
+  }
+  await clickSkinBtn();
   const skinAttr = document.documentElement.getAttribute("data-skin");
   const edgePaths = document.querySelectorAll(".edge-layer path.visible").length;
   const edgeLines = document.querySelectorAll(".edge-layer line.visible").length;
@@ -957,12 +971,58 @@ export async function run(log) {
 
   // Tắt đi phải về đúng trạng thái cũ — skin là nút bật/tắt, không phải đường
   // một chiều.
-  await act(async () => {
-    skinBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    await new Promise((r) => setTimeout(r, 50));
-  });
+  await clickSkinBtn();
   if (document.documentElement.getAttribute("data-skin") !== "clean") throw new Error("tắt skin không về clean");
   if (document.querySelectorAll(".edge-layer line.visible").length !== edgesClean) throw new Error("tắt skin mà dây không về <line>");
+
+  // HUD đảo nổi. jsdom KHÔNG tính layout, nên không kiểm được "canvas cao bằng
+  // cửa sổ" — thứ duy nhất kiểm được là cấu trúc: hai dải cũ đã rời khỏi cây, và
+  // ba đảo có mặt. Đó cũng đúng là thứ hay hỏng khi sửa lại JSX sau này.
+  if (document.querySelector(".topbar") || document.querySelector(".filterbar")) {
+    throw new Error("dải .topbar/.filterbar vẫn còn trong cây — canvas không tràn viền");
+  }
+  for (const cls of [".island.tl", ".island.tr", ".island.bl"]) {
+    if (!document.querySelector(cls)) throw new Error("thiếu đảo " + cls);
+  }
+
+  // Khay neo phải CO LẠI khi không panel nào neo. Đây là toàn bộ lý do của đợt
+  // sửa này: khay cũ giữ chỗ 38px kể cả rỗng.
+  const dockOn = document.querySelector(".island-dock").classList.contains("on");
+  const panelBtn = (title) => Array.from(document.querySelectorAll(".island.tl .island-btn"))
+    .find((b) => b.title === title);
+  for (const title of ["Trạng thái", "Nhãn"]) {
+    const btn = panelBtn(title);
+    if (!btn) throw new Error(`không tìm thấy nút bật panel "${title}" trên đảo to`);
+    await act(async () => { btn.click(); await new Promise((r) => setTimeout(r, 20)); });
+  }
+  const dockOff = document.querySelector(".island-dock").classList.contains("on");
+  log(`khay neo: có panel = ${dockOn ? "bật" : "tắt"} · tắt hết panel = ${dockOff ? "vẫn bật" : "co lại"}`);
+  if (!dockOn) throw new Error("mặc định có panel neo mà khay không mang class .on");
+  if (dockOff) throw new Error("tắt hết panel rồi mà khay neo vẫn giữ chỗ");
+
+  // Ô tìm kiếm thu gọn: đóng lại phải XOÁ từ khoá, nếu không thì còn một bộ lọc
+  // vô hình đang làm mờ thẻ mà không còn chỗ nào nhìn ra vì sao.
+  const searchBtn = Array.from(document.querySelectorAll(".island.tl .island-btn"))
+    .find((b) => b.title.includes("Tìm kiếm"));
+  if (!searchBtn) throw new Error("không tìm thấy nút tìm kiếm trên đảo to");
+  await act(async () => { searchBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
+  const searchInput = document.querySelector(".island.tl .search-box input");
+  if (!searchInput) throw new Error("bấm nút tìm kiếm mà không hiện ô nhập");
+  if (document.activeElement !== searchInput) throw new Error("mở ô tìm mà con trỏ không vào ô");
+  await act(async () => {
+    // Cùng lý do với ô nhập text ở trên: gán thẳng .value thì React không hay biết.
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")
+      .set.call(searchInput, "thẻ");
+    searchInput.dispatchEvent(new window.Event("input", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  const hadTail = !!document.querySelector(".island.tl .fb-tail");
+  await act(async () => { searchBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
+  const stillTail = !!document.querySelector(".island.tl .fb-tail");
+  log(`ô tìm: gõ vào → đuôi lọc ${hadTail ? "hiện" : "KHÔNG hiện"} · đóng ô → ${stillTail ? "VẪN còn lọc" : "hết lọc"}`);
+  if (!hadTail) throw new Error("gõ từ khoá mà đuôi lọc không hiện");
+  if (document.querySelector(".island.tl .search-box")) throw new Error("bấm lần hai mà ô tìm không đóng");
+  if (stillTail) throw new Error("đóng ô tìm mà từ khoá vẫn còn — bộ lọc vô hình");
 
   return true;
 }

@@ -73,8 +73,10 @@ function DropCount({ targetId, idsFor }) {
   return <span className="ghost-n mono">×{n}</span>;
 }
 
-// Menu thanh công cụ kiểu VSCode: một nhãn, bấm mở danh sách hành động liên
-// quan — gom 10+ nút rời rạc trên .topbar thành vài cụm, đỡ rối mắt.
+// Menu kiểu VSCode: một nhãn (chữ hoặc icon), bấm mở danh sách hành động liên
+// quan. Giờ chỉ còn đúng một cái — nút ☰ của đảo to — gom mọi việc thỉnh
+// thoảng mới làm: về danh sách board, xuất/nhập JSON, trình chiếu, mục lục,
+// ngôn ngữ, sáng/tối, skin.
 function TopMenu({ label, active, align = "left", children }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -121,6 +123,52 @@ function IconSketch() {
   );
 }
 
+// Icon của HUD đảo nổi. Cùng luật với ToolRail.jsx: vẽ path theo currentColor,
+// không dùng emoji hay ký tự — emoji không đổi màu theo nền sáng/tối, còn ký tự
+// thì đổi hình theo font nên skin vẽ tay sẽ bóp méo cả nút bấm.
+function IconMenu() {
+  return <svg viewBox="0 0 20 20" width="16" height="16"><path d="M3.5 6 L16.5 6 M3.5 10 L16.5 10 M3.5 14 L16.5 14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>;
+}
+function IconSearch() {
+  return <svg viewBox="0 0 20 20" width="16" height="16"><circle cx="8.5" cy="8.5" r="5" fill="none" stroke="currentColor" strokeWidth="1.7" /><path d="M12.3 12.3 L16.5 16.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>;
+}
+function IconStatus() {
+  return <svg viewBox="0 0 20 20" width="16" height="16"><circle cx="10" cy="10" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.6" /><circle cx="10" cy="10" r="2.8" fill="currentColor" /></svg>;
+}
+function IconTag() {
+  return <svg viewBox="0 0 20 20" width="16" height="16"><path d="M10.6 2.5 L17.5 2.5 L17.5 9.4 L9.4 17.5 L2.5 10.6 Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="14" cy="6" r="1.5" fill="currentColor" /></svg>;
+}
+function IconPalette() {
+  return (
+    <svg viewBox="0 0 20 20" width="16" height="16">
+      <rect x="2.5" y="2.5" width="6.6" height="6.6" rx="1.4" fill="currentColor" opacity="0.85" />
+      <rect x="10.9" y="2.5" width="6.6" height="6.6" rx="1.4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="2.5" y="10.9" width="6.6" height="6.6" rx="1.4" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="10.9" y="10.9" width="6.6" height="6.6" rx="1.4" fill="currentColor" opacity="0.85" />
+    </svg>
+  );
+}
+// Panel "Giao diện" chỉnh nền bảng + bộ màu, nên icon là mặt bàn vẽ có lưới chấm
+// — cố ý KHÁC ◐ của nút sáng/tối, hai thứ đó không được đọc nhầm thành một.
+function IconBoardStyle() {
+  return (
+    <svg viewBox="0 0 20 20" width="16" height="16">
+      <rect x="2.5" y="3.5" width="15" height="13" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="7" cy="8" r="1.05" fill="currentColor" /><circle cx="13" cy="8" r="1.05" fill="currentColor" />
+      <circle cx="7" cy="12.5" r="1.05" fill="currentColor" /><circle cx="13" cy="12.5" r="1.05" fill="currentColor" />
+    </svg>
+  );
+}
+function IconStar() {
+  return <svg viewBox="0 0 20 20" width="16" height="16"><path d="M10 2.6 L12.3 7.5 L17.6 8.2 L13.7 11.9 L14.7 17.2 L10 14.6 L5.3 17.2 L6.3 11.9 L2.4 8.2 L7.7 7.5 Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>;
+}
+function IconUndo() {
+  return <svg viewBox="0 0 20 20" width="16" height="16"><path d="M6.5 5 L3 8.5 L6.5 12 M3 8.5 L12 8.5 A4.5 4.5 0 0 1 12 17.5 L8 17.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+function IconRedo() {
+  return <svg viewBox="0 0 20 20" width="16" height="16"><path d="M13.5 5 L17 8.5 L13.5 12 M17 8.5 L8 8.5 A4.5 4.5 0 0 0 8 17.5 L12 17.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>;
+}
+
 export default function IdeaMap() {
   const toggleTheme = useTheme();
   const { skin, toggle: toggleSkin } = useSkin();
@@ -159,6 +207,10 @@ export default function IdeaMap() {
   // Mặc định mở Trạng thái + Nhãn để giữ đúng hành vi cũ khi mới vào; Bảng màu
   // đóng. Chỉ giữ trong state — không lưu qua reload.
   const [panels, setPanels] = useState({ status: true, tag: true, palette: false, theme: false });
+  // Ô tìm kiếm thu về một nút: 170px + nhãn là chỗ thường trực cho việc thỉnh
+  // thoảng mới dùng. Đóng lại thì XOÁ luôn từ khoá — từ khoá còn sống mà ô nhập
+  // biến mất là một bộ lọc vô hình, thẻ bị làm mờ mà không thấy vì sao.
+  const [searchOpen, setSearchOpen] = useState(false);
   const [layouts, setLayouts] = useState(() => loadLayouts(window.localStorage));
   // mode: "select" (thao tác thẻ như cũ) | "draw" (vẽ lên bảng) | "place" (đã
   // lên nòng một việc ở khu 3, đang chờ người dùng chỉ chỗ trên bảng).
@@ -288,6 +340,15 @@ export default function IdeaMap() {
     return () => clearTimeout(id);
   }, [layouts]);
 
+  // Mở ô tìm là để gõ ngay, không phải để rồi bấm thêm một cú vào nó. Đặt ở
+  // effect chứ không ở toggleSearch: Ctrl+F lúc ô đang đóng thì ô nhập chưa nằm
+  // trong cây, không có gì để focus tại thời điểm xử lý phím.
+  useEffect(() => {
+    if (!searchOpen) return;
+    const el = searchInputRef.current;
+    if (el) { el.focus(); el.select(); }
+  }, [searchOpen]);
+
   useEffect(() => { savePenPrefs(window.localStorage, penPrefs); }, [penPrefs]);
   useEffect(() => { saveCardLevel(window.localStorage, cardLevelPref); }, [cardLevelPref]);
 
@@ -372,7 +433,7 @@ export default function IdeaMap() {
 
   // Nền và bộ màu là DỮ LIỆU BOARD, nhưng thuộc tính lại đặt trên <html> — cùng
   // chỗ với data-theme (thiết lập của người dùng). Hai lý do: chip nhãn/trạng
-  // thái nằm trong .filterbar, ngoài .viewport, mà vẫn phải đổi màu theo bộ màu;
+  // thái nằm trong đảo to, ngoài .viewport, mà vẫn phải đổi màu theo bộ màu;
   // và exportPng() đang đọc getComputedStyle của documentElement, để ở đây thì
   // nó không phải đổi cách lấy giá trị.
   useEffect(() => {
@@ -625,6 +686,9 @@ export default function IdeaMap() {
         // vẫn phải dùng được, nên xử lý TRƯỚC guard viewer bên dưới.
         if (key === "f") {
           e.preventDefault();
+          setSearchOpen(true);
+          // Đang mở sẵn thì focus ngay tại đây; đang đóng thì ô nhập chưa có
+          // trong cây, useEffect theo `searchOpen` bên dưới lo nốt.
           const el = searchInputRef.current;
           if (el) { el.focus(); el.select(); }
           return;
@@ -2553,6 +2617,13 @@ export default function IdeaMap() {
     setSearch("");
   }
 
+  function toggleSearch() {
+    setSearchOpen((open) => {
+      if (open) setSearch("");
+      return !open;
+    });
+  }
+
   function openBadgeMenu(e, kind, def) {
     if (role === "viewer") return;
     e.preventDefault();
@@ -2785,105 +2856,102 @@ export default function IdeaMap() {
       {/* Khai báo màu tự tạo trong cây React: sửa hex là mọi card/dây/badge dùng
           var(--pal-N) repaint ngay, không cần đi ghi lại từng chỗ tham chiếu. */}
       <style>{paletteStyle}</style>
-      <div className="topbar">
-        <div>
-          <div className="eyebrow"><Trans>Bản đồ ý tưởng</Trans></div>
-          <h1 className="display" style={{ fontSize: 19, margin: 0 }}>{boardName}</h1>
-        </div>
-        {/* data-mutating = móc CSS đánh dấu control ghi dữ liệu board; ở chế độ
-            chỉ xem chúng bị vô hiệu hoá, phần còn lại của thanh vẫn dùng được. */}
-        {/* "Mời thành viên" đã chuyển xuống PresenceBar, nằm cạnh danh sách
-            người đang mở board — mời ai đó là việc của cùng một mạch suy nghĩ. */}
-        <TopMenu label={t`Board`}>
-          <Link to="/idea-map" className="btn ghost"><Trans>← Danh sách board</Trans></Link>
-        </TopMenu>
+      {/* ĐẢO TO — góc trên trái. Vừa là bảng điều khiển (☰, tên board, tìm kiếm,
+          bật/tắt panel) vừa là CHỖ NEO của các đảo nhỏ. Nó co lại còn bằng đúng
+          hàng nút của mình khi không panel nào neo vào, nên bảng trống thì không
+          còn một pixel nào bị chiếm — khác hẳn .topbar + .filterbar cũ ăn ~140px
+          vĩnh viễn. */}
+      <div className="island tl">
+        <div className="island-row">
+          {/* Một ☰ duy nhất thay cho ba menu Board/Dữ liệu/Xem + cụm thiết lập:
+              tất cả đều là việc thỉnh thoảng mới làm, không đáng chiếm mặt tiền.
+              data-mutating = móc CSS đánh dấu control ghi dữ liệu board; ở chế độ
+              chỉ xem chúng bị vô hiệu hoá, phần còn lại vẫn dùng được.
+              "Mời thành viên" nằm ở PresenceBar (đảo người), cạnh danh sách người
+              đang mở board — mời ai đó là việc của cùng một mạch suy nghĩ. */}
+          <TopMenu label={<IconMenu />}>
+            <Link to="/idea-map" className="btn ghost"><Trans>← Danh sách board</Trans></Link>
+            <div className="menubar-sep" />
+            <button className="btn ghost" onClick={() => { setIoMode("export"); setIoText(JSON.stringify(board, null, 2)); setIoOpen(true); }}><Trans>Xuất JSON</Trans></button>
+            <button className="btn ghost" data-mutating onClick={() => { setIoMode("import"); setIoText(""); setIoOpen(true); }}><Trans>Nhập JSON</Trans></button>
+            <div className="menubar-sep" />
+            <button className="btn ghost" disabled={board.groups.length === 0} onClick={startPresentation}><Trans>Trình chiếu</Trans></button>
+            <button className={"btn ghost toggle" + (outlineOpen ? " active" : "")} onClick={() => setOutlineOpen((v) => !v)}><Trans>Mục lục</Trans></button>
+            <div className="menubar-sep" />
+            {/* Ba thứ này là thiết lập của NGƯỜI dùng, không phải dữ liệu board,
+                nên không mang data-mutating: tài khoản chỉ xem vẫn đổi được hết. */}
+            <div className="menubar-row">
+              <LocaleToggle />
+              <button className="btn ghost icon" onClick={toggleTheme} title={t`Đổi giao diện sáng/tối`}>◐</button>
+              <button
+                className={"btn ghost icon" + (skin === "sketch" ? " toggle active" : "")}
+                onClick={toggleSkin}
+                title={t`Đổi kiểu giao diện: sạch / vẽ tay`}
+              ><IconSketch /></button>
+            </div>
+          </TopMenu>
 
-        <button className="btn ghost icon" data-mutating onClick={undo} disabled={past.length === 0} title={t`Hoàn tác (Ctrl+Z)`}>↶</button>
-        <button className="btn ghost icon" data-mutating onClick={redo} disabled={future.length === 0} title={t`Làm lại (Ctrl+Shift+Z)`}>↷</button>
+          <span className="island-name" title={boardName}>{boardName}</span>
 
-        <div className="search-box">
-          <input
-            ref={searchInputRef}
-            type="text"
-            placeholder={t`Tìm theo tên/mô tả… (Ctrl+F)`}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") { e.preventDefault(); goToMatch(e.shiftKey ? -1 : 1); }
-            }}
-          />
-          {search.trim() && (
-            <>
-              <span className="search-count mono">{matches.length ? matchIdx + 1 : 0}/{matches.length}</span>
-              <button type="button" className="btn ghost icon" title={t`Kết quả trước (Shift+Enter)`} onClick={() => goToMatch(-1)}>↑</button>
-              <button type="button" className="btn ghost icon" title={t`Kết quả sau (Enter)`} onClick={() => goToMatch(1)}>↓</button>
-            </>
-          )}
-        </div>
-        <div className="spacer" />
-        {saveError && <span style={{ fontSize: 11, color: "var(--danger)" }}><Trans>Không lưu được lên server.</Trans></span>}
-
-        <TopMenu label={t`Dữ liệu`} align="right">
-          <button className="btn ghost" onClick={() => { setIoMode("export"); setIoText(JSON.stringify(board, null, 2)); setIoOpen(true); }}><Trans>Xuất JSON</Trans></button>
-          <button className="btn ghost" data-mutating onClick={() => { setIoMode("import"); setIoText(""); setIoOpen(true); }}><Trans>Nhập JSON</Trans></button>
-        </TopMenu>
-
-        <TopMenu label={t`Xem`} align="right">
-          <button className="btn ghost" disabled={board.groups.length === 0} onClick={startPresentation}><Trans>Trình chiếu</Trans></button>
-          <button className={"btn ghost toggle" + (outlineOpen ? " active" : "")} onClick={() => setOutlineOpen((v) => !v)}><Trans>Mục lục</Trans></button>
-        </TopMenu>
-
-        {/* Ngôn ngữ và sáng/tối là thứ đổi rồi nhìn thấy kết quả ngay, nên nằm
-            thẳng trên thanh chứ không giấu sau một lần bấm mở menu. */}
-        {/* Ba nút này đều là thiết lập của NGƯỜI dùng, không phải dữ liệu board,
-            nên không mang data-mutating: tài khoản chỉ xem vẫn đổi được hết. */}
-        <div className="topbar-prefs">
-          <LocaleToggle />
-          <button className="btn ghost icon" onClick={toggleTheme} title={t`Đổi giao diện sáng/tối`}>◐</button>
           <button
-            className={"btn ghost icon" + (skin === "sketch" ? " toggle active" : "")}
-            onClick={toggleSkin}
-            title={t`Đổi kiểu giao diện: sạch / vẽ tay`}
-          ><IconSketch /></button>
-        </div>
-      </div>
-
-      <div className="filterbar">
-        <div className="fb-tabs">
-          <button className={"btn ghost toggle" + (panels.status ? " active" : "")} onClick={() => togglePanel("status")}><Trans>Trạng thái</Trans></button>
-          <button className={"btn ghost toggle" + (panels.tag ? " active" : "")} onClick={() => togglePanel("tag")}><Trans>Nhãn</Trans></button>
-          <button className={"btn ghost toggle" + (panels.palette ? " active" : "")} onClick={() => togglePanel("palette")}><Trans>Bảng màu</Trans></button>
-          <button className={"btn ghost toggle" + (panels.theme ? " active" : "")} onClick={() => togglePanel("theme")}><Trans>Giao diện</Trans></button>
-          <span
-            className={"chip-toggle" + (filterFav ? " on" : "")}
-            onClick={() => setFilterFav((v) => !v)}
-          >
-            ★ <Trans>Yêu thích</Trans>
-          </span>
-          <div className="spacer" />
-          {activeFilterCount > 0 && (
-            <div className="fb-tail">
-              <span className="fb-count mono" title={t`Số ý tưởng khớp bộ lọc`}>
-                <Trans>Khớp {matchCount}/{board.nodes.length}</Trans>
-              </span>
-              <button className="fb-clear" onClick={clearFilters}><Trans>Xoá lọc</Trans></button>
+            type="button"
+            className={"island-btn" + (searchOpen ? " on" : "")}
+            title={t`Tìm kiếm (Ctrl+F)`}
+            onClick={toggleSearch}
+          ><IconSearch /></button>
+          {searchOpen && (
+            <div className="search-box">
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder={t`Tìm theo tên/mô tả…`}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); goToMatch(e.shiftKey ? -1 : 1); }
+                  // Escape đóng ô tìm — cùng phản xạ với mọi ô nhập khác trong app.
+                  if (e.key === "Escape") { e.preventDefault(); toggleSearch(); }
+                }}
+              />
+              {search.trim() && (
+                <>
+                  <span className="search-count mono">{matches.length ? matchIdx + 1 : 0}/{matches.length}</span>
+                  <button type="button" className="island-btn" title={t`Kết quả trước (Shift+Enter)`} onClick={() => goToMatch(-1)}>↑</button>
+                  <button type="button" className="island-btn" title={t`Kết quả sau (Enter)`} onClick={() => goToMatch(1)}>↓</button>
+                </>
+              )}
             </div>
           )}
-          <PresenceBar
-            user={user}
-            socket={socket}
-            canInvite={role === "owner"}
-            onInvite={() => setInviteOpen(true)}
-            onJumpToPeer={jumpToPeer}
-            onLogout={logout}
-          />
+
+          <div className="island-sep" />
+
+          {/* Bốn nút bật panel hiện thẳng dạng icon, không giấu sau ☰: đây là cách
+              DUY NHẤT triệu hồi panel, giấu đi là tốn một cú bấm mỗi lần. Chữ đầy
+              đủ "Trạng thái / Nhãn / Bảng màu / Giao diện" mất ~280px, icon 112px. */}
+          <button type="button" className={"island-btn" + (panels.status ? " on" : "")} title={t`Trạng thái`} onClick={() => togglePanel("status")}><IconStatus /></button>
+          <button type="button" className={"island-btn" + (panels.tag ? " on" : "")} title={t`Nhãn`} onClick={() => togglePanel("tag")}><IconTag /></button>
+          <button type="button" className={"island-btn" + (panels.palette ? " on" : "")} title={t`Bảng màu`} onClick={() => togglePanel("palette")}><IconPalette /></button>
+          <button type="button" className={"island-btn" + (panels.theme ? " on" : "")} title={t`Giao diện`} onClick={() => togglePanel("theme")}><IconBoardStyle /></button>
+          <button type="button" className={"island-btn" + (filterFav ? " on" : "")} title={t`Chỉ hiện thẻ yêu thích`} onClick={() => setFilterFav((v) => !v)}><IconStar /></button>
         </div>
 
-        {/* Khay neo: LUÔN hiện, kể cả rỗng, và chính nó là vùng thả. Panel neo chảy
-            cùng một hàng, hết chỗ mới xuống dòng — bật panel thứ ba không được đẩy
-            hai panel kia thành ba tầng. Giữ chỗ cả khi rỗng để panel vừa bật lên
-            luôn có dải riêng của nó, không bị panel nổi đậu đè lên che mất. */}
-        <div className={"fb-dock" + (hasDockedPanel ? " on" : "")} ref={fbDockRef}>
+        {activeFilterCount > 0 && (
+          <div className="fb-tail">
+            <span className="fb-count mono" title={t`Số ý tưởng khớp bộ lọc`}>
+              <Trans>Khớp {matchCount}/{board.nodes.length}</Trans>
+            </span>
+            <button className="fb-clear" onClick={clearFilters}><Trans>Xoá lọc</Trans></button>
+          </div>
+        )}
+
+        {/* Khay neo nằm TRONG đảo, và co về 0 khi không panel nào neo. Panel neo
+            chảy cùng một hàng, hết chỗ mới xuống dòng — bật panel thứ ba không
+            được đẩy hai panel kia thành ba tầng.
+            Panel NỔI vẫn là con của khay này dù nhìn thì nó ở tận đâu: chúng
+            position: fixed nên không chiếm chỗ trong dòng chảy, và giữ chung một
+            cha là điều kiện để lượt kéo neo→nổi không bị React gắn lại giữa chừng
+            (xem .island-dock trong idea-map.css). */}
+        <div className={"island-dock" + (hasDockedPanel ? " on" : "")} ref={fbDockRef}>
         {panels.status && (
           <DockPanel title={t`Trạng thái`} layout={layouts.status} barRef={fbDockRef} onLayout={(l) => setLayout("status", l)}>
             <div className="fb-chips">
@@ -3029,6 +3097,36 @@ export default function IdeaMap() {
             </div>
           </DockPanel>
         )}
+        </div>
+      </div>
+
+      {/* ĐẢO NGƯỜI — góc trên phải. Ai đang mở board + nút mời. */}
+      <div className="island tr">
+        <div className="island-row">
+          <PresenceBar
+            user={user}
+            socket={socket}
+            canInvite={role === "owner"}
+            onInvite={() => setInviteOpen(true)}
+            onJumpToPeer={jumpToPeer}
+            onLogout={logout}
+          />
+        </div>
+      </div>
+
+      {/* ĐẢO HOÀN TÁC — góc dưới trái, đối xứng với nút zoom ở góc dưới phải:
+          cả hai đều là thao tác lên TRẠNG THÁI khung nhìn/bảng chứ không tạo ra
+          nội dung, nên chúng thuộc về đáy màn hình, không phải mặt tiền.
+          Chỗ này trước đây trống hoàn toàn. */}
+      <div className="island bl">
+        <div className="island-row">
+          <button type="button" className="island-btn" data-mutating onClick={undo} disabled={past.length === 0} title={t`Hoàn tác (Ctrl+Z)`}><IconUndo /></button>
+          <button type="button" className="island-btn" data-mutating onClick={redo} disabled={future.length === 0} title={t`Làm lại (Ctrl+Shift+Z)`}><IconRedo /></button>
+          {saveError && (
+            <span style={{ fontSize: 11, color: "var(--danger)", paddingRight: 4 }}>
+              <Trans>Không lưu được lên server.</Trans>
+            </span>
+          )}
         </div>
       </div>
 

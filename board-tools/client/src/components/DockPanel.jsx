@@ -2,8 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useLingui } from "@lingui/react/macro";
 import { snapPanel, clampToBounds } from "../lib/dock.js";
 
-// Panel nổi bị kẹp trong vùng vẽ, không phải trong cửa sổ — đó là thứ đảm bảo nó
-// không che một chút nào lên thanh trên hay bar.
+// Panel nổi bị kẹp trong vùng vẽ. Từ khi canvas tràn viền, vùng vẽ CHÍNH LÀ cả
+// khung nhìn — hàm này không đổi một dòng nào, nhưng ý nghĩa của nó thì đổi: nó
+// không còn đảm bảo "panel không che lên thanh nào" được nữa, vì không còn thanh
+// nào để né. Panel giờ có thể nằm đè lên đảo; kéo đi chỗ khác là xong.
 function canvasBounds() {
   const el = document.querySelector(".viewport");
   if (!el) return { x: 0, y: 0, w: window.innerWidth, h: window.innerHeight };
@@ -66,10 +68,10 @@ export default function DockPanel({ title, layout, barRef, onLayout, children })
     const startX = e.clientX, startY = e.clientY;
     let dragging = false;
 
-    // Vùng thả là khay neo — dải luôn hiện ngay dưới hàng nút, kể cả khi rỗng.
-    // Không lấy cả filterbar: hàng nút phải bấm được, và lấy cả bar thì mọi lần
-    // thả gần đó đều thành neo. Khay là đích duy nhất nên không còn nhập nhằng
-    // "đậu nổi ở đây" với "neo vào đây": ở trong khay là neo, ngoài khay là nổi.
+    // Vùng thả là khay neo trong đảo to. Không lấy cả đảo: hàng nút của đảo phải
+    // bấm được, và lấy cả đảo thì mọi lần thả gần đó đều thành neo. Khay là đích
+    // duy nhất nên không nhập nhằng "đậu nổi ở đây" với "neo vào đây": trong khay
+    // là neo, ngoài khay là nổi.
     function overBar(ev) {
       const bar = barRef.current && barRef.current.getBoundingClientRect();
       return !!bar && ev.clientX >= bar.left && ev.clientX <= bar.right
@@ -77,7 +79,15 @@ export default function DockPanel({ title, layout, barRef, onLayout, children })
     }
 
     function onMove(ev) {
-      if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > 5) dragging = true;
+      if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > 5) {
+        dragging = true;
+        // Khay neo co về 0 khi không panel nào neo, nên lúc đó nó không nhắm
+        // trúng được — bung nó ra thành ô nét đứt suốt lượt kéo. Thiếu bước này
+        // thì panel cuối cùng rời khay là không còn đường nào neo lại.
+        // Bật ở đây chứ không ở mousedown: bấm-không-kéo là lệnh xoay ngang/dọc,
+        // không nên làm khay nhấp nháy một cái.
+        if (barRef.current) barRef.current.classList.add("drag-active");
+      }
       if (!dragging) return;
       const p = snapPanel(
         ev.clientX - grabX, ev.clientY - grabY,
@@ -95,7 +105,7 @@ export default function DockPanel({ title, layout, barRef, onLayout, children })
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       setGuides([]);
-      if (barRef.current) barRef.current.classList.remove("drop-target");
+      if (barRef.current) barRef.current.classList.remove("drop-target", "drag-active");
       // Không kéo = click → xoay ngang/dọc.
       if (!dragging) return onLayout({ ...layout, vertical: !layout.vertical });
       if (overBar(ev)) onLayout({ ...layout, free: false });

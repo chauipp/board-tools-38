@@ -6,9 +6,12 @@ const PANEL = { w: 200, h: 40 };
 const VW = 1000, VH = 800;
 // Vùng vẽ: cả cửa sổ trong test cũ, để kỳ vọng cũ giữ nguyên.
 const FULL = { x: 0, y: 0, w: VW, h: VH };
-// Vùng vẽ thật: nằm dưới thanh trên + bar, cao 800 - 149.
+// Vùng vẽ của bản dựng CŨ: nằm dưới thanh trên + bar, cao 800 - 149. Giữ lại
+// làm ca kiểm cho vùng vẽ BỊ THU HẸP nói chung — từ khi canvas tràn viền thì
+// app không còn dựng ra hình này nữa, nhưng luật kẹp thì vẫn phải đúng với
+// một `bounds` bất kỳ, không riêng gì cả-khung-nhìn.
 const CANVAS = { x: 0, y: 149, w: VW, h: VH - 149 };
-// Panel neo: trải hết chiều ngang bar, nằm ngay dưới topbar.
+// Panel neo: trải hết chiều ngang bar.
 const DOCKED = { x: 16, y: 120, w: 968, h: 40 };
 
 test("giữa khung nhìn thì không hút đi đâu", () => {

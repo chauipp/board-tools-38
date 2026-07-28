@@ -1,14 +1,69 @@
-.shell { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+/* Toàn bộ chrome NỔI trên canvas chứ không xếp hàng với nó, nên .shell chỉ còn
+   là hệ quy chiếu định vị. Trước đây nó là flex column và .topbar/.filterbar là
+   hai hàng của nó — hai hàng đó ĐẨY canvas xuống ~140px vĩnh viễn, kể cả bảng
+   trống không bật lọc nào (21% chiều cao trên laptop 1366×768).
+   Xem docs/superpowers/specs/2026-07-28-idea-map-hud-islands-design.md */
+.shell { position: relative; height: 100vh; overflow: hidden; }
 
-.topbar {
-  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  padding: 10px 16px; border-bottom: 3px solid var(--ink); background: var(--surface);
-  flex-shrink: 0;
+/* Mặt kính của đảo cố ý TRÙNG với .tool-group (nền, viền, bo góc, đổ bóng): rail
+   trái và các đảo phải đọc ra là cùng một họ vật thể nổi trên bàn vẽ, không phải
+   hai thứ khác nhau tình cờ đứng cạnh nhau.
+   z-index 50: trên panel nổi (.dock-panel.free là 40) — kéo panel vào gầm đảo
+   thì nó khuất, kéo ra là thấy lại; dưới popover (90). */
+.island {
+  position: absolute; z-index: 50;
+  display: flex; flex-direction: column;
+  padding: 6px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+  max-width: calc(100vw - 24px);
 }
+/* Đảo to phải có trần bề rộng, nếu không thì .island-dock (flex-wrap) không có
+   mốc nào để xuống dòng: neo bốn panel vào là nó kéo dài tới sát đảo người ở góc
+   bên kia. 720px đủ cho hai panel một hàng và vẫn chừa >600px trên màn 1366. */
+.island.tl { left: 12px; top: 12px; max-width: min(calc(100vw - 24px), 720px); }
+.island.tr { right: 12px; top: 12px; }
+.island.bl { left: 12px; bottom: 12px; }
+.island.br { right: 12px; bottom: 12px; }
+
+.island-row { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.island-sep { width: 1px; align-self: stretch; margin: 3px; background: var(--line); flex-shrink: 0; }
+/* Tên board 13px thường, thay cho h1 Anton 19px + dòng eyebrow phía trên nó:
+   riêng hai dòng đó là ~37px chiều cao của .topbar cũ. */
+.island-name {
+  font-size: 13px; font-weight: 600; padding: 0 4px; max-width: 170px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+/* Nút trong đảo nhỏ hơn .tool-btn (34px) một bậc: rail là chỗ tay ở lì cả buổi,
+   đảo là chỗ ghé qua. */
+.island-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; flex-shrink: 0;
+  background: none; border: 1px solid transparent; border-radius: 7px;
+  font-size: 13px; line-height: 1;
+  color: var(--ink-dim); cursor: pointer;
+}
+.island-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.island-btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.island-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* Nút ☰ mang nhãn là icon chứ không phải chữ như ba menu cũ, nên phải bỏ dáng
+   nút-chữ của .menubar-trigger (padding 7×11, chữ hoa 11.5px) và mặc dáng
+   .island-btn — hàng nút của đảo phải đọc ra là một hàng đều. */
+.island .menubar-trigger {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; padding: 0; border-radius: 7px;
+  color: var(--ink-dim); flex-shrink: 0;
+}
+.island .menubar-trigger:hover, .island .menubar-trigger.open {
+  background: var(--surface-2); border-color: transparent; color: var(--ink);
+}
+
 .search-box { display: flex; align-items: center; gap: 4px; }
 .search-box input {
-  background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
-  padding: 7px 10px; font-size: 12px; width: 180px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+  padding: 5px 9px; font-size: 12px; width: 170px;
 }
 .search-count { font-size: 11px; color: var(--ink-dim); white-space: nowrap; padding: 0 2px; }
 .spacer { flex: 1 1 auto; min-width: 8px; }
@@ -32,36 +87,35 @@
 .menubar-row { display: flex; gap: 6px; }
 .menubar-row .btn { width: auto; flex: 1; text-align: center; }
 
-/* Ngôn ngữ + sáng/tối: gom sát nhau ở mép phải thanh, tách khỏi cụm menu bằng
-   một vạch mảnh để không đọc nhầm thành mục con của XEM. */
-.topbar-prefs {
-  display: flex; align-items: center; gap: 6px;
-  padding-left: 12px; border-left: 1px solid var(--line);
+/* Khay neo nằm TRONG đảo to và biến mất hẳn khi không panel nào neo — khác hẳn
+   .fb-dock cũ giữ chỗ 38px vĩnh viễn.
+   Vì nó biến mất nên PHẢI có đường quay lại: .drag-active do DockPanel bật lúc
+   một panel bắt đầu bị kéo. Không có nó thì panel nổi cuối cùng rời khay là khay
+   tàng hình, getBoundingClientRect() trả toàn số 0, overBar() không bao giờ đúng
+   và không còn cách nào neo lại. */
+.island-dock {
+  display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px 14px; min-width: 0;
 }
-
-.filterbar {
-  display: flex; flex-direction: column; align-items: stretch;
-  padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--surface);
-  flex-shrink: 0;
+/* Khay rỗng CO VỀ 0, không phải display:none. Panel NỔI vẫn là con của khay này
+   (chúng position: fixed nên không chiếm chỗ trong dòng chảy) — display:none sẽ
+   giấu luôn cả cây con và panel nổi biến mất khỏi màn hình.
+   Cho panel nổi ra ngoài khay thì tránh được chuyện đó, nhưng lúc kéo một panel
+   từ neo sang nổi, cờ `free` lật ngay ở mousemove đầu tiên → đổi cha → React gắn
+   lại phần tử mới, còn closure của lượt kéo vẫn giữ phần tử CŨ đã lìa cây, và
+   offsetWidth của nó thành 0. Giữ chung một cha là cách duy nhất lượt kéo sống. */
+.island-dock.on, .island-dock.drag-active {
+  margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line);
 }
-.filterbar .fb-tabs { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 7px 0; min-width: 0; }
-.filterbar .fb-tabs .btn { padding: 5px 11px; font-size: 10.5px; }
-.filterbar .fb-dock {
-  display: flex; align-items: flex-start; flex-wrap: wrap; column-gap: 22px;
-  min-width: 0; min-height: 38px; border-top: 1px solid var(--line);
-}
-/* Khay rỗng: viền nét đứt để đọc ra là "ném panel vào đây", không cần chữ nhắc. */
-.filterbar .fb-dock:not(.on) { border-top-style: dashed; }
-.filterbar .fb-dock.drop-target {
+/* Khay rỗng đang chờ thả: nét đứt để đọc ra là "ném panel vào đây", và phải cao
+   đủ để nhắm trúng bằng chuột — lúc co về 0 thì overBar() không thể đúng. */
+.island-dock.drag-active:not(.on) { min-height: 34px; border-top-style: dashed; }
+.island-dock.drop-target {
   background: color-mix(in srgb, var(--accent) 14%, transparent);
   box-shadow: inset 0 0 0 1px var(--accent);
   border-radius: 6px;
 }
-.filterbar .fb-panel {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 8px 0; min-width: 0;
-}
-.filterbar .fb-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.fb-panel { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
+.fb-chips { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 
 .dock-grip {
   background: none; border: none; padding: 2px 3px; cursor: grab; flex-shrink: 0;
@@ -86,20 +140,17 @@
 
 .dock-panel.vertical { flex-direction: column; align-items: flex-start; }
 .dock-panel.vertical .fb-chips { flex-direction: column; align-items: flex-start; }
-.filterbar .fb-tail { display: flex; align-items: center; gap: 10px; }
-.filterbar .fb-count { font-size: 10.5px; color: var(--ink-dim); white-space: nowrap; }
-.filterbar .fb-clear {
+.fb-tail { display: flex; align-items: center; gap: 8px; margin-top: 6px; padding: 0 2px; }
+.fb-count { font-size: 10.5px; color: var(--ink-dim); white-space: nowrap; }
+.fb-clear {
   background: none; border: 1px solid var(--line); border-radius: 999px;
   padding: 3px 11px; font-size: 10.5px; color: var(--ink-dim); cursor: pointer; white-space: nowrap;
 }
-.filterbar .fb-clear:hover { color: var(--ink); border-color: var(--ink-dim); }
+.fb-clear:hover { color: var(--ink); border-color: var(--ink-dim); }
 
-/* Ai đang mở board này, đặt ở mép phải hàng filter. margin-left:auto để nó
-   luôn dạt về cuối kể cả khi .fb-tail (đếm kết quả lọc) không hiện. */
-.presence-bar {
-  display: flex; align-items: center; gap: 8px;
-  margin-left: auto; padding-left: 12px; border-left: 1px solid var(--line);
-}
+/* Ai đang mở board này — giờ là đảo riêng ở góc trên phải, nên bỏ margin-left:auto
+   và vạch ngăn trái: nó không còn nằm cuối một hàng chung với thứ gì khác. */
+.presence-bar { display: flex; align-items: center; gap: 8px; }
 .presence-bar .btn.small { padding: 4px 10px; font-size: 10.5px; white-space: nowrap; }
 .presence-peers { display: flex; align-items: center; }
 /* Chồng mép nhau như xếp bài — 5-6 người vẫn gọn trong một hàng filter đã chật. */
@@ -214,8 +265,12 @@
   --dot-5: #6B829B; --dot-6: #7C94AC; --dot-7: #8EA5BC; --dot-8: #A2B6CA;
 }
 
+/* inset: 0 chứ không phải flex: 1 — canvas chiếm trọn cửa sổ, chrome nổi đè lên.
+   Kéo theo một chuyện có lợi ngoài dự tính: canvasBounds() trong DockPanel.jsx
+   đọc rect của chính .viewport, nên vùng kẹp panel nổi TỰ nới ra thành cả khung
+   nhìn, không phải sửa dòng nào trong dock.js. */
 .viewport {
-  position: relative; flex: 1 1 auto; overflow: hidden; cursor: default;
+  position: absolute; inset: 0; overflow: hidden; cursor: default;
   background: radial-gradient(var(--board-grid) 1px, transparent 1px) 0 0 / var(--grid-size) var(--grid-size), var(--board-bg);
 }
 .viewport.panning { cursor: grabbing; }
@@ -474,9 +529,12 @@
 
 /* Lớp bắt chuột vẽ (.ink-capture) nằm ở z-index 8; không nâng z-index ở đây
    thì mode Sửa che mất nút zoom, giống lý do .focus-banner đã có z-index 40. */
+/* Cùng mép 12px và cùng bo góc với .island: nút zoom là đảo góc dưới phải, chỉ
+   khác ở chỗ nó tự lo phần ruột nên không mượn class .island. z-index 50 để nằm
+   cùng tầng với các đảo kia. */
 .zoom-ctrl {
-  position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center; z-index: 40;
-  background: var(--surface); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); overflow: hidden;
+  position: absolute; right: 12px; bottom: 12px; display: flex; align-items: center; z-index: 50;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); overflow: hidden;
 }
 .zoom-ctrl button { background: none; border: none; color: var(--ink); width: 30px; height: 30px; cursor: pointer; font-size: 15px; }
 .zoom-ctrl button:hover { background: var(--surface-2); }
@@ -512,16 +570,19 @@
 .bulk-bar .bb-clear { background: none; border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 10.5px; color: var(--ink-dim); cursor: pointer; white-space: nowrap; }
 .bulk-bar .bb-clear:hover { color: var(--ink); border-color: var(--ink-dim); }
 
+/* Né đảo người ở góc trên phải, cùng lý do với .outline-panel. */
 .io-drawer {
-  position: absolute; right: 14px; top: 14px; width: 320px;
+  position: absolute; right: 12px; top: 58px; width: 320px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); padding: 10px; z-index: 30;
 }
 .io-drawer textarea { width: 100%; height: 160px; font-size: 10.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 6px; color: var(--ink); }
 .io-drawer .io-actions { display: flex; gap: 6px; margin-top: 6px; }
 .io-drawer .note { font-size: 10.5px; color: var(--ink-dim); margin-bottom: 6px; }
 
+/* top 58px chứ không 12px: canvas tràn viền rồi thì góc trên phải là chỗ của đảo
+   người (cao ~40px + mép 12 + hở 6). */
 .outline-panel {
-  position: absolute; top: 12px; right: 12px; bottom: 60px; width: 240px;
+  position: absolute; top: 58px; right: 12px; bottom: 60px; width: 240px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
   box-shadow: var(--shadow); z-index: 45; display: flex; flex-direction: column;
 }
@@ -548,12 +609,11 @@
 .outline-panel .op-row .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .outline-panel .op-row .op-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-@media (max-width: 760px) {
-  .filterbar .fb-tail { width: 100%; padding-bottom: 8px; }
-}
-
-@media (max-width: 640px) {
+/* Đảo to và đảo người là hai khối tuyệt đối ở hai góc trên: màn hẹp thì ô tìm
+   bung ra có thể đẩy đảo to chạm đảo người. Thu ô tìm lại trước khi tới mức đó. */
+@media (max-width: 900px) {
   .search-box input { width: 120px; }
+  .island-name { max-width: 110px; }
 }
 
 .fb-add {
@@ -767,7 +827,10 @@
   font-size: 11px; padding: 5px 10px; border-radius: 4px; cursor: pointer; flex: 0 0 auto;
 }
 
-.shell.presenting .topbar, .shell.presenting .filterbar,
+/* .island gom cả bốn đảo, nên trình chiếu không phải liệt kê từng cái — thêm đảo
+   mới về sau tự được giấu theo. .dock-panel.free phải kể riêng: panel nổi nằm
+   ngoài đảo. */
+.shell.presenting .island, .shell.presenting .dock-panel.free,
 .shell.presenting .zoom-ctrl, .shell.presenting .outline-panel,
 .shell.presenting .focus-banner, .shell.presenting .bulk-bar,
 .shell.presenting .empty-hint { display: none; }
@@ -825,11 +888,11 @@
   z-index: 5;
 }
 
-/* Chế độ chỉ xem. Khoá cả .topbar/.filterbar thì tiện nhưng giết luôn tìm kiếm,
+/* Chế độ chỉ xem. Khoá cả HUD thì tiện nhưng giết luôn tìm kiếm,
    mục lục, trình chiếu và xuất JSON/MD/PNG — toàn thao tác đọc mà người chỉ xem
    cần dùng. Nên chỉ chặn đúng những control ghi dữ liệu:
      - .canvas: mọi thao tác lên thẻ/khung/dây
-     - [data-mutating]: các nút ghi dữ liệu trong .topbar (thêm ý tưởng/khung,
+     - [data-mutating]: các nút ghi dữ liệu trên HUD (thêm ý tưởng/khung,
        nhập nhanh, hoàn tác/làm lại, nối ý tưởng, nhập JSON)
      - .fb-add / .pal-swatch: tạo & sửa trạng thái/nhãn/màu
      - .bulk-bar: gom nhóm/xếp gọn/nhân bản/xoá hàng loạt
@@ -844,11 +907,11 @@
 .shell.readonly .pal-swatch { pointer-events: none; opacity: 0.35; }
 .shell.readonly .bulk-bar { display: none; }
 
-/* Góc dưới trái: nằm trên .topbar thì che mất tiêu đề board và chính hàng nút
-   mà nó đang nói tới; đáy giữa thì đụng .present-bar/.bulk-bar, đáy phải thì
-   đụng .zoom-ctrl. */
+/* Đáy giữa đụng .present-bar/.bulk-bar, đáy phải đụng .zoom-ctrl, và từ khi có
+   HUD đảo nổi thì đáy trái là chỗ của đảo hoàn tác. Còn lại đúng một chỗ: ngay
+   TRÊN đảo hoàn tác. 58px = 12 (mép) + ~40 (cao đảo) + 6 (hở). */
 .readonly-banner {
-  position: fixed; bottom: 14px; left: 14px;
+  position: fixed; bottom: 58px; left: 12px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
   padding: 5px 14px; font-size: 11.5px; color: var(--ink-dim); z-index: 50;
   box-shadow: var(--shadow); pointer-events: none;
@@ -997,7 +1060,7 @@
 
 /* ─── Skin vẽ tay (data-skin="sketch") ────────────────────────────────────
    CHỈ áp cho vật thể trên canvas: thẻ, khung, dây, hình khối, nền sa bàn.
-   Topbar, filterbar, ToolRail, popover giữ nguyên giao diện sạch — chữ nút ở cỡ
+   HUD đảo nổi, ToolRail, popover giữ nguyên giao diện sạch — chữ nút ở cỡ
    10–11px mà viết tay thì không đọc được. Excalidraw cũng làm đúng vậy: canvas
    vẽ tay, panel bên trái là UI thường.
 
