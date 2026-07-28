@@ -23,6 +23,12 @@ hoàn tác được, xoá được bằng cục gôm.
 - **Spec 2 (sau)** — tool hình khối (8 hình), chọn / di chuyển nét đã vẽ, và
   z-order tổng (đưa lên trước / đưa ra sau cho cả nét vẽ lẫn thẻ).
 
+> Cập nhật 2026-07-28: phần "spec 2" ở trên đã được cắt làm hai khi lên thiết
+> kế thật. Tool hình khối (6 hình, không phải 8) là
+> [`2026-07-28-idea-map-shape-tool-design.md`](2026-07-28-idea-map-shape-tool-design.md);
+> chọn / di chuyển nét và z-order tổng dồn sang spec 3 vì cả hai dựa trên cùng
+> một bộ máy chọn nét. Mọi chỗ ghi "spec 2" bên dưới đọc thành "đợt sau".
+
 Spec 1 **không** dựng nút chết: nút hình khối chỉ xuất hiện ở spec 2.
 
 ## A. Thanh công cụ bên trái
@@ -126,6 +132,11 @@ không bị dính.
 `n` (thêm ý tưởng), `f` (vừa khung theo lựa chọn), `Enter` / `Shift+Enter`, mũi
 tên, `Delete`, `Ctrl+Z/Y/D/F` giữ nguyên. `b`, `e`, `l`, `v` hiện chưa dùng nên
 không đụng phím nào.
+
+> **Cập nhật 2026-07-28 — Bút đổi từ `b` sang `p`.** Tiêu chí lúc chọn `b` chỉ
+> là "phím còn trống", không phải một lập luận về ngữ nghĩa. Đổi sang `p` (Pen)
+> cho khớp tên tool là "Bút"; `b` không còn nhận. Tooltip của nút Sửa và nút Bút
+> đổi theo. `b` giờ trống.
 
 Nhánh `Esc` phải chèn **trước** các nhánh Esc đang có (đóng `colorMenu`,
 `badgeUI`, `edgeMenu`, `commentsFor`, tắt `linkMode`, bỏ `focusId`, bỏ chọn):

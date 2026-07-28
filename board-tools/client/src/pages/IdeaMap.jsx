@@ -4,7 +4,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { getBoard, saveBoard } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
-import { paletteCss, applyColorTo, removePaletteColor } from "../lib/palette.js";
+import { paletteCss, applyColorTo, applyColorToMany, removePaletteColor } from "../lib/palette.js";
 import { loadLayouts, saveLayouts } from "../lib/dock.js";
 import DockPanel from "../components/DockPanel.jsx";
 import LoadError from "../components/LoadError.jsx";
@@ -30,7 +30,7 @@ import { usePresence } from "../lib/usePresence.js";
 import { useLiveSync, applyGeomOverlay } from "../lib/useLiveSync.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { rafThrottle } from "../lib/raf-throttle.js";
-import { replaceIdSet } from "../lib/selection.js";
+import { replaceIdSet, toggleId, unionIdSet } from "../lib/selection.js";
 import { loadCamera, saveCamera } from "../lib/camera.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 import { compressImage } from "../lib/image-utils.js";
@@ -45,6 +45,17 @@ const CARD_W = 210;
 const MIN_SCALE = 0.3, MAX_SCALE = 2.4;
 const EMPTY_ARRAY = [];
 const EMPTY_MAP = new Map();
+const EMPTY_SET = new Set();
+
+// Nhãn "cú thả này ăn vào mấy đối tượng", bay theo chuột cùng badge/màu đang
+// kéo. Chỉ hiện khi từ hai trở lên: thả vào đúng một thẻ là việc thường ngày,
+// đếm ở đó chỉ thêm nhiễu. Không dịch — chỉ có dấu × và một con số.
+function DropCount({ targetId, idsFor }) {
+  if (!targetId || (targetId.kind !== "node" && targetId.kind !== "edge")) return null;
+  const n = idsFor(targetId.kind, targetId.id).length;
+  if (n < 2) return null;
+  return <span className="ghost-n mono">×{n}</span>;
+}
 
 // Menu thanh công cụ kiểu VSCode: một nhãn, bấm mở danh sách hành động liên
 // quan — gom 10+ nút rời rạc trên .topbar thành vài cụm, đỡ rối mắt.
@@ -565,8 +576,10 @@ export default function IdeaMap() {
       }
       // v chỉ đổi mode, không ghi gì — người chỉ xem vẫn dùng được.
       else if (key === "v") { e.preventDefault(); setMode("select"); }
-      else if (key === "b") { if (role === "viewer") return; e.preventDefault(); enterMode("draw"); setTool("pen"); }
+      // `p` = Pen. Trước đây là `b` (brush) — đổi vì tool này tên là Bút.
+      else if (key === "p") { if (role === "viewer") return; e.preventDefault(); enterMode("draw"); setTool("pen"); }
       else if (key === "e") { if (role === "viewer") return; e.preventDefault(); enterMode("draw"); setTool("eraser"); }
+      else if (key === "s") { if (role === "viewer") return; e.preventDefault(); enterMode("draw"); setTool("shape"); }
       else if (key === "l") { if (role === "viewer") return; e.preventDefault(); toggleLinkMode(); }
       // `f` (vừa khung theo lựa chọn) chỉ đổi view — người chỉ xem vẫn dùng được.
       else if (key === "f") { e.preventDefault(); zoomToSelection(); }
@@ -1207,17 +1220,39 @@ export default function IdeaMap() {
     window.addEventListener("mouseup", onUp);
   }
 
-  function applyChipToNode(nodeId, kind, value) {
-    const node = board.nodes.find((n) => n.id === nodeId);
-    if (!node) return;
+  // Thả badge/màu vào một thẻ ĐANG nằm trong vùng chọn nhiều thì cả vùng chọn
+  // nhận — cùng quy tắc với menu màu chuột phải (xem chỗ dựng ColorMenu bên
+  // dưới). Thả vào thẻ NGOÀI vùng chọn thì chỉ thẻ đó, và vùng chọn để nguyên:
+  // ở đó ý người dùng rõ ràng là gán cho đúng cái thẻ mình vừa nhắm.
+  function dropIdsFor(kind, id) {
+    const sel = kind === "edge" ? selectedEdgeIds : selectedIds;
+    return sel.size > 1 && sel.has(id) ? Array.from(sel) : [id];
+  }
+
+  // Viền "sắp thả vào đây" phải sáng ở MỌI thẻ sắp nhận, không chỉ thẻ dưới con
+  // trỏ: thả badge vào một thẻ trong vùng chọn nhiều thì cả vùng đổi, mà chỉ tô
+  // một thẻ thì hình ảnh nói sai việc sắp xảy ra.
+  // Chỉ nới cho cú kéo badge/màu. `dropTargetId` còn được cú kéo dây dùng, và ở
+  // đó đích thật sự chỉ có một thẻ.
+  function isNodeDropTarget(nodeId) {
+    if (!dropTargetId || dropTargetId.kind !== "node") return false;
+    if (dropTargetId.id === nodeId) return true;
+    if (!chipDrag && !colorDrag) return false;
+    return selectedIds.size > 1 && selectedIds.has(dropTargetId.id) && selectedIds.has(nodeId);
+  }
+
+  function applyChipToNodes(nodeIds, kind, value) {
+    const ids = new Set(nodeIds.filter((id) => board.nodes.some((n) => n.id === id)));
+    if (ids.size === 0) return;
     const nextVal = value === "none" ? null : Number(value);
-    if (kind === "status") {
-      if ((node.statusId ?? null) === nextVal) return;
-      commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, statusId: nextVal } : n)) });
-    } else {
-      if ((node.tagId ?? null) === nextVal) return;
-      commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, tagId: nextVal } : n)) });
-    }
+    const field = kind === "status" ? "statusId" : "tagId";
+    // Mọi thẻ đã đúng giá trị thì không ghi gì: một cú thả vô nghĩa không nên
+    // sinh ra một bước hoàn tác và một lượt PUT cả bảng.
+    if (!board.nodes.some((n) => ids.has(n.id) && (n[field] ?? null) !== nextVal)) return;
+    commitAndSave({
+      ...board,
+      nodes: board.nodes.map((n) => (ids.has(n.id) ? { ...n, [field]: nextVal } : n))
+    });
   }
 
   // Chip trạng thái/nhãn: click = lọc (đọc, người chỉ xem vẫn dùng được), nhưng
@@ -1251,7 +1286,7 @@ export default function IdeaMap() {
       const targetId = targetCardIdAt(ev.clientX, ev.clientY);
       setChipDrag(null);
       setDropTargetId(null);
-      if (targetId !== null) applyChipToNode(targetId, kind, value);
+      if (targetId !== null) applyChipToNodes(dropIdsFor("node", targetId), kind, value);
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -1388,6 +1423,19 @@ export default function IdeaMap() {
     if (e.button === 0 && spacePanRef.current) { e.stopPropagation(); startPan(e); return; }
     if (e.button !== 0) return;
     e.stopPropagation();
+
+    // Ctrl/Cmd+click = thêm/bớt thẻ khỏi vùng chọn, và KHÔNG kéo: không gắn
+    // mousemove/mouseup nào, nên nhích tay lúc bấm cũng không xê dịch thẻ.
+    // Nhận cả Cmd vì trên macOS, Ctrl+click bị hệ điều hành biến thành chuột
+    // phải (button 2) và nhánh này không bao giờ chạy tới.
+    // Đặt TRƯỚC nhánh `locked`: thẻ khoá vẫn chọn được (khoá chỉ chặn di
+    // chuyển), nên nó cũng phải cộng/trừ được khỏi vùng chọn như thẻ thường.
+    // Alt được ưu tiên hơn, vì Alt-kéo là nhân bản — một việc khác hẳn.
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+      setSelectedIds((prev) => toggleId(prev, node.id));
+      return;
+    }
+
     if (node.locked && !e.altKey) { setSelectedIds(new Set([node.id])); return; }
 
     const boardBeforeDrag = board;
@@ -1515,6 +1563,13 @@ export default function IdeaMap() {
     const startScreenX = e.clientX, startScreenY = e.clientY;
     let dragging = false;
     const THRESHOLD = 4;
+    // Giữ Ctrl/Cmd lúc bắt đầu quét = quét thêm vào lựa chọn đang có. Chốt lại
+    // mốc ngay đây, không đọc `selectedIds` trong onMove: onMove là closure của
+    // lần render này nên `selectedIds` ở đó cũng là bản cũ, nhưng đọc từ biến
+    // này thì rõ ý là "lựa chọn lúc bắt đầu quét" chứ không phải nhìn nhầm.
+    const additive = e.ctrlKey || e.metaKey;
+    const baseNodeIds = additive ? selectedIds : EMPTY_SET;
+    const baseEdgeIds = additive ? selectedEdgeIds : EMPTY_SET;
 
     function toCanvas(clientX, clientY) {
       const view = boardRef.current.view;
@@ -1554,14 +1609,17 @@ export default function IdeaMap() {
       // Giữ nguyên Set cũ khi tập chọn không đổi: một Set mới ở mỗi nhịp chuột
       // sẽ kích hoạt effect ghi URL và effect phát selection lên socket dù
       // chẳng có gì thay đổi.
-      setSelectedIds((prev) => replaceIdSet(prev, hitIdsFor(m)));
-      setSelectedEdgeIds((prev) => replaceIdSet(prev, edgeHitIdsFor(m)));
+      setSelectedIds((prev) => unionIdSet(prev, baseNodeIds, hitIdsFor(m)));
+      setSelectedEdgeIds((prev) => unionIdSet(prev, baseEdgeIds, edgeHitIdsFor(m)));
     });
     function onUp() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       onMove.cancel();
-      if (!dragging) { setSelectedIds(new Set()); setSelectedEdgeIds(new Set()); return; }
+      // Bấm-không-kéo trên nền trống = bỏ chọn hết, NHƯNG có Ctrl thì không:
+      // ở đó Ctrl nghĩa là "đang cộng dồn lựa chọn", trượt tay bấm nhầm nền
+      // trống mà mất cả vùng chọn vừa gom là hỏng việc.
+      if (!dragging) { if (!additive) { setSelectedIds(new Set()); setSelectedEdgeIds(new Set()); } return; }
       setMarquee(null);
     }
     window.addEventListener("mousemove", onMove);
@@ -2169,7 +2227,13 @@ export default function IdeaMap() {
       const target = colorTargetAt(ev.clientX, ev.clientY);
       setColorDrag(null);
       setDropTargetId(null);
-      if (target) commitAndSave(applyColorTo(board, target, token));
+      if (!target) return;
+      // Badge đi đường applyColorTo như cũ — nó không thuộc vùng chọn nào.
+      if (target.kind === "node" || target.kind === "edge") {
+        commitAndSave(applyColorToMany(board, target.kind, dropIdsFor(target.kind, target.id), token));
+      } else {
+        commitAndSave(applyColorTo(board, target, token));
+      }
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -2474,7 +2538,7 @@ export default function IdeaMap() {
                 editing={editingId === liveNode.id}
                 dimmed={(!passesFilter(liveNode) || (focusSet != null && !focusSet.has(liveNode.id))) && editingId !== liveNode.id}
                 linkPending={linkMode && pendingSource === liveNode.id}
-                dropTarget={!!dropTargetId && dropTargetId.kind === "node" && dropTargetId.id === liveNode.id}
+                dropTarget={isNodeDropTarget(liveNode.id)}
                 selected={selectedIds.has(liveNode.id)}
                 flash={flashId === liveNode.id}
                 h={cardHandlers}
@@ -2660,6 +2724,7 @@ export default function IdeaMap() {
               <>
                 <span className="dot" style={{ background: def ? colorVar(def.color) : "transparent" }}></span>
                 {def ? def.name : (chipDrag.kind === "status" ? t`Không trạng thái` : t`Không nhãn`)}
+                <DropCount targetId={dropTargetId} idsFor={dropIdsFor} />
               </>
             );
           })()}
@@ -2669,6 +2734,7 @@ export default function IdeaMap() {
       {colorDrag && (
         <div className="chip-ghost" style={{ left: colorDrag.x, top: colorDrag.y }}>
           <span className="dot" style={{ background: colorVar(colorDrag.token) }}></span>
+          <DropCount targetId={dropTargetId} idsFor={dropIdsFor} />
         </div>
       )}
 

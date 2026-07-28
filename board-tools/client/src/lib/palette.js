@@ -18,6 +18,18 @@ export function applyColorTo(board, target, color) {
   return board;
 }
 
+// Thả màu vào một thẻ/dây đang nằm trong vùng chọn nhiều thì cả vùng chọn nhận.
+// Chỉ nhận "node" và "edge": badge (status/tag) là ĐỊNH NGHĨA dùng chung cho cả
+// bảng, không phải đối tượng chọn được, nên không có "vùng chọn badge" nào để áp.
+export function applyColorToMany(board, kind, ids, color) {
+  const idSet = ids instanceof Set ? ids : new Set(ids);
+  if (idSet.size === 0) return board;
+  const set = (o) => (idSet.has(o.id) ? { ...o, color } : o);
+  if (kind === "node") return { ...board, nodes: board.nodes.map(set) };
+  if (kind === "edge") return { ...board, edges: board.edges.map(set) };
+  return board;
+}
+
 export function removePaletteColor(board, id) {
   const token = `pal-${id}`;
   // Để nguyên token đã chết thì swatch mới trùng id sẽ làm các thẻ cũ "sống lại"

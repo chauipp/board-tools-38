@@ -1,7 +1,7 @@
 // game-tools/client/src/lib/stroke.test.js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { simplifyStroke, strokePath, strokesHitBy } from "./stroke.js";
+import { simplifyStroke, strokePath, polylineHitBy, pointInPolygon } from "./stroke.js";
 
 test("simplifyStroke: bỏ điểm giữa thẳng hàng, giữ hai đầu", () => {
   assert.deepEqual(simplifyStroke([0, 0, 10, 0, 20, 0, 30, 0, 40, 0]), [0, 0, 40, 0]);
@@ -49,33 +49,38 @@ test("strokePath: nét rỗng trả chuỗi rỗng", () => {
   assert.equal(strokePath([]), "");
 });
 
-test("strokesHitBy: ngưỡng chạm là w/2 + radius", () => {
-  const drawings = [{ id: 1, kind: "pen", color: "pen-red", w: 4, pts: [0, 0, 100, 0] }];
-  // ngưỡng = 4/2 + 8 = 10
-  assert.deepEqual(strokesHitBy(drawings, { x: 50, y: 9 }, 8), [1]);
-  assert.deepEqual(strokesHitBy(drawings, { x: 50, y: 11 }, 8), []);
+test("polylineHitBy: đo tới ĐOẠN THẲNG chứ không tới đỉnh", () => {
+  // giữa một nét dài thì mọi đỉnh đều xa, chỉ khoảng cách tới đoạn mới đúng
+  assert.equal(polylineHitBy([0, 0, 100, 0], { x: 50, y: 2 }, 3), true);
+  assert.equal(polylineHitBy([0, 0, 100, 0], { x: 50, y: 4 }, 3), false);
 });
 
-// Đo tới ĐOẠN THẲNG, không phải tới đỉnh: giữa một nét dài thì mọi đỉnh đều xa.
-test("strokesHitBy: đo khoảng cách tới đoạn thẳng chứ không tới đỉnh", () => {
-  const drawings = [{ id: 1, w: 2, pts: [0, 0, 100, 0] }];
-  assert.deepEqual(strokesHitBy(drawings, { x: 50, y: 0 }, 3), [1]);
+test("polylineHitBy: đường một điểm đo bằng khoảng cách tới điểm đó", () => {
+  assert.equal(polylineHitBy([10, 10], { x: 12, y: 10 }, 10), true);
+  assert.equal(polylineHitBy([10, 10], { x: 30, y: 10 }, 10), false);
 });
 
-test("strokesHitBy: trả nhiều id khi một điểm chạm nhiều nét", () => {
-  const drawings = [
-    { id: 1, w: 2, pts: [0, 0, 100, 0] },
-    { id: 2, w: 2, pts: [50, -20, 50, 20] },
-    { id: 3, w: 2, pts: [0, 500, 100, 500] }
-  ];
-  assert.deepEqual(strokesHitBy(drawings, { x: 50, y: 0 }, 3), [1, 2]);
+test("polylineHitBy: mảng rỗng không chạm gì", () => {
+  assert.equal(polylineHitBy([], { x: 0, y: 0 }, 100), false);
 });
 
-test("strokesHitBy: nét một điểm vẫn hit-test được", () => {
-  assert.deepEqual(strokesHitBy([{ id: 1, w: 4, pts: [10, 10] }], { x: 12, y: 10 }, 8), [1]);
+test("pointInPolygon: phân biệt trong và ngoài", () => {
+  const square = [0, 0, 100, 0, 100, 100, 0, 100, 0, 0];
+  assert.equal(pointInPolygon(square, 50, 50), true);
+  assert.equal(pointInPolygon(square, 150, 50), false);
+  assert.equal(pointInPolygon(square, -1, 50), false);
+  assert.equal(pointInPolygon(square, 50, 150), false);
 });
 
-test("strokesHitBy: danh sách rỗng hoặc thiếu pts trả mảng rỗng", () => {
-  assert.deepEqual(strokesHitBy([], { x: 0, y: 0 }, 8), []);
-  assert.deepEqual(strokesHitBy([{ id: 1, w: 4 }], { x: 0, y: 0 }, 8), []);
+// Đường bao hình đóng do shapeOutline sinh ra LUÔN lặp lại điểm đầu ở cuối, nên
+// hàm này phải chịu được cạnh có độ dài 0.
+test("pointInPolygon: chịu được điểm đầu lặp lại ở cuối", () => {
+  const tri = [0, 0, 100, 0, 50, 80, 0, 0];
+  assert.equal(pointInPolygon(tri, 50, 20), true);
+  assert.equal(pointInPolygon(tri, 5, 70), false);
+});
+
+test("pointInPolygon: đa giác dưới 3 đỉnh luôn là ngoài", () => {
+  assert.equal(pointInPolygon([0, 0, 10, 10], 5, 5), false);
+  assert.equal(pointInPolygon([], 0, 0), false);
 });

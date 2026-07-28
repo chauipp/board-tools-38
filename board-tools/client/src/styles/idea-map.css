@@ -154,6 +154,11 @@
   transform: translate(-50%, -140%);
 }
 .chip-ghost .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; filter: brightness(1.4); }
+/* Nền đảo ngược so với nhãn bay (nhãn dùng --ink làm nền) nên con số nổi lên. */
+.chip-ghost .ghost-n {
+  padding: 0 5px; border-radius: 999px; font-size: 10px;
+  background: var(--bg); color: var(--ink);
+}
 
 .viewport {
   position: relative; flex: 1 1 auto; overflow: hidden; cursor: default;
@@ -624,14 +629,41 @@
    (45) và menu popover (90). */
 .tool-rail, .tool-options {
   position: absolute; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column;
+  z-index: 30;
+}
+/* Bao ngoài của thanh chỉ làm việc xếp chỗ; mặt kính (nền, viền, đổ bóng) nằm ở
+   từng .tool-group, nên mỗi nhóm chức năng là một khung rời.
+   pointer-events: none để khoảng hở 10px giữa hai khung không nuốt cú bấm xuống
+   canvas: bao ngoài trải suốt cả cột, kể cả những chỗ trong suốt đó. Nút bên
+   trong bật lại pointer-events nên vẫn bấm được, và sự kiện của chúng vẫn nổi
+   bọt qua bao ngoài tới onMouseDown khai ở ToolRail.jsx. */
+.tool-rail { left: 12px; width: 46px; gap: 10px; pointer-events: none; }
+.tool-group { pointer-events: auto; }
+.tool-group, .tool-options {
   display: flex; flex-direction: column; gap: 4px;
   padding: 6px; border-radius: 12px;
   background: var(--surface); border: 1px solid var(--line);
-  box-shadow: var(--shadow); z-index: 30;
+  box-shadow: var(--shadow);
 }
-.tool-rail { left: 12px; width: 46px; }
-.tool-options { left: 66px; width: 54px; }
-
+/* Khu 4 của tool hình khối cao chừng 300px (6 hình + 7 màu + 3 độ dày + 2 chế
+   độ tô). Vì khối này canh giữa dọc bằng translateY(-50%), màn hình thấp sẽ
+   tràn ra ngoài khung nhìn nếu không kẹp chiều cao lại.
+   Rộng 62px thay vì 54px: .tool-grid xếp 2 cột, mà nút chọn hình phải lớn hơn ô
+   màu 18px mới nhìn ra hình.
+   Phép tính bề rộng — `* { box-sizing: border-box }` khai ở src/index.css nên
+   62px là bề rộng NGOÀI, đã gồm cả padding và border:
+     62 - 6*2 padding - 1*2 border = 48px vùng nội dung
+     48 = 22 + 4 gap + 22  →  hai cột của .tool-grid mỗi cột đúng 22px
+   Vậy .shape-pick/.fill-pick phải là 22px. Trước đây chúng là 23px (bỏ sót 2px
+   border) nên hàng rộng 50px > 48px; cộng với overflow-y: auto thì trục x tự
+   thành `auto` theo spec, sinh ra thanh cuộn ngang / cột phải bị cắt.
+   overflow-x: hidden khai thẳng để dù số có lệch lại thì cũng không mọc thanh
+   cuộn ngang trong một khối bé thế này. */
+.tool-options {
+  left: 66px; width: 62px;
+  max-height: calc(100% - 24px); overflow-y: auto; overflow-x: hidden;
+}
 .tool-btn {
   display: flex; align-items: center; justify-content: center;
   width: 34px; height: 34px; margin: 0 auto; padding: 0;
@@ -641,6 +673,17 @@
 .tool-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
 .tool-btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .tool-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* .tool-btn mặc định 34px — quá rộng cho một cột của .tool-grid, sẽ tràn ra
+   ngoài khối. Nút chọn hình và nút chế độ tô phải tự thu lại đúng bề rộng một
+   cột (22px, xem phép tính ở .tool-options).
+   PHẢI đứng SAU khối .tool-btn: cả hai đều là selector một class nên độ đặc hiệu
+   bằng nhau, và khi đó thứ tự nguồn quyết định. Đặt trước thì `width: 34px` của
+   .tool-btn đè mất, track của .tool-grid bị min-content đội lên 34px, và cột
+   phải của bảng chọn hình bị cắt khỏi panel — lỗi này smoke test không thấy
+   được vì jsdom không tính cascade lẫn layout. */
+.shape-pick, .fill-pick { width: 22px; height: 22px; }
+.shape-pick svg, .fill-pick svg { display: block; }
 
 .tool-sep { height: 1px; margin: 3px 2px; background: var(--line); }
 
@@ -663,7 +706,10 @@
   position: absolute; left: 0; top: 0; width: 4200px; height: 3200px;
   overflow: visible; pointer-events: none; z-index: 7;
 }
-.ink-layer path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+/* KHÔNG khai `fill` ở đây: trong SVG, CSS thắng presentation attribute, nên một
+   dòng `fill: none` sẽ làm mọi hình khối tô đặc biến thành hình chỉ có viền.
+   `fill` do InkLayer truyền tường minh trên từng <path>. */
+.ink-layer path { stroke-linecap: round; stroke-linejoin: round; }
 .ink-layer path.erasing { opacity: 0.25; }
 
 /* Lớp bắt chuột phủ toàn khung nhìn, CHỈ tồn tại ở mode Sửa. Đây là lý do kéo
