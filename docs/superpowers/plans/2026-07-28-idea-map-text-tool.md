@@ -24,7 +24,7 @@
 
 ---
 
-- [ ] ## Task 1: `lib/text-el.js` — cỡ chữ, tách dòng, đo hộp, hit-test
+- [x] ## Task 1: `lib/text-el.js` — cỡ chữ, tách dòng, đo hộp, hit-test
 
 **Files:**
 - Create: `game-tools/client/src/lib/text-el.js`
@@ -113,7 +113,7 @@ git commit -m "feat: lib/text-el.js — cỡ chữ, tách dòng, đo hộp, hit-
 
 ---
 
-- [ ] ## Task 2: Cục gôm ăn được text
+- [x] ## Task 2: Cục gôm ăn được text
 
 **Files:**
 - Modify: `game-tools/client/src/lib/shape.js`
@@ -157,7 +157,7 @@ git commit -m "feat: cục gôm quét được text"
 
 ---
 
-- [ ] ## Task 3: Cỡ chữ vào `penPrefs`
+- [x] ## Task 3: Cỡ chữ vào `penPrefs`
 
 **Files:**
 - Modify: `game-tools/client/src/lib/pen.js`
@@ -184,7 +184,7 @@ git commit -m "feat: cỡ chữ lưu cùng lựa chọn bút"
 
 ---
 
-- [ ] ## Task 4: Nút Text ở khu 2, cỡ + màu ở khu 4
+- [x] ## Task 4: Nút Text ở khu 2, cỡ + màu ở khu 4
 
 **Files:**
 - Modify: `game-tools/client/src/components/ToolRail.jsx`
@@ -223,7 +223,7 @@ git commit -m "feat: nút Text ở khu 2, chọn cỡ và màu ở khu 4"
 
 ---
 
-- [ ] ## Task 5: Tạo và sửa text tại chỗ
+- [x] ## Task 5: Tạo và sửa text tại chỗ
 
 **Files:**
 - Modify: `game-tools/client/src/pages/IdeaMap.jsx`
@@ -304,7 +304,7 @@ git commit -m "feat: gõ text thẳng lên bảng, bấm đúp để sửa"
 
 ---
 
-- [ ] ## Task 6: Kéo di chuyển text
+- [x] ## Task 6: Kéo di chuyển text
 
 **Files:**
 - Modify: `game-tools/client/src/pages/IdeaMap.jsx`
@@ -336,7 +336,7 @@ git commit -m "feat: kéo di chuyển text trên bảng"
 
 ---
 
-- [ ] ## Task 7: Smoke test, i18n, summary
+- [x] ## Task 7: Smoke test, i18n, summary
 
 **Files:**
 - Modify: `game-tools/client/src/__smoke__/entry.jsx`
@@ -383,4 +383,4 @@ khuôn: đầu file trỏ spec + plan, cuối plan trỏ lại summary.
 
 ## Kết quả
 
-*(Điền khi cả bảy task đã tick)*
+**→ [`docs/superpowers/summaries/2026-07-28-idea-map-text-tool-summary.md`](../summaries/2026-07-28-idea-map-text-tool-summary.md)**
