@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { getBoard, saveBoard } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
+import { useSkin } from "../lib/useSkin.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
 import { paletteCss, applyColorTo, applyColorToMany, removePaletteColor } from "../lib/palette.js";
 import { BOARD_BGS, COLOR_PACKS, isBoardBg, isColorPack } from "../lib/board-theme.js";
@@ -103,8 +104,20 @@ function computeZoom(currentBoard, rect, screenX, screenY, factor) {
   return { ...currentBoard, view: { panX: mx - newScale * cx, panY: my - newScale * cy, scale: newScale } };
 }
 
+// Nét bút lượn — cùng ngôn ngữ icon với ToolRail.jsx: inline SVG theo
+// currentColor nên tự đúng ở nền sáng và nền tối.
+function IconSketch() {
+  return (
+    <svg viewBox="0 0 20 20" width="14" height="14" style={{ display: "block" }}>
+      <path d="M3 13.5 C6 13.5 5 7 8.5 7 C12 7 10.5 13.5 14 13.5 C15.8 13.5 16.6 12.3 17 11"
+            fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export default function IdeaMap() {
   const toggleTheme = useTheme();
+  const { skin, toggle: toggleSkin } = useSkin();
   const { t } = useLingui();
   // Tên preset nằm ở đây chứ không ở lib/board-theme.js: module đó là dữ liệu
   // thuần, test bằng node:test, không kéo được `t` của lingui vào.
@@ -2609,9 +2622,16 @@ export default function IdeaMap() {
 
         {/* Ngôn ngữ và sáng/tối là thứ đổi rồi nhìn thấy kết quả ngay, nên nằm
             thẳng trên thanh chứ không giấu sau một lần bấm mở menu. */}
+        {/* Ba nút này đều là thiết lập của NGƯỜI dùng, không phải dữ liệu board,
+            nên không mang data-mutating: tài khoản chỉ xem vẫn đổi được hết. */}
         <div className="topbar-prefs">
           <LocaleToggle />
           <button className="btn ghost icon" onClick={toggleTheme} title={t`Đổi giao diện sáng/tối`}>◐</button>
+          <button
+            className={"btn ghost icon" + (skin === "sketch" ? " toggle active" : "")}
+            onClick={toggleSkin}
+            title={t`Đổi kiểu giao diện: sạch / vẽ tay`}
+          ><IconSketch /></button>
         </div>
       </div>
 

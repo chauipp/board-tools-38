@@ -967,3 +967,65 @@
   position: absolute; border: 1.5px dashed var(--accent); border-radius: 10px;
   pointer-events: none; z-index: 4;
 }
+
+/* ─── Skin vẽ tay (data-skin="sketch") ────────────────────────────────────
+   CHỈ áp cho vật thể trên canvas: thẻ, khung, dây, hình khối, nền sa bàn.
+   Topbar, filterbar, ToolRail, popover giữ nguyên giao diện sạch — chữ nút ở cỡ
+   10–11px mà viết tay thì không đọc được. Excalidraw cũng làm đúng vậy: canvas
+   vẽ tay, panel bên trái là UI thường.
+
+   Trục này ĐỘC LẬP với sáng/tối: skin gán lại khối token hình dạng, theme gán
+   lại khối token màu, hai bên không giẫm chân nhau. */
+:root[data-skin="sketch"] {
+  --card-radius: 0;              /* bo góc thật do bốn biến thể data-wob lo */
+  --card-border-w: 1.6px;
+  --frame-border-w: 2.4px;
+  --edge-w: 2px;
+  --edge-w-hot: 3px;
+  --canvas-font: "Shantell Sans", "Comic Sans MS", cursive;
+  --canvas-font-scale: 1.08;     /* chiều cao chữ x nhỏ hơn IBM Plex Sans */
+  --grid-size: 30px;
+}
+
+/* Bốn biến thể viền méo, thẻ chọn theo id % 4 nên hai thẻ cạnh nhau không giống
+   hệt nhau mà MỘT thẻ thì méo cố định — kéo đi kéo lại không đổi hình.
+
+   255px trên một thẻ rộng 210px nghe vô lý nhưng đúng: khi tổng bán kính hai
+   góc vượt quá cạnh, trình duyệt chia đều MỌI bán kính cho cùng một hệ số, nên
+   tỉ lệ méo giữ nguyên ở mọi kích thước thẻ. Đó là lý do mẹo này chạy được mà
+   không cần biết thẻ to bao nhiêu — và cũng là lý do nó dùng chung được cho cả
+   khung, thứ to gấp mười lần thẻ. */
+:root[data-skin="sketch"] .idea-card[data-wob="0"],
+:root[data-skin="sketch"] .frame-box[data-wob="0"] {
+  border-radius: 255px 15px 225px 15px / 15px 225px 15px 255px;
+}
+:root[data-skin="sketch"] .idea-card[data-wob="1"],
+:root[data-skin="sketch"] .frame-box[data-wob="1"] {
+  border-radius: 15px 225px 15px 255px / 225px 15px 255px 15px;
+}
+:root[data-skin="sketch"] .idea-card[data-wob="2"],
+:root[data-skin="sketch"] .frame-box[data-wob="2"] {
+  border-radius: 225px 15px 255px 15px / 15px 255px 15px 225px;
+}
+:root[data-skin="sketch"] .idea-card[data-wob="3"],
+:root[data-skin="sketch"] .frame-box[data-wob="3"] {
+  border-radius: 15px 255px 15px 225px / 255px 15px 225px 15px;
+}
+/* Thẻ hình elip đã tròn sẵn, méo thêm thì thành quả trứng vỡ. */
+:root[data-skin="sketch"] .idea-card.shape-ellipse { border-radius: 50%; }
+
+/* Chữ to hơn một chút cho cân với font mới, và bóng đổ lệch sang một bên như
+   tờ giấy đặt nghiêng thay vì đổ đều bốn phía kiểu vật thể phần mềm. */
+:root[data-skin="sketch"] .idea-card .title { font-size: calc(13px * var(--canvas-font-scale)); }
+:root[data-skin="sketch"] .idea-card .desc { font-size: calc(11px * var(--canvas-font-scale)); }
+:root[data-skin="sketch"] .idea-card {
+  --card-shadow: 2px 3px 0 color-mix(in srgb, var(--ink) 12%, transparent);
+}
+:root[data-skin="sketch"] .idea-card:hover {
+  box-shadow: var(--card-shadow), 3px 5px 10px rgba(0,0,0,0.13);
+}
+/* Lưới chấm mờ hẳn đi: nền giấy vẽ tay mà chấm đều tăm tắp thì lộ ngay là máy kẻ. */
+:root[data-skin="sketch"] .viewport {
+  background: radial-gradient(color-mix(in srgb, var(--board-grid) 55%, transparent) 1px, transparent 1px)
+              0 0 / var(--grid-size) var(--grid-size), var(--board-bg);
+}

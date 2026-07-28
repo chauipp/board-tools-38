@@ -17,6 +17,7 @@ function FrameBox({ group, editingTitle, dropTarget, selected, h }) {
     <div
       className={"frame-box" + (dropTarget ? " drop-target" : "") + (selected ? " selected" : "") + (group.color ? " tinted" : "")}
       data-group-id={group.id}
+      data-wob={group.id % 4}
       style={{
         left: group.x, top: group.y, width: group.w, height: group.h,
         // Như IdeaCard: màu chỉ là một token, việc trộn ra nền và viền là của CSS.

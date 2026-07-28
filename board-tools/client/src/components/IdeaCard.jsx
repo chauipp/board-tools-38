@@ -102,6 +102,7 @@ function IdeaCard({
       <div
         className={classNames.join(" ")}
         data-id={node.id}
+        data-wob={node.id % 4}
         ref={setEl}
         style={{ left: node.x, top: node.y, ...(node.w ? { width: node.w } : {}), ...tintStyle }}
         onMouseDown={(e) => e.stopPropagation()}
@@ -134,6 +135,10 @@ function IdeaCard({
     <div
       className={classNames.join(" ")}
       data-id={node.id}
+      // Bốn kiểu viền méo của skin vẽ tay, chọn theo id chứ không theo chỉ số
+      // trong mảng: chỉ số đổi khi xoá một thẻ khác, và thẻ này sẽ đột nhiên méo
+      // sang kiểu khác dù chẳng ai đụng vào nó.
+      data-wob={node.id % 4}
       ref={setEl}
       style={{
         left: node.x, top: node.y,
