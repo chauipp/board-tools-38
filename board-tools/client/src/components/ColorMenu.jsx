@@ -3,6 +3,7 @@ import { useLingui } from "@lingui/react/macro";
 import { BADGE_PALETTE, colorVar } from "../lib/badges.js";
 import { CARD_LEVELS } from "../lib/card-levels.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
+import { usePopoverPosition } from "../lib/usePopoverPosition.js";
 import CardLevelIcon from "./CardLevelIcon.jsx";
 
 function ShapeRectIcon() {
@@ -29,6 +30,7 @@ function ArrowIcon({ rotate }) {
 export default function ColorMenu({ x, y, color, count = 1, kind = "card", onPick, onEdit, onGroup, onTidy, onFocus, onDuplicate, onComments, onCopyLink, onDelete, onClose, locked, onToggleLock, shape, onSetShape, dashed, onSetDashed, level, onSetLevel, onArrangeTree }) {
   const { t } = useLingui();
   const ref = useRef(null);
+  const pos = usePopoverPosition(ref, x, y);
   useCloseOnOutside(ref, onClose);
 
   // Bản sao của bảng nhãn trong ToolOptions.jsx — xem ghi chú ở đó về lý do
@@ -55,7 +57,7 @@ export default function ColorMenu({ x, y, color, count = 1, kind = "card", onPic
   ].filter(Boolean);
 
   return (
-    <div className="badge-editor ctx-menu" ref={ref} style={{ left: x, top: y }} onMouseDown={(e) => e.stopPropagation()}>
+    <div className="badge-editor ctx-menu" ref={ref} style={pos} onMouseDown={(e) => e.stopPropagation()}>
       {/* Cùng một menu dùng cho thẻ và cho khung, nên chỗ đếm phải gọi đúng tên
           thứ đang bị tác động — "Áp cho 3 thẻ" trong lúc đang chọn 3 cái khung
           là một câu nói sai. */}

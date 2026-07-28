@@ -494,8 +494,14 @@
 .fb-add:hover { color: var(--ink); border-color: var(--ink-dim); }
 .dot-empty { border: 1px dashed var(--ink-dim); background: transparent !important; }
 
+/* left/top do usePopoverPosition tính (đã ghim vào trong màn hình), không lấy
+   thẳng toạ độ con trỏ nữa.
+   max-height là chốt chặn cuối cho trường hợp menu còn cao hơn cả màn hình:
+   ghim kiểu gì cũng phải thò ra một đầu, nên cho chính menu cuộn. 16px = hai lần
+   POPOVER_MARGIN trong lib/popover.js — hai chỗ phải khớp nhau. */
 .badge-editor {
   position: fixed; z-index: 90; width: 220px;
+  max-height: calc(100vh - 16px); overflow-y: auto;
   background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
   box-shadow: var(--shadow); padding: 10px; display: flex; flex-direction: column; gap: 8px;
 }

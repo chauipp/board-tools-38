@@ -92,7 +92,11 @@ function stripMongoMeta(doc) {
 }
 
 const app = express();
-app.use(express.json({ limit: "10mb" }));
+// 20mb: ảnh nằm thẳng trong board dưới dạng data URL và từ nay giữ nguyên chất
+// lượng gốc, nên một lần PUT có thể mang theo vài MB ảnh. Phải lớn hơn trần
+// 16MB của một document MongoDB, nếu không request chết ở đây trước khi tới chỗ
+// báo lỗi tử tế; client đã tự chặn ở ngưỡng 14MB (lib/image-budget.js).
+app.use(express.json({ limit: "20mb" }));
 app.use(cookieParser());
 app.use("/api/boards", requireAuth, boardsRouter);
 
@@ -172,7 +176,10 @@ app.get("*", (req, res, next) => {
 });
 
 const server = http.createServer(app);
-const io = new Server(server);
+// maxHttpBufferSize mặc định của socket.io là 1MB. Sau mỗi lần lưu, server phát
+// board:update kèm TOÀN BỘ board cho các peer — board có một tấm ảnh gốc là gói
+// đó vượt 1MB và socket.io ngắt kết nối phía nhận. Nới cho khớp trần của REST.
+const io = new Server(server, { maxHttpBufferSize: 20 * 1024 * 1024 });
 // boards.js (router riêng, mount trước io tồn tại) cần phát board:update
 // sau khi lưu REST thành công — lấy io qua app, không import vòng.
 app.set("io", io);
