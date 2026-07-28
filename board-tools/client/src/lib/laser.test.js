@@ -1,9 +1,21 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  LASER_FADE_MS, LASER_MAX_POINTS, LASER_MIN_DIST,
-  pushLaserPoint, trimLaserTrail, laserOutline
+  LASER_FADE_MS, LASER_MAX_POINTS, LASER_MIN_DIST, LASER_WIDTHS, LASER_DEFAULT,
+  pushLaserPoint, trimLaserTrail, laserOutline,
+  loadLaserPrefs, saveLaserPrefs, sanitizeLaserStyle
 } from "./laser.js";
+import { PEN_COLORS, PEN_WIDTHS } from "./pen.js";
+
+// localStorage giả — cùng khuôn với các test khác trong thư mục này.
+function fakeStorage(seed) {
+  const map = new Map(Object.entries(seed || {}));
+  return {
+    getItem: (k) => (map.has(k) ? map.get(k) : null),
+    setItem: (k, v) => map.set(k, String(v)),
+    dump: () => Object.fromEntries(map)
+  };
+}
 
 test("pushLaserPoint: điểm đầu luôn vào", () => {
   const pts = pushLaserPoint([], 10, 20, 1000);
@@ -84,4 +96,61 @@ test("laserOutline: thon dần — đuôi nhọn, đầu rộng đúng headW", (
 test("laserOutline: hai điểm trùng nhau không làm hỏng chuỗi (gói từ mạng không được bảo đảm)", () => {
   const d = laserOutline([{ x: 5, y: 5, t: 0 }, { x: 5, y: 5, t: 1 }, { x: 30, y: 5, t: 2 }], 6);
   assert.doesNotMatch(d, /NaN/);
+});
+
+test("laserOutline: độ đậm khác nhau ra bề rộng khác nhau", () => {
+  const pts = [{ x: 0, y: 0, t: 0 }, { x: 10, y: 0, t: 1 }, { x: 20, y: 0, t: 2 }];
+  assert.notEqual(laserOutline(pts, LASER_WIDTHS[0]), laserOutline(pts, LASER_WIDTHS[2]));
+});
+
+// ── Kiểu vệt: màu + độ đậm ──────────────────────────────────────────────────
+
+test("độ đậm laser là bảng RIÊNG, không dùng lại PEN_WIDTHS", () => {
+  // Đơn vị khác nhau: laser là pixel màn hình, bút là đơn vị canvas. Dùng chung
+  // bảng là sớm muộn cũng có người gom hai `w` vào một ô.
+  assert.notDeepEqual(LASER_WIDTHS, PEN_WIDTHS);
+  assert.ok(LASER_WIDTHS.includes(LASER_DEFAULT.w));
+  assert.ok(PEN_COLORS.includes(LASER_DEFAULT.color));
+});
+
+test("loadLaserPrefs: chưa lưu gì thì về mặc định", () => {
+  assert.deepEqual(loadLaserPrefs(fakeStorage()), LASER_DEFAULT);
+});
+
+test("loadLaserPrefs: JSON hỏng không làm sập, về mặc định", () => {
+  assert.deepEqual(loadLaserPrefs(fakeStorage({ "ideamap.laser": "{{{" })), LASER_DEFAULT);
+});
+
+test("loadLaserPrefs: một giá trị hỏng không kéo theo giá trị còn lại", () => {
+  const s = fakeStorage({ "ideamap.laser": JSON.stringify({ color: "pen-blue", w: 999 }) });
+  assert.deepEqual(loadLaserPrefs(s), { color: "pen-blue", w: LASER_DEFAULT.w });
+});
+
+test("saveLaserPrefs → loadLaserPrefs giữ nguyên lựa chọn", () => {
+  const s = fakeStorage();
+  saveLaserPrefs(s, { color: "pen-green", w: LASER_WIDTHS[2] });
+  assert.deepEqual(loadLaserPrefs(s), { color: "pen-green", w: LASER_WIDTHS[2] });
+});
+
+test("laser và bút lưu ở HAI khoá khác nhau", () => {
+  const s = fakeStorage();
+  saveLaserPrefs(s, { color: "pen-blue", w: LASER_WIDTHS[0] });
+  // Nếu hai thứ dùng chung khoá thì đổi độ đậm laser sẽ đổi luôn độ dày nét bút.
+  assert.deepEqual(Object.keys(s.dump()), ["ideamap.laser"]);
+});
+
+test("sanitizeLaserStyle: gói từ mạng mang token màu lạ → về mặc định", () => {
+  // Không lọc thì vệt thành var(--gì-đó) không tồn tại, tức mất màu hẳn.
+  assert.deepEqual(sanitizeLaserStyle("red; }", 8), LASER_DEFAULT);
+});
+
+test("sanitizeLaserStyle: gói từ mạng mang w ngoài bảng → về mặc định", () => {
+  // Server chỉ chặn được biên độ 1..64; w = 63 lọt qua đó nhưng sẽ là một vệt
+  // phủ ngang màn hình mọi người.
+  assert.equal(sanitizeLaserStyle("pen-blue", 63).w, LASER_DEFAULT.w);
+  assert.equal(sanitizeLaserStyle("pen-blue", 63).color, "pen-blue");
+});
+
+test("sanitizeLaserStyle: giá trị hợp lệ đi qua nguyên vẹn", () => {
+  assert.deepEqual(sanitizeLaserStyle("pen-purple", LASER_WIDTHS[2]), { color: "pen-purple", w: LASER_WIDTHS[2] });
 });

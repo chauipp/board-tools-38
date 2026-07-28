@@ -1,5 +1,6 @@
 import { useLingui } from "@lingui/react/macro";
 import { PEN_COLORS, PEN_WIDTHS, penVar } from "../lib/pen.js";
+import { LASER_WIDTHS } from "../lib/laser.js";
 import { SHAPE_KINDS, SHAPE_CLOSED } from "../lib/shape.js";
 import { TEXT_SIZES } from "../lib/text-el.js";
 import { CARD_LEVELS } from "../lib/card-levels.js";
@@ -89,6 +90,41 @@ export default function ToolOptions({ tool, prefs, onPrefs, level, onLevel }) {
             />
           ))}
         </div>
+      </div>
+    );
+  }
+
+  // Laser: bảy màu + ba độ đậm. Dùng lại đúng bảng màu của bút (người dùng đã
+  // quen nó) nhưng độ đậm là bảng RIÊNG — đơn vị khác hẳn: pixel màn hình chứ
+  // không phải đơn vị canvas, vì vệt laser không được dày lên khi phóng to.
+  // KHÔNG có bảng hình và không có chế độ tô: laser không tạo ra hình nào.
+  if (tool === "laser") {
+    return (
+      <div className="tool-options" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="tool-grid">
+          {PEN_COLORS.map((token) => (
+            <button
+              key={token}
+              type="button"
+              className={"pen-swatch" + (prefs.color === token ? " on" : "")}
+              style={{ background: penVar(token) }}
+              title={t`Màu laser`}
+              onClick={() => onPrefs({ ...prefs, color: token })}
+            />
+          ))}
+        </div>
+        <div className="tool-sep" />
+        {LASER_WIDTHS.map((w) => (
+          <button
+            key={w}
+            type="button"
+            className={"tool-btn pen-width" + (prefs.w === w ? " on" : "")}
+            title={t`Độ đậm vệt`}
+            onClick={() => onPrefs({ ...prefs, w })}
+          >
+            <span className="bar" style={{ height: w }} />
+          </button>
+        ))}
       </div>
     );
   }

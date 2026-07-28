@@ -1,3 +1,5 @@
+import { PEN_COLORS } from "./pen.js";
+
 // Bút laser: vệt sáng chạy theo con trỏ rồi tự tan. KHÔNG phải nét vẽ —
 // không lưu vào board, không có lịch sử hoàn tác, không có id. Đây là lý do nó
 // nằm ở file riêng thay vì thêm một `kind` nữa vào shape.js: mọi thứ trong
@@ -21,11 +23,56 @@ export const LASER_MAX_POINTS = 96;
 // điểm trùng nhau mỗi giây lên kênh live:laser.
 export const LASER_MIN_DIST = 2;
 
-// Bề rộng ĐẦU vệt tính bằng pixel MÀN HÌNH, không phải đơn vị canvas. Nét bút
-// cố ý dày lên khi phóng to ("mực trên giấy" — xem InkLayer.jsx), nhưng laser
-// là cái que chỉ chứ không phải mực: nó phải giữ nguyên cỡ trên màn hình dù
-// bảng đang zoom bao nhiêu. LaserLayer chia giá trị này cho view.scale.
-export const LASER_HEAD_PX = 7;
+// Bề rộng ĐẦU vệt tính bằng pixel MÀN HÌNH, không phải đơn vị canvas — khác hẳn
+// PEN_WIDTHS. Nét bút cố ý dày lên khi phóng to ("mực trên giấy" — xem
+// InkLayer.jsx), nhưng laser là cái que chỉ chứ không phải mực: nó phải giữ
+// nguyên cỡ trên màn hình dù bảng đang zoom bao nhiêu. LaserLayer chia giá trị
+// này cho view.scale.
+export const LASER_WIDTHS = [5, 8, 12];
+
+// Màu dùng chung hệ token với bút (PEN_COLORS) thay vì bịa một bảng riêng: nó
+// đã có sẵn bảy màu hợp cả nền sáng lẫn nền tối, và người dùng đã quen bảng đó
+// ở khu 4 của bút.
+export const LASER_DEFAULT = { color: "pen-red", w: 8 };
+
+const KEY = "ideamap.laser";
+
+// Khoá localStorage RIÊNG, không nhét vào object của pen.js: hai thứ có đơn vị
+// độ dày khác nhau (pixel màn hình vs đơn vị canvas), nên dùng chung một `w` là
+// đổi độ đậm laser sẽ đổi luôn độ dày nét bút, và ngược lại.
+export function loadLaserPrefs(storage) {
+  let saved = null;
+  try {
+    saved = JSON.parse(storage.getItem(KEY));
+  } catch {
+    saved = null;
+  }
+  if (!saved || typeof saved !== "object") return { ...LASER_DEFAULT };
+  // Lọc từng key: một giá trị hỏng không được làm mất luôn giá trị còn lại.
+  return {
+    color: PEN_COLORS.includes(saved.color) ? saved.color : LASER_DEFAULT.color,
+    w: LASER_WIDTHS.includes(saved.w) ? saved.w : LASER_DEFAULT.w
+  };
+}
+
+export function saveLaserPrefs(storage, prefs) {
+  try {
+    storage.setItem(KEY, JSON.stringify({ color: prefs.color, w: prefs.w }));
+  } catch {
+    // Hết quota hoặc chế độ riêng tư — mất lựa chọn laser, không đáng làm sập app.
+  }
+}
+
+// Lọc gói từ mạng. Server chỉ chặn được "chuỗi ngắn" và "số trong biên độ"; ở
+// đây mới biết được đâu là token màu THẬT và đâu là bề rộng có trong bảng.
+// Không lọc thì một client lỗi gửi w = 63 là vệt của họ phủ ngang màn hình mọi
+// người, và một token màu lạ làm vệt mất màu hẳn (var(--gì-đó) không tồn tại).
+export function sanitizeLaserStyle(color, w) {
+  return {
+    color: PEN_COLORS.includes(color) ? color : LASER_DEFAULT.color,
+    w: LASER_WIDTHS.includes(w) ? w : LASER_DEFAULT.w
+  };
+}
 
 // Thêm một điểm vào vệt. Trả về CHÍNH mảng cũ nếu điểm bị chối (quá gần điểm
 // cuối) — người gọi so sánh tham chiếu để biết có phải phát lên mạng không, nhờ

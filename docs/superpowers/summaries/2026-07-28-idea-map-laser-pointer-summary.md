@@ -6,23 +6,28 @@ Nhánh: `idea-map-laser-pointer` (từ `idea-map-hud-islands`)
 - Spec: [`docs/superpowers/specs/2026-07-28-idea-map-laser-pointer-design.md`](../specs/2026-07-28-idea-map-laser-pointer-design.md)
 - Plan: [`docs/superpowers/plans/2026-07-28-idea-map-laser-pointer.md`](../plans/2026-07-28-idea-map-laser-pointer.md)
 
-Kiểm tự động lúc chốt: `npm test` 303/303, `npm run test:smoke` xanh (thêm một
-chặng), `npm run build` sạch, `npm run i18n:extract` 236/236 không thiếu chuỗi
+Kiểm tự động lúc chốt: `npm test` 313/313, `npm run test:smoke` xanh (thêm một
+chặng), `npm run build` sạch, `npm run i18n:extract` 238/238 không thiếu chuỗi
 EN nào, `node --test auth.test.js` bên server 11/11.
 
 ---
 
 ### Đã làm gì
 
-- **Nút Laser ở khu 1 của thanh công cụ và phím `K`.** Bật lên rồi di chuột là
-  có một vệt sáng chạy theo con trỏ — không cần giữ nút chuột. Bấm lại hoặc `Esc`
-  là tắt.
+- **Nút Laser ở khu 1 của thanh công cụ và phím `K`.** Bấm lại hoặc `Esc` là tắt.
+- **Giữ chuột trái thì vệt mới sáng**, đúng như cầm cây laser thật phải bấm. Rê
+  chuột không giữ nút thì không để lại gì, nên vừa để laser bật sẵn vừa đọc nội
+  dung bảng cũng không rắc vệt lên màn hình mọi người. Một lần bấm là một vệt:
+  thả ra rồi bấm lại ở góc kia thì bắt đầu vệt mới, không nối thành một vạch
+  thẳng băng qua bảng.
+- **Chọn được màu và độ đậm** ở khu 4 như bút: bảy màu (dùng lại đúng bảng của
+  bút) và ba độ đậm. Lựa chọn nhớ qua lần mở sau. Màu đi vào gói mạng nên người
+  khác thấy đúng màu mình chọn.
 - **Vệt tự tan.** Mỗi điểm sống 900ms rồi rụng khỏi đuôi; đứng yên một nhịp là
   vệt rút về con trỏ rồi biến mất. Không có gì được lưu: không nét trong
   `drawings`, không bước hoàn tác, không một lần `PUT` nào.
 - **Người khác thấy vệt của mình gần như tức thời** qua kênh `live:laser` mới
-  (~25 gói/giây). Vệt của mình đỏ, vệt người khác lấy đúng màu con trỏ của họ —
-  hai người cùng chỉ thì biết ai đang chỉ cái nào.
+  (~25 gói/giây), đúng màu và đúng độ đậm mình chọn.
 - **Người CHỈ XEM cũng dùng được.** Đây là công cụ đầu tiên trên thanh này không
   bị khoá với viewer, vì nó không ghi một chữ nào vào board. Server cũng không
   chặn viewer ở kênh này, khác `live:ink`.
@@ -36,15 +41,25 @@ EN nào, `node --test auth.test.js` bên server 11/11.
 
 | File | Vai trò |
 |---|---|
-| `client/src/lib/laser.js` | Lõi thuần: thêm/rụng điểm và tính viền ngoài của vệt. Không React, không DOM |
-| `client/src/lib/laser.test.js` | 12 test, gồm hợp đồng "chối điểm thì trả về CHÍNH mảng cũ" |
+| `client/src/lib/laser.js` | Lõi thuần: thêm/rụng điểm, viền ngoài vệt, và bộ nhớ màu/độ đậm (`ideamap.laser`). Không React, không DOM |
+| `client/src/lib/laser.test.js` | 22 test, gồm hợp đồng "chối điểm thì trả về CHÍNH mảng cũ" và hai khoá localStorage phải tách nhau |
+| `client/src/components/ToolOptions.jsx` | Nhánh khu 4 của laser: 7 màu + 3 độ đậm, không bảng hình, không chế độ tô |
 | `client/src/lib/useLaser.js` | `createLaserStore()` (kho vệt ngoài React) + `useLaser()` (gom điểm 40ms rồi phát) |
 | `client/src/components/LaserLayer.jsx` | Nhận vệt người khác, chạy vòng rAF, vẽ quầng sáng + lõi + chấm đầu |
 | `client/src/components/ToolRail.jsx` | `IconLaser` + nút thứ ba ở khu 1, cố ý KHÔNG có `disabled={!canEdit}` |
-| `client/src/pages/IdeaMap.jsx` | mode `"laser"`, lớp `.laser-capture`, phím `K`, `<LaserLayer>` trong `.canvas` |
+| `client/src/pages/IdeaMap.jsx` | mode `"laser"`, lớp `.laser-capture` (giữ chuột mới vẽ), state `laserPrefs`, phím `K`, `<LaserLayer>` trong `.canvas` |
 | `client/src/styles/idea-map.css` | `.laser-capture` (z-index 8, cùng khuôn `.ink-capture`) và bốn rule của lớp vẽ |
-| `server/index.js` | Kênh `live:laser`: sanitize, `.volatile`, không chặn viewer |
+| `server/index.js` | Kênh `live:laser`: sanitize `pts`/`color`/`w`, chuyển tiếp `reset`, `.volatile`, không chặn viewer |
 | `client/src/__smoke__/entry.jsx` | Tra nút theo TÊN thay cho chỉ số (cả file), hai phép đếm nút, một chặng laser mới |
+
+### Ba vòng sửa theo phản hồi
+
+Bản đầu cho vệt chạy theo con trỏ không cần giữ nút (đúng cách Excalidraw làm) và
+không cho chọn màu/độ đậm — màu là danh tính người chỉ, băm từ email. Người dùng
+xem xong yêu cầu cả ba: chọn màu, chọn đậm nhạt, và **phải bấm mới lên vệt**.
+Bản này là bản sau khi sửa. Đổi lại đúng một quyết định thiết kế nhưng kéo theo
+ba thứ mới: `laserPrefs` với khoá localStorage riêng, kiểu vệt phải đi trong gói
+mạng (nên phải lọc hai lần), và một cờ `reset` để một lần bấm là một vệt.
 
 ### Khác với plan
 
@@ -55,9 +70,17 @@ EN nào, `node --test auth.test.js` bên server 11/11.
   trước đã rút ra khi làm `TopMenu` ("lấy theo index thì thêm cái thứ ba là trỏ
   nhầm"), chỉ là lần này nó rơi vào file test.
 - **Laser thành MODE chứ không phải một tool nữa của mode Sửa.** Trông thì giống
-  vẽ, nhưng mọi tool của mode Sửa đều ghi vào board, đều bị khoá với viewer, và
-  đều đi kèm bảng tuỳ chọn ở khu 4. Laser không cái nào cả — nhét vào khu 2 là
-  phải bịa ngoại lệ cho cả ba thứ đó.
+  vẽ, nhưng mọi tool của mode Sửa đều ghi vào board và đều bị khoá với viewer;
+  laser thì không. Nó CÓ khu 4 như chúng, nhưng đọc từ `laserPrefs` riêng chứ
+  không phải `penPrefs` — độ đậm laser là pixel màn hình còn độ dày bút là đơn vị
+  canvas, dùng chung một ô `w` là đổi cái này sẽ đổi luôn cái kia.
+- **Kiểu vệt đi kèm MỌI gói, không chỉ gói đầu**, ngược với `live:ink` (chỉ gửi
+  màu ở `seq: 0`). Làm được thế vì kênh ink KHÔNG `.volatile` nên gói đầu chắc
+  tới nơi; kênh laser thì `.volatile`, rơi gói đầu là cả lượt chỉ đó mất màu.
+- **Kiểu vệt phải lọc HAI lần.** Server không import được `PEN_COLORS` của client
+  nên chỉ chặn được "chuỗi ngắn" và "số trong biên độ" — `w = 63` lọt qua đó vẫn
+  là một vệt phủ ngang màn hình cả phòng. `sanitizeLaserStyle()` bên client lọc
+  lần hai, và có test riêng cho cả hai trường hợp.
 - **Kho vệt nằm ngoài React**, không phải một `useState` như `useInkLive` đang
   làm. Vệt phải vẽ lại 60 lần/giây suốt 900ms kể cả khi con trỏ đứng yên; để nó
   trong state của `IdeaMap` là mỗi khung hình đó render lại toàn bộ thẻ, dây,
@@ -72,6 +95,19 @@ EN nào, `node --test auth.test.js` bên server 11/11.
 - **`.volatile` ở server**, ngược với quyết định của `live:ink` ngay bên trên nó.
   `live:ink` mang điểm của một nét sẽ được lưu vĩnh viễn nên mất gói là khuyết
   vĩnh viễn; vệt laser biến mất hết sau chưa tới một giây.
+- **Không gắn listener vào `window` như `useInk.js` làm.** Ở đó bắt buộc, vì thả
+  chuột ngoài khung nhìn mà không nhận `mouseup` là nét treo lại và không bao giờ
+  được lưu — cả một `cleanupRef` cộng listener `blur` dựng lên chỉ để chặn chuyện
+  đó. Lượt chỉ laser không có gì để commit, mà `.laser-capture` lại phủ kín khung
+  nhìn, nên `onMouseUp` + `onMouseLeave` ngay trên lớp phủ là đủ và không có
+  listener nào sống sót ra ngoài lượt.
+- **Một chỗ smoke test tự lừa mình, phát hiện khi viết.** Bấm chọn màu rồi bấm
+  chọn độ đậm trong cùng một `act()`: cả hai handler là
+  `onPrefs({ ...prefs, … })` và cùng đóng gói `prefs` của MỘT lượt render, nên cú
+  sau ghi đè cú trước. Màu quay về mặc định `pen-red` — mà mặc định cũng là một
+  màu hợp lệ, nên assertion "gói có mang màu" vẫn xanh. Tách hai `act()` và so
+  với đúng token vừa chọn mới thấy. Người dùng thật không gặp: giữa hai cú bấm
+  luôn có một lượt render.
 
 ### Còn dở / cần lưu ý
 
@@ -79,17 +115,23 @@ EN nào, `node --test auth.test.js` bên server 11/11.
   trình duyệt, và jsdom không vẽ gì — chặng smoke mới chỉ kiểm được *hành vi*
   (có vệt, phát đúng số điểm, vệt người khác khác màu, tự tan hết, không ghi vào
   board), **không** kiểm được thứ quan trọng nhất là nó có trông ra một cây laser
-  hay không. Danh sách kiểm tay ở cuối file plan còn nguyên tám mục.
+  hay không. Danh sách kiểm tay ở cuối file plan còn nguyên mười một mục.
 - **Nhịp tan 900ms là con số đoán.** Nó hợp lý trên giấy (đủ dài để mắt bắt kịp,
   đủ ngắn để lia một vòng không thành mạng nhện) nhưng chỉ dùng thật lúc đang nói
   mới biết đúng hay không. Sửa một hằng số trong `laser.js`.
-- **Lỡ tay bấm chuột trái ở mode Laser thì không có gì xảy ra** — cố ý, để không
-  kéo mất một cái thẻ giữa lúc đang trình bày. Nhưng cũng có nghĩa là muốn bấm
-  vào thẻ thì phải tắt laser trước. Chuột phải và Space+trái vẫn lia bảng được.
+- **Ở mode Laser, chuột trái chỉ để chỉ trỏ** — không chọn được thẻ, không kéo
+  được gì. Cố ý, để không kéo mất một cái thẻ giữa lúc đang trình bày; muốn thao
+  tác lên thẻ thì tắt laser trước. Chuột phải và Space+trái vẫn lia bảng được.
 - **Chuột lia CỰC nhanh có thể tạo vệt gãy khúc**: điểm chỉ được lấy ở mỗi
   `mousemove`, nên hai điểm liền nhau có thể cách nhau cả trăm đơn vị và đoạn nối
   giữa chúng là một đường thẳng. Nét bút cũng vậy nhưng không ai để ý vì nét bút
   người ta vẽ chậm.
-- **Không có cách nào tắt laser của người khác.** Nếu ai đó để laser bật rồi bỏ
-  đi, mỗi lần họ chạm chuột là màn hình mọi người có một vệt. Tự tan sau 900ms
-  nên không tích tụ, nhưng vẫn là một thứ chưa có nút gạt.
+- **Không có cách nào tắt laser của người khác.** Nếu ai đó vừa bật laser vừa giữ
+  chuột rê lung tung thì màn hình mọi người có vệt. Tự tan sau 900ms nên không
+  tích tụ, và giờ phải GIỮ chuột mới vẽ được nên khả năng vô tình đã thấp hẳn.
+- **Mặc định của mọi người đều là đỏ.** Trước đây vệt lấy màu con trỏ băm từ
+  email nên hai người luôn khác màu sẵn; giờ màu là lựa chọn, mà ai chưa chọn thì
+  cùng `pen-red`. Muốn phân biệt phải tự đổi.
+- **Rê chuột lên thanh công cụ giữa lượt chỉ là đóng lượt** (`onMouseLeave`).
+  Đúng ý trong hầu hết trường hợp, nhưng chỉ vào một thẻ nằm sát mép trái màn
+  hình thì có thể bị cắt sớm.

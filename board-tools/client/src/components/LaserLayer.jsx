@@ -1,13 +1,6 @@
 import { memo, useEffect, useReducer, useRef } from "react";
-import { cursorColor, usePeers } from "../lib/usePresence.js";
-import { laserOutline, LASER_HEAD_PX } from "../lib/laser.js";
-import { SELF_KEY } from "../lib/useLaser.js";
-
-// Vệt của mình luôn đỏ — màu laser ai cũng nhận ra ngay, và mình không có
-// "màu người" nào để lấy (cursorColor băm từ email, nhưng con trỏ của chính
-// mình không bao giờ được vẽ nên màu đó chưa từng xuất hiện trước mắt mình).
-// Vệt người khác lấy đúng màu con trỏ của họ, nên nhìn vệt là biết ai đang chỉ.
-const SELF_COLOR = "#ff2f4a";
+import { penVar } from "../lib/pen.js";
+import { laserOutline, sanitizeLaserStyle } from "../lib/laser.js";
 
 // Lớp vẽ mọi vệt laser đang sống — của mình và của người khác. Tự đăng ký
 // socket và tự chạy vòng lặp khung hình, cùng lối PeerLayer.jsx: xem ghi chú
@@ -15,9 +8,6 @@ const SELF_COLOR = "#ff2f4a";
 function LaserLayer({ socket, store, scale }) {
   const [, bump] = useReducer((n) => n + 1, 0);
   const rafRef = useRef(0);
-  // Chỉ để tra màu theo socketId. Hook này vẽ lại theo nhịp con trỏ của người
-  // khác, nhưng lớp này là lá — không thẻ, không dây — nên cái giá đó bằng 0.
-  const peers = usePeers(socket);
 
   useEffect(() => {
     if (!socket) return;
@@ -25,12 +15,18 @@ function LaserLayer({ socket, store, scale }) {
       if (!packet || typeof packet.socketId !== "string") return;
       const pts = Array.isArray(packet.pts) ? packet.pts : null;
       if (!pts || pts.length < 2) return;
+      // Server chỉ chặn được "chuỗi ngắn" và "số trong biên độ"; lọc lần hai ở
+      // đây mới biết đâu là token màu THẬT và đâu là bề rộng có trong bảng.
+      const { color, w } = sanitizeLaserStyle(packet.color, packet.w);
+      // Bấm chuột lần mới bên kia = bỏ vệt cũ. Không có bước này thì thả chuột
+      // ở một góc rồi bấm lại ở góc kia sẽ nối thành một vạch băng qua bảng.
+      if (packet.reset === true) store.drop(packet.socketId);
       // Đóng dấu thời gian bằng ĐỒNG HỒ CỦA MÌNH, không tin dấu của người gửi:
       // hai máy lệch giờ vài giây là vệt của họ hoặc tan ngay lập tức, hoặc
       // không bao giờ tan. Cả lô điểm trong một gói cùng một mốc — sai số tối đa
       // đúng bằng một nhịp phát (40ms), mắt không thấy.
       const now = Date.now();
-      for (let i = 0; i + 1 < pts.length; i += 2) store.add(packet.socketId, pts[i], pts[i + 1], now);
+      for (let i = 0; i + 1 < pts.length; i += 2) store.add(packet.socketId, color, w, pts[i], pts[i + 1], now);
     }
     // Người rời board giữa lúc đang chỉ: vệt vẫn tự tan sau LASER_FADE_MS, nhưng
     // bỏ ngay thì không có cái đuôi treo lại của một người đã đi.
@@ -66,17 +62,17 @@ function LaserLayer({ socket, store, scale }) {
 
   if (!store.trails.size) return null;
 
-  // Chia cho scale để vệt giữ nguyên bề rộng trên MÀN HÌNH khi phóng to/thu nhỏ
-  // — xem ghi chú ở LASER_HEAD_PX.
-  const headW = LASER_HEAD_PX / (scale || 1);
-
   return (
     <svg className="laser-layer">
-      {Array.from(store.trails.entries()).map(([key, pts]) => {
+      {Array.from(store.trails.entries()).map(([key, trail]) => {
+        const { pts } = trail;
+        // Chia cho scale để vệt giữ nguyên bề rộng trên MÀN HÌNH khi phóng
+        // to/thu nhỏ — xem ghi chú ở LASER_WIDTHS. Mỗi vệt một bề rộng riêng:
+        // độ đậm là lựa chọn của NGƯỜI CHỈ, không phải thiết lập của bảng.
+        const headW = trail.w / (scale || 1);
         const d = laserOutline(pts, headW);
         if (!d) return null;
-        const peer = key === SELF_KEY ? null : peers.get(key);
-        const color = key === SELF_KEY ? SELF_COLOR : (peer ? cursorColor(peer.email) : SELF_COLOR);
+        const color = penVar(trail.color);
         const head = pts[pts.length - 1];
         return (
           // Màu đặt MỘT lần trên <g> rồi mọi thứ bên trong lấy qua currentColor:

@@ -47,6 +47,7 @@ import { useInk } from "../lib/useInk.js";
 import { useInkLive } from "../lib/useInkLive.js";
 import LaserLayer from "../components/LaserLayer.jsx";
 import { useLaser } from "../lib/useLaser.js";
+import { loadLaserPrefs, saveLaserPrefs } from "../lib/laser.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -256,6 +257,10 @@ export default function IdeaMap() {
   // thứ hai thành lệnh rỗng.
   const textEditRef = useRef(null);
   const [penPrefs, setPenPrefs] = useState(() => loadPenPrefs(window.localStorage));
+  // Khoá localStorage riêng, không nhét chung với penPrefs: `w` của laser là
+  // pixel MÀN HÌNH còn `w` của bút là đơn vị canvas — dùng chung một ô là đổi
+  // độ đậm laser sẽ đổi luôn độ dày nét bút.
+  const [laserPrefs, setLaserPrefs] = useState(() => loadLaserPrefs(window.localStorage));
   const [cardLevelPref, setCardLevelPref] = useState(() => loadCardLevel(window.localStorage));
   const [paletteUI, setPaletteUI] = useState(null); // { mode: "create"|"edit", id?, hex, x, y } | null
   const [colorDrag, setColorDrag] = useState(null); // { token, x, y } | null
@@ -314,6 +319,9 @@ export default function IdeaMap() {
   const nudgeTimerRef = useRef(null);
   const nudgeBaseRef = useRef(null);
   const spacePanRef = useRef(false);
+  // Đang giữ chuột trái ở mode Laser. Ref chứ không state: nó đổi ở mỗi lần bấm
+  // và chỉ được đọc trong handler chuột, không có gì trên màn hình phụ thuộc nó.
+  const laserDownRef = useRef(false);
   const pendingJumpRef = useRef(null);
   const prePresentViewRef = useRef(null);
   // Ngữ cảnh 2d dùng để đo bề rộng chữ, dựng một lần rồi dùng lại.
@@ -364,6 +372,7 @@ export default function IdeaMap() {
   }, [searchOpen]);
 
   useEffect(() => { savePenPrefs(window.localStorage, penPrefs); }, [penPrefs]);
+  useEffect(() => { saveLaserPrefs(window.localStorage, laserPrefs); }, [laserPrefs]);
   useEffect(() => { saveCardLevel(window.localStorage, cardLevelPref); }, [cardLevelPref]);
 
   // Camera đổi từ nhiều chỗ (lăn chuột, kéo nền, zoom vừa khung, thoát trình
@@ -2044,21 +2053,39 @@ export default function IdeaMap() {
     ink.handleMouseDown(e);
   }
 
-  // Mode Laser. KHÔNG cần giữ nút: vệt chạy theo con trỏ ngay khi di. Giữ nút
-  // để chỉ trỏ là thứ không ai làm nổi trong lúc đang nói — đây cũng là cách
-  // Excalidraw và Miro làm.
+  // Mode Laser. Vệt CHỈ chạy khi đang giữ chuột trái — thả ra là không vẽ gì
+  // nữa, đúng như cầm một cây laser thật phải bấm mới sáng. Nhờ vậy di chuột
+  // qua bảng để đọc nội dung không để lại vệt nào.
   function handleLaserMouseDown(e) {
     // Nhường đường cho lia bảng y như .ink-capture: chuột phải và Space+trái
-    // vẫn lia được, chỉ cú bấm trái trơn là bị nuốt — nuốt có chủ ý, để lỡ tay
-    // bấm lúc đang chỉ trỏ không kéo mất một cái thẻ.
+    // vẫn lia được.
     if (e.button === 2) { startPan(e); return; }
     if (e.button === 0 && spacePanRef.current) { startPan(e); return; }
-  }
-
-  function handleLaserMouseMove(e) {
+    if (e.button !== 0) return;
     if (!viewportRef.current || !boardRef.current) return;
     const p = eventToCanvas(e);
-    laser.track(p.x, p.y);
+    laserDownRef.current = true;
+    laser.begin(p.x, p.y, laserPrefs);
+  }
+
+  // Cố ý KHÔNG gắn listener vào window như useInk.js làm. Ở đó bắt buộc phải
+  // gắn window vì thả chuột ngoài khung nhìn mà không nhận được `mouseup` là
+  // nét vẽ treo lại vĩnh viễn và không bao giờ được lưu. Ở đây lượt chỉ chẳng
+  // có gì để commit, mà .laser-capture lại phủ kín khung nhìn — rời khỏi nó là
+  // rời khỏi bảng, nên `onMouseLeave` đủ để đóng lượt. Đổi lại: không có
+  // listener nào sống sót ra ngoài lượt, nên không có đường nào rò như bẫy
+  // "blur giữa nét" mà useInk.js phải dựng cả một cleanupRef để chặn.
+  function handleLaserMouseMove(e) {
+    if (!laserDownRef.current) return;
+    if (!viewportRef.current || !boardRef.current) return;
+    const p = eventToCanvas(e);
+    laser.track(p.x, p.y, laserPrefs);
+  }
+
+  function handleLaserMouseUp() {
+    if (!laserDownRef.current) return;
+    laserDownRef.current = false;
+    laser.end();
   }
 
   // Chuột → toạ độ canvas. Bản sao của toCanvas trong useInk.js; không gom
@@ -3228,11 +3255,13 @@ export default function IdeaMap() {
           onToggleLink={toggleLinkMode}
           onCapture={() => setCaptureOpen(true)}
         />
-        {(mode === "draw" || mode === "place") && (
+        {(mode === "draw" || mode === "place" || mode === "laser") && (
           <ToolOptions
-            tool={mode === "place" ? placeTool : tool}
-            prefs={penPrefs}
-            onPrefs={setPenPrefs}
+            tool={mode === "place" ? placeTool : (mode === "laser" ? "laser" : tool)}
+            // Laser có bộ nhớ riêng: màu thì cùng bảng với bút nhưng độ đậm là
+            // đơn vị khác hẳn, nên hai thứ không được dùng chung một object.
+            prefs={mode === "laser" ? laserPrefs : penPrefs}
+            onPrefs={mode === "laser" ? setLaserPrefs : setPenPrefs}
             level={cardLevelPref}
             onLevel={setCardLevelPref}
           />
@@ -3247,6 +3276,12 @@ export default function IdeaMap() {
             className="laser-capture"
             onMouseDown={handleLaserMouseDown}
             onMouseMove={handleLaserMouseMove}
+            onMouseUp={handleLaserMouseUp}
+            // Rời khỏi lớp phủ (ra mép màn hình, hay đi lên thanh công cụ) thì
+            // đóng lượt luôn: `mouseup` sau đó sẽ không rơi vào đây nữa, và bỏ
+            // sót nó là lượt chỉ treo lại — quay vào bảng là vẽ tiếp dù đã thả
+            // chuột từ lâu.
+            onMouseLeave={handleLaserMouseUp}
           />
         )}
         {/* Ô nhập text. Nằm NGOÀI .canvas nên phải tự nhân camera vào: .canvas

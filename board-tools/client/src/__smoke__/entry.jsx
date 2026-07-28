@@ -5,7 +5,8 @@ import { I18nProvider } from "@lingui/react";
 import { i18n } from "../lib/i18n.js";
 import IdeaMap from "../pages/IdeaMap.jsx";
 import { AuthProvider } from "../context/AuthContext.jsx";
-import { LASER_FADE_MS } from "../lib/laser.js";
+import { LASER_FADE_MS, LASER_WIDTHS } from "../lib/laser.js";
+import { PEN_COLORS } from "../lib/pen.js";
 
 export async function run(log) {
   const root = createRoot(document.getElementById("root"));
@@ -1079,32 +1080,90 @@ export async function run(log) {
   const laserCapture = document.querySelector(".laser-capture");
   if (!laserCapture) throw new Error("bật Laser mà không có lớp bắt chuột .laser-capture");
 
-  // Di chuột (KHÔNG giữ nút — đó là cả điểm của cây laser).
+  // Khu 4 của laser: bảy màu + ba độ đậm. KHÔNG có bảng hình và không có chế độ
+  // tô — laser không tạo ra hình nào.
+  const laserSwatches = document.querySelectorAll(".tool-options .pen-swatch").length;
+  const laserWidths = document.querySelectorAll(".tool-options .pen-width").length;
+  log(`khu 4 của laser: ${laserSwatches} màu · ${laserWidths} độ đậm · ${document.querySelectorAll(".tool-options .shape-pick").length} hình (phải là 0)`);
+  if (laserSwatches !== 7) throw new Error("khu 4 của laser phải có 7 màu, có " + laserSwatches);
+  if (laserWidths !== 3) throw new Error("khu 4 của laser phải có 3 độ đậm, có " + laserWidths);
+  if (document.querySelector(".tool-options .shape-pick")) throw new Error("khu 4 của laser không được có bảng chọn hình");
+
+  // DI CHUỘT KHÔNG GIỮ NÚT: không được ra vệt nào. Đây là bất biến chính của
+  // nhóm này — đọc bảng bằng cách rê chuột qua không được để lại vết.
   await act(async () => {
-    for (const x of [400, 440, 480, 520, 560]) mouse("mousemove", x, 300, laserCapture);
+    for (const x of [300, 340, 380]) mouse("mousemove", x, 200, laserCapture);
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  log(`laser: di chuột KHÔNG giữ nút → ${document.querySelectorAll(".laser-layer g").length} vệt (phải là 0)`);
+  if (document.querySelector(".laser-layer g")) throw new Error("di chuột mà không giữ nút vẫn ra vệt — laser phải bấm mới sáng");
+  if (globalThis.__emitted.some((e) => e[0] === "live:laser")) throw new Error("di chuột không giữ nút mà vẫn phát gói live:laser");
+
+  // Đổi màu và độ đậm TRƯỚC khi chỉ, để kiểm luôn là lựa chọn có đi vào gói.
+  //
+  // HAI act() riêng, không gộp: cả hai handler đều là onPrefs({ ...prefs, … }) và
+  // đều đóng gói `prefs` của CÙNG một lượt render, nên bấm liền hai cái trong
+  // một act thì cú sau ghi đè cú trước — màu quay về mặc định mà vẫn khớp
+  // assertion (mặc định cũng là một màu hợp lệ). Người dùng thật không gặp: giữa
+  // hai cú bấm luôn có một lượt render.
+  await act(async () => { document.querySelectorAll(".tool-options .pen-swatch")[4].click(); await new Promise((r) => setTimeout(r, 20)); });
+  await act(async () => { document.querySelectorAll(".tool-options .pen-width")[2].click(); await new Promise((r) => setTimeout(r, 20)); });
+  const pickedColorOn = document.querySelectorAll(".tool-options .pen-swatch")[4].classList.contains("on");
+  const pickedWidthOn = document.querySelectorAll(".tool-options .pen-width")[2].classList.contains("on");
+  if (!pickedColorOn || !pickedWidthOn) throw new Error("chọn màu/độ đậm laser mà nút không sáng lên");
+
+  // Giữ nút rồi rê: giờ mới ra vệt.
+  await act(async () => {
+    mouse("mousedown", 400, 300, laserCapture);
+    for (const x of [440, 480, 520, 560]) mouse("mousemove", x, 300, laserCapture);
     await new Promise((r) => setTimeout(r, 60));
   });
   const selfTrail = document.querySelectorAll(".laser-layer g").length;
   const emittedLaser = globalThis.__emitted.filter((e) => e[0] === "live:laser");
   const sentPts = emittedLaser.reduce((n, e) => n + e[1].pts.length / 2, 0);
-  log(`laser: di chuột → ${selfTrail} vệt · phát ${emittedLaser.length} gói mang ${sentPts} điểm`);
-  if (selfTrail !== 1) throw new Error("di chuột ở mode Laser mà không ra vệt nào");
+  log(`laser: giữ nút rồi rê → ${selfTrail} vệt · phát ${emittedLaser.length} gói mang ${sentPts} điểm · kiểu ${JSON.stringify({ color: emittedLaser[0][1].color, w: emittedLaser[0][1].w })}`);
+  if (selfTrail !== 1) throw new Error("giữ nút rồi rê mà không ra vệt nào");
   if (!document.querySelector(".laser-layer .laser-core")) throw new Error("vệt không có lõi");
   if (!document.querySelector(".laser-layer .laser-head")) throw new Error("vệt không có chấm ở đầu con trỏ");
   if (!emittedLaser.length) throw new Error("không phát gói live:laser nào — người khác sẽ không thấy gì");
   // Hợp đồng của pushLaserPoint: chỉ điểm nào THẬT SỰ vào vệt mới được phát.
   // Lệch số là vệt hai bên tan theo hai nhịp khác nhau.
   if (sentPts !== 5) throw new Error(`phát ${sentPts} điểm nhưng chỉ có 5 điểm vào vệt — hai bên sẽ thấy vệt khác nhau`);
+  // Gói ĐẦU phải mang cờ reset: thiếu nó thì bên kia nối lượt mới vào lượt cũ
+  // và có một vạch thẳng băng qua bảng.
+  if (emittedLaser[0][1].reset !== true) throw new Error("gói đầu của một lượt chỉ phải mang cờ reset");
+  // Kiểu vệt đi kèm MỌI gói, không chỉ gói đầu — gói đầu đi đường .volatile nên
+  // có thể rơi, và rơi nó thì cả lượt chỉ đó mất màu.
+  if (emittedLaser.some((e) => !e[1].color || !e[1].w)) throw new Error("có gói live:laser không mang màu/độ đậm");
+  if (emittedLaser.some((e) => e[1].color !== emittedLaser[0][1].color)) throw new Error("màu không nhất quán giữa các gói của cùng một lượt");
+  // Và phải là ĐÚNG thứ vừa chọn, không phải mặc định. So với PEN_COLORS[4] /
+  // LASER_WIDTHS[2] chứ không viết cứng token: đổi bảng màu là test đổi theo.
+  if (emittedLaser[0][1].color !== PEN_COLORS[4]) throw new Error(`chọn màu ${PEN_COLORS[4]} nhưng gói mang ${emittedLaser[0][1].color}`);
+  if (emittedLaser[0][1].w !== LASER_WIDTHS[2]) throw new Error(`chọn độ đậm ${LASER_WIDTHS[2]} nhưng gói mang ${emittedLaser[0][1].w}`);
+  const selfColor = document.querySelector(".laser-layer g").style.color;
+  if (!selfColor.includes(PEN_COLORS[4])) throw new Error(`vệt của mình vẽ màu ${selfColor}, không phải màu vừa chọn`);
 
-  // Vệt của người khác: màu phải KHÁC vệt của mình, nếu không thì hai người
-  // cùng chỉ vào bảng là không biết ai đang chỉ cái nào.
+  await act(async () => { mouse("mouseup", 560, 300, laserCapture); await new Promise((r) => setTimeout(r, 20)); });
+
+  // Vệt của người khác: màu đi theo LỰA CHỌN của người chỉ, mang trong gói.
   globalThis.__deliver("presence:join", { socketId: "peer-1", email: "ban@example.com", name: "Bạn" });
-  globalThis.__deliver("live:laser", { socketId: "peer-1", pts: [100, 700, 160, 700, 220, 700] });
+  globalThis.__deliver("live:laser", {
+    socketId: "peer-1", reset: true, color: "pen-green", w: 5, pts: [100, 700, 160, 700, 220, 700]
+  });
   await act(async () => { await new Promise((r) => setTimeout(r, 40)); });
   const colors = Array.from(document.querySelectorAll(".laser-layer g")).map((g) => g.style.color);
   log(`laser: thêm vệt của người khác → ${colors.length} vệt, màu ${JSON.stringify(colors)}`);
   if (colors.length !== 2) throw new Error("gói live:laser của người khác không dựng ra vệt");
-  if (colors[0] === colors[1]) throw new Error("vệt của mình và của người khác cùng màu — không phân biệt được ai đang chỉ");
+  if (colors[0] === colors[1]) throw new Error("hai người chọn hai màu mà vệt vẽ ra cùng màu");
+
+  // Gói mang token màu lạ phải bị lọc về mặc định, không được làm mất màu vệt.
+  globalThis.__deliver("live:laser", {
+    socketId: "peer-2", reset: true, color: "red; }", w: 999, pts: [900, 700, 960, 700]
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, 40)); });
+  const badColor = Array.from(document.querySelectorAll(".laser-layer g")).pop().style.color;
+  log(`laser: gói mang màu/độ đậm lạ → vệt vẫn có màu ${JSON.stringify(badColor)}`);
+  if (!badColor) throw new Error("gói mang token màu lạ làm vệt mất màu hẳn — sanitizeLaserStyle không chạy");
 
   // Đứng yên một nhịp là vệt phải tan HẾT. Đây là thứ tách laser khỏi bút, và
   // là thứ duy nhất ở đây cần thời gian thật trôi qua.
