@@ -4,7 +4,7 @@ import { colorVar } from "../lib/badges.js";
 
 // Cùng lý do như IdeaCard: `h` là object hành động có định danh ổn định, nhờ
 // vậy memo() mới chặn được việc mọi khung vẽ lại theo mỗi nhịp kéo/con trỏ.
-function FrameBox({ group, editingTitle, dropTarget, h }) {
+function FrameBox({ group, editingTitle, dropTarget, selected, h }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(group.title);
   const doneRef = useRef(false);
@@ -15,7 +15,7 @@ function FrameBox({ group, editingTitle, dropTarget, h }) {
 
   return (
     <div
-      className={"frame-box" + (dropTarget ? " drop-target" : "")}
+      className={"frame-box" + (dropTarget ? " drop-target" : "") + (selected ? " selected" : "")}
       data-group-id={group.id}
       style={{
         left: group.x, top: group.y, width: group.w, height: group.h,
@@ -55,10 +55,14 @@ function FrameBox({ group, editingTitle, dropTarget, h }) {
         className="frame-resize-handle"
         onMouseDown={(e) => { e.stopPropagation(); h.resizeMouseDown(e, group.id); }}
       />
-      <span className="connector-zone top" onMouseDown={(e) => h.connectorMouseDown(e, group.id)} onClick={(e) => e.stopPropagation()}><span className="connector-dot">+</span></span>
-      <span className="connector-zone right" onMouseDown={(e) => h.connectorMouseDown(e, group.id)} onClick={(e) => e.stopPropagation()}><span className="connector-dot">+</span></span>
-      <span className="connector-zone bottom" onMouseDown={(e) => h.connectorMouseDown(e, group.id)} onClick={(e) => e.stopPropagation()}><span className="connector-dot">+</span></span>
-      <span className="connector-zone left" onMouseDown={(e) => h.connectorMouseDown(e, group.id)} onClick={(e) => e.stopPropagation()}><span className="connector-dot">+</span></span>
+      {/* Handler nằm trên CHÍNH cái chấm, không phải trên cả vùng bao. Trước đây
+          nó ở trên .connector-zone — một ô 32px trong suốt — nên mọi cú bấm rơi
+          vào ô đó đều thành "nối dây", kể cả khi con trỏ đang ở trên nút × của
+          khung. Thẻ (IdeaCard) vốn đã làm đúng cách này; khung thì chưa. */}
+      <span className="connector-zone top"><span className="connector-dot" onMouseDown={(e) => h.connectorMouseDown(e, group.id)} onClick={(e) => e.stopPropagation()}>+</span></span>
+      <span className="connector-zone right"><span className="connector-dot" onMouseDown={(e) => h.connectorMouseDown(e, group.id)} onClick={(e) => e.stopPropagation()}>+</span></span>
+      <span className="connector-zone bottom"><span className="connector-dot" onMouseDown={(e) => h.connectorMouseDown(e, group.id)} onClick={(e) => e.stopPropagation()}>+</span></span>
+      <span className="connector-zone left"><span className="connector-dot" onMouseDown={(e) => h.connectorMouseDown(e, group.id)} onClick={(e) => e.stopPropagation()}>+</span></span>
     </div>
   );
 }

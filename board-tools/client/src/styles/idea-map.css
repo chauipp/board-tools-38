@@ -191,54 +191,151 @@
 
 .idea-card {
   position: absolute; width: 210px;
+  /* Đổ bóng đi qua BIẾN chứ không khai thẳng: bậc thẻ đổi độ nổi bằng cách đổi
+     --card-shadow, còn :hover và .selected thì cộng thêm lớp bóng của mình vào
+     sau nó. Khai thẳng `box-shadow` ở .lv-N sẽ đè mất vòng sáng của .selected
+     (cùng độ đặc hiệu hai class, mà .lv-N đứng sau) — thẻ bậc phụ đang được
+     chọn sẽ mất hẳn quầng accent. */
+  --card-shadow: var(--shadow);
   background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px;
-  box-shadow: var(--shadow); padding: 10px 10px 9px; cursor: grab; user-select: none;
+  box-shadow: var(--card-shadow); padding: 10px 10px 9px; cursor: grab; user-select: none;
   transition: box-shadow 0.12s ease, transform 0.12s ease, border-color 0.12s ease;
   /* Cách ly layout: đổi left/top của MỘT thẻ đang kéo không bắt trình duyệt
      tính lại vùng layout của những thẻ còn lại. Chỉ `layout style` — KHÔNG có
      `paint`, vì connector-zone và các badge cố tình thò ra ngoài viền thẻ. */
   contain: layout style;
 }
-.idea-card:hover { border-color: var(--ink-dim); box-shadow: var(--shadow), 0 4px 12px rgba(0,0,0,0.16); transform: translateY(-2px); }
+/* Thẻ đang được rê nổi lên trên các thẻ khác. Cần cho bốn dấu +: chúng nằm ngoài
+   viền thẻ 4–20px, nên hai thẻ kề sát nhau là dấu + của thẻ này rơi đúng vào
+   thân thẻ kia — bấm vào dấu + thì hoá ra tóm phải thẻ bên cạnh. Nâng thẻ đang
+   rê lên là dấu + của chính nó thắng, và vì :hover còn đúng khi con trỏ đã sang
+   tới dấu + (dấu + là con của thẻ) nên nó không tuột giữa chừng.
+   `contain: layout` khai ở .idea-card đã biến mỗi thẻ thành một stacking context,
+   nên z-index PHẢI đặt ở đây; đặt ở .connector-dot thì bị nhốt trong thẻ, không
+   so được với thẻ bên cạnh. 10 vẫn dưới .tool-rail (30) và popover (90). */
+.idea-card:hover { border-color: var(--ink-dim); box-shadow: var(--card-shadow), 0 4px 12px rgba(0,0,0,0.16); transform: translateY(-2px); z-index: 10; }
 .idea-card.link-pending { outline: 2px solid var(--accent); outline-offset: 2px; }
 .idea-card.drop-target { outline: 2px dashed var(--accent); outline-offset: 3px; }
-.idea-card.selected { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: var(--shadow), 0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent); }
+.idea-card.selected { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: var(--card-shadow), 0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent); }
 .idea-card.dim { opacity: 0.22; pointer-events: none; }
 .idea-card.flash { animation: card-flash 1.5s ease; }
-.idea-card.border-dashed { border-style: dashed; }
 .idea-card.shape-ellipse { border-radius: 50%; padding-left: 30px; padding-right: 30px; text-align: center; }
-.idea-card.is-root {
+/* Bậc thẻ — năm cỡ, nhỏ và nhạt dần từ bậc 1 tới bậc 5 (xem lib/card-levels.js).
+   Bậc 1 giữ NGUYÊN dáng "thẻ gốc" cũ và bậc 3 giữ nguyên dáng thẻ thường cũ:
+   board đã có từ trước không được đổi hình khi lên bản này.
+   Bề rộng ở đây phải khớp CARD_LEVEL_W trong lib/card-levels.js — số đó dùng để
+   canh giữa thẻ vào con trỏ lúc đặt, lệch là thẻ nhảy khỏi chỗ vừa bấm. */
+.idea-card.lv-1 {
   width: 260px;
   border-width: 2px; border-color: var(--accent);
   background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 16%, var(--surface-2)), var(--surface-2) 65%);
-  box-shadow: var(--shadow), 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), 0 8px 22px color-mix(in srgb, var(--accent) 28%, transparent);
+  --card-shadow: var(--shadow), 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), 0 8px 22px color-mix(in srgb, var(--accent) 28%, transparent);
 }
-.idea-card.is-root:hover { box-shadow: var(--shadow), 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent), 0 10px 26px color-mix(in srgb, var(--accent) 34%, transparent); }
-.idea-card.is-root .title { font-size: 17px; font-weight: 700; line-height: 1.25; }
-.idea-card.is-root .desc { font-size: 12.5px; -webkit-line-clamp: 6; }
+.idea-card.lv-1:hover { --card-shadow: var(--shadow), 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent), 0 10px 26px color-mix(in srgb, var(--accent) 34%, transparent); }
+.idea-card.lv-1 .title { font-size: 17px; font-weight: 700; line-height: 1.25; }
+.idea-card.lv-1 .desc { font-size: 12.5px; -webkit-line-clamp: 6; }
+
+.idea-card.lv-2 {
+  width: 235px;
+  border-width: 2px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 6%, var(--surface-2)), var(--surface-2) 70%);
+}
+.idea-card.lv-2 .title { font-size: 15px; font-weight: 700; line-height: 1.22; }
+.idea-card.lv-2 .desc { font-size: 12px; -webkit-line-clamp: 5; }
+
+/* Bậc 3 = dáng gốc của .idea-card, không khai lại gì cả. */
+
+.idea-card.lv-4 {
+  width: 180px; padding: 8px 9px 7px;
+  border-color: color-mix(in srgb, var(--line) 65%, transparent);
+  /* `0 0 #0000` chứ không phải `none`: giá trị này còn được nối tiếp trong danh
+     sách box-shadow của :hover và .selected, mà `none` nằm giữa một danh sách
+     là cú pháp sai — cả khai báo sẽ bị vứt, kéo theo mất luôn vòng sáng. */
+  --card-shadow: 0 0 #0000;
+}
+/* KHÔNG khai font-weight ở bậc 4 và 5: .idea-card .title không khai weight nên
+   bậc 3 thừa hưởng 400. Đặt 500 ở đây (như bản nháp đầu) làm thang bậc ĐẢO
+   chiều — bậc phụ đậm hơn bậc thường. Đo trên trình duyệt thật mới thấy; jsdom
+   không tính cascade nên smoke test vẫn xanh. */
+.idea-card.lv-4 .title { font-size: 12px; }
+.idea-card.lv-4 .desc { font-size: 11px; -webkit-line-clamp: 3; }
+
+.idea-card.lv-5 {
+  width: 150px; padding: 7px 8px 6px;
+  border-style: dashed; border-color: color-mix(in srgb, var(--line) 55%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+  --card-shadow: 0 0 #0000;
+}
+.idea-card.lv-5 .title { font-size: 11px; }
+.idea-card.lv-5 .desc { font-size: 10.5px; -webkit-line-clamp: 2; }
+
+/* PHẢI đứng SAU .lv-5: cùng độ đặc hiệu (hai class) nên thứ tự nguồn quyết định.
+   Đặt trước thì `border-style: dashed` của bậc 5 đè mất, và mục "viền liền" ở
+   menu chuột phải thành nút chết trên đúng cái bậc hay dùng nó nhất. */
+.idea-card.border-solid { border-style: solid; }
+.idea-card.border-dashed { border-style: dashed; }
+
 .root-badge { font-size: 15px; flex-shrink: 0; line-height: 1.2; }
 @keyframes card-flash {
   0%, 60% { outline: 3px solid var(--accent); outline-offset: 4px; }
   100% { outline: 0 solid transparent; }
 }
+/* Vùng bắt chuột của dấu + nằm TRỌN bên ngoài thẻ/khung, không thò một pixel nào
+   vào trong.
+   Bản cũ là ô 46px ĐÈ LÊN cạnh (top: -8px + translate(-50%,-50%)), tức nửa dưới
+   của nó nằm trong thẻ, và nó có z-index 5 nên nổi trên mọi thứ ở đó. Hậu quả:
+   trên khung nhỏ, ô này phủ kín nút × và chỗ sửa tiêu đề — bấm vào × thì trúng
+   "nối dây", nút × thành nút chết, không xoá được khung.
+   Khoảng hở là 4px — dấu + gần như dán vào viền. Giữ được khoảng hở nhỏ đến thế
+   mà ô vẫn nằm trọn bên ngoài là nhờ dồn chấm về mép TRONG của ô (align/justify
+   flex-start|flex-end) thay vì để nó giữa ô: phần còn lại của ô 32px nở ra phía
+   ngoài, nơi không có gì để mà che.
+   Dải chrome nổi trên viền khung (tiêu đề, ×, ổ khoá — đều ở top: -13px, cao
+   20px) vẫn lọt vào ô này; chúng được nâng z-index lên 6 ở dưới để thắng ô này
+   trong phép thử va chạm, nên nút × không thể thành nút chết lần nữa.
+   `pointer-events: none`: ô này CHỈ để canh chỗ cho chấm, không bao giờ được bắt
+   chuột. Trước đây nó bắt, mà nó là con của thẻ/khung nên mọi thứ nổi bọt lên:
+   rê vào khoảng trống cách thẻ 30px cũng ra con trỏ bàn tay và bấm xuống là kéo
+   được cả thẻ — hoàn toàn không có gì ở đó để mà kéo. Giờ chỗ trống trong ô
+   trong suốt với chuột đúng nghĩa: quét chọn, bấm nền, mọi thứ đi thẳng xuống
+   bảng như thể ô không tồn tại. */
 .connector-zone {
-  position: absolute; width: 46px; height: 46px;
+  position: absolute; width: 32px; height: 32px;
   display: flex; align-items: center; justify-content: center;
-  z-index: 5;
+  z-index: 5; pointer-events: none;
 }
-.connector-zone.top { top: -8px; left: 50%; transform: translate(-50%, -50%); }
-.connector-zone.right { top: 50%; left: calc(100% + 8px); transform: translate(-50%, -50%); }
-.connector-zone.bottom { top: calc(100% + 8px); left: 50%; transform: translate(-50%, -50%); }
-.connector-zone.left { top: 50%; left: -8px; transform: translate(-50%, -50%); }
+.connector-zone.top    { bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); align-items: flex-end; }
+.connector-zone.bottom { top:    calc(100% + 4px); left: 50%; transform: translateX(-50%); align-items: flex-start; }
+.connector-zone.left   { right:  calc(100% + 4px); top: 50%;  transform: translateY(-50%); justify-content: flex-end; }
+.connector-zone.right  { left:   calc(100% + 4px); top: 50%;  transform: translateY(-50%); justify-content: flex-start; }
 .connector-dot {
   width: 16px; height: 16px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   background: var(--surface); border: 1.5px solid var(--accent); color: var(--accent);
   font-size: 12px; font-weight: 700; line-height: 1; cursor: crosshair;
   opacity: 0; transform: scale(0.8); transition: opacity 0.12s ease, transform 0.12s ease;
-  pointer-events: none;
+  /* Chấm là thứ DUY NHẤT trong cụm này bắt chuột, và bắt lúc nào cũng vậy —
+     không gài theo :hover của thẻ. Gài theo hover sẽ khoá chết chính nó: đi từ
+     thân thẻ ra chấm phải băng qua 4px khe hở, ở đó thẻ hết :hover nên chấm tắt
+     pointer-events, mà đã tắt thì rê vào chấm cũng không tính là hover — chấm
+     thành thứ không bao giờ với tới được. */
+  pointer-events: auto;
 }
-.connector-zone:hover .connector-dot { opacity: 1; transform: scale(1); pointer-events: auto; }
+/* Rê vào thẻ/khung là bốn dấu + hiện ra (rê thẳng vào chấm cũng vậy, cho lối
+   vào từ phía ngoài). Chỉ HIỆN thôi — vùng trống quanh chấm không bắt chuột,
+   xem ghi chú ở .connector-zone. */
+.idea-card:hover .connector-dot,
+.frame-box:hover .connector-dot,
+.connector-dot:hover { opacity: 1; transform: scale(1); }
+/* Đã vào hẳn trong chấm: tô đặc + nở ra, để phân biệt rõ "đang ở trên nó" với
+   "mới ở gần nó" — hai trạng thái này trước đây trông y hệt nhau.
+   Hai selector đầu trông thừa nhưng KHÔNG được bỏ: rê vào chấm thì thẻ/khung
+   cũng đang :hover, mà `.idea-card:hover .connector-dot` ở trên có ba class,
+   đặc hiệu hơn `.connector-dot:hover` hai class — scale(1) của nó sẽ đè mất
+   scale(1.15) ở đây và cái nở ra không bao giờ xảy ra. */
+.idea-card:hover .connector-dot:hover,
+.frame-box:hover .connector-dot:hover,
+.connector-dot:hover { background: var(--accent); color: var(--accent-ink); transform: scale(1.15); }
 .idea-card.dim .connector-zone { display: none; }
 .idea-card .card-top { display: flex; gap: 6px; align-items: flex-start; }
 .idea-card .title { font-size: 13px; line-height: 1.2; flex: 1; min-width: 0; overflow-wrap: break-word; }
@@ -444,6 +541,11 @@
 }
 .badge-editor .em-icon-btn:hover { color: var(--ink); border-color: var(--ink-dim); }
 .badge-editor .em-icon-btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+/* Năm nút bậc thẻ trên MỘT hàng trong khung rộng 220px: mỗi nút chỉ được ~35px.
+   Padding ngang phải bóp còn 2px, và icon co theo bề rộng nút thay vì giữ 30px
+   cố định — giữ nguyên là hình thẻ bị cắt mất hai mép và bậc nào cũng như nhau. */
+.badge-editor .lv-btn { padding: 5px 2px; }
+.badge-editor .lv-btn svg { width: 100%; height: auto; }
 .badge-editor .em-delete {
   width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;
   background: transparent; border: 1px solid var(--line); color: var(--danger);
@@ -470,19 +572,35 @@
 }
 .frame-box:active { cursor: grabbing; }
 .frame-box.drop-target { outline: 2px dashed var(--accent); outline-offset: 3px; }
+/* Khung đang chọn: cùng ngôn ngữ với .idea-card.selected (viền accent + quầng
+   sáng) để "đang chọn" chỉ có một cách nhìn duy nhất trên cả bảng. Nhuộm luôn
+   viền nét đứt của khung thay vì chỉ vẽ outline bên ngoài — khung thường rất to,
+   một vòng outline mảnh ở rìa màn hình dễ lọt khỏi mắt.
+   Cố ý KHÔNG dùng `outline` ở đây: .drop-target đang dùng outline, để hai trạng
+   thái này chồng nhau được (khung vừa đang chọn vừa là đích thả) mà không cái
+   nào đè mất cái nào. */
+.frame-box.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--accent) 7%, color-mix(in srgb, var(--surface) 55%, transparent));
+}
+/* z-index 6 cho cả dải chrome nổi trên viền khung: dấu + giờ chỉ cách viền 3px
+   nên ô bắt chuột của nó (.connector-zone, z-index 5) trùm lên dải này trên
+   những khung hẹp. 6 > 5 nên tiêu đề / × / ổ khoá / tay cầm kéo giãn vẫn là thứ
+   nhận được cú bấm — đúng cái đã hỏng ở bản trước. */
 .frame-title {
-  position: absolute; top: -13px; left: 10px; max-width: calc(100% - 44px);
+  position: absolute; top: -13px; left: 10px; max-width: calc(100% - 44px); z-index: 6;
   background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
   padding: 1px 8px; font-size: 11px; color: var(--ink-dim); cursor: text;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .frame-title-input {
-  position: absolute; top: -13px; left: 10px; width: 160px;
+  position: absolute; top: -13px; left: 10px; width: 160px; z-index: 6;
   background: var(--bg); border: 1px solid var(--accent); border-radius: 4px;
   padding: 1px 8px; font-size: 11px; color: var(--ink);
 }
 .frame-delete {
-  position: absolute; top: -13px; right: 6px; background: var(--bg);
+  position: absolute; top: -13px; right: 6px; z-index: 6; background: var(--bg);
   border: 1px solid var(--line); border-radius: 50%; width: 20px; height: 20px;
   color: var(--ink-dim); cursor: pointer; font-size: 12px; line-height: 1; padding: 0;
   display: inline-flex; align-items: center; justify-content: center;
@@ -490,12 +608,12 @@
 .frame-delete:hover { color: var(--ink); border-color: var(--ink-dim); }
 /* Ổ khoá của khung vẫn nổi trên viền; chỉ ổ khoá của thẻ mới vào hàng với tiêu đề. */
 .frame-box .frame-lock {
-  position: absolute; top: -13px; left: auto; right: 30px; background: var(--bg);
+  position: absolute; top: -13px; left: auto; right: 30px; z-index: 6; background: var(--bg);
   border: 1px solid var(--line); border-radius: 50%; width: 20px; height: 20px;
   display: inline-flex; align-items: center; justify-content: center;
 }
 .frame-resize-handle {
-  position: absolute; right: -6px; bottom: -6px; width: 16px; height: 16px;
+  position: absolute; right: -6px; bottom: -6px; width: 16px; height: 16px; z-index: 6;
   border-radius: 3px; background: var(--surface); border: 1.5px solid var(--ink-dim);
   cursor: nwse-resize;
 }
@@ -685,6 +803,12 @@
 .shape-pick, .fill-pick { width: 22px; height: 22px; }
 .shape-pick svg, .fill-pick svg { display: block; }
 
+/* Nút chọn bậc thẻ xếp MỘT cột (không dùng .tool-grid): icon của nó rộng 30px,
+   nhét hai cột vào 48px vùng nội dung thì hình thẻ bé tới mức không phân biệt
+   nổi bậc 3 với bậc 4 — mà phân biệt được chính là toàn bộ mục đích của nó. */
+.level-pick { width: 46px; height: 26px; }
+.level-pick svg { display: block; }
+
 .tool-sep { height: 1px; margin: 3px 2px; background: var(--line); }
 
 /* Ô màu và nút độ dày xếp 2 cột cho khu 4 khỏi dài quá một màn hình. */
@@ -716,3 +840,17 @@
    ngang qua trên một thẻ vẫn ra nét chứ không bị thẻ ăn mất chuột. z-index 8
    nằm dưới .tool-rail (30) nên thanh công cụ vẫn bấm được. */
 .ink-capture { position: absolute; inset: 0; z-index: 8; cursor: crosshair; }
+
+/* Mode Đặt: cùng vai trò và cùng z-index với .ink-capture — bấm trúng một thẻ
+   có sẵn vẫn phải ra thẻ mới ở đúng chỗ đó, chứ không phải chọn thẻ cũ.
+   `copy` cho việc đặt thẻ (con trỏ có dấu +, nghĩa là "thả xuống đây một cái
+   mới"), `crosshair` cho việc tô khung. */
+.place-capture { position: absolute; inset: 0; z-index: 8; cursor: copy; }
+.place-capture.draw-frame { cursor: crosshair; }
+
+/* Khung nháp trong lúc tô — nét đứt như .marquee-box nhưng KHÔNG tô nền: nền mờ
+   phủ lên thẻ bên dưới làm khó ướm khung vào đúng cụm thẻ muốn gom. */
+.place-draft {
+  position: absolute; border: 1.5px dashed var(--accent); border-radius: 10px;
+  pointer-events: none; z-index: 4;
+}

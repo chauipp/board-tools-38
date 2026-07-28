@@ -1,6 +1,8 @@
 import { useLingui } from "@lingui/react/macro";
 import { PEN_COLORS, PEN_WIDTHS, penVar } from "../lib/pen.js";
 import { SHAPE_KINDS, SHAPE_CLOSED } from "../lib/shape.js";
+import { CARD_LEVELS } from "../lib/card-levels.js";
+import CardLevelIcon from "./CardLevelIcon.jsx";
 
 // Icon của bảng chọn hình: vẽ ĐÚNG hình mà nút đó tạo ra, không dùng chữ hay
 // emoji — theo currentColor nên tự đúng ở nền sáng và nền tối.
@@ -13,10 +15,45 @@ const SHAPE_ICON = {
   diamond: <path d="M 10 3 L 17 10 L 10 17 L 3 10 Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
 };
 
-export default function ToolOptions({ tool, prefs, onPrefs }) {
+// Nhãn của từng bậc thẻ. Cố ý KHÔNG gom vào lib/card-levels.js: macro `t` cần
+// binding từ useLingui() ngay trong component, còn lib là code thuần không React.
+// Menu chuột phải giữ một bản riêng của bảng này, cùng lý do.
+function levelLabels(t) {
+  return {
+    1: t`Bậc 1 — thẻ gốc`,
+    2: t`Bậc 2 — thẻ chính`,
+    3: t`Bậc 3 — thẻ thường`,
+    4: t`Bậc 4 — thẻ phụ`,
+    5: t`Bậc 5 — ghi chú`
+  };
+}
+
+export default function ToolOptions({ tool, prefs, onPrefs, level, onLevel }) {
   const { t } = useLingui();
-  // Cục gôm không có tuỳ chọn nào, và mode Chuột thì IdeaMap không render
-  // component này — nên chỉ còn hai trường hợp phải vẽ.
+
+  // `tool` ở đây là "việc đang chọn" chứ không riêng tool vẽ: ở mode Đặt thì nó
+  // là "node" / "group". Khu 4 là một khối duy nhất cho mọi mode — nếu tách
+  // thành hai component thì hai khối .tool-options cùng tồn tại được, và cái
+  // sau sẽ nằm đè lên cái trước ở đúng toạ độ left: 66px.
+  if (tool === "node") {
+    const LEVEL_LABEL = levelLabels(t);
+    return (
+      <div className="tool-options" onMouseDown={(e) => e.stopPropagation()}>
+        {CARD_LEVELS.map((lv) => (
+          <button
+            key={lv}
+            type="button"
+            className={"tool-btn level-pick" + (level === lv ? " on" : "")}
+            title={LEVEL_LABEL[lv]}
+            onClick={() => onLevel(lv)}
+          ><CardLevelIcon level={lv} /></button>
+        ))}
+      </div>
+    );
+  }
+
+  // Cục gôm và nút vẽ khung không có tuỳ chọn nào, và mode Chuột thì IdeaMap
+  // không render component này — nên chỉ còn hai trường hợp phải vẽ.
   if (tool !== "pen" && tool !== "shape") return null;
   const isShape = tool === "shape";
   const canFill = isShape && SHAPE_CLOSED.has(prefs.kind);
