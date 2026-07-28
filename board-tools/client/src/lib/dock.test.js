@@ -109,7 +109,7 @@ function fakeStorage(initial) {
   };
 }
 
-test("chưa lưu gì → mặc định cả ba panel neo trong bar", () => {
+test("chưa lưu gì → mặc định cả bốn panel neo trong bar", () => {
   assert.deepEqual(loadLayouts(fakeStorage()), DEFAULT_LAYOUTS);
 });
 
@@ -128,7 +128,8 @@ test("giá trị hỏng lùi về mặc định từng key, không nổ", () => 
   assert.deepEqual(loadLayouts(fakeStorage({ "idea-map-panel-layout": partial })), {
     status: DEFAULT_LAYOUTS.status,
     tag: DEFAULT_LAYOUTS.tag,
-    palette: { free: true, vertical: false, x: 10, y: 20 }
+    palette: { free: true, vertical: false, x: 10, y: 20 },
+    theme: DEFAULT_LAYOUTS.theme
   });
 });
 

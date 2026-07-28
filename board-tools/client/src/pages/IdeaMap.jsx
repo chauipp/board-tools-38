@@ -5,6 +5,7 @@ import { getBoard, saveBoard } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
 import { paletteCss, applyColorTo, applyColorToMany, removePaletteColor } from "../lib/palette.js";
+import { BOARD_BGS, COLOR_PACKS, isBoardBg, isColorPack } from "../lib/board-theme.js";
 import { loadLayouts, saveLayouts } from "../lib/dock.js";
 import DockPanel from "../components/DockPanel.jsx";
 import LoadError from "../components/LoadError.jsx";
@@ -105,6 +106,15 @@ function computeZoom(currentBoard, rect, screenX, screenY, factor) {
 export default function IdeaMap() {
   const toggleTheme = useTheme();
   const { t } = useLingui();
+  // Tên preset nằm ở đây chứ không ở lib/board-theme.js: module đó là dữ liệu
+  // thuần, test bằng node:test, không kéo được `t` của lingui vào.
+  const BG_LABEL = {
+    paper: t`Giấy kraft`, white: t`Trắng`, slate: t`Xám đá`,
+    mint: t`Bạc hà`, blush: t`Hồng phấn`
+  };
+  const PACK_LABEL = {
+    pastel: t`Pastel`, vivid: t`Rực`, mono: t`Đơn sắc`
+  };
   const [board, setBoard] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [saveError, setSaveError] = useState(null);
@@ -129,7 +139,7 @@ export default function IdeaMap() {
   const [chipDrag, setChipDrag] = useState(null);
   // Mặc định mở Trạng thái + Nhãn để giữ đúng hành vi cũ khi mới vào; Bảng màu
   // đóng. Chỉ giữ trong state — không lưu qua reload.
-  const [panels, setPanels] = useState({ status: true, tag: true, palette: false });
+  const [panels, setPanels] = useState({ status: true, tag: true, palette: false, theme: false });
   const [layouts, setLayouts] = useState(() => loadLayouts(window.localStorage));
   // mode: "select" (thao tác thẻ như cũ) | "draw" (vẽ lên bảng) | "place" (đã
   // lên nòng một việc ở khu 3, đang chờ người dùng chỉ chỗ trên bảng).
@@ -231,7 +241,7 @@ export default function IdeaMap() {
         const camera = loadCamera(window.localStorage, boardId);
         // Board cũ chưa có palette → mặc định rỗng, để mọi chỗ đọc board.palette
         // không phải ?? [] khắp nơi.
-        setBoard({ palette: [], nextPaletteId: 1, drawings: [], nextDrawingId: 1, ...boardData, ...(camera ? { view: camera } : {}) });
+        setBoard({ palette: [], nextPaletteId: 1, drawings: [], nextDrawingId: 1, bg: null, pack: null, ...boardData, ...(camera ? { view: camera } : {}) });
       })
       .catch((e) => { if (!cancelled) setLoadError(e.code || "UNKNOWN"); });
     return () => { cancelled = true; };
@@ -312,6 +322,24 @@ export default function IdeaMap() {
     [board?.tags]
   );
   const paletteStyle = useMemo(() => paletteCss(board?.palette ?? EMPTY_ARRAY), [board?.palette]);
+
+  // Nền và bộ màu là DỮ LIỆU BOARD, nhưng thuộc tính lại đặt trên <html> — cùng
+  // chỗ với data-theme (thiết lập của người dùng). Hai lý do: chip nhãn/trạng
+  // thái nằm trong .filterbar, ngoài .viewport, mà vẫn phải đổi màu theo bộ màu;
+  // và exportPng() đang đọc getComputedStyle của documentElement, để ở đây thì
+  // nó không phải đổi cách lấy giá trị.
+  useEffect(() => {
+    const el = document.documentElement;
+    // Lọc trước khi đặt: giá trị này có thể tới từ "Nhập JSON", không phải lúc
+    // nào cũng từ cú bấm trong panel.
+    const bg = isBoardBg(board?.bg) ? board?.bg : null;
+    const pack = isColorPack(board?.pack) ? board?.pack : null;
+    if (bg) el.setAttribute("data-bg", bg); else el.removeAttribute("data-bg");
+    if (pack) el.setAttribute("data-pack", pack); else el.removeAttribute("data-pack");
+    // Gỡ khi rời trang: sang danh sách board mà còn nền của board vừa xem thì
+    // trông như lỗi hiển thị.
+    return () => { el.removeAttribute("data-bg"); el.removeAttribute("data-pack"); };
+  }, [board?.bg, board?.pack]);
 
   // Bộ lọc dựng MỘT lần cho mỗi lần đổi điều kiện, thay vì tính lại
   // Object.keys(...).filter(...) bên trong mỗi thẻ ở mỗi lần render.
@@ -2425,6 +2453,18 @@ export default function IdeaMap() {
       : { mode: "create", hex: "#888888", x: r.left, y: r.bottom + 6 });
   }
 
+  // Nền và bộ màu đi qua đúng đường lưu của mọi thay đổi board khác, nên tự có
+  // hoàn tác và tự phát realtime — không cần đường riêng.
+  function setBoardBg(next) {
+    if (board.bg === next) return;
+    commitAndSave({ ...board, bg: next });
+  }
+
+  function setBoardPack(next) {
+    if (board.pack === next) return;
+    commitAndSave({ ...board, pack: next });
+  }
+
   function createPaletteColor(hex) {
     const id = board.nextPaletteId;
     commitAndSave({ ...board, palette: [...board.palette, { id, hex }], nextPaletteId: id + 1 });
@@ -2580,6 +2620,7 @@ export default function IdeaMap() {
           <button className={"btn ghost toggle" + (panels.status ? " active" : "")} onClick={() => togglePanel("status")}><Trans>Trạng thái</Trans></button>
           <button className={"btn ghost toggle" + (panels.tag ? " active" : "")} onClick={() => togglePanel("tag")}><Trans>Nhãn</Trans></button>
           <button className={"btn ghost toggle" + (panels.palette ? " active" : "")} onClick={() => togglePanel("palette")}><Trans>Bảng màu</Trans></button>
+          <button className={"btn ghost toggle" + (panels.theme ? " active" : "")} onClick={() => togglePanel("theme")}><Trans>Giao diện</Trans></button>
           <span
             className={"chip-toggle" + (filterFav ? " on" : "")}
             onClick={() => setFilterFav((v) => !v)}
@@ -2702,6 +2743,57 @@ export default function IdeaMap() {
             {board.palette.length === 0 && (
               <span className="fb-count"><Trans>Chưa có màu nào — bấm + để tạo.</Trans></span>
             )}
+          </DockPanel>
+        )}
+
+        {panels.theme && (
+          <DockPanel title={t`Giao diện`} layout={layouts.theme} barRef={fbDockRef} onLayout={(l) => setLayout("theme", l)}>
+            <div className="theme-row">
+              <span className="fb-count"><Trans>Nền bảng</Trans></span>
+              <div className="fb-chips">
+                {/* Nút đầu là "theo giao diện" (bg = null): nền chạy theo sáng/tối
+                    như trước khi có preset. Nó KHÔNG nằm trong BOARD_BGS vì đó là
+                    danh sách preset, còn đây là "không preset nào". */}
+                <button
+                  className={"bg-swatch bg-none" + (board.bg == null ? " on" : "")}
+                  data-mutating
+                  disabled={role === "viewer"}
+                  onClick={() => setBoardBg(null)}
+                  title={t`Theo giao diện sáng/tối`}
+                />
+                {BOARD_BGS.map((id) => (
+                  <button
+                    key={id}
+                    className={"bg-swatch" + (board.bg === id ? " on" : "")}
+                    data-bg={id}
+                    data-mutating
+                    disabled={role === "viewer"}
+                    onClick={() => setBoardBg(id)}
+                    title={BG_LABEL[id]}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="theme-row">
+              <span className="fb-count"><Trans>Bộ màu</Trans></span>
+              <div className="fb-chips">
+                <button
+                  className={"btn ghost toggle" + (board.pack == null ? " active" : "")}
+                  data-mutating
+                  disabled={role === "viewer"}
+                  onClick={() => setBoardPack(null)}
+                ><Trans>Cổ điển</Trans></button>
+                {COLOR_PACKS.map((id) => (
+                  <button
+                    key={id}
+                    className={"btn ghost toggle" + (board.pack === id ? " active" : "")}
+                    data-mutating
+                    disabled={role === "viewer"}
+                    onClick={() => setBoardPack(id)}
+                  >{PACK_LABEL[id]}</button>
+                ))}
+              </div>
+            </div>
           </DockPanel>
         )}
         </div>

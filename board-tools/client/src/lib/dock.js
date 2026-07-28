@@ -7,7 +7,8 @@ const SNAP = 24;
 export const DEFAULT_LAYOUTS = {
   status: { free: false, vertical: false, x: 0, y: 0 },
   tag: { free: false, vertical: false, x: 0, y: 0 },
-  palette: { free: false, vertical: false, x: 0, y: 0 }
+  palette: { free: false, vertical: false, x: 0, y: 0 },
+  theme: { free: false, vertical: false, x: 0, y: 0 }
 };
 
 // `bounds` là hình chữ nhật VÙNG VẼ, không phải cả cửa sổ. Kẹp theo vùng vẽ là cách

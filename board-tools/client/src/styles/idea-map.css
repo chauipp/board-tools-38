@@ -620,6 +620,42 @@
 }
 .pal-swatch:active { cursor: grabbing; }
 .pal-swatch:hover { border-color: var(--ink); }
+/* Panel Giao diện: hai hàng "nhãn — dãy nút", mỗi hàng một việc. */
+.theme-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dock-panel.vertical .theme-row { align-items: flex-start; }
+.theme-row .fb-count { min-width: 56px; }
+
+/* Nút swatch tự tô bằng CHÍNH preset nó đại diện, qua data-bg — không lặp lại
+   mã màu trong JS, nên sửa hex ở khối preset là nút đổi theo. */
+.bg-swatch {
+  width: 22px; height: 22px; border-radius: 5px; padding: 0; flex-shrink: 0;
+  border: 1px solid var(--line); cursor: pointer;
+  background: var(--board-bg);
+}
+.bg-swatch[data-bg="paper"] { background: #E6E0CC; }
+.bg-swatch[data-bg="white"] { background: #FBFAF7; }
+.bg-swatch[data-bg="slate"] { background: #E4E6E4; }
+.bg-swatch[data-bg="mint"]  { background: #E2EDE6; }
+.bg-swatch[data-bg="blush"] { background: #F1E6E4; }
+/* Nền tối: nút phải cho thấy màu nó sẽ RA, không phải màu của bản sáng. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="paper"] { background: #241F16; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="white"] { background: #141414; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="slate"] { background: #1B1E1F; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="mint"]  { background: #141F19; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="blush"] { background: #221715; }
+}
+:root[data-theme="dark"] .bg-swatch[data-bg="paper"] { background: #241F16; }
+:root[data-theme="dark"] .bg-swatch[data-bg="white"] { background: #141414; }
+:root[data-theme="dark"] .bg-swatch[data-bg="slate"] { background: #1B1E1F; }
+:root[data-theme="dark"] .bg-swatch[data-bg="mint"]  { background: #141F19; }
+:root[data-theme="dark"] .bg-swatch[data-bg="blush"] { background: #221715; }
+/* "Theo giao diện": nửa sáng nửa tối, đọc ra ngay là "không chọn màu nào". */
+.bg-swatch.bg-none { background: linear-gradient(135deg, var(--surface) 50%, var(--ink) 50%); }
+.bg-swatch:hover { border-color: var(--ink); }
+.bg-swatch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+.bg-swatch:disabled { opacity: 0.4; cursor: not-allowed; }
+
 .badge-editor.pal-editor { width: 150px; }
 .badge-editor .pal-input {
   width: 100%; height: 34px; padding: 0; cursor: pointer;
