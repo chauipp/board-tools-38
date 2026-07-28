@@ -4,6 +4,8 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { getBoard, saveBoard } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import { useSkin } from "../lib/useSkin.js";
+import { drawingsHitBy } from "../lib/shape.js";
+import { textLines, textBox, TEXT_LINE_H } from "../lib/text-el.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
 import { paletteCss, applyColorTo, applyColorToMany, removePaletteColor } from "../lib/palette.js";
 import { BOARD_BGS, COLOR_PACKS, isBoardBg, isColorPack } from "../lib/board-theme.js";
@@ -39,7 +41,7 @@ import { readImageFile } from "../lib/image-utils.js";
 import { canAddImage, formatMB } from "../lib/image-budget.js";
 import { usePopoverPosition } from "../lib/usePopoverPosition.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
-import { loadPenPrefs, savePenPrefs } from "../lib/pen.js";
+import { loadPenPrefs, savePenPrefs, penVar } from "../lib/pen.js";
 import { CARD_LEVEL_W, cardLevel, levelPatch, loadCardLevel, saveCardLevel } from "../lib/card-levels.js";
 import InkLayer from "../components/InkLayer.jsx";
 import { useInk } from "../lib/useInk.js";
@@ -164,6 +166,9 @@ export default function IdeaMap() {
   // để vẽ khung). Khác tool vẽ ở một điểm: làm xong MỘT lần là tự về mode Chuột.
   const [placeTool, setPlaceTool] = useState(null);
   const [placeDraft, setPlaceDraft] = useState(null); // khung đang tô: {x,y,w,h}
+  // Ô nhập text đang mở: { id: number|null, x, y, value, size, color }. id null
+  // = đang tạo mới. Chỉ có MỘT ô mở tại một thời điểm.
+  const [textEdit, setTextEdit] = useState(null);
   const [penPrefs, setPenPrefs] = useState(() => loadPenPrefs(window.localStorage));
   const [cardLevelPref, setCardLevelPref] = useState(() => loadCardLevel(window.localStorage));
   const [paletteUI, setPaletteUI] = useState(null); // { mode: "create"|"edit", id?, hex, x, y } | null
@@ -225,6 +230,9 @@ export default function IdeaMap() {
   const spacePanRef = useRef(false);
   const pendingJumpRef = useRef(null);
   const prePresentViewRef = useRef(null);
+  // Ngữ cảnh 2d dùng để đo bề rộng chữ, dựng một lần rồi dùng lại.
+  // undefined = chưa dò; null = đã dò và môi trường không có canvas 2d.
+  const measureCtxRef = useRef(undefined);
 
   const ink = useInk({
     tool, penPrefs, boardRef, viewportRef,
@@ -1919,7 +1927,103 @@ export default function IdeaMap() {
     if (e.button === 2) { startPan(e); return; }
     if (e.button === 0 && spacePanRef.current) { startPan(e); return; }
     if (e.button !== 0) return;
+    if (tool === "text") { handleTextMouseDown(e); return; }
     ink.handleMouseDown(e);
+  }
+
+  // Chuột → toạ độ canvas. Bản sao của toCanvas trong useInk.js; không gom
+  // chung được vì ở đó nó nhận `view` qua ref của hook, còn ở đây board đã có
+  // sẵn trong tầm tay.
+  function eventToCanvas(e) {
+    const rect = viewportRef.current.getBoundingClientRect();
+    const view = boardRef.current.view;
+    return {
+      x: (e.clientX - rect.left - view.panX) / view.scale,
+      y: (e.clientY - rect.top - view.panY) / view.scale
+    };
+  }
+
+  // Đo bề rộng một dòng chữ bằng đúng font đang hiển thị. Phải đọc --canvas-font
+  // qua getComputedStyle chứ không viết cứng: bật skin vẽ tay là font đổi, và
+  // hộp đo bằng font cũ sẽ lệch hẳn. Cùng cách png-export.js dựng ngữ cảnh 2d.
+  function measureTextWidth(line, size) {
+    if (measureCtxRef.current === undefined) {
+      // getContext trả null ở môi trường không có canvas thật (jsdom của smoke
+      // test). Dò một lần rồi nhớ kết quả: dò lại mỗi lần đo thì một text ba
+      // dòng in ra ba dòng cảnh báo.
+      measureCtxRef.current = document.createElement("canvas").getContext("2d") || null;
+    }
+    const ctx = measureCtxRef.current;
+    // Không có ngữ cảnh 2d thì ước lượng thô. Hộp chỉ dùng cho vùng chạm của
+    // cục gôm và vùng bấm để kéo, nên sai vài phần trăm còn hơn ném lỗi và làm
+    // trắng cả trang chỉ vì không đo được một dòng chữ.
+    if (!ctx) return line.length * size * 0.55;
+    const family = getComputedStyle(document.documentElement).getPropertyValue("--canvas-font").trim();
+    ctx.font = `${size}px ${family || "sans-serif"}`;
+    return ctx.measureText(line).width;
+  }
+
+  // Bấm khi đang cầm tool Text. Trúng một text đã có thì mở nó ra sửa, trúng
+  // chỗ trống thì tạo mới tại đúng chỗ bấm.
+  function handleTextMouseDown(e) {
+    // Đang gõ dở: cú bấm này chỉ để kết thúc (blur của textarea lo phần lưu).
+    // Cố ý KHÔNG mở luôn ô mới ở đây — hai việc cùng một nhịp thì thứ tự
+    // blur/mousedown khác nhau giữa các trình duyệt, và cái sai sẽ là mất chữ
+    // vừa gõ. Bấm phát nữa là ra ô mới.
+    if (textEdit) return;
+    const current = boardRef.current;
+    if (!current) return;
+    const p = eventToCanvas(e);
+    const hit = drawingsHitBy(current.drawings || [], p, 0)
+      .map((id) => current.drawings.find((d) => d.id === id))
+      .find((d) => d && d.kind === "text");
+    if (hit) {
+      setTextEdit({ id: hit.id, x: hit.pts[0], y: hit.pts[1], value: hit.text, size: hit.size, color: hit.color });
+      return;
+    }
+    setTextEdit({ id: null, x: Math.round(p.x), y: Math.round(p.y), value: "", size: penPrefs.size, color: penPrefs.color });
+  }
+
+  // Cùng kỷ luật refs-only như commitStroke (xem ghi chú dài ở đó): gõ một đoạn
+  // chú thích mất vài chục giây, board:update của người khác về giữa chừng mà
+  // mình dựng `next` từ `board` đóng gói lúc mở ô nhập thì cú PUT sau đó đè mất
+  // thay đổi của họ.
+  function commitText() {
+    const edit = textEdit;
+    setTextEdit(null);
+    if (!edit) return;
+    const current = boardRef.current;
+    if (!current) return;
+    const value = edit.value.trim();
+
+    // Rỗng: tạo mới thì không đẻ ra phần tử vô hình; sửa thì coi như xoá.
+    if (!value) {
+      if (edit.id == null) return;
+      const next = { ...current, drawings: current.drawings.filter((d) => d.id !== edit.id) };
+      recordHistory(current);
+      setBoard(next);
+      boardRef.current = next;
+      saveNow(next);
+      return;
+    }
+
+    const lines = textLines(value);
+    const box = textBox(lines, edit.size, measureTextWidth);
+    const el = {
+      kind: "text", pts: [Math.round(edit.x), Math.round(edit.y)],
+      text: value, color: edit.color, size: edit.size, w: box.w, h: box.h
+    };
+    let next;
+    if (edit.id == null) {
+      const id = current.nextDrawingId;
+      next = { ...current, drawings: [...current.drawings, { id, ...el }], nextDrawingId: id + 1 };
+    } else {
+      next = { ...current, drawings: current.drawings.map((d) => (d.id === edit.id ? { ...d, ...el } : d)) };
+    }
+    recordHistory(current);
+    setBoard(next);
+    boardRef.current = next;
+    saveNow(next);
   }
 
   // Mọi thao tác CHỈ đổi camera đều đi qua đây. Camera là riêng từng người: nó
@@ -2853,6 +2957,41 @@ export default function IdeaMap() {
         {mode === "draw" && (
           <div className="ink-capture" onMouseDown={handleInkCaptureMouseDown} />
         )}
+        {/* Ô nhập text. Nằm NGOÀI .canvas nên phải tự nhân camera vào: .canvas
+            khai will-change: transform → nó là một stacking context, con của nó
+            không thể nổi lên trên .ink-capture (z-index 8) để nhận được chuột.
+            Cái giá là toạ độ và cỡ chữ phải tự quy đổi ở đây — bù lại ô nhập
+            vẫn trùng khít với chữ sẽ vẽ ra vì dùng chung một phép biến đổi. */}
+        {textEdit && (
+          <textarea
+            className="text-input"
+            autoFocus
+            value={textEdit.value}
+            style={{
+              left: board.view.panX + textEdit.x * board.view.scale,
+              top: board.view.panY + textEdit.y * board.view.scale,
+              fontSize: textEdit.size * board.view.scale,
+              lineHeight: TEXT_LINE_H,
+              color: penVar(textEdit.color),
+              // Tự nới theo nội dung. Cộng thêm một khoảng cho con trỏ nháy ở
+              // cuối dòng dài nhất, không thì gõ tới đâu chữ trượt sang trái tới đó.
+              width: (textBox(textLines(textEdit.value), textEdit.size, measureTextWidth).w + 12) * board.view.scale,
+              height: textLines(textEdit.value).length * textEdit.size * TEXT_LINE_H * board.view.scale
+            }}
+            onChange={(e) => setTextEdit((prev) => ({ ...prev, value: e.target.value }))}
+            onBlur={commitText}
+            // Escape kết thúc — blur() rồi để onBlur lo phần lưu, nên chỉ có MỘT
+            // đường commit. Enter thì XUỐNG DÒNG chứ không kết thúc: chú thích
+            // nhiều dòng là chuyện thường, và đó chính là lý do phím kết thúc
+            // phải là Escape.
+            // Các phím tắt khác (p, e, s, t, Delete…) không cần chặn ở đây:
+            // handler keydown chung đã bỏ qua mọi sự kiện phát từ textarea.
+            onKeyDown={(e) => {
+              if (e.key === "Escape") { e.preventDefault(); e.currentTarget.blur(); }
+            }}
+            onMouseDown={(e) => e.stopPropagation()}
+          />
+        )}
         {/* Lớp bắt chuột của mode Đặt: cùng vai trò với .ink-capture, để bấm
             trúng một cái thẻ có sẵn vẫn ra thẻ mới chứ không phải chọn thẻ đó. */}
         {mode === "place" && (
@@ -2934,6 +3073,7 @@ export default function IdeaMap() {
             eraseIds={ink.eraseIds}
             liveStrokes={inkLive.liveStrokes}
             sketch={skin === "sketch"}
+            editingTextId={textEdit ? textEdit.id : null}
           />
 
           {/* Tay cầm nổi trên cùng, tách khỏi .edge-layer: đầu dây thường trùng

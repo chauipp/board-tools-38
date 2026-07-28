@@ -957,6 +957,25 @@
 .ink-layer path { stroke-linecap: round; stroke-linejoin: round; }
 .ink-layer path.erasing { opacity: 0.25; }
 
+/* Đây là TOÀN BỘ phần "skin cho text": chữ trên bảng đi qua --canvas-font nên
+   bật skin vẽ tay là nó thành chữ viết tay, không cần một dòng JS nào.
+   `white-space: pre` giữ khoảng trắng người dùng gõ — SVG mặc định gộp chúng. */
+.ink-layer text { font-family: var(--canvas-font); white-space: pre; }
+.ink-layer text.erasing { opacity: 0.25; }
+
+/* Ô nhập text: dựng để TRÙNG KHÍT với chữ sẽ vẽ ra. Gõ xong mà chữ nhảy chỗ
+   hoặc đổi cỡ là mất hẳn cảm giác "gõ thẳng lên bảng", nên mọi thứ trình duyệt
+   tự thêm vào một <textarea> đều phải gỡ: padding, viền, nền, thanh cuộn, và
+   cả ô kéo đổi cỡ ở góc. z-index 9 để nổi trên .ink-capture (8). */
+.text-input {
+  position: absolute; z-index: 9;
+  padding: 0; margin: 0; border: 0; outline: none;
+  background: transparent; resize: none; overflow: hidden;
+  font-family: var(--canvas-font);
+  white-space: pre; word-break: normal;
+  caret-color: currentColor;
+}
+
 /* Lớp bắt chuột phủ toàn khung nhìn, CHỈ tồn tại ở mode Sửa. Đây là lý do kéo
    ngang qua trên một thẻ vẫn ra nét chứ không bị thẻ ăn mất chuột. z-index 8
    nằm dưới .tool-rail (30) nên thanh công cụ vẫn bấm được. */

@@ -779,6 +779,63 @@ export async function run(log) {
   log(`Ctrl+click khung đã chọn: còn ${afterCtrl}/${framesBeforeDel} khung được chọn`);
   if (afterCtrl !== framesBeforeDel - 1) throw new Error("Ctrl+click khung phải BỚT nó khỏi vùng chọn");
 
+  // ── Tool text ──────────────────────────────────────────────────────────
+  // Về mode Sửa rồi chọn tool Text (nút thứ 6: 2 mode + pen/eraser/shape/text).
+  await act(async () => { document.querySelectorAll(".tool-rail .tool-btn")[1].click(); await new Promise((r) => setTimeout(r, 20)); });
+  await act(async () => { document.querySelectorAll(".tool-rail .tool-btn")[5].click(); await new Promise((r) => setTimeout(r, 20)); });
+  const sizeBtns = document.querySelectorAll(".tool-options .text-size").length;
+  const textSwatches = document.querySelectorAll(".tool-options .pen-swatch").length;
+  const widthBtns = document.querySelectorAll(".tool-options .pen-width").length;
+  log(`khu 4 của text: ${sizeBtns} cỡ · ${textSwatches} màu · ${widthBtns} độ dày (phải là 0)`);
+  if (sizeBtns !== 3) throw new Error("khu 4 của text phải có 3 nút cỡ chữ, có " + sizeBtns);
+  if (textSwatches !== 7) throw new Error("khu 4 của text phải có 7 ô màu, có " + textSwatches);
+  if (widthBtns !== 0) throw new Error("khu 4 của text KHÔNG được có nút độ dày nét");
+
+  // Bấm lên bảng rồi Escape ngay, không gõ gì: không được đẻ ra phần tử rỗng.
+  const inkCapture = document.querySelector(".ink-capture");
+  const drawingsBeforeText = globalThis.__lastBoard ? globalThis.__lastBoard.drawings.length : null;
+  const putsBeforeText = globalThis.__puts.length;
+  await act(async () => { mouse("mousedown", 700, 400, inkCapture); await new Promise((r) => setTimeout(r, 30)); });
+  if (!document.querySelector("textarea.text-input")) throw new Error("bấm bằng tool text phải mở ô nhập");
+  await act(async () => {
+    document.querySelector("textarea.text-input").dispatchEvent(new window.FocusEvent("blur", { bubbles: false }));
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  log(`bấm rồi thoát, không gõ gì: PUT thêm ${globalThis.__puts.length - putsBeforeText} lần · ${document.querySelectorAll(".ink-layer text").length} text trên bảng`);
+  if (globalThis.__puts.length !== putsBeforeText) throw new Error("không gõ gì mà vẫn lưu — sẽ đẻ ra phần tử text rỗng");
+  if (document.querySelectorAll(".ink-layer text").length !== 0) throw new Error("không gõ gì mà vẫn ra text trên bảng");
+
+  // Gõ thật, hai dòng, rồi Escape.
+  await act(async () => { mouse("mousedown", 700, 400, inkCapture); await new Promise((r) => setTimeout(r, 30)); });
+  const ta = document.querySelector("textarea.text-input");
+  await act(async () => {
+    // Đặt value qua setter gốc rồi phát `input`: React nghe onChange qua sự
+    // kiện input, gán thẳng .value thì nó không hay biết gì.
+    Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")
+      .set.call(ta, "ghi chú\nhai dòng");
+    ta.dispatchEvent(new window.Event("input", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  await act(async () => {
+    ta.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    document.querySelector("textarea.text-input")?.dispatchEvent(new window.FocusEvent("blur", { bubbles: false }));
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  const textEls = document.querySelectorAll(".ink-layer text");
+  const savedText = globalThis.__puts.length ? globalThis.__puts[globalThis.__puts.length - 1] : null;
+  const textDrawing = savedText && savedText.drawings.filter((d) => d.kind === "text");
+  log(`gõ text hai dòng: ${textEls.length} <text> · ${textEls[0]?.querySelectorAll("tspan").length} tspan · lưu ${textDrawing?.length} phần tử kind=text · PUT thêm ${globalThis.__puts.length - putsBeforeText} lần`);
+  if (textEls.length !== 1) throw new Error("phải có đúng 1 <text> trên bảng, có " + textEls.length);
+  if (textEls[0].querySelectorAll("tspan").length !== 2) throw new Error("text hai dòng phải ra 2 tspan");
+  if (!textDrawing || textDrawing.length !== 1) throw new Error("board phải có đúng 1 drawings kind=text");
+  const td = textDrawing[0];
+  if (td.pts.length !== 2) throw new Error("pts của text phải đúng 2 số (điểm neo), có " + td.pts.length);
+  if (!(td.w > 0) || !(td.h > 0)) throw new Error("text phải lưu kèm hộp w/h cho hit-test");
+  if (td.text !== "ghi chú\nhai dòng") throw new Error("nội dung text lưu sai: " + JSON.stringify(td.text));
+  if (drawingsBeforeText != null && savedText.drawings.length !== drawingsBeforeText + 1) {
+    throw new Error("phải thêm đúng 1 phần tử drawings");
+  }
+
   // Skin vẽ tay: lưới an toàn cho việc đổi <line> thành <path> ở lớp dây. Bấm
   // đúng cái nút trong topbar thay vì tự đặt data-skin — làm vậy mới đi qua
   // useSkin (nạp font lười, ghi localStorage) và mới bắt được lỗi ở đó.
