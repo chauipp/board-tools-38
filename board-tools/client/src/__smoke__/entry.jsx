@@ -836,6 +836,44 @@ export async function run(log) {
     throw new Error("phải thêm đúng 1 phần tử drawings");
   }
 
+  // Một cú bấm lên text phục vụ hai việc, phân biệt bằng ngưỡng di chuyển.
+  // Nhánh 1 — di quá ngưỡng: kéo đi, lưu đúng 1 lần, KHÔNG mở ô nhập.
+  const posBefore = [...td.pts];
+  const putsBeforeDrag = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", 705, 405, inkCapture);
+    mouse("mousemove", 760, 460);
+    await new Promise((r) => setTimeout(r, 40));
+    mouse("mousemove", 820, 520);
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  await act(async () => { mouse("mouseup", 820, 520); await new Promise((r) => setTimeout(r, 40)); });
+  const afterDrag = globalThis.__puts[globalThis.__puts.length - 1].drawings.find((d) => d.kind === "text");
+  log(`kéo text: [${posBefore}] → [${afterDrag.pts}] · PUT thêm ${globalThis.__puts.length - putsBeforeDrag} lần · ô nhập mở = ${!!document.querySelector("textarea.text-input")}`);
+  if (afterDrag.pts[0] === posBefore[0] && afterDrag.pts[1] === posBefore[1]) throw new Error("kéo text mà toạ độ không đổi");
+  if (globalThis.__puts.length - putsBeforeDrag !== 1) throw new Error("một cú kéo text phải đúng 1 lần lưu, có " + (globalThis.__puts.length - putsBeforeDrag));
+  if (document.querySelector("textarea.text-input")) throw new Error("kéo text không được mở ô nhập");
+
+  // Nhánh 2 — bấm tại chỗ (di dưới ngưỡng): mở ô nhập mang sẵn nội dung cũ,
+  // và KHÔNG lưu gì thêm.
+  const putsBeforeReopen = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", 825, 525, inkCapture);
+    mouse("mousemove", 826, 526);
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  await act(async () => { mouse("mouseup", 826, 526); await new Promise((r) => setTimeout(r, 30)); });
+  const reopened = document.querySelector("textarea.text-input");
+  log(`bấm tại chỗ lên text: ô nhập mở = ${!!reopened} · nội dung = ${JSON.stringify(reopened?.value)} · PUT thêm ${globalThis.__puts.length - putsBeforeReopen} lần`);
+  if (!reopened) throw new Error("bấm tại chỗ lên text phải mở ô nhập để sửa");
+  if (reopened.value !== "ghi chú\nhai dòng") throw new Error("ô nhập phải mang sẵn nội dung cũ");
+  if (globalThis.__puts.length !== putsBeforeReopen) throw new Error("mở ra sửa mà chưa đổi gì thì không được lưu");
+  // Đóng lại, không đổi gì.
+  await act(async () => {
+    reopened.dispatchEvent(new window.FocusEvent("blur", { bubbles: false }));
+    await new Promise((r) => setTimeout(r, 30));
+  });
+
   // Skin vẽ tay: lưới an toàn cho việc đổi <line> thành <path> ở lớp dây. Bấm
   // đúng cái nút trong topbar thay vì tự đặt data-skin — làm vậy mới đi qua
   // useSkin (nạp font lười, ghi localStorage) và mới bắt được lỗi ở đó.

@@ -53,6 +53,10 @@ const CARD_W = 210;
 // khung mới — tô được một cái khung 70x60 rồi kéo giãn không thu lại được nữa là
 // hai luật đá nhau; và khung bé hơn thế thì nút ×, tiêu đề, bốn dấu + chồng chất
 // lên nhau, không bấm trúng cái nào.
+// Di dưới ngưỡng này (đơn vị toạ độ canvas) thì cú bấm lên text được hiểu là
+// "mở ra sửa" chứ không phải "kéo đi". Đủ rộng để tay run không thành cú kéo,
+// đủ hẹp để một cú kéo thật không bị nuốt thành cú bấm.
+const TEXT_DRAG_THRESHOLD = 3;
 const MIN_GROUP_W = 160, MIN_GROUP_H = 120;
 const MIN_SCALE = 0.3, MAX_SCALE = 2.4;
 const EMPTY_ARRAY = [];
@@ -169,6 +173,9 @@ export default function IdeaMap() {
   // Ô nhập text đang mở: { id: number|null, x, y, value, size, color }. id null
   // = đang tạo mới. Chỉ có MỘT ô mở tại một thời điểm.
   const [textEdit, setTextEdit] = useState(null);
+  // Text đang được kéo: { id, x, y }. Chỉ là bản NHÁP để vẽ lại theo con trỏ;
+  // board chỉ được ghi một lần lúc nhả chuột.
+  const [textDrag, setTextDrag] = useState(null);
   const [penPrefs, setPenPrefs] = useState(() => loadPenPrefs(window.localStorage));
   const [cardLevelPref, setCardLevelPref] = useState(() => loadCardLevel(window.localStorage));
   const [paletteUI, setPaletteUI] = useState(null); // { mode: "create"|"edit", id?, hex, x, y } | null
@@ -343,6 +350,14 @@ export default function IdeaMap() {
     [board?.tags]
   );
   const paletteStyle = useMemo(() => paletteCss(board?.palette ?? EMPTY_ARRAY), [board?.palette]);
+
+  // Text đang kéo vẽ ở vị trí NHÁP, board vẫn giữ vị trí cũ cho tới lúc nhả
+  // chuột. Cùng cách applyGeomOverlay phủ vị trí thẻ của người khác lên board.
+  const inkDrawings = useMemo(() => {
+    const list = board?.drawings ?? EMPTY_ARRAY;
+    if (!textDrag) return list;
+    return list.map((d) => (d.id === textDrag.id ? { ...d, pts: [textDrag.x, textDrag.y] } : d));
+  }, [board?.drawings, textDrag]);
 
   // Nền và bộ màu là DỮ LIỆU BOARD, nhưng thuộc tính lại đặt trên <html> — cùng
   // chỗ với data-theme (thiết lập của người dùng). Hai lý do: chip nhãn/trạng
@@ -1977,11 +1992,62 @@ export default function IdeaMap() {
     const hit = drawingsHitBy(current.drawings || [], p, 0)
       .map((id) => current.drawings.find((d) => d.id === id))
       .find((d) => d && d.kind === "text");
-    if (hit) {
-      setTextEdit({ id: hit.id, x: hit.pts[0], y: hit.pts[1], value: hit.text, size: hit.size, color: hit.color });
-      return;
-    }
+    if (hit) { startTextDrag(hit, p); return; }
     setTextEdit({ id: null, x: Math.round(p.x), y: Math.round(p.y), value: "", size: penPrefs.size, color: penPrefs.color });
+  }
+
+  // Bấm trúng một text: MỘT cú bấm phục vụ hai việc. Di dưới ngưỡng thì coi như
+  // chỉ bấm → mở ra sửa; di quá ngưỡng thì là kéo → dời chỗ. Không cần bấm đúp,
+  // và không có cách nào bấm nhầm sang việc kia.
+  function startTextDrag(el, start) {
+    const offX = start.x - el.pts[0];
+    const offY = start.y - el.pts[1];
+    let moved = false;
+    let last = { x: el.pts[0], y: el.pts[1] };
+
+    function onMove(ev) {
+      const p = eventToCanvas(ev);
+      if (!moved && Math.hypot(p.x - start.x, p.y - start.y) < TEXT_DRAG_THRESHOLD) return;
+      moved = true;
+      last = { x: Math.round(p.x - offX), y: Math.round(p.y - offY) };
+      // Chỉ đẩy vào state NHÁP, không ghi vào board: một lần kéo phải là một
+      // lần lưu, không phải một lần cho mỗi nhịp chuột.
+      setTextDrag({ id: el.id, x: last.x, y: last.y });
+    }
+
+    function cleanup() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", finish);
+      window.removeEventListener("blur", cancel);
+      setTextDrag(null);
+    }
+
+    // Cửa sổ mất focus giữa lượt kéo: mouseup sẽ không bao giờ tới. Cùng cái bẫy
+    // useInk.js đã có ghi chú dài — không dọn thì text treo ở vị trí nháp và cú
+    // mouseup sau đó (ở một ngữ cảnh khác) vẫn commit.
+    function cancel() { cleanup(); }
+
+    function finish() {
+      cleanup();
+      if (!moved) {
+        setTextEdit({ id: el.id, x: el.pts[0], y: el.pts[1], value: el.text, size: el.size, color: el.color });
+        return;
+      }
+      const current = boardRef.current;
+      if (!current) return;
+      const next = {
+        ...current,
+        drawings: current.drawings.map((d) => (d.id === el.id ? { ...d, pts: [last.x, last.y] } : d))
+      };
+      recordHistory(current);
+      setBoard(next);
+      boardRef.current = next;
+      saveNow(next);
+    }
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", finish);
+    window.addEventListener("blur", cancel);
   }
 
   // Cùng kỷ luật refs-only như commitStroke (xem ghi chú dài ở đó): gõ một đoạn
@@ -3068,7 +3134,7 @@ export default function IdeaMap() {
           <PeerLayer socket={socket} nodeById={nodeById} groupById={groupById} cardSize={frameCardSize} spotlightPeerId={spotlightPeerId} />
 
           <InkLayer
-            drawings={board.drawings}
+            drawings={inkDrawings}
             draft={ink.draft}
             eraseIds={ink.eraseIds}
             liveStrokes={inkLive.liveStrokes}
