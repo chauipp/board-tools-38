@@ -27,7 +27,7 @@
 
 ---
 
-- [ ] ## Task 1: Token hình dạng — refactor thuần
+- [x] ## Task 1: Token hình dạng — refactor thuần
 
 **Files:**
 - Modify: `game-tools/client/src/index.css`
@@ -101,7 +101,7 @@ git commit -m "refactor: rút hình dạng vật thể canvas thành token CSS"
 
 ---
 
-- [ ] ## Task 2: `lib/board-theme.js` + CSS preset nền và bộ màu
+- [x] ## Task 2: `lib/board-theme.js` + CSS preset nền và bộ màu
 
 **Files:**
 - Create: `game-tools/client/src/lib/board-theme.js`
@@ -184,7 +184,7 @@ git commit -m "feat: preset nền bảng và bộ màu, khai bằng CSS"
 
 ---
 
-- [ ] ## Task 3: Server cho `bg` / `pack`
+- [x] ## Task 3: Server cho `bg` / `pack`
 
 **Files:**
 - Modify: `game-tools/server/models.js`
@@ -221,7 +221,7 @@ git commit -m "feat: board lưu được nền và bộ màu"
 
 ---
 
-- [ ] ## Task 4: Panel "Giao diện" và gắn thuộc tính lên `<html>`
+- [x] ## Task 4: Panel "Giao diện" và gắn thuộc tính lên `<html>`
 
 **Files:**
 - Modify: `game-tools/client/src/pages/IdeaMap.jsx`
@@ -283,7 +283,7 @@ git commit -m "feat: panel Giao diện — chọn nền bảng và bộ màu"
 
 ---
 
-- [ ] ## Task 5: Thẻ và khung tô nền theo màu
+- [x] ## Task 5: Thẻ và khung tô nền theo màu
 
 **Files:**
 - Modify: `game-tools/client/src/components/IdeaCard.jsx`
@@ -335,7 +335,7 @@ git commit -m "feat: màu thẻ và khung tô nền thay cho vạch viền"
 
 ---
 
-- [ ] ## Task 6: `lib/sketchy.js` — sinh nét rung
+- [x] ## Task 6: `lib/sketchy.js` — sinh nét rung
 
 **Files:**
 - Create: `game-tools/client/src/lib/sketchy.js`
@@ -474,7 +474,7 @@ git commit -m "feat: lib/sketchy.js sinh nét rung có seed cố định"
 
 ---
 
-- [ ] ## Task 7: Skin vẽ tay — trục `data-skin`, font, viền méo
+- [x] ## Task 7: Skin vẽ tay — trục `data-skin`, font, viền méo
 
 **Files:**
 - Create: `game-tools/client/src/lib/useSkin.js`
@@ -574,7 +574,7 @@ git commit -m "feat: skin vẽ tay — font viết tay và viền méo cho thẻ
 
 ---
 
-- [ ] ## Task 8: Dây nối và hình khối dùng nét rung
+- [x] ## Task 8: Dây nối và hình khối dùng nét rung
 
 **Files:**
 - Modify: `game-tools/client/src/components/EdgeLayer.jsx`
@@ -621,7 +621,7 @@ git commit -m "feat: dây nối và hình khối vẽ bằng nét rung ở skin 
 
 ---
 
-- [ ] ## Task 9: Smoke test, i18n, dọn
+- [x] ## Task 9: Smoke test, i18n, dọn
 
 **Files:**
 - Modify: `game-tools/client/src/__smoke__/entry.jsx`
@@ -671,4 +671,4 @@ Sau khi chín task xong, mở app thật — mục **Kiểm thử** của spec g
 
 ## Kết quả
 
-*(Điền khi cả chín task đã tick: link tới `../summaries/2026-07-28-idea-map-theme-sketch-summary.md`)*
+**→ [`docs/superpowers/summaries/2026-07-28-idea-map-theme-sketch-summary.md`](../summaries/2026-07-28-idea-map-theme-sketch-summary.md)**
