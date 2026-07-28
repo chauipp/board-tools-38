@@ -10,9 +10,9 @@ Kiểm tự động lúc chốt: `npm test` 291/291 xanh, `npm run test:smoke` x
 bốn chặng), `npm run build` sạch, `npm run i18n:extract` 234/234 không thiếu chuỗi
 EN nào. **Server không sửa một dòng nào.**
 
-Làm ba đợt, hai đợt sau đều bắt nguồn từ việc người dùng xem bản chạy thật:
+Làm bốn đợt, ba đợt sau đều bắt nguồn từ việc người dùng xem bản chạy thật:
 dựng HUD đảo nổi → đưa panel lọc xuống thanh đáy và **bỏ hẳn** kéo thả → gom mọi
-thứ "giao diện" về một panel.
+thứ "giao diện" về một bảng → tách bảng đó hẳn khỏi thanh lọc.
 
 ---
 
@@ -23,10 +23,9 @@ thứ "giao diện" về một panel.
   inset: 0`. Toàn bộ chrome nổi đè lên canvas, chiếm **0px** trong layout — trước
   đây hai dải trên ăn ~140px vĩnh viễn, tức 21% chiều cao trên laptop 1366×768,
   kể cả bảng trống không bật lọc nào.
-- **Năm cụm nổi.** Trên trái: ☰ + tên board + tìm kiếm + ★. Trên phải: ai đang mở
+- **Năm cụm nổi.** Trên trái: ☰ + tên board + tìm kiếm + Giao diện. Trên phải: ai đang mở
   board + mời. Dưới trái: hoàn tác/làm lại. Dưới phải: zoom (đã có sẵn, chỉnh cho
-  khớp mép 12px và bo góc 10px của họ đảo). Đáy giữa: thanh panel (ba panel lọc
-  + panel Giao diện).
+  khớp mép 12px và bo góc 10px của họ đảo). Đáy giữa: thanh lọc (ba panel + ★).
 - **Thanh đáy = đảo nút + đảo nội dung.** Bốn nút bật panel luôn ở đó; đảo nội
   dung chỉ tồn tại khi có panel đang bật và **biến mất khỏi cây** khi tắt hết.
 - **Panel không kéo được đi đâu nữa.** Bỏ hẳn neo/nổi: không `layouts`, không hút
@@ -35,11 +34,14 @@ thứ "giao diện" về một panel.
 - **Một ☰ thay cho ba menu.** Board / Dữ liệu / Xem gom vào một nút, còn đúng ba
   nhóm: đi đâu, dữ liệu, cách xem. Tên board 13px thường thay cho `h1` Anton 19px
   kèm dòng eyebrow "BẢN ĐỒ Ý TƯỞNG" — riêng hai dòng đó là ~37px.
-- **Mọi thứ "giao diện" về một panel.** Ngôn ngữ, sáng/tối, kiểu vẽ, nền bảng, bộ
+- **Mọi thứ "giao diện" về một bảng.** Ngôn ngữ, sáng/tối, kiểu vẽ, nền bảng, bộ
   màu — trước đây rải hai chỗ (ba cái trong ☰, hai cái trong panel), giờ là năm
-  hàng trong cùng panel Giao diện, chia đôi bằng hai nhãn **"Chỉ mình bạn thấy"**
-  và **"Mọi người cùng thấy"**. Nút bật panel này đứng tách sau một vạch ngăn ở
-  thanh đáy: ba nút cạnh nó mở ra bộ *lọc*, nó mở ra *thiết lập*.
+  hàng trong cùng bảng Giao diện, chia đôi bằng hai nhãn **"Chỉ mình bạn thấy"**
+  và **"Mọi người cùng thấy"**.
+- **Mỗi nhóm chỉ còn một loại.** Bảng Giao diện là *thiết lập* nên nó lên đảo trên
+  trái và bung ra ngay dưới nút của mình, không đứng chung dải với ba nút *lọc* ở
+  đáy; ★ Yêu thích đi ngược lại, xuống đáy vì nó là lọc. Đảo trên trái = board +
+  tìm + thiết lập; thanh đáy = lọc.
 - **Ô tìm kiếm thu về một nút**, bung ra khi bấm hoặc `Ctrl+F`, đóng lại thì xoá
   luôn từ khoá.
 
@@ -49,7 +51,7 @@ thứ "giao diện" về một panel.
 |---|---|
 | `client/src/styles/idea-map.css` | `.shell` / `.viewport` đổi mô hình layout; `.island` là mặt kính thuần (không định vị), `.tl/.tr/.bl` neo góc, `.hud-bottom` là cụm đáy; `.filter-dock` / `.filter-panel` / `.filter-title`; bỏ `.topbar`, `.filterbar`, `.dock-*`; dời `.outline-panel` / `.io-drawer` / `.readonly-banner` / `.bulk-bar` né đảo |
 | `client/src/pages/IdeaMap.jsx` | Chín icon SVG mới cho HUD; năm cụm nổi thay cho hai dải; gộp ba `TopMenu` thành một ☰; state `searchOpen` + `toggleSearch` + effect focus; bỏ state `layouts` |
-| `client/src/components/FilterPanel.jsx` | Thay `DockPanel.jsx` — nhãn + nội dung, thêm prop `stack` cho panel Giao diện xếp cột |
+| `client/src/components/FilterPanel.jsx` | Thay `DockPanel.jsx` — nhãn + nội dung, không còn gì khác |
 | `client/src/lib/useTheme.js` | Trả `{ theme, setTheme, toggle }` thay vì mỗi hàm toggle; chặn thiếu `matchMedia` |
 | `client/src/__smoke__/entry.jsx` | Sửa hai chỗ bám `.topbar`; thêm chặng cấu trúc HUD, chặng thanh đáy, chặng ô tìm |
 | ~~`client/src/lib/dock.js`~~, ~~`dock.test.js`~~, ~~`components/DockPanel.jsx`~~ | Xoá — kéo theo 19 test và ~4KB bundle |
@@ -71,6 +73,11 @@ thứ "giao diện" về một panel.
 - **Mỗi panel phải tự xưng tên.** Bản cũ chỉ hiện tên khi panel nổi, vì lúc neo
   thì mỗi panel là một khối riêng có viền. Giờ nhiều panel bật cùng lúc nằm liền
   một dải trong cùng một đảo, không còn gì để mắt tự tách ra.
+- **`TopMenu` phải mọc thêm ba prop.** `closeOnClick` tắt được (menu hành động
+  đóng sau một cú bấm là đúng, bảng thiết lập thì bắt mở lại năm lần), `wide`
+  (252px — hàng swatch nền bảng và bốn nút bộ màu không vừa 190px), và `title`
+  (tooltip thật, đồng thời là mốc để test phân biệt hai trigger trên cùng đảo —
+  lấy theo index thì thêm cái thứ ba là trỏ nhầm).
 - **`useTheme` phải đổi API** — không có trong plan. Panel cần tô sáng nút đang
   dùng, mà hook cũ chỉ trả về hàm toggle. Giờ nó giải sẵn ra `"light"`/`"dark"`
   ngay lúc mount thay vì giữ `null`. Ba trang khác gọi nó cũng phải sửa theo.

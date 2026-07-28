@@ -10,12 +10,9 @@
 // Tên panel LUÔN hiện, khác bản cũ chỉ hiện khi panel nổi: nhiều panel bật cùng
 // lúc thì chúng nằm liền một dải trong cùng một đảo, không còn khối riêng có
 // viền để mắt tự tách ra.
-// `stack` = xếp theo cột thay vì một dải ngang. Ba panel lọc chỉ là một dải chip
-// nên nằm ngang gọn hơn; panel Giao diện gom năm hàng thiết lập có nhãn riêng
-// từng hàng, nằm ngang thì mắt không lần ra hàng nào của hàng nào.
-export default function FilterPanel({ title, stack, children }) {
+export default function FilterPanel({ title, children }) {
   return (
-    <div className={"filter-panel" + (stack ? " stack" : "")}>
+    <div className="filter-panel">
       <span className="filter-title">{title}</span>
       {children}
     </div>

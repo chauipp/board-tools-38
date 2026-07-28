@@ -28,14 +28,14 @@ Canvas tràn viền. Mọi chrome là **đảo nổi** đè lên nó, chiếm 0p
 ```
 ╭──────────────────────────────────────────────────╮
 │ ┌────────────────────────┐   ┌──────────────┐    │
-│ │ ☰  Sơ đồ A   🔍 │ ★    │   │ ●●●  + Mời   │    │  đảo trên trái / đảo người
+│ │ ☰  Sơ đồ A   🔍 │ ▦    │   │ ●●●  + Mời   │    │  đảo trên trái / đảo người
 │ └────────────────────────┘   └──────────────┘    │
 │ ┌──┐                                             │
 │ │▮ │                                             │
 │ │▮ │  ← rail (giữ nguyên)                         │
 │ └──┘                                             │
 │ ┌────┐   ┌───────────┐┌──────────────────────┐   │
-│ │↶ ↷ │   │ ⬤ 🏷 🎨 ▦ ││TRẠNG THÁI ●Mới ●Đang │   │
+│ │↶ ↷ │   │ ⬤ 🏷 🎨 ★ ││TRẠNG THÁI ●Mới ●Đang │   │
 │ └────┘   └───────────┘└──────────────────────┘   │
 │                            ↑ hiện khi bật panel  │
 │                                    ┌───────────┐ │
@@ -71,8 +71,16 @@ lập hiển thị của từng người; để lại một mình trong ☰ thì
 mình (localStorage); nền bảng / bộ màu ghi vào dữ liệu board nên **mọi người cùng
 thấy**. Không nói rõ thì người ta đổi nền bảng mà tưởng chỉ mình thấy.
 
-**Nút bật panel Giao diện đứng tách sau một vạch ngăn.** Ba nút cạnh nó mở ra bộ
-LỌC (bấm chip là thẻ bị làm mờ), nó mở ra THIẾT LẬP và không lọc gì cả.
+**Giao diện tách hẳn khỏi thanh lọc, không phải chỉ ngăn bằng một vạch.** Ba nút
+ở thanh đáy mở ra bộ LỌC (bấm chip là thẻ bị làm mờ), Giao diện mở ra THIẾT LẬP
+và không lọc gì cả. Cùng một dải chỉ cách nhau một vạch thì vẫn đọc ra là cùng
+loại — nên nó lên đảo trên trái, và bảng của nó bung ra **ngay dưới nút** chứ
+không hiện tuốt dưới đáy: bấm ở đây mà kết quả nhảy ra chỗ khác thì mắt phải đi
+tìm.
+
+**★ Yêu thích đi ngược lại, xuống thanh đáy.** Nó là bộ lọc; ở lại đảo trên trái
+thì đứng lẫn giữa menu, tên board và tìm kiếm. Sau hai lượt dọn, mỗi nhóm chỉ còn
+một loại: trên trái là board + tìm + thiết lập, dưới đáy là lọc.
 
 **Mỗi panel tự xưng tên.** Bản cũ chỉ hiện tên khi panel nổi, vì lúc neo thì mỗi
 panel là một khối riêng có viền. Giờ nhiều panel bật cùng lúc nằm liền một dải
@@ -96,11 +104,11 @@ tốn một cú bấm mỗi lần — đây là cách duy nhất triệu hồi p
 | eyebrow "BẢN ĐỒ Ý TƯỞNG" | bỏ hẳn |
 | `h1.display` 19px Anton | tên board 13px thường, trong đảo trên trái |
 | TopMenu Board / Dữ liệu / Xem | gộp thành một ☰ |
-| LocaleToggle, sáng/tối, skin | vào panel Giao diện, cùng nền bảng + bộ màu |
+| LocaleToggle, sáng/tối, skin | vào bảng Giao diện, cùng nền bảng + bộ màu |
 | Undo / Redo | đảo riêng góc dưới trái |
 | Ô tìm kiếm 180px | nút 🔍, bung ra khi bấm / `Ctrl+F` |
-| 4 nút panel | icon ở đảo nút, thanh đáy (Giao diện tách sau vạch ngăn) |
-| ★ Yêu thích | icon trong đảo trên trái |
+| 3 nút panel lọc + ★ | icon ở đảo nút, thanh đáy |
+| Nút Giao diện | đảo trên trái, bảng bung ra ngay dưới nút |
 | Khớp N/M + Xoá lọc | hàng thứ hai trong đảo trên trái, chỉ khi đang lọc |
 | `.fb-dock` (39px luôn giữ chỗ) | đảo nội dung ở thanh đáy, không render khi rỗng |
 | PresenceBar | đảo riêng góc trên phải |

@@ -59,10 +59,11 @@ const TEXT_DRAG_THRESHOLD = 3;
 const MIN_GROUP_W = 160, MIN_GROUP_H = 120;
 const MIN_SCALE = 0.3, MAX_SCALE = 2.4;
 
-// Bốn panel lọc ở thanh đáy. Liệt kê ra một chỗ để "có panel nào đang bật không"
-// không phải viết tay bốn phép hoặc là một Object.keys trên state — thêm panel
-// thứ năm về sau chỉ phải sửa đúng danh sách này.
-const PANEL_KEYS = ["status", "tag", "palette", "theme"];
+// Ba panel LỌC ở thanh đáy. Giao diện không nằm đây: nó là thiết lập, và nó bung
+// ra ngay dưới nút của mình trên đảo trên trái.
+// Liệt kê ra một chỗ để "có panel nào đang bật không" không phải viết tay ba
+// phép hoặc là một Object.keys trên state.
+const PANEL_KEYS = ["status", "tag", "palette"];
 const EMPTY_ARRAY = [];
 const EMPTY_MAP = new Map();
 const EMPTY_SET = new Set();
@@ -77,11 +78,17 @@ function DropCount({ targetId, idsFor }) {
   return <span className="ghost-n mono">×{n}</span>;
 }
 
-// Menu kiểu VSCode: một nhãn (chữ hoặc icon), bấm mở danh sách hành động liên
-// quan. Giờ chỉ còn đúng một cái — nút ☰ của đảo to — gom mọi việc thỉnh
-// thoảng mới làm: về danh sách board, xuất/nhập JSON, trình chiếu, mục lục,
-// ngôn ngữ, sáng/tối, skin.
-function TopMenu({ label, active, align = "left", children }) {
+// Một nhãn (chữ hoặc icon), bấm mở khối nội dung ngay dưới nó. Đảo trên trái
+// dùng hai cái: ☰ (việc thỉnh thoảng mới làm — về danh sách board, xuất/nhập
+// JSON, trình chiếu, mục lục) và nút Giao diện (ngôn ngữ, sáng/tối, kiểu vẽ,
+// nền bảng, bộ màu).
+//
+// `closeOnClick` phải tắt được: menu hành động thì bấm một mục là xong việc, nên
+// đóng lại là đúng; còn bảng thiết lập thì người ta bấm "Tối" rồi bấm tiếp
+// "Pastel" — đóng sau mỗi cú bấm là bắt mở lại năm lần.
+// `wide` cho khối nội dung rộng hơn 190px của menu hành động: hàng swatch nền
+// bảng và bốn nút bộ màu không vừa bề ngang đó.
+function TopMenu({ label, title, active, align = "left", wide, closeOnClick = true, children }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useCloseOnOutside(ref, () => setOpen(false));
@@ -90,6 +97,7 @@ function TopMenu({ label, active, align = "left", children }) {
       <button
         type="button"
         className={"menubar-trigger" + (active ? " active" : "") + (open ? " open" : "")}
+        title={title}
         onClick={() => setOpen((v) => !v)}
       >
         {label}
@@ -99,7 +107,10 @@ function TopMenu({ label, active, align = "left", children }) {
         // đã xử lý xong click của chính nó — capture đóng menu (unmount) trước khi
         // click kịp bubble tới nút, khiến hành động không chạy (vd bấm "+ Ý tưởng"
         // không tạo thẻ nào).
-        <div className={"menubar-dropdown" + (align === "right" ? " align-right" : "")} onClick={() => setOpen(false)}>
+        <div
+          className={"menubar-dropdown" + (align === "right" ? " align-right" : "") + (wide ? " wide" : "")}
+          onClick={closeOnClick ? () => setOpen(false) : undefined}
+        >
           {children}
         </div>
       )}
@@ -210,7 +221,7 @@ export default function IdeaMap() {
   const [chipDrag, setChipDrag] = useState(null);
   // Mặc định mở Trạng thái + Nhãn để giữ đúng hành vi cũ khi mới vào; Bảng màu
   // đóng. Chỉ giữ trong state — không lưu qua reload.
-  const [panels, setPanels] = useState({ status: true, tag: true, palette: false, theme: false });
+  const [panels, setPanels] = useState({ status: true, tag: true, palette: false });
   // Ô tìm kiếm thu về một nút: 170px + nhãn là chỗ thường trực cho việc thỉnh
   // thoảng mới dùng. Đóng lại thì XOÁ luôn từ khoá — từ khoá còn sống mà ô nhập
   // biến mất là một bộ lọc vô hình, thẻ bị làm mờ mà không thấy vì sao.
@@ -2860,7 +2871,7 @@ export default function IdeaMap() {
               chỉ xem chúng bị vô hiệu hoá, phần còn lại vẫn dùng được.
               "Mời thành viên" nằm ở PresenceBar (đảo người), cạnh danh sách người
               đang mở board — mời ai đó là việc của cùng một mạch suy nghĩ. */}
-          <TopMenu label={<IconMenu />}>
+          <TopMenu label={<IconMenu />} title={t`Menu`}>
             <Link to="/idea-map" className="btn ghost"><Trans>← Danh sách board</Trans></Link>
             <div className="menubar-sep" />
             <button className="btn ghost" onClick={() => { setIoMode("export"); setIoText(JSON.stringify(board, null, 2)); setIoOpen(true); }}><Trans>Xuất JSON</Trans></button>
@@ -2908,9 +2919,98 @@ export default function IdeaMap() {
 
           <div className="island-sep" />
 
-          {/* ★ ở lại đảo này còn bốn nút bật panel thì xuống thanh đáy: ★ là bộ lọc
-              bật phát ăn ngay, không mở ra khối nội dung nào để phải đứng cạnh. */}
-          <button type="button" className={"island-btn" + (filterFav ? " on" : "")} title={t`Chỉ hiện thẻ yêu thích`} onClick={() => setFilterFav((v) => !v)}><IconStar /></button>
+          {/* Giao diện đứng ở ĐÂY chứ không ở thanh đáy: ba nút dưới đó mở ra bộ
+              LỌC (bấm chip là thẻ bị làm mờ), còn cái này là THIẾT LẬP, không lọc
+              gì cả. Cùng một dải chỉ cách nhau một vạch ngăn thì vẫn đọc ra là
+              cùng loại — phải tách hẳn sang chỗ khác.
+              Nội dung bung ra ngay dưới nút, không hiện tuốt dưới đáy: bấm ở đây
+              mà kết quả nhảy ra chỗ khác thì mắt phải đi tìm. */}
+          <TopMenu label={<IconBoardStyle />} title={t`Giao diện`} wide closeOnClick={false}>
+            {/* Ranh giới quan trọng nhất của bảng này: ba hàng trên chỉ đổi cho
+                MÌNH (localStorage), hai hàng dưới ghi vào dữ liệu board nên MỌI
+                NGƯỜI cùng thấy. Không nói rõ thì người ta đổi nền bảng mà tưởng
+                chỉ mình thấy. Hai hàng dưới đã mang data-mutating nên tài khoản
+                chỉ xem thấy chúng mờ đi — thêm một tín hiệu nữa cùng hướng. */}
+            <div className="theme-section"><Trans>Chỉ mình bạn thấy</Trans></div>
+            <div className="theme-row">
+              <span className="fb-count"><Trans>Ngôn ngữ</Trans></span>
+              <div className="fb-chips"><LocaleToggle /></div>
+            </div>
+            <div className="theme-row">
+              <span className="fb-count"><Trans>Sáng/tối</Trans></span>
+              <div className="fb-chips">
+                <button
+                  className={"btn ghost toggle" + (theme === "light" ? " active" : "")}
+                  onClick={() => setTheme("light")}
+                ><Trans>Sáng</Trans></button>
+                <button
+                  className={"btn ghost toggle" + (theme === "dark" ? " active" : "")}
+                  onClick={() => setTheme("dark")}
+                ><Trans>Tối</Trans></button>
+              </div>
+            </div>
+            <div className="theme-row">
+              <span className="fb-count"><Trans>Kiểu vẽ</Trans></span>
+              <div className="fb-chips">
+                <button
+                  className={"btn ghost toggle" + (skin !== "sketch" ? " active" : "")}
+                  onClick={() => { if (skin === "sketch") toggleSkin(); }}
+                ><Trans>Sạch</Trans></button>
+                <button
+                  className={"btn ghost toggle" + (skin === "sketch" ? " active" : "")}
+                  onClick={() => { if (skin !== "sketch") toggleSkin(); }}
+                ><IconSketch /> <Trans>Vẽ tay</Trans></button>
+              </div>
+            </div>
+
+            <div className="theme-section"><Trans>Mọi người cùng thấy</Trans></div>
+            <div className="theme-row">
+              <span className="fb-count"><Trans>Nền bảng</Trans></span>
+              <div className="fb-chips">
+                {/* Nút đầu là "theo giao diện" (bg = null): nền chạy theo sáng/tối
+                    như trước khi có preset. Nó KHÔNG nằm trong BOARD_BGS vì đó là
+                    danh sách preset, còn đây là "không preset nào". */}
+                <button
+                  className={"bg-swatch bg-none" + (board.bg == null ? " on" : "")}
+                  data-mutating
+                  disabled={role === "viewer"}
+                  onClick={() => setBoardBg(null)}
+                  title={t`Theo giao diện sáng/tối`}
+                />
+                {BOARD_BGS.map((id) => (
+                  <button
+                    key={id}
+                    className={"bg-swatch" + (board.bg === id ? " on" : "")}
+                    data-bg={id}
+                    data-mutating
+                    disabled={role === "viewer"}
+                    onClick={() => setBoardBg(id)}
+                    title={BG_LABEL[id]}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="theme-row">
+              <span className="fb-count"><Trans>Bộ màu</Trans></span>
+              <div className="fb-chips">
+                <button
+                  className={"btn ghost toggle" + (board.pack == null ? " active" : "")}
+                  data-mutating
+                  disabled={role === "viewer"}
+                  onClick={() => setBoardPack(null)}
+                ><Trans>Cổ điển</Trans></button>
+                {COLOR_PACKS.map((id) => (
+                  <button
+                    key={id}
+                    className={"btn ghost toggle" + (board.pack === id ? " active" : "")}
+                    data-mutating
+                    disabled={role === "viewer"}
+                    onClick={() => setBoardPack(id)}
+                  >{PACK_LABEL[id]}</button>
+                ))}
+              </div>
+            </div>
+          </TopMenu>
         </div>
 
         {activeFilterCount > 0 && (
@@ -2933,11 +3033,11 @@ export default function IdeaMap() {
             <button type="button" className={"island-btn" + (panels.status ? " on" : "")} title={t`Trạng thái`} onClick={() => togglePanel("status")}><IconStatus /></button>
             <button type="button" className={"island-btn" + (panels.tag ? " on" : "")} title={t`Nhãn`} onClick={() => togglePanel("tag")}><IconTag /></button>
             <button type="button" className={"island-btn" + (panels.palette ? " on" : "")} title={t`Bảng màu`} onClick={() => togglePanel("palette")}><IconPalette /></button>
-            {/* Vạch ngăn: ba nút bên trái mở ra BỘ LỌC (bấm chip là thẻ bị làm
-                mờ), nút này mở ra THIẾT LẬP giao diện và không lọc gì cả. Đứng
-                sát nhau không vạch thì đọc thành bốn thứ cùng loại. */}
-            <div className="island-sep" />
-            <button type="button" className={"island-btn" + (panels.theme ? " on" : "")} title={t`Giao diện`} onClick={() => togglePanel("theme")}><IconBoardStyle /></button>
+            {/* ★ xuống đây theo ba nút kia: nó cũng là BỘ LỌC. Ở lại đảo trên trái
+                thì nó đứng lẫn giữa menu, tên board và tìm kiếm — đúng kiểu trộn
+                mà cả nhóm này vừa được dọn cho hết. Khác ba nút bên trái ở chỗ nó
+                không mở ra khối nội dung nào, bật là ăn ngay. */}
+            <button type="button" className={"island-btn" + (filterFav ? " on" : "")} title={t`Chỉ hiện thẻ yêu thích`} onClick={() => setFilterFav((v) => !v)}><IconStar /></button>
           </div>
         </div>
 
@@ -3036,98 +3136,6 @@ export default function IdeaMap() {
             {board.palette.length === 0 && (
               <span className="fb-count"><Trans>Chưa có màu nào — bấm + để tạo.</Trans></span>
             )}
-          </FilterPanel>
-        )}
-
-        {panels.theme && (
-          // Panel duy nhất xếp theo CỘT: nó gom năm hàng thiết lập, còn ba panel
-          // lọc kia chỉ là một dải chip. Và là panel duy nhất KHÔNG lọc gì cả —
-          // vì thế nút bật nó ở thanh đáy đứng tách sau một vạch ngăn.
-          <FilterPanel title={t`Giao diện`} stack>
-            {/* Ranh giới quan trọng nhất của panel này: ba hàng trên chỉ đổi cho
-                MÌNH (localStorage), hai hàng dưới ghi vào dữ liệu board nên MỌI
-                NGƯỜI cùng thấy. Không nói rõ thì người ta đổi nền bảng mà tưởng
-                chỉ mình thấy. Hai hàng dưới đã mang data-mutating nên tài khoản
-                chỉ xem thấy chúng mờ đi — thêm một tín hiệu nữa cùng hướng. */}
-            <div className="theme-section"><Trans>Chỉ mình bạn thấy</Trans></div>
-            <div className="theme-row">
-              <span className="fb-count"><Trans>Ngôn ngữ</Trans></span>
-              <div className="fb-chips"><LocaleToggle /></div>
-            </div>
-            <div className="theme-row">
-              <span className="fb-count"><Trans>Sáng/tối</Trans></span>
-              <div className="fb-chips">
-                <button
-                  className={"btn ghost toggle" + (theme === "light" ? " active" : "")}
-                  onClick={() => setTheme("light")}
-                ><Trans>Sáng</Trans></button>
-                <button
-                  className={"btn ghost toggle" + (theme === "dark" ? " active" : "")}
-                  onClick={() => setTheme("dark")}
-                ><Trans>Tối</Trans></button>
-              </div>
-            </div>
-            <div className="theme-row">
-              <span className="fb-count"><Trans>Kiểu vẽ</Trans></span>
-              <div className="fb-chips">
-                <button
-                  className={"btn ghost toggle" + (skin !== "sketch" ? " active" : "")}
-                  onClick={() => { if (skin === "sketch") toggleSkin(); }}
-                ><Trans>Sạch</Trans></button>
-                <button
-                  className={"btn ghost toggle" + (skin === "sketch" ? " active" : "")}
-                  onClick={() => { if (skin !== "sketch") toggleSkin(); }}
-                ><IconSketch /> <Trans>Vẽ tay</Trans></button>
-              </div>
-            </div>
-
-            <div className="theme-section"><Trans>Mọi người cùng thấy</Trans></div>
-            <div className="theme-row">
-              <span className="fb-count"><Trans>Nền bảng</Trans></span>
-              <div className="fb-chips">
-                {/* Nút đầu là "theo giao diện" (bg = null): nền chạy theo sáng/tối
-                    như trước khi có preset. Nó KHÔNG nằm trong BOARD_BGS vì đó là
-                    danh sách preset, còn đây là "không preset nào". */}
-                <button
-                  className={"bg-swatch bg-none" + (board.bg == null ? " on" : "")}
-                  data-mutating
-                  disabled={role === "viewer"}
-                  onClick={() => setBoardBg(null)}
-                  title={t`Theo giao diện sáng/tối`}
-                />
-                {BOARD_BGS.map((id) => (
-                  <button
-                    key={id}
-                    className={"bg-swatch" + (board.bg === id ? " on" : "")}
-                    data-bg={id}
-                    data-mutating
-                    disabled={role === "viewer"}
-                    onClick={() => setBoardBg(id)}
-                    title={BG_LABEL[id]}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="theme-row">
-              <span className="fb-count"><Trans>Bộ màu</Trans></span>
-              <div className="fb-chips">
-                <button
-                  className={"btn ghost toggle" + (board.pack == null ? " active" : "")}
-                  data-mutating
-                  disabled={role === "viewer"}
-                  onClick={() => setBoardPack(null)}
-                ><Trans>Cổ điển</Trans></button>
-                {COLOR_PACKS.map((id) => (
-                  <button
-                    key={id}
-                    className={"btn ghost toggle" + (board.pack === id ? " active" : "")}
-                    data-mutating
-                    disabled={role === "viewer"}
-                    onClick={() => setBoardPack(id)}
-                  >{PACK_LABEL[id]}</button>
-                ))}
-              </div>
-            </div>
           </FilterPanel>
         )}
         </div>

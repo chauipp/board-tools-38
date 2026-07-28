@@ -103,13 +103,28 @@ Làm ngược lại thì mỗi task đều phải sống chung với layout cũ 
         5 hàng + 2 nhãn phân định
   - [x] Step 8: `npm test` 291/291 · smoke xanh · build sạch · i18n 234/234
 
+- [x] **Task 10: Giao diện tách hẳn khỏi thanh lọc** *(bổ sung sau lượt xem thứ ba)*
+
+  - [x] Step 1: `TopMenu` thêm `title` (tooltip + mốc cho test), `wide` (khối
+        rộng 252px) và `closeOnClick` (bảng thiết lập không đóng sau mỗi cú bấm)
+  - [x] Step 2: Nút Giao diện lên đảo trên trái; năm hàng thiết lập chuyển từ
+        `FilterPanel` sang `.menubar-dropdown.wide` bung ra dưới nút
+  - [x] Step 3: ★ Yêu thích xuống thanh đáy cùng ba nút lọc
+  - [x] Step 4: `PANEL_KEYS` còn ba; bỏ khoá `theme` khỏi state `panels`;
+        `FilterPanel` bỏ lại prop `stack`
+  - [x] Step 5: `.island .menubar-trigger.open` sáng như `.island-btn.on`
+  - [x] Step 6: Smoke: tìm nút theo `title` (đảo trên trái có HAI trigger); thêm
+        phép kiểm bảng không tự đóng, Giao diện không còn ở thanh đáy, ★ có ở đó
+  - [x] Step 7: `npm test` 291/291 · smoke xanh · build sạch · i18n 235/235
+
 ---
 
 ## Kiểm bằng mắt (phiên này không có công cụ trình duyệt — để lại cho người dùng)
 
 - [ ] Bảng trống: có đúng là **không còn dải nào** ăn chỗ trên đầu không
-- [ ] Panel Giao diện: 5 hàng có thẳng cột nhãn không, hai nhãn phân định
-      có đọc ra được là ranh giới của-mình / của-board không
+- [ ] Bảng Giao diện: 5 hàng có thẳng cột nhãn không, hai nhãn phân định
+      có đọc ra được là ranh giới của-mình / của-board không; bảng 252px có
+      chứa vừa hàng swatch nền bảng và bốn nút bộ màu không
 - [ ] Bật cả 4 panel cùng lúc — đảo nội dung ở đáy có phình quá rộng / quá cao
       không, và bốn nhãn panel có đọc ra được là bốn khối riêng không
 - [ ] Bảng màu nhiều màu (>20 ô): đảo nội dung có cuộn trong `max-height: 40vh`

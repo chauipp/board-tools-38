@@ -937,20 +937,22 @@ export async function run(log) {
   // Skin vẽ tay: lưới an toàn cho việc đổi <line> thành <path> ở lớp dây. Bấm
   // đúng cái nút thật thay vì tự đặt data-skin — làm vậy mới đi qua useSkin (nạp
   // font lười, ghi localStorage) và mới bắt được lỗi ở đó.
-  // Nút giờ nằm trong panel Giao diện ở thanh đáy — cùng chỗ với ngôn ngữ,
-  // sáng/tối, nền bảng, bộ màu. Phải bật panel đó lên trước.
+  // Nút giờ là bảng Giao diện bung ra dưới nút của nó trên đảo trên trái — cùng
+  // chỗ với ngôn ngữ, sáng/tối, nền bảng, bộ màu. Phải mở bảng đó ra trước.
+  // Tìm theo title chứ không theo thứ tự: đảo trên trái có HAI .menubar-trigger
+  // (☰ và Giao diện), lấy theo index thì thêm cái thứ ba là test trỏ nhầm.
   const edgesClean = document.querySelectorAll(".edge-layer .visible").length;
-  const stylePanelBtn = Array.from(document.querySelectorAll(".hud-bottom .island-btn"))
+  const stylePanelBtn = Array.from(document.querySelectorAll(".island.tl .menubar-trigger"))
     .find((b) => b.title === "Giao diện");
-  if (!stylePanelBtn) throw new Error("không tìm thấy nút bật panel Giao diện ở thanh đáy");
+  if (!stylePanelBtn) throw new Error("không tìm thấy nút Giao diện trên đảo trên trái");
   await act(async () => { stylePanelBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
 
   // Hai nút rời (Sạch / Vẽ tay) chứ không còn một nút bật-tắt: phải tìm theo chữ.
   // Nút "Vẽ tay" mang cả icon lẫn chữ, nhưng <svg> không góp gì vào textContent.
   async function pickSkin(label) {
-    const btn = Array.from(document.querySelectorAll(".filter-panel.stack .btn"))
+    const btn = Array.from(document.querySelectorAll(".menubar-dropdown.wide .btn"))
       .find((b) => b.textContent.trim() === label);
-    if (!btn) throw new Error(`không tìm thấy nút "${label}" trong panel Giao diện`);
+    if (!btn) throw new Error(`không tìm thấy nút "${label}" trong bảng Giao diện`);
     await act(async () => {
       btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
       await new Promise((r) => setTimeout(r, 80));
@@ -975,17 +977,26 @@ export async function run(log) {
   // Panel Giao diện gom cả thiết lập của MÌNH lẫn dữ liệu của BOARD; hai nửa đó
   // phải có nhãn phân định, nếu không thì người ta đổi nền bảng mà tưởng chỉ mình
   // thấy. Kiểm luôn là ngôn ngữ và sáng/tối đã về đây, không còn nằm trong ☰.
-  const styleRows = Array.from(document.querySelectorAll(".filter-panel.stack .theme-row .fb-count"))
+  const styleRows = Array.from(document.querySelectorAll(".menubar-dropdown.wide .theme-row .fb-count"))
     .map((el) => el.textContent);
-  const sections = Array.from(document.querySelectorAll(".filter-panel.stack .theme-section"))
+  const sections = Array.from(document.querySelectorAll(".menubar-dropdown.wide .theme-section"))
     .map((el) => el.textContent);
-  log(`panel Giao diện: ${styleRows.length} hàng (${styleRows.join(", ")}) · ${sections.length} nhãn phân định`);
+  log(`bảng Giao diện: ${styleRows.length} hàng (${styleRows.join(", ")}) · ${sections.length} nhãn phân định`);
   for (const want of ["Ngôn ngữ", "Sáng/tối", "Kiểu vẽ", "Nền bảng", "Bộ màu"]) {
-    if (!styleRows.includes(want)) throw new Error(`panel Giao diện thiếu hàng "${want}"`);
+    if (!styleRows.includes(want)) throw new Error(`bảng Giao diện thiếu hàng "${want}"`);
   }
-  if (sections.length !== 2) throw new Error("panel Giao diện phải có 2 nhãn phân định của-mình / của-board");
+  if (sections.length !== 2) throw new Error("bảng Giao diện phải có 2 nhãn phân định của-mình / của-board");
+  // Bấm hai lần vào hai nút KHÁC nhau trong bảng mà bảng vẫn mở: đây là lý do
+  // TopMenu phải có closeOnClick tắt được. Menu hành động đóng sau một cú bấm là
+  // đúng, bảng thiết lập thì bắt mở lại năm lần.
+  if (!document.querySelector(".menubar-dropdown.wide")) throw new Error("bấm trong bảng Giao diện mà bảng tự đóng");
   await act(async () => { stylePanelBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
-  if (document.querySelector(".filter-panel.stack")) throw new Error("tắt nút mà panel Giao diện vẫn còn");
+  if (document.querySelector(".menubar-dropdown.wide")) throw new Error("bấm lại nút mà bảng Giao diện không đóng");
+
+  // Giao diện KHÔNG được nằm trong nhóm lọc ở thanh đáy nữa — nó là thiết lập.
+  const bottomTitles = Array.from(document.querySelectorAll(".hud-bottom .island-btn")).map((b) => b.title);
+  if (bottomTitles.includes("Giao diện")) throw new Error("nút Giao diện vẫn còn trong nhóm lọc ở thanh đáy");
+  if (!bottomTitles.some((x) => x.includes("yêu thích"))) throw new Error("★ phải nằm cùng nhóm lọc ở thanh đáy");
 
   // HUD đảo nổi. jsdom KHÔNG tính layout, nên không kiểm được "canvas cao bằng
   // cửa sổ" — thứ duy nhất kiểm được là cấu trúc: hai dải cũ đã rời khỏi cây, và

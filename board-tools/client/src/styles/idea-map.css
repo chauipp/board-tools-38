@@ -71,8 +71,11 @@
   width: 28px; height: 28px; padding: 0; border-radius: 7px;
   color: var(--ink-dim); flex-shrink: 0;
 }
-.island .menubar-trigger:hover, .island .menubar-trigger.open {
-  background: var(--surface-2); border-color: transparent; color: var(--ink);
+.island .menubar-trigger:hover { background: var(--surface-2); border-color: transparent; color: var(--ink); }
+/* Đang mở thì sáng như .island-btn.on: nút Giao diện là nút bật/tắt một bảng,
+   phải đọc ra được là bảng đó đang mở. ☰ ăn theo luôn, cũng đúng nghĩa. */
+.island .menubar-trigger.open {
+  background: var(--accent); border-color: var(--accent); color: var(--accent-ink);
 }
 
 .search-box { display: flex; align-items: center; gap: 4px; }
@@ -99,6 +102,11 @@
 .menubar-dropdown.align-right { left: auto; right: 0; }
 .menubar-dropdown .btn { width: 100%; text-align: left; }
 .menubar-sep { height: 1px; background: var(--line); margin: 4px 2px; }
+/* Khối nội dung của nút Giao diện. Rộng hơn menu hành động vì hàng swatch nền
+   bảng và bốn nút bộ màu không vừa 190px; và nút bên trong là nút CHỌN xếp hàng
+   ngang, không phải mục menu trải hết bề ngang như .menubar-dropdown .btn. */
+.menubar-dropdown.wide { min-width: 252px; gap: 5px; }
+.menubar-dropdown.wide .btn { width: auto; text-align: center; }
 .menubar-row { display: flex; gap: 6px; }
 .menubar-row .btn { width: auto; flex: 1; text-align: center; }
 
@@ -113,17 +121,14 @@
   min-width: 0; max-height: 40vh; overflow-y: auto; overflow-x: hidden;
 }
 .filter-panel { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
-/* Panel Giao diện: năm hàng thiết lập, mỗi hàng một nhãn riêng. Nằm ngang thì
-   nhãn và nội dung của các hàng trộn vào nhau thành một dải không đọc được. */
-.filter-panel.stack { flex-direction: column; align-items: stretch; gap: 5px; }
-/* Vạch chia hai nửa của panel Giao diện: nửa trên chỉ đổi cho mình, nửa dưới ghi
+/* Vạch chia hai nửa của bảng Giao diện: nửa trên chỉ đổi cho mình, nửa dưới ghi
    vào dữ liệu board. Đây là ranh giới người dùng PHẢI thấy — đổi nền bảng mà
    tưởng chỉ mình thấy là một cú làm phiền cả phòng. */
 .theme-section {
   font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
   color: var(--ink-dim); padding-top: 6px; margin-top: 2px; border-top: 1px solid var(--line);
 }
-.theme-section:first-of-type { padding-top: 0; margin-top: 0; border-top: none; }
+.theme-section:first-child { padding-top: 0; margin-top: 0; border-top: none; }
 .filter-title {
   font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--ink-dim); white-space: nowrap;
@@ -686,7 +691,7 @@
 .pal-swatch:hover { border-color: var(--ink); }
 /* Panel Giao diện: hai hàng "nhãn — dãy nút", mỗi hàng một việc. */
 .theme-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-/* Nhãn năm hàng của panel Giao diện phải thẳng cột thì mới đọc được thành bảng.
+/* Nhãn năm hàng của bảng Giao diện phải thẳng cột thì mới đọc được thành bảng.
    72px vừa đủ cho nhãn dài nhất ("Ngôn ngữ" / "Nền bảng" ở 10.5px). */
 .theme-row .fb-count { min-width: 72px; }
 /* Nút "Vẽ tay" mang cả icon lẫn chữ — .btn không phải flex nên icon sẽ nằm lệch
