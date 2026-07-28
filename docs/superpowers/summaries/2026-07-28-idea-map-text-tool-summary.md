@@ -64,6 +64,24 @@ sạch — **server không sửa một dòng nào**, đúng như thiết kế.
 - Smoke test phải sửa thêm một chỗ không có trong plan: nó đếm cứng "mode Sửa
   phải có 9 nút", giờ là 10.
 
+### Hai lỗi phát hiện khi chạy thật (đã sửa, commit `65b1ce5`)
+
+Cả hai đều là thứ smoke test **không thể** bắt được, đúng vào chỗ mục dưới đây
+đã cảnh báo:
+
+- **Bấm tool text không ra ô nhập.** Hành vi mặc định của `mousedown` là dời tiêu
+  điểm; `.ink-capture` là div không nhận tiêu điểm nên trình duyệt đẩy về
+  `<body>`. React 18 xả sự kiện rời rạc ngay trong lúc dispatch, nên ô nhập đã
+  kịp gắn vào cây và tự lấy tiêu điểm *trước* khi hành vi mặc định chạy — rồi bị
+  cướp ngay sau đó, `blur` bắn ra, `commitText` thấy chuỗi rỗng và gỡ ô nhập đi.
+  Sửa bằng `e.preventDefault()`. jsdom không mô phỏng cú cướp tiêu điểm này nên
+  smoke test vẫn xanh suốt.
+- **Ba nút cỡ chữ lệch và bị cắt.** Đặt nhầm trong `.tool-grid`, mà lưới đó có
+  cột rộng đúng 22px (xem phép tính bề rộng khu 4 trong `idea-map.css`) còn
+  `.tool-btn` là 34px — vừa tràn ra ngoài vừa xếp 2+1 lệch sang trái. Đưa ra
+  ngoài lưới, xếp một cột như ba nút độ dày nét của bút. jsdom không tính layout
+  nên smoke test cũng không thấy.
+
 ### Còn dở / cần lưu ý
 
 - **Chưa kiểm bằng mắt trên trình duyệt** — phiên này không có công cụ điều khiển
