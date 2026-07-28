@@ -72,6 +72,18 @@ globalThis.__resize = (el, w, h) => {
   for (const o of observers) if (o.els.has(el)) o.cb([{ target: el }]);
 };
 
+// jsdom KHÔNG có document.elementFromPoint (không layout thì không hit-test
+// được) — nên tới giờ mọi cú kéo đi qua nó, kể cả kéo badge/màu thả vào thẻ,
+// chưa từng chạy được trong smoke test. Bản thay thế trả về phần tử mà bài kiểm
+// tự đặt sẵn qua __hitAt().
+//
+// Nó KHÔNG kiểm được phép hit-test (việc đó thuộc trình duyệt), nhưng kiểm được
+// đúng thứ đáng lo ở đây: thả vào một thẻ rồi thì NHỮNG THẺ NÀO nhận. Trả null
+// khi chưa đặt gì, giống hệt lúc thả ra vùng trống.
+let hitTarget = null;
+window.document.elementFromPoint = () => hitTarget;
+globalThis.__hitAt = (el) => { hitTarget = el; };
+
 globalThis.__board = board;
 globalThis.__puts = [];
 globalThis.fetch = async (url, opts = {}) => {
@@ -140,6 +152,30 @@ setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process
     process.exit(1);
   }
   console.log("  ·", "CSS: `.shape-pick/.fill-pick` đứng sau `.tool-btn` (đúng — cùng độ đặc hiệu thì thứ tự nguồn quyết định)");
+
+  // Thanh công cụ chia thành khung rời: bao ngoài .tool-rail bỏ pointer-events
+  // để khoảng hở giữa hai khung không nuốt cú bấm xuống canvas, và .tool-group
+  // PHẢI bật lại. Thiếu dòng bật lại thì cả thanh công cụ hết bấm được — mà
+  // smoke test không thấy, vì nó dispatch sự kiện THẲNG vào phần tử chứ không
+  // đi qua phép hit-test (jsdom không có hit-test).
+  // Cùng lý do, mặt kính (nền/viền/đổ bóng) đã dời từ .tool-rail sang
+  // .tool-group; thiếu nó thì thanh công cụ trong suốt, jsdom cũng không thấy.
+  const railRule = css.match(/^\.tool-rail\s*\{([^}]*)\}/m);
+  const groupRule = css.match(/^\.tool-group\s*\{([^}]*)\}/m);
+  const chromeRule = css.match(/^\.tool-group,\s*\.tool-options\s*\{([^}]*)\}/m);
+  if (!railRule || !groupRule || !chromeRule) {
+    console.log("\n❌ SMOKE FAIL: không tìm thấy đủ ba rule `.tool-rail`, `.tool-group`, `.tool-group, .tool-options` trong idea-map.css — rule bị đổi tên thì các bài kiểm dưới đây vô nghĩa mà vẫn xanh");
+    process.exit(1);
+  }
+  if (/pointer-events\s*:\s*none/.test(railRule[1]) && !/pointer-events\s*:\s*auto/.test(groupRule[1])) {
+    console.log("\n❌ SMOKE FAIL: `.tool-rail` khai `pointer-events: none` mà `.tool-group` không bật lại `auto` — cả thanh công cụ sẽ không bấm được. Smoke test không bắt được vì nó dispatch sự kiện thẳng vào nút, không qua hit-test");
+    process.exit(1);
+  }
+  if (!/background\s*:/.test(chromeRule[1])) {
+    console.log("\n❌ SMOKE FAIL: rule `.tool-group, .tool-options` không khai `background` — mặt kính đã dời khỏi `.tool-rail` nên thiếu dòng này là thanh công cụ trong suốt, trôi trên canvas");
+    process.exit(1);
+  }
+  console.log("  ·", "CSS: `.tool-group` bật lại pointer-events và mang mặt kính (nền/viền/đổ bóng)");
 }
 
 const { run } = await import("./smoke-dist/smoke.js");

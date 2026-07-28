@@ -133,6 +133,11 @@ không bị dính.
 tên, `Delete`, `Ctrl+Z/Y/D/F` giữ nguyên. `b`, `e`, `l`, `v` hiện chưa dùng nên
 không đụng phím nào.
 
+> **Cập nhật 2026-07-28 — Bút đổi từ `b` sang `p`.** Tiêu chí lúc chọn `b` chỉ
+> là "phím còn trống", không phải một lập luận về ngữ nghĩa. Đổi sang `p` (Pen)
+> cho khớp tên tool là "Bút"; `b` không còn nhận. Tooltip của nút Sửa và nút Bút
+> đổi theo. `b` giờ trống.
+
 Nhánh `Esc` phải chèn **trước** các nhánh Esc đang có (đóng `colorMenu`,
 `badgeUI`, `edgeMenu`, `commentsFor`, tắt `linkMode`, bỏ `focusId`, bỏ chọn):
 đang vẽ mà bấm Esc thì ý người dùng là "thoát cây bút".

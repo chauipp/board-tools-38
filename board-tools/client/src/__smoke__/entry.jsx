@@ -91,9 +91,17 @@ export async function run(log) {
   // Thanh công cụ bên trái: khu 1 và khu 3 luôn hiện, khu 2 và khu 4 chỉ hiện ở
   // mode Sửa. Đây là bất biến dễ vỡ nhất của vỏ giao diện này.
   const railBtns = () => document.querySelectorAll(".tool-rail .tool-btn").length;
-  log(`thanh công cụ: ${railBtns()} nút ở mode Chuột`);
+  const railGroups = () => document.querySelectorAll(".tool-rail .tool-group").length;
+  log(`thanh công cụ: ${railBtns()} nút trong ${railGroups()} khung ở mode Chuột`);
   if (railBtns() !== 7) throw new Error("mode Chuột phải có 7 nút (2 mode + 5 thêm), có " + railBtns());
   if (document.querySelector(".tool-options")) throw new Error("mode Chuột không được hiện khu 4");
+  // Mỗi nhóm chức năng là một khung rời. Khu 2 (tool vẽ) chưa hiện ở mode Chuột
+  // nên chỉ có 2 khung; mọi nút phải nằm TRONG một khung, không nút nào lạc ra
+  // ngoài bao — nút lạc sẽ mất nền và đổ bóng mà jsdom không hề thấy.
+  if (railGroups() !== 2) throw new Error("mode Chuột phải có 2 khung (mode + thêm), có " + railGroups());
+  if (document.querySelectorAll(".tool-rail .tool-group .tool-btn").length !== railBtns()) {
+    throw new Error("có nút nằm ngoài .tool-group — nút đó sẽ không có khung");
+  }
 
   // Menu THÊM và nút Nối ý tưởng phải đã rời khỏi topbar — mỗi việc một chỗ bấm.
   const topbarText = document.querySelector(".topbar").textContent;
@@ -103,6 +111,10 @@ export async function run(log) {
   await act(async () => { drawBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
   log(`sau khi bật mode Sửa: ${railBtns()} nút, khu 4 = ${document.querySelectorAll(".tool-options .pen-swatch").length} ô màu`);
   if (railBtns() !== 10) throw new Error("mode Sửa phải có 10 nút (2 mode + 3 tool + 5 thêm), có " + railBtns());
+  if (railGroups() !== 3) throw new Error("mode Sửa phải có 3 khung (mode + tool vẽ + thêm), có " + railGroups());
+  if (document.querySelectorAll(".tool-rail .tool-group .tool-btn").length !== railBtns()) {
+    throw new Error("có nút nằm ngoài .tool-group — nút đó sẽ không có khung");
+  }
   if (document.querySelectorAll(".tool-options .pen-swatch").length !== 7) throw new Error("khu 4 phải có 7 ô màu");
   if (document.querySelectorAll(".tool-options .pen-width").length !== 3) throw new Error("khu 4 phải có 3 nút độ dày");
 
@@ -525,6 +537,125 @@ export async function run(log) {
     }
     if (pathsAfterBlur !== pathsBeforeBlur) throw new Error(`mất focus giữa nét (tool ${name}) làm số nét đổi ${pathsBeforeBlur} -> ${pathsAfterBlur}`);
   }
+
+  // ——— Phím tắt Bút: `p`, không còn `b` ———
+  const press = (k) => window.dispatchEvent(new window.KeyboardEvent("keydown", { key: k, bubbles: true }));
+  const cursorBtn = () => document.querySelectorAll(".tool-rail .tool-btn")[0];
+  await act(async () => { cursorBtn().click(); await new Promise((r) => setTimeout(r, 20)); });
+  if (document.querySelector(".tool-options")) throw new Error("bấm nút Chuột phải về mode Chuột");
+
+  await act(async () => { press("b"); await new Promise((r) => setTimeout(r, 20)); });
+  const bDidNothing = !document.querySelector(".tool-options") && !document.querySelector(".ink-capture");
+  log(`phím b: ${bDidNothing ? "không làm gì (đúng)" : "VẪN bật mode Sửa"}`);
+  if (!bDidNothing) throw new Error("`b` phải hết tác dụng sau khi đổi phím Bút sang `p`");
+
+  await act(async () => { press("p"); await new Promise((r) => setTimeout(r, 20)); });
+  const penOn = document.querySelectorAll(".tool-rail .tool-btn")[2]?.classList.contains("on");
+  log(`phím p: khu 4 ${document.querySelector(".tool-options") ? "hiện" : "KHÔNG hiện"} · nút Bút ${penOn ? "sáng" : "KHÔNG sáng"}`);
+  if (!document.querySelector(".tool-options")) throw new Error("`p` phải vào mode Sửa (khu 4 hiện ra)");
+  if (!penOn) throw new Error("`p` phải chọn đúng tool Bút, không phải gôm hay hình");
+
+  // ——— Ctrl+click = thêm/bớt thẻ khỏi vùng chọn ———
+  await act(async () => { cursorBtn().click(); await new Promise((r) => setTimeout(r, 20)); });
+  const ctrlClick = async (id) => {
+    const el = document.querySelector(`.idea-card[data-id="${id}"]`);
+    await act(async () => {
+      el.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: 5, clientY: 5, button: 0, ctrlKey: true }));
+      el.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true, clientX: 5, clientY: 5, button: 0, ctrlKey: true }));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+  };
+  const selCount = () => document.querySelectorAll(".idea-card.selected").length;
+  const cardLeft = (id) => document.querySelector(`.idea-card[data-id="${id}"]`).style.left;
+
+  const putsBeforeCtrl = globalThis.__puts.length;
+  const left1Before = cardLeft(1);
+  await ctrlClick(1);
+  const afterFirst = selCount();
+  await ctrlClick(3);
+  const afterSecond = selCount();
+  log(`Ctrl+click thẻ 1 rồi thẻ 3: đang chọn ${afterFirst} → ${afterSecond} thẻ`);
+  if (afterFirst !== 1) throw new Error("Ctrl+click thẻ đầu phải chọn đúng 1 thẻ, có " + afterFirst);
+  if (afterSecond !== 2) throw new Error("Ctrl+click thẻ thứ hai phải CỘNG vào lựa chọn (2 thẻ), có " + afterSecond);
+
+  const bulk = document.querySelector(".bulk-bar .bb-count");
+  log(`thanh nhiều thẻ: ${bulk ? JSON.stringify(bulk.textContent) : "KHÔNG hiện"}`);
+  if (!bulk) throw new Error("chọn 2 thẻ phải hiện thanh bulk-bar");
+
+  // Ctrl+click lại thẻ đã chọn = bớt ra, không phải chọn lại một mình nó.
+  await ctrlClick(1);
+  log(`Ctrl+click lại thẻ 1: còn ${selCount()} thẻ`);
+  if (selCount() !== 1) throw new Error("Ctrl+click thẻ đã chọn phải BỚT nó ra, còn 1 thẻ, có " + selCount());
+  if (!document.querySelector('.idea-card[data-id="3"]').classList.contains("selected")) {
+    throw new Error("bớt thẻ 1 mà thẻ 3 cũng rơi khỏi lựa chọn");
+  }
+
+  // Ctrl+click chỉ đổi lựa chọn: không lưu gì, và không được xê dịch thẻ (nhánh
+  // này return sớm nên không gắn mousemove/mouseup nào).
+  log(`Ctrl+click: PUT thêm ${globalThis.__puts.length - putsBeforeCtrl} lần (phải là 0) · thẻ 1 left ${left1Before} -> ${cardLeft(1)}`);
+  if (globalThis.__puts.length !== putsBeforeCtrl) throw new Error("Ctrl+click không được lưu gì");
+  if (cardLeft(1) !== left1Before) throw new Error("Ctrl+click làm thẻ xê dịch");
+
+  // ——— Kéo trạng thái vào vùng chọn nhiều → cả vùng nhận ———
+  // Đường này đi qua document.elementFromPoint, thứ jsdom không có; __hitAt của
+  // smoke-run.mjs đặt sẵn phần tử "dưới con trỏ" (xem ghi chú ở đó).
+  await ctrlClick(1); // đang chọn thẻ 3, cộng thêm thẻ 1 → {1, 3}
+  if (selCount() !== 2) throw new Error("cần đúng 2 thẻ được chọn trước khi thử kéo badge");
+
+  // Fixture vào đây với thẻ1=trạng thái 1, thẻ2=không, thẻ3=trạng thái 2. Giá
+  // trị thả vào phải là giá trị mà thẻ đó CHƯA có, nếu không assertion đúng một
+  // cách vô nghĩa và bài kiểm mất răng. Nên đi hai cú thả: cú đầu dồn thẻ 1 và
+  // thẻ 3 về cùng trạng thái 2, cú sau đổi cả hai sang 1 — lúc đó "thẻ cùng
+  // vùng chọn cũng nhận" mới thật sự là một phép đo.
+  const dragChipOnto = async (statusId, targetCardId) => {
+    const chip = document.querySelector(`.chip-toggle.status[data-badge-id="${statusId}"]`);
+    if (!chip) throw new Error(`không thấy chip trạng thái id ${statusId} để kéo`);
+    globalThis.__hitAt(document.querySelector(`.idea-card[data-id="${targetCardId}"]`));
+    await act(async () => {
+      chip.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: 10, clientY: 10, button: 0 }));
+      mouse("mousemove", 40, 40);
+      mouse("mousemove", 90, 90);
+      await new Promise((r) => setTimeout(r, 40));
+    });
+    await act(async () => { mouse("mouseup", 90, 90); await new Promise((r) => setTimeout(r, 40)); });
+  };
+  const lastPut = () => globalThis.__puts[globalThis.__puts.length - 1];
+  const statusOf = (put, id) => put.nodes.find((n) => n.id === id).statusId;
+
+  // Cú 1: thả trạng thái 2 vào thẻ 1 (thẻ 1 đang là 1 → phải đổi).
+  await dragChipOnto(2, 1);
+  const put1 = lastPut();
+  log(`thả trạng thái 2 vào thẻ 1 (đang chọn 1+3): thẻ1=${statusOf(put1, 1)} thẻ2=${statusOf(put1, 2)} thẻ3=${statusOf(put1, 3)}`);
+  if (statusOf(put1, 1) !== 2) throw new Error("thẻ được thả vào phải nhận trạng thái");
+  if (statusOf(put1, 2) !== null) throw new Error("thẻ ngoài vùng chọn không được đổi");
+
+  // Cú 2: thả trạng thái 1 vào thẻ 3. Giờ thẻ 1 VÀ thẻ 3 đều đang là 2, nên thẻ
+  // 1 nhận được giá trị mới chỉ có thể là do nó cùng vùng chọn.
+  await dragChipOnto(1, 3);
+  const put2 = lastPut();
+  log(`thả trạng thái 1 vào thẻ 3 (đang chọn 1+3): thẻ1=${statusOf(put2, 1)} thẻ2=${statusOf(put2, 2)} thẻ3=${statusOf(put2, 3)}`);
+  if (statusOf(put2, 3) !== 1) throw new Error("thẻ được thả vào phải nhận trạng thái");
+  if (statusOf(put2, 1) !== 1) throw new Error("thẻ CÙNG vùng chọn cũng phải nhận trạng thái (2 → 1)");
+  if (statusOf(put2, 2) !== null) throw new Error("thẻ ngoài vùng chọn không được đổi");
+
+  // Thả lại y nguyên: mọi thẻ đã đúng giá trị → không thêm bước hoàn tác, không
+  // thêm lượt PUT cả bảng.
+  const putsBeforeNoop = globalThis.__puts.length;
+  await dragChipOnto(1, 3);
+  log(`thả lại đúng trạng thái đó: PUT thêm ${globalThis.__puts.length - putsBeforeNoop} lần (phải là 0)`);
+  if (globalThis.__puts.length !== putsBeforeNoop) throw new Error("cú thả không đổi gì mà vẫn lưu");
+
+  // Thả vào thẻ NGOÀI vùng chọn: chỉ thẻ đó nhận, vùng chọn không nhận gì và
+  // cũng không bị phá.
+  await dragChipOnto(2, 2);
+  const put3 = lastPut();
+  log(`thả trạng thái 2 vào thẻ 2 (NGOÀI vùng chọn): thẻ1=${statusOf(put3, 1)} thẻ2=${statusOf(put3, 2)} thẻ3=${statusOf(put3, 3)} · vẫn đang chọn ${selCount()} thẻ`);
+  if (statusOf(put3, 2) !== 2) throw new Error("thẻ ngoài vùng chọn được thả vào thì phải nhận");
+  if (statusOf(put3, 1) !== 1 || statusOf(put3, 3) !== 1) {
+    throw new Error("thả vào thẻ NGOÀI vùng chọn mà vùng chọn cũng bị đổi theo");
+  }
+  if (selCount() !== 2) throw new Error("thả vào thẻ ngoài vùng chọn không được phá vùng chọn");
+  globalThis.__hitAt(null);
 
   return true;
 }

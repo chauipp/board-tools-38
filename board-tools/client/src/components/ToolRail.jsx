@@ -39,32 +39,37 @@ export default function ToolRail({
 }) {
   const { t } = useLingui();
   return (
-    // Bấm vào thanh không được lọt xuống canvas thành một cú quét chọn.
+    // Bấm vào thanh không được lọt xuống canvas thành một cú quét chọn. Handler
+    // đặt ở đây chứ không ở từng khung: sự kiện từ nút vẫn nổi bọt qua bao ngoài
+    // dù bao ngoài trong suốt và không nhận chuột (xem .tool-rail trong CSS).
     <div className="tool-rail" onMouseDown={(e) => e.stopPropagation()}>
+      {/* Ba khung rời, không phải một dải dài có kẻ ngăn: chọn mode, tool vẽ, và
+          các nút thêm là ba việc khác nhau, nhìn ra ngay đâu là đâu. */}
       {/* Khu 1 — mode */}
-      <button
-        type="button"
-        className={"tool-btn" + (mode === "select" ? " on" : "")}
-        title={t`Chuột — chọn và di chuyển (V)`}
-        onClick={() => onMode("select")}
-      ><IconCursor /></button>
-      <button
-        type="button"
-        className={"tool-btn" + (mode === "draw" ? " on" : "")}
-        title={t`Sửa — vẽ lên bảng (B)`}
-        disabled={!canEdit}
-        onClick={() => onMode("draw")}
-      ><IconEdit /></button>
+      <div className="tool-group">
+        <button
+          type="button"
+          className={"tool-btn" + (mode === "select" ? " on" : "")}
+          title={t`Chuột — chọn và di chuyển (V)`}
+          onClick={() => onMode("select")}
+        ><IconCursor /></button>
+        <button
+          type="button"
+          className={"tool-btn" + (mode === "draw" ? " on" : "")}
+          title={t`Sửa — vẽ lên bảng (P)`}
+          disabled={!canEdit}
+          onClick={() => onMode("draw")}
+        ><IconEdit /></button>
+      </div>
 
       {/* Khu 2 — tool của mode Sửa. Mode Chuột thì ẩn hẳn, không phải làm mờ:
           mọi thao tác trên bảng khi đó giữ nguyên như trước khi có thanh này. */}
       {mode === "draw" && (
-        <>
-          <div className="tool-sep" />
+        <div className="tool-group">
           <button
             type="button"
             className={"tool-btn" + (tool === "pen" ? " on" : "")}
-            title={t`Bút (B)`}
+            title={t`Bút (P)`}
             disabled={!canEdit}
             onClick={() => onTool("pen")}
           ><IconPen /></button>
@@ -82,22 +87,23 @@ export default function ToolRail({
             disabled={!canEdit}
             onClick={() => onTool("shape")}
           ><IconShape /></button>
-        </>
+        </div>
       )}
 
       {/* Khu 3 — thêm. Luôn hiện, kể cả ở mode Sửa. */}
-      <div className="tool-sep" />
-      <button type="button" className="tool-btn" title={t`Thêm ý tưởng (N)`} disabled={!canEdit} onClick={onAddNode}><IconCard /></button>
-      <button type="button" className="tool-btn" title={t`Thêm thẻ gốc (Shift+N)`} disabled={!canEdit} onClick={onAddRootNode}><IconRootCard /></button>
-      <button type="button" className="tool-btn" title={t`Thêm khung`} disabled={!canEdit} onClick={onAddGroup}><IconFrame /></button>
-      <button
-        type="button"
-        className={"tool-btn" + (linkMode ? " on" : "")}
-        title={t`Nối ý tưởng (L)`}
-        disabled={!canEdit}
-        onClick={onToggleLink}
-      ><IconLink /></button>
-      <button type="button" className="tool-btn" title={t`Nhập nhanh`} disabled={!canEdit} onClick={onCapture}><IconCapture /></button>
+      <div className="tool-group">
+        <button type="button" className="tool-btn" title={t`Thêm ý tưởng (N)`} disabled={!canEdit} onClick={onAddNode}><IconCard /></button>
+        <button type="button" className="tool-btn" title={t`Thêm thẻ gốc (Shift+N)`} disabled={!canEdit} onClick={onAddRootNode}><IconRootCard /></button>
+        <button type="button" className="tool-btn" title={t`Thêm khung`} disabled={!canEdit} onClick={onAddGroup}><IconFrame /></button>
+        <button
+          type="button"
+          className={"tool-btn" + (linkMode ? " on" : "")}
+          title={t`Nối ý tưởng (L)`}
+          disabled={!canEdit}
+          onClick={onToggleLink}
+        ><IconLink /></button>
+        <button type="button" className="tool-btn" title={t`Nhập nhanh`} disabled={!canEdit} onClick={onCapture}><IconCapture /></button>
+      </div>
     </div>
   );
 }

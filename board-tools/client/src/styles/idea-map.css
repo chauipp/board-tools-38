@@ -154,6 +154,11 @@
   transform: translate(-50%, -140%);
 }
 .chip-ghost .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; filter: brightness(1.4); }
+/* Nền đảo ngược so với nhãn bay (nhãn dùng --ink làm nền) nên con số nổi lên. */
+.chip-ghost .ghost-n {
+  padding: 0 5px; border-radius: 999px; font-size: 10px;
+  background: var(--bg); color: var(--ink);
+}
 
 .viewport {
   position: relative; flex: 1 1 auto; overflow: hidden; cursor: default;
@@ -624,12 +629,23 @@
    (45) và menu popover (90). */
 .tool-rail, .tool-options {
   position: absolute; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column;
+  z-index: 30;
+}
+/* Bao ngoài của thanh chỉ làm việc xếp chỗ; mặt kính (nền, viền, đổ bóng) nằm ở
+   từng .tool-group, nên mỗi nhóm chức năng là một khung rời.
+   pointer-events: none để khoảng hở 10px giữa hai khung không nuốt cú bấm xuống
+   canvas: bao ngoài trải suốt cả cột, kể cả những chỗ trong suốt đó. Nút bên
+   trong bật lại pointer-events nên vẫn bấm được, và sự kiện của chúng vẫn nổi
+   bọt qua bao ngoài tới onMouseDown khai ở ToolRail.jsx. */
+.tool-rail { left: 12px; width: 46px; gap: 10px; pointer-events: none; }
+.tool-group { pointer-events: auto; }
+.tool-group, .tool-options {
   display: flex; flex-direction: column; gap: 4px;
   padding: 6px; border-radius: 12px;
   background: var(--surface); border: 1px solid var(--line);
-  box-shadow: var(--shadow); z-index: 30;
+  box-shadow: var(--shadow);
 }
-.tool-rail { left: 12px; width: 46px; }
 /* Khu 4 của tool hình khối cao chừng 300px (6 hình + 7 màu + 3 độ dày + 2 chế
    độ tô). Vì khối này canh giữa dọc bằng translateY(-50%), màn hình thấp sẽ
    tràn ra ngoài khung nhìn nếu không kẹp chiều cao lại.
