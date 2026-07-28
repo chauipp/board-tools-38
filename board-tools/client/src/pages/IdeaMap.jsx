@@ -33,7 +33,9 @@ import { rafThrottle } from "../lib/raf-throttle.js";
 import { replaceIdSet, toggleId, unionIdSet } from "../lib/selection.js";
 import { loadCamera, saveCamera } from "../lib/camera.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
-import { compressImage } from "../lib/image-utils.js";
+import { readImageFile } from "../lib/image-utils.js";
+import { canAddImage, formatMB } from "../lib/image-budget.js";
+import { usePopoverPosition } from "../lib/usePopoverPosition.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
 import { loadPenPrefs, savePenPrefs } from "../lib/pen.js";
 import { CARD_LEVEL_W, cardLevel, levelPatch, loadCardLevel, saveCardLevel } from "../lib/card-levels.js";
@@ -454,7 +456,7 @@ export default function IdeaMap() {
 
   // Đọc roleRef chứ không đọc `role`: saveNow là chốt chặn cuối, nó phải đúng kể
   // cả khi được gọi từ một closure cũ. Handler nào gắn với deps [] (listener
-  // paste, .then() của compressImage…) đóng gói `role` lúc mount — khi đó board
+  // paste, .then() của readImageFile…) đóng gói `role` lúc mount — khi đó board
   // chưa tải xong nên role vẫn null và chốt chặn sẽ hở. Ref thì luôn mới.
   function saveNow(next) {
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
@@ -630,14 +632,27 @@ export default function IdeaMap() {
   }, []);
 
   // Ảnh dán/thả vào thẻ: applyImageToNode phải đọc boardRef.current (không phải
-  // `board`) vì nó được gọi từ compressImage().then() bên trong listener "paste"
+  // `board`) vì nó được gọi từ readImageFile().then() bên trong listener "paste"
   // gắn-một-lần (deps: []), nơi `board` luôn là giá trị đóng gói lúc mount (stale).
   // commitAndSave cũng không dùng được ở đây vì nó tự gọi recordHistory(board) —
   // cùng vấn đề đóng gói cũ; nên trình tự ghi lịch sử/lưu được lặp lại thủ công.
+  // Một board là một document MongoDB, trần 16MB. Ảnh giữ nguyên chất lượng gốc
+  // nên trần đó với tới được — báo ngay tại chỗ dán, đừng để cú lưu chết ở server
+  // rồi người dùng chỉ thấy "không lưu được".
+  function imageFitsBoard(dataUrl, replaceNodeId = null) {
+    const current = boardRef.current;
+    if (!current) return false;
+    const check = canAddImage(current.nodes, dataUrl, replaceNodeId);
+    if (check.ok) return true;
+    window.alert(t`Ảnh này ${formatMB(check.adding)}MB, mà bảng đã dùng ${formatMB(check.used)}MB trên ${formatMB(check.budget)}MB dành cho ảnh. Xoá bớt ảnh cũ hoặc tách sang board khác.`);
+    return false;
+  }
+
   function applyImageToNode(nodeId, dataUrl) {
     const current = boardRef.current;
     if (!current) return;
     if (!current.nodes.some((n) => n.id === nodeId)) return;
+    if (!imageFitsBoard(dataUrl, nodeId)) return;
     const next = { ...current, nodes: current.nodes.map((n) => (n.id === nodeId ? { ...n, image: dataUrl } : n)) };
     recordHistory(current);
     setBoard(next);
@@ -646,10 +661,11 @@ export default function IdeaMap() {
   }
 
   // Cùng kỷ luật refs-only như applyImageToNode: được gọi từ listener "paste"
-  // gắn-một-lần và từ .then() của compressImage.
+  // gắn-một-lần và từ .then() của readImageFile.
   function createImageNode(dataUrl, pos) {
     const current = boardRef.current;
     if (!current || !viewportRef.current) return;
+    if (!imageFitsBoard(dataUrl)) return;
     let x, y;
     if (pos) {
       ({ x, y } = pos);
@@ -681,8 +697,8 @@ export default function IdeaMap() {
       if (!item) return;
       e.preventDefault();
       const file = item.getAsFile();
-      if (sel.size === 1) compressImage(file).then((dataUrl) => applyImageToNode(Array.from(sel)[0], dataUrl)).catch(() => {});
-      else compressImage(file).then((dataUrl) => createImageNode(dataUrl)).catch(() => {});
+      if (sel.size === 1) readImageFile(file).then((dataUrl) => applyImageToNode(Array.from(sel)[0], dataUrl)).catch(() => {});
+      else readImageFile(file).then((dataUrl) => createImageNode(dataUrl)).catch(() => {});
     }
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
@@ -1463,7 +1479,7 @@ export default function IdeaMap() {
     e.preventDefault();
     e.stopPropagation();
     const f = Array.from(e.dataTransfer.files).find((x) => x.type.startsWith("image/"));
-    if (f) compressImage(f).then((d) => applyImageToNode(nodeId, d)).catch(() => {});
+    if (f) readImageFile(f).then((d) => applyImageToNode(nodeId, d)).catch(() => {});
   }
 
   // Thả file ảnh lên chỗ trống canvas → tạo thẻ ảnh tại điểm thả (thả lên thẻ
@@ -1476,7 +1492,7 @@ export default function IdeaMap() {
     const rect = viewportRef.current.getBoundingClientRect();
     const x = Math.round((e.clientX - rect.left - board.view.panX) / board.view.scale - CARD_W / 2);
     const y = Math.round((e.clientY - rect.top - board.view.panY) / board.view.scale - 40);
-    compressImage(f).then((d) => createImageNode(d, { x, y })).catch(() => {});
+    readImageFile(f).then((d) => createImageNode(d, { x, y })).catch(() => {});
   }
 
   // Kéo góc ảnh đổi bề rộng thẻ (node.w); chiều cao ảnh theo tỉ lệ. Cùng
@@ -1490,14 +1506,18 @@ export default function IdeaMap() {
     const scale = board.view.scale;
     const boardBeforeDrag = board;
     const startW = node.w || CARD_W;
-    const MIN_W = 140, MAX_W = 560;
+    // Không có trần: kéo to tới đâu cũng được. Trần 560px cũ vô nghĩa từ khi ảnh
+    // giữ nguyên độ phân giải gốc — ảnh 3000px vẫn nét ở 2000px, chặn ở 560 chỉ
+    // là vứt đi phần dữ liệu đã lưu. MIN_W giữ lại để thẻ không co về 0 rồi mất
+    // luôn chỗ để bấm vào.
+    const MIN_W = 140;
     let latest = board;
     let moved = false;
 
     const onMove = rafThrottle((ev) => {
       const dx = (ev.clientX - startX) / scale;
       if (Math.abs(dx) > 0.5) moved = true;
-      const w = Math.min(MAX_W, Math.max(MIN_W, Math.round(startW + dx)));
+      const w = Math.max(MIN_W, Math.round(startW + dx));
       setBoard((prev) => {
         const next = { ...prev, nodes: prev.nodes.map((n) => (n.id === node.id ? { ...n, w } : n)) };
         latest = next;
@@ -3219,6 +3239,7 @@ function PaletteEditor({ x, y, hex, onPick, onDelete, onClose }) {
   const { t } = useLingui();
   const ref = useRef(null);
   const inputRef = useRef(null);
+  const pos = usePopoverPosition(ref, x, y);
   useCloseOnOutside(ref, onClose);
 
   // Listener "change" thật, không dùng onChange của React: React map onChange
@@ -3232,7 +3253,7 @@ function PaletteEditor({ x, y, hex, onPick, onDelete, onClose }) {
   }, [onPick]);
 
   return (
-    <div className="badge-editor pal-editor" ref={ref} style={{ left: x, top: y }} onMouseDown={(e) => e.stopPropagation()}>
+    <div className="badge-editor pal-editor" ref={ref} style={pos} onMouseDown={(e) => e.stopPropagation()}>
       <div className="eyebrow">{onDelete ? t`Sửa màu` : t`Màu mới`}</div>
       <input className="pal-input" type="color" defaultValue={hex} ref={inputRef} />
       {onDelete && (
@@ -3245,6 +3266,7 @@ function PaletteEditor({ x, y, hex, onPick, onDelete, onClose }) {
 function EdgeMenu({ x, y, edge, onStyleToggle, onArrowToggle, onReverse, onLabel, onColorChange, onDelete, onClose }) {
   const { t } = useLingui();
   const ref = useRef(null);
+  const pos = usePopoverPosition(ref, x, y);
   useCloseOnOutside(ref, onClose);
 
   // Guard against a redundant second commit: Enter commits immediately, and a
@@ -3262,7 +3284,7 @@ function EdgeMenu({ x, y, edge, onStyleToggle, onArrowToggle, onReverse, onLabel
   const isDirected = edge.arrow !== "none";
 
   return (
-    <div className="badge-editor edge-menu" ref={ref} style={{ left: x, top: y }} onMouseDown={(e) => e.stopPropagation()}>
+    <div className="badge-editor edge-menu" ref={ref} style={pos} onMouseDown={(e) => e.stopPropagation()}>
       <input
         className="be-name"
         type="text"
@@ -3320,6 +3342,7 @@ function EdgeMenu({ x, y, edge, onStyleToggle, onArrowToggle, onReverse, onLabel
 function CommentsPopover({ x, y, comments, onAdd, onDelete, onClose }) {
   const { t } = useLingui();
   const ref = useRef(null);
+  const pos = usePopoverPosition(ref, x, y);
   useCloseOnOutside(ref, onClose);
   const [text, setText] = useState("");
 
@@ -3338,7 +3361,7 @@ function CommentsPopover({ x, y, comments, onAdd, onDelete, onClose }) {
   }
 
   return (
-    <div className="badge-editor comments-pop" ref={ref} style={{ left: x, top: y }} onMouseDown={(e) => e.stopPropagation()}>
+    <div className="badge-editor comments-pop" ref={ref} style={pos} onMouseDown={(e) => e.stopPropagation()}>
       {comments.length > 0 && (
         <div className="cmt-list">
           {comments.map((c, i) => (
