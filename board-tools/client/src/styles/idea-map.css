@@ -162,7 +162,7 @@
 
 .viewport {
   position: relative; flex: 1 1 auto; overflow: hidden; cursor: default;
-  background: radial-gradient(var(--line) 1px, transparent 1px) 0 0 / 26px 26px, var(--bg);
+  background: radial-gradient(var(--board-grid) 1px, transparent 1px) 0 0 / var(--grid-size) var(--grid-size), var(--board-bg);
 }
 .viewport.panning { cursor: grabbing; }
 /* will-change: giữ .canvas trên một lớp compositor riêng, nên lia/thu phóng
@@ -178,16 +178,16 @@
 }
 .edge-layer { position: absolute; left: 0; top: 0; width: 4200px; height: 3200px; overflow: visible; pointer-events: none; }
 .edge-layer .hit { stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
-.edge-layer .visible { stroke: var(--ink-dim); stroke-width: 1.6; opacity: 0.75; }
-.edge-layer .visible.hot { stroke: var(--accent); stroke-width: 2.4; opacity: 1; }
-.edge-layer .visible.selected { stroke: var(--accent); stroke-width: 2.4; stroke-dasharray: 5 3; opacity: 1; }
+.edge-layer .visible { stroke: var(--ink-dim); stroke-width: var(--edge-w); opacity: 0.75; }
+.edge-layer .visible.hot { stroke: var(--accent); stroke-width: var(--edge-w-hot); opacity: 1; }
+.edge-layer .visible.selected { stroke: var(--accent); stroke-width: var(--edge-w-hot); stroke-dasharray: 5 3; opacity: 1; }
 .edge-layer .draft { stroke: var(--accent); stroke-width: 1.8; stroke-dasharray: 5 4; pointer-events: none; }
 .edge-handle-layer { position: absolute; left: 0; top: 0; width: 4200px; height: 3200px; overflow: visible; pointer-events: none; z-index: 5; }
 .edge-handle-layer .edge-handle { fill: var(--accent); stroke: var(--bg); stroke-width: 1.5; cursor: grab; pointer-events: all; }
 .edge-handle-layer .edge-handle:hover { r: 8; }
 .edge-handle-layer .edge-handle:active { cursor: grabbing; }
 .edge-layer .snap-guide { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 3; pointer-events: none; }
-.edge-layer .edge-label { font-size: 10px; fill: var(--ink-dim); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; pointer-events: none; }
+.edge-layer .edge-label { font-family: var(--canvas-font); font-size: 10px; fill: var(--ink-dim); paint-order: stroke; stroke: var(--bg); stroke-width: 3px; pointer-events: none; }
 
 .idea-card {
   position: absolute; width: 210px;
@@ -197,7 +197,8 @@
      (cùng độ đặc hiệu hai class, mà .lv-N đứng sau) — thẻ bậc phụ đang được
      chọn sẽ mất hẳn quầng accent. */
   --card-shadow: var(--shadow);
-  background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px;
+  background: var(--surface-2); border: var(--card-border-w) solid var(--line); border-radius: var(--card-radius);
+  font-family: var(--canvas-font);
   box-shadow: var(--card-shadow); padding: 10px 10px 9px; cursor: grab; user-select: none;
   transition: box-shadow 0.12s ease, transform 0.12s ease, border-color 0.12s ease;
   /* Cách ly layout: đổi left/top của MỘT thẻ đang kéo không bắt trình duyệt
@@ -364,14 +365,14 @@
 .idea-card .meta-row { display: flex; align-items: center; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
 .tag-pill {
   display: inline-flex; align-items: center; gap: 4px; font-size: 9.5px;
-  padding: 2px 7px 2px 5px; border-radius: 999px; background: var(--bg); color: var(--ink-dim);
+  padding: 2px 7px 2px 5px; border-radius: var(--pill-radius); background: var(--bg); color: var(--ink-dim);
   border: 1px solid var(--line);
 }
 .tag-pill .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.status-pill { font-size: 9px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; white-space: nowrap; }
+.status-pill { font-size: 9px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 7px; border-radius: var(--pill-radius); white-space: nowrap; }
 .cmt-pill {
   display: inline-flex; align-items: center; gap: 4px; font-size: 9.5px;
-  padding: 2px 7px 2px 5px; border-radius: 999px; background: var(--bg); color: var(--ink-dim);
+  padding: 2px 7px 2px 5px; border-radius: var(--pill-radius); background: var(--bg); color: var(--ink-dim);
   border: 1px solid var(--line); cursor: pointer;
 }
 .cmt-pill:hover { color: var(--ink); border-color: var(--ink-dim); }
@@ -572,8 +573,9 @@
 }
 
 .frame-box {
-  position: absolute; border: 2px dashed var(--line); border-radius: 10px;
+  position: absolute; border: var(--frame-border-w) dashed var(--line); border-radius: var(--frame-radius);
   background: color-mix(in srgb, var(--surface) 55%, transparent);
+  font-family: var(--canvas-font);
   cursor: grab;
 }
 .frame-box:active { cursor: grabbing; }
