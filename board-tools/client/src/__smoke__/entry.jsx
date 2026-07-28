@@ -779,5 +779,35 @@ export async function run(log) {
   log(`Ctrl+click khung đã chọn: còn ${afterCtrl}/${framesBeforeDel} khung được chọn`);
   if (afterCtrl !== framesBeforeDel - 1) throw new Error("Ctrl+click khung phải BỚT nó khỏi vùng chọn");
 
+  // Skin vẽ tay: lưới an toàn cho việc đổi <line> thành <path> ở lớp dây. Bấm
+  // đúng cái nút trong topbar thay vì tự đặt data-skin — làm vậy mới đi qua
+  // useSkin (nạp font lười, ghi localStorage) và mới bắt được lỗi ở đó.
+  const edgesClean = document.querySelectorAll(".edge-layer .visible").length;
+  const skinBtn = Array.from(document.querySelectorAll(".topbar-prefs .btn"))
+    .find((b) => b.querySelector("svg"));
+  if (!skinBtn) throw new Error("không tìm thấy nút đổi skin trong topbar");
+  await act(async () => {
+    skinBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 80));
+  });
+  const skinAttr = document.documentElement.getAttribute("data-skin");
+  const edgePaths = document.querySelectorAll(".edge-layer path.visible").length;
+  const edgeLines = document.querySelectorAll(".edge-layer line.visible").length;
+  log(`skin vẽ tay: data-skin=${skinAttr} · dây ${edgesClean} <line> → ${edgePaths} <path> (còn ${edgeLines} line)`);
+  if (skinAttr !== "sketch") throw new Error("bấm nút mà data-skin không thành sketch");
+  if (edgePaths !== edgesClean) throw new Error(`mất dây khi đổi skin: ${edgesClean} → ${edgePaths}`);
+  if (edgeLines !== 0) throw new Error("còn sót <line> hiển thị ở skin vẽ tay");
+  const dAttr = document.querySelector(".edge-layer path.visible")?.getAttribute("d") || "";
+  if (!dAttr.includes("C")) throw new Error("path dây không phải nét rung (không có đoạn cong)");
+
+  // Tắt đi phải về đúng trạng thái cũ — skin là nút bật/tắt, không phải đường
+  // một chiều.
+  await act(async () => {
+    skinBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 50));
+  });
+  if (document.documentElement.getAttribute("data-skin") !== "clean") throw new Error("tắt skin không về clean");
+  if (document.querySelectorAll(".edge-layer line.visible").length !== edgesClean) throw new Error("tắt skin mà dây không về <line>");
+
   return true;
 }
