@@ -1,6 +1,6 @@
 // Camera (pan/zoom) là riêng từng người xem — không còn đồng bộ qua server
 // (xem docs/superpowers/specs/2026-07-26-idea-map-realtime-sync-design.md,
-// mục E). Lưu local theo từng board, cùng cách dock.js lưu vị trí panel.
+// mục E). Lưu local theo từng board.
 const PREFIX = "idea-map-camera:";
 
 export function loadCamera(storage, boardId) {

@@ -2,6 +2,7 @@
 // một cái thẻ không được kéo theo màu của nét vẽ tay. Tên token là "pen-" chứ
 // không phải "ink-" để không lẫn với --ink / --ink-dim đang là màu chữ.
 import { SHAPE_KINDS } from "./shape.js";
+import { TEXT_SIZES } from "./text-el.js";
 
 const KEY = "ideamap.pen";
 
@@ -17,7 +18,7 @@ export const PEN_WIDTHS = [2, 4, 8];
 // Toàn bộ state của khu 4 nằm trong MỘT object dưới MỘT khoá: màu và độ dày
 // dùng chung cho bút và hình khối, `kind` là hình đang chọn, `fill` là chế độ
 // viền / cả hình. Chiều import pen.js → shape.js → stroke.js, không có vòng.
-export const PEN_DEFAULT = { color: "pen-red", w: 4, kind: "rect", fill: false };
+export const PEN_DEFAULT = { color: "pen-red", w: 4, kind: "rect", fill: false, size: 20 };
 
 export function penVar(token) {
   return `var(--${token})`;
@@ -36,14 +37,17 @@ export function loadPenPrefs(storage) {
     color: PEN_COLORS.includes(saved.color) ? saved.color : PEN_DEFAULT.color,
     w: PEN_WIDTHS.includes(saved.w) ? saved.w : PEN_DEFAULT.w,
     kind: SHAPE_KINDS.includes(saved.kind) ? saved.kind : PEN_DEFAULT.kind,
-    fill: saved.fill === true
+    fill: saved.fill === true,
+    // Cỡ CHỮ, không liên quan tới `w` (độ dày nét): hai thứ nằm chung một object
+    // vì khu 4 là một khối duy nhất, nhưng không bao giờ dùng thay cho nhau.
+    size: TEXT_SIZES.includes(saved.size) ? saved.size : PEN_DEFAULT.size
   };
 }
 
 export function savePenPrefs(storage, prefs) {
   try {
     storage.setItem(KEY, JSON.stringify({
-      color: prefs.color, w: prefs.w, kind: prefs.kind, fill: prefs.fill === true
+      color: prefs.color, w: prefs.w, kind: prefs.kind, fill: prefs.fill === true, size: prefs.size
     }));
   } catch {
     // Hết quota hoặc chế độ riêng tư — mất lựa chọn bút, không đáng làm sập app.

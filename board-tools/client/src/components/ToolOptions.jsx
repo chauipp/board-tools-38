@@ -1,6 +1,8 @@
 import { useLingui } from "@lingui/react/macro";
 import { PEN_COLORS, PEN_WIDTHS, penVar } from "../lib/pen.js";
+import { LASER_WIDTHS } from "../lib/laser.js";
 import { SHAPE_KINDS, SHAPE_CLOSED } from "../lib/shape.js";
+import { TEXT_SIZES } from "../lib/text-el.js";
 import { CARD_LEVELS } from "../lib/card-levels.js";
 import CardLevelIcon from "./CardLevelIcon.jsx";
 
@@ -47,6 +49,81 @@ export default function ToolOptions({ tool, prefs, onPrefs, level, onLevel }) {
             title={LEVEL_LABEL[lv]}
             onClick={() => onLevel(lv)}
           ><CardLevelIcon level={lv} /></button>
+        ))}
+      </div>
+    );
+  }
+
+  // Text: ba cỡ chữ + bảy màu bút. KHÔNG có độ dày nét (chữ không có nét dày
+  // mảnh) và không có bảng sáu hình. Trả sớm, trước nhánh bút/hình khối bên
+  // dưới, để khỏi phải rắc `tool === "text"` vào từng khối một.
+  if (tool === "text") {
+    const SIZE_LABEL = { 14: t`Chữ nhỏ`, 20: t`Chữ vừa`, 30: t`Chữ lớn` };
+    return (
+      <div className="tool-options" onMouseDown={(e) => e.stopPropagation()}>
+        {/* Ba nút cỡ chữ xếp MỘT CỘT, không dùng .tool-grid: lưới đó 2 cột, ba
+            nút sẽ thành hàng 2 + hàng 1 lệch hẳn sang trái. Đây cũng là lý do
+            ba nút độ dày nét của bút không nằm trong lưới. */}
+        {TEXT_SIZES.map((size) => (
+          <button
+            key={size}
+            type="button"
+            className={"tool-btn text-size" + (prefs.size === size ? " on" : "")}
+            title={SIZE_LABEL[size]}
+            onClick={() => onPrefs({ ...prefs, size })}
+          >
+            {/* Cỡ chữ trên nút tỉ lệ với cỡ thật, nhưng thu nhỏ lại cho vừa ô
+                34px — nút phải đọc ra được "cái nào to hơn cái nào". */}
+            <span style={{ fontSize: Math.round(size * 0.55), lineHeight: 1 }}>A</span>
+          </button>
+        ))}
+        <div className="tool-sep" />
+        <div className="tool-grid">
+          {PEN_COLORS.map((token) => (
+            <button
+              key={token}
+              type="button"
+              className={"pen-swatch" + (prefs.color === token ? " on" : "")}
+              style={{ background: penVar(token) }}
+              title={t`Màu chữ`}
+              onClick={() => onPrefs({ ...prefs, color: token })}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Laser: bảy màu + ba độ đậm. Dùng lại đúng bảng màu của bút (người dùng đã
+  // quen nó) nhưng độ đậm là bảng RIÊNG — đơn vị khác hẳn: pixel màn hình chứ
+  // không phải đơn vị canvas, vì vệt laser không được dày lên khi phóng to.
+  // KHÔNG có bảng hình và không có chế độ tô: laser không tạo ra hình nào.
+  if (tool === "laser") {
+    return (
+      <div className="tool-options" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="tool-grid">
+          {PEN_COLORS.map((token) => (
+            <button
+              key={token}
+              type="button"
+              className={"pen-swatch" + (prefs.color === token ? " on" : "")}
+              style={{ background: penVar(token) }}
+              title={t`Màu laser`}
+              onClick={() => onPrefs({ ...prefs, color: token })}
+            />
+          ))}
+        </div>
+        <div className="tool-sep" />
+        {LASER_WIDTHS.map((w) => (
+          <button
+            key={w}
+            type="button"
+            className={"tool-btn pen-width" + (prefs.w === w ? " on" : "")}
+            title={t`Độ đậm vệt`}
+            onClick={() => onPrefs({ ...prefs, w })}
+          >
+            <span className="bar" style={{ height: w }} />
+          </button>
         ))}
       </div>
     );

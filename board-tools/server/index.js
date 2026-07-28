@@ -243,6 +243,10 @@ const MAX_LIVE_INK_W = 64;
 // hiển thị hữu hạn. Chốt này áp cho MỌI kind, cả nét bút.
 const MAX_LIVE_INK_COORD = 20000;
 
+// Gói live:laser mang các điểm mới của vệt laser. Cùng lý do trần với
+// MAX_LIVE_INK_NUMBERS; nhỏ hơn vì client chỉ gom điểm trong 40ms rồi xả.
+const MAX_LIVE_LASER_NUMBERS = 120;
+
 // Bản sao TAY của SHAPE_KINDS trong game-tools/client/src/lib/shape.js, cộng
 // "pen". Server không import được lib của client. Thêm một kind mới thì phải
 // sửa cả hai chỗ — client sẽ vẽ được nhưng server sẽ chặn gói nếu quên.
@@ -395,6 +399,44 @@ io.on("connection", (socket) => {
     // socketId do SERVER đính vào, không tin id do client tự đặt — cùng cách
     // selection:update và edge-draft:update đang làm.
     socket.to(room).emit("live:ink", { ...clean, socketId: socket.id });
+  });
+
+  // Vệt laser đang chạy — không lưu DB, chỉ relay.
+  //
+  // KHÔNG chặn viewer, khác hẳn live:ink ngay trên: laser không ghi một chữ nào
+  // vào board, nó cùng loại với cursor:move — presence thuần. Người được mời
+  // vào chỉ để xem vẫn phải chỉ trỏ được khi họp.
+  //
+  // .volatile, cũng khác live:ink: mất một gói ở đây chỉ làm vệt thưa điểm đi
+  // một khúc trong chưa tới một giây rồi biến mất cùng cả vệt — không có gì để
+  // "không bao giờ tự lành" như nét bút sẽ được lưu lại vĩnh viễn.
+  socket.on("live:laser", (payload) => {
+    if (!payload || !Array.isArray(payload.pts)) return;
+    const pts = payload.pts.slice(0, MAX_LIVE_LASER_NUMBERS);
+    // pts là [x0,y0,x1,y1,…] — lẻ một số là dữ liệu hỏng, không phải thiếu điểm.
+    if (pts.length < 2 || pts.length % 2 !== 0) return;
+    // Number.isFinite một mình không đủ: nó cho qua 1e9, và một vệt laser toạ
+    // độ khổng lồ vẫn là một vạch phủ ngang màn hình cả phòng. Dùng chung biên
+    // độ với live:ink.
+    if (!pts.every((v) => Number.isFinite(v) && Math.abs(v) <= MAX_LIVE_INK_COORD)) return;
+    // Màu và độ đậm đi kèm MỌI gói, không chỉ gói đầu. Cố ý: gói đầu ở kênh này
+    // đi đường .volatile nên có thể rơi, mà nếu chỉ gói đầu mang kiểu vệt thì
+    // rơi nó là cả lượt chỉ đó mất màu. Lặp lại hai field nhỏ 25 lần/giây rẻ hơn
+    // nhiều so với việc phải làm gói đầu tin cậy.
+    //
+    // Ở đây chỉ chặn được "chuỗi ngắn" và "số trong biên độ" — server không
+    // import được bảng màu của client. Client lọc lần hai bằng
+    // sanitizeLaserStyle(), nơi mới biết đâu là token màu thật.
+    if (typeof payload.color !== "string" || payload.color.length > MAX_LIVE_INK_COLOR_LEN) return;
+    if (!Number.isFinite(payload.w) || payload.w < MIN_LIVE_INK_W || payload.w > MAX_LIVE_INK_W) return;
+    // socketId do SERVER đính vào, không tin id client tự khai — cùng cách
+    // live:ink và selection:update đang làm.
+    socket.volatile.to(room).emit("live:laser", {
+      pts, color: payload.color, w: payload.w,
+      // Cú bấm chuột mới bên người gửi: người nhận bỏ vệt cũ thay vì nối tiếp.
+      reset: payload.reset === true,
+      socketId: socket.id
+    });
   });
 
   // Nội dung đang gõ dở — không lưu DB, chỉ relay để người khác thấy chữ

@@ -15,11 +15,13 @@ function FrameBox({ group, editingTitle, dropTarget, selected, h }) {
 
   return (
     <div
-      className={"frame-box" + (dropTarget ? " drop-target" : "") + (selected ? " selected" : "")}
+      className={"frame-box" + (dropTarget ? " drop-target" : "") + (selected ? " selected" : "") + (group.color ? " tinted" : "")}
       data-group-id={group.id}
+      data-wob={group.id % 4}
       style={{
         left: group.x, top: group.y, width: group.w, height: group.h,
-        borderColor: group.color ? colorVar(group.color) : undefined
+        // Như IdeaCard: màu chỉ là một token, việc trộn ra nền và viền là của CSS.
+        ...(group.color ? { "--tint": colorVar(group.color) } : {})
       }}
       onMouseDown={(e) => h.mouseDown(e, group.id)}
       onContextMenu={(e) => h.contextMenu(e, group.id)}

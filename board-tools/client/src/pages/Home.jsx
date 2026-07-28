@@ -5,7 +5,7 @@ import { useLingui } from "@lingui/react/macro";
 import LocaleToggle from "../components/LocaleToggle.jsx";
 
 export default function Home() {
-  const toggleTheme = useTheme();
+  const { toggle: toggleTheme } = useTheme();
   const { t } = useLingui();
 
   return (
