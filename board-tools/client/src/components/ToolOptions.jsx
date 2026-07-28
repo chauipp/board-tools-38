@@ -1,6 +1,7 @@
 import { useLingui } from "@lingui/react/macro";
 import { PEN_COLORS, PEN_WIDTHS, penVar } from "../lib/pen.js";
 import { SHAPE_KINDS, SHAPE_CLOSED } from "../lib/shape.js";
+import { TEXT_SIZES } from "../lib/text-el.js";
 import { CARD_LEVELS } from "../lib/card-levels.js";
 import CardLevelIcon from "./CardLevelIcon.jsx";
 
@@ -48,6 +49,45 @@ export default function ToolOptions({ tool, prefs, onPrefs, level, onLevel }) {
             onClick={() => onLevel(lv)}
           ><CardLevelIcon level={lv} /></button>
         ))}
+      </div>
+    );
+  }
+
+  // Text: ba cỡ chữ + bảy màu bút. KHÔNG có độ dày nét (chữ không có nét dày
+  // mảnh) và không có bảng sáu hình. Trả sớm, trước nhánh bút/hình khối bên
+  // dưới, để khỏi phải rắc `tool === "text"` vào từng khối một.
+  if (tool === "text") {
+    const SIZE_LABEL = { 14: t`Chữ nhỏ`, 20: t`Chữ vừa`, 30: t`Chữ lớn` };
+    return (
+      <div className="tool-options" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="tool-grid">
+          {TEXT_SIZES.map((size) => (
+            <button
+              key={size}
+              type="button"
+              className={"tool-btn text-size" + (prefs.size === size ? " on" : "")}
+              title={SIZE_LABEL[size]}
+              onClick={() => onPrefs({ ...prefs, size })}
+            >
+              {/* Cỡ chữ trên nút tỉ lệ với cỡ thật, nhưng thu nhỏ lại cho vừa ô
+                  28px — nút phải đọc ra được "cái nào to hơn cái nào". */}
+              <span style={{ fontSize: Math.round(size * 0.55), lineHeight: 1 }}>A</span>
+            </button>
+          ))}
+        </div>
+        <div className="tool-sep" />
+        <div className="tool-grid">
+          {PEN_COLORS.map((token) => (
+            <button
+              key={token}
+              type="button"
+              className={"pen-swatch" + (prefs.color === token ? " on" : "")}
+              style={{ background: penVar(token) }}
+              title={t`Màu chữ`}
+              onClick={() => onPrefs({ ...prefs, color: token })}
+            />
+          ))}
+        </div>
       </div>
     );
   }

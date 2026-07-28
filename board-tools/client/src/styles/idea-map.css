@@ -934,6 +934,14 @@
 .pen-width { display: flex; align-items: center; justify-content: center; height: 22px; }
 .pen-width .bar { width: 22px; border-radius: 99px; background: currentColor; }
 
+/* Nút cỡ chữ: chữ "A" ba kích thước. Cố ý KHÔNG dùng var(--canvas-font) — nút
+   công cụ là vỏ giao diện, phải đứng yên khi bật skin vẽ tay, cùng lý do icon
+   chữ T ở ToolRail vẽ bằng path chứ không dùng ký tự. */
+.text-size {
+  display: flex; align-items: center; justify-content: center; height: 22px;
+  font-family: "IBM Plex Sans", Arial, sans-serif; font-weight: 600;
+}
+
 /* .canvas có width/height = 0 nên lớp con phải tự khai kích thước và
    overflow: visible — cùng khuôn với .edge-handle-layer ở trên.
    z-index 7 là cao nhất trong .canvas: trên .marquee-box (4),

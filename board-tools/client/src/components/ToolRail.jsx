@@ -26,6 +26,11 @@ function IconLink() {
 function IconCapture() {
   return <svg viewBox="0 0 20 20" width="18" height="18"><path d="M4 5.5 L16 5.5 M4 10 L16 10 M4 14.5 L11 14.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>;
 }
+// Chữ "T" vẽ bằng path, KHÔNG dùng ký tự thật: ký tự sẽ đổi hình theo font, và
+// ở skin vẽ tay thì nó thành chữ T viết tay — nút công cụ phải đứng yên.
+function IconText() {
+  return <svg viewBox="0 0 20 20" width="18" height="18"><path d="M4 4.5 L16 4.5 M10 4.5 L10 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>;
+}
 function IconShape() {
   return <svg viewBox="0 0 20 20" width="18" height="18"><rect x="2.5" y="2.5" width="10" height="10" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.6" /><circle cx="13" cy="13" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>;
 }
@@ -84,6 +89,13 @@ export default function ToolRail({
             disabled={!canEdit}
             onClick={() => onTool("shape")}
           ><IconShape /></button>
+          <button
+            type="button"
+            className={"tool-btn" + (tool === "text" ? " on" : "")}
+            title={t`Text (T)`}
+            disabled={!canEdit}
+            onClick={() => onTool("text")}
+          ><IconText /></button>
         </div>
       )}
 

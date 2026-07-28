@@ -110,7 +110,7 @@ export async function run(log) {
   const drawBtn = document.querySelectorAll(".tool-rail .tool-btn")[1];
   await act(async () => { drawBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
   log(`sau khi bật mode Sửa: ${railBtns()} nút, khu 4 = ${document.querySelectorAll(".tool-options .pen-swatch").length} ô màu`);
-  if (railBtns() !== 9) throw new Error("mode Sửa phải có 9 nút (2 mode + 3 tool + 4 thêm), có " + railBtns());
+  if (railBtns() !== 10) throw new Error("mode Sửa phải có 10 nút (2 mode + 4 tool + 4 thêm), có " + railBtns());
   if (railGroups() !== 3) throw new Error("mode Sửa phải có 3 khung (mode + tool vẽ + thêm), có " + railGroups());
   if (document.querySelectorAll(".tool-rail .tool-group .tool-btn").length !== railBtns()) {
     throw new Error("có nút nằm ngoài .tool-group — nút đó sẽ không có khung");
