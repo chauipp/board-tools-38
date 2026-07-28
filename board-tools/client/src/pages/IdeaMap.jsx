@@ -176,6 +176,12 @@ export default function IdeaMap() {
   // Text đang được kéo: { id, x, y }. Chỉ là bản NHÁP để vẽ lại theo con trỏ;
   // board chỉ được ghi một lần lúc nhả chuột.
   const [textDrag, setTextDrag] = useState(null);
+  // Bản sao của textEdit trong một ref, để commitText CHỐT ĐƯỢC MỘT LẦN. Nó là
+  // handler của onBlur đồng thời được gọi tường minh khi bấm sang chỗ khác; hai
+  // đường cùng đọc `textEdit` từ closure của một lượt vẽ nên gọi hai lần sẽ lưu
+  // ra hai phần tử giống hệt nhau. Ref bị xoá ngay trong lời gọi đầu, lời gọi
+  // thứ hai thành lệnh rỗng.
+  const textEditRef = useRef(null);
   const [penPrefs, setPenPrefs] = useState(() => loadPenPrefs(window.localStorage));
   const [cardLevelPref, setCardLevelPref] = useState(() => loadCardLevel(window.localStorage));
   const [paletteUI, setPaletteUI] = useState(null); // { mode: "create"|"edit", id?, hex, x, y } | null
@@ -353,6 +359,11 @@ export default function IdeaMap() {
 
   // Text đang kéo vẽ ở vị trí NHÁP, board vẫn giữ vị trí cũ cho tới lúc nhả
   // chuột. Cùng cách applyGeomOverlay phủ vị trí thẻ của người khác lên board.
+  // Đồng bộ ref với state ở mỗi lượt vẽ. Đặt trong thân component (không phải
+  // effect) để nó đúng NGAY trong lượt đó: handler mousedown có thể chạy trước
+  // khi effect kịp chạy.
+  textEditRef.current = textEdit;
+
   const inkDrawings = useMemo(() => {
     const list = board?.drawings ?? EMPTY_ARRAY;
     if (!textDrag) return list;
@@ -1990,11 +2001,20 @@ export default function IdeaMap() {
     // viết". Không có dòng này thì mọi cách focus lại đều chỉ là vá ngọn.
     e.preventDefault();
 
-    // Đang gõ dở: cú bấm này chỉ để kết thúc (blur của textarea lo phần lưu).
-    // Cố ý KHÔNG mở luôn ô mới ở đây — hai việc cùng một nhịp thì thứ tự
-    // blur/mousedown khác nhau giữa các trình duyệt, và cái sai sẽ là mất chữ
-    // vừa gõ. Bấm phát nữa là ra ô mới.
-    if (textEdit) return;
+    // Đang gõ dở mà bấm sang chỗ khác: chốt cái cũ lại rồi mở ngay ô mới ở chỗ
+    // vừa bấm — ô nhập "nhảy" theo con trỏ, không bắt bấm hai lần.
+    //
+    // Việc này chỉ an toàn nhờ preventDefault ở trên. Không có nó, tiêu điểm bị
+    // đẩy về <body> và `blur` bắn ra xen vào giữa hai việc dưới đây, thứ tự
+    // khác nhau giữa các trình duyệt — và cái sai sẽ là mất chữ vừa gõ. Có nó
+    // rồi thì tiêu điểm không rời textarea, React dùng lại đúng nút DOM đó
+    // (cùng kiểu, cùng vị trí trong cây) nên `blur` không bao giờ xảy ra: chỉ
+    // còn MỘT đường chốt, là lời gọi tường minh ngay đây.
+    if (textEdit) commitText();
+
+    // Đọc board SAU khi chốt: commitText vừa cập nhật boardRef.current, nên
+    // phép dò bên dưới nhìn thấy cả đoạn text vừa gõ xong. Bấm đè lên chính nó
+    // là mở lại nó ra sửa, đúng như bấm lên một text cũ bất kỳ.
     const current = boardRef.current;
     if (!current) return;
     const p = eventToCanvas(e);
@@ -2064,7 +2084,8 @@ export default function IdeaMap() {
   // mình dựng `next` từ `board` đóng gói lúc mở ô nhập thì cú PUT sau đó đè mất
   // thay đổi của họ.
   function commitText() {
-    const edit = textEdit;
+    const edit = textEditRef.current;
+    textEditRef.current = null;
     setTextEdit(null);
     if (!edit) return;
     const current = boardRef.current;
@@ -2080,6 +2101,18 @@ export default function IdeaMap() {
       boardRef.current = next;
       saveNow(next);
       return;
+    }
+
+    // Mở một text ra xem rồi đóng lại mà không sửa gì: không ghi gì cả. Thiếu
+    // chốt này thì mỗi lần bấm nhầm vào một dòng chú thích là một lần lưu lên
+    // server VÀ một bước hoàn tác rỗng — Ctrl+Z mấy lần liền không thấy gì đổi.
+    if (edit.id != null) {
+      const before = current.drawings.find((d) => d.id === edit.id);
+      if (before && before.text === value && before.size === edit.size
+          && before.color === edit.color
+          && before.pts[0] === Math.round(edit.x) && before.pts[1] === Math.round(edit.y)) {
+        return;
+      }
     }
 
     const lines = textLines(value);

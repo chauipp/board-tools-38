@@ -807,12 +807,29 @@ export async function run(log) {
     throw new Error("ô nhập text phải đang giữ tiêu điểm ngay khi mở");
   }
   await act(async () => {
-    document.querySelector("textarea.text-input").dispatchEvent(new window.FocusEvent("blur", { bubbles: false }));
+    document.querySelector("textarea.text-input").blur();
     await new Promise((r) => setTimeout(r, 30));
   });
   log(`bấm rồi thoát, không gõ gì: PUT thêm ${globalThis.__puts.length - putsBeforeText} lần · ${document.querySelectorAll(".ink-layer text").length} text trên bảng`);
   if (globalThis.__puts.length !== putsBeforeText) throw new Error("không gõ gì mà vẫn lưu — sẽ đẻ ra phần tử text rỗng");
   if (document.querySelectorAll(".ink-layer text").length !== 0) throw new Error("không gõ gì mà vẫn ra text trên bảng");
+
+  // Đang mở ô nhập mà bấm sang chỗ khác: ô nhập phải NHẢY sang chỗ mới, không
+  // bắt bấm hai lần. Chưa gõ gì nên cũng không được lưu ra phần tử nào.
+  await act(async () => { mouse("mousedown", 700, 400, inkCapture); await new Promise((r) => setTimeout(r, 30)); });
+  const boxAt700 = document.querySelector("textarea.text-input").style.left;
+  const putsBeforeJump = globalThis.__puts.length;
+  await act(async () => { mouse("mousedown", 900, 560, inkCapture); await new Promise((r) => setTimeout(r, 30)); });
+  const jumped = document.querySelector("textarea.text-input");
+  log(`bấm sang chỗ khác lúc đang mở: ô nhập left ${boxAt700} → ${jumped?.style.left} · PUT thêm ${globalThis.__puts.length - putsBeforeJump} lần`);
+  if (!jumped) throw new Error("bấm sang chỗ khác phải mở ô nhập ở chỗ mới, không phải đóng hẳn");
+  if (jumped.style.left === boxAt700) throw new Error("ô nhập phải nhảy sang chỗ vừa bấm");
+  if (globalThis.__puts.length !== putsBeforeJump) throw new Error("chưa gõ gì mà đã lưu — sẽ đẻ ra phần tử text rỗng");
+  await act(async () => {
+    jumped.blur();
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  if (document.querySelectorAll(".ink-layer text").length !== 0) throw new Error("nhảy chỗ không được để lại text rỗng nào");
 
   // Gõ thật, hai dòng, rồi Escape.
   await act(async () => { mouse("mousedown", 700, 400, inkCapture); await new Promise((r) => setTimeout(r, 30)); });
@@ -827,7 +844,7 @@ export async function run(log) {
   });
   await act(async () => {
     ta.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
-    document.querySelector("textarea.text-input")?.dispatchEvent(new window.FocusEvent("blur", { bubbles: false }));
+    document.querySelector("textarea.text-input")?.blur();
     await new Promise((r) => setTimeout(r, 40));
   });
   const textEls = document.querySelectorAll(".ink-layer text");
@@ -877,9 +894,43 @@ export async function run(log) {
   if (!reopened) throw new Error("bấm tại chỗ lên text phải mở ô nhập để sửa");
   if (reopened.value !== "ghi chú\nhai dòng") throw new Error("ô nhập phải mang sẵn nội dung cũ");
   if (globalThis.__puts.length !== putsBeforeReopen) throw new Error("mở ra sửa mà chưa đổi gì thì không được lưu");
-  // Đóng lại, không đổi gì.
+  // Đóng lại mà không sửa gì: KHÔNG được lưu. Ghi lại một nội dung y hệt vừa
+  // tốn một lượt PUT vừa đẻ ra một bước hoàn tác rỗng — Ctrl+Z mấy lần liền mà
+  // màn hình không đổi gì.
+  const putsBeforeNoopClose = globalThis.__puts.length;
   await act(async () => {
-    reopened.dispatchEvent(new window.FocusEvent("blur", { bubbles: false }));
+    reopened.blur();
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  log(`đóng ô nhập mà không sửa gì: PUT thêm ${globalThis.__puts.length - putsBeforeNoopClose} lần`);
+  if (globalThis.__puts.length !== putsBeforeNoopClose) throw new Error("đóng mà không sửa gì thì không được lưu");
+
+  // Ca quan trọng nhất của việc "ô nhập nhảy chỗ": GÕ RỒI mới bấm sang chỗ khác.
+  // Phải chốt cái cũ đúng MỘT lần rồi mở ô mới. Đây là chỗ mà thiếu chốt chống
+  // chốt-hai-lần (textEditRef) sẽ đẻ ra hai phần tử text giống hệt nhau.
+  const textsBeforeTypedJump = document.querySelectorAll(".ink-layer text").length;
+  const putsBeforeTypedJump = globalThis.__puts.length;
+  await act(async () => { mouse("mousedown", 1100, 650, inkCapture); await new Promise((r) => setTimeout(r, 30)); });
+  const ta2 = document.querySelector("textarea.text-input");
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set.call(ta2, "chú thích hai");
+    ta2.dispatchEvent(new window.Event("input", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  await act(async () => { mouse("mousedown", 1250, 700, inkCapture); await new Promise((r) => setTimeout(r, 40)); });
+  const stillOpen = document.querySelector("textarea.text-input");
+  const afterTypedJump = globalThis.__puts[globalThis.__puts.length - 1].drawings.filter((d) => d.kind === "text");
+  log(`gõ rồi bấm sang chỗ khác: lưu ${afterTypedJump.length} text · PUT thêm ${globalThis.__puts.length - putsBeforeTypedJump} lần · ô nhập mới mở = ${!!stillOpen} · nội dung = ${JSON.stringify(stillOpen?.value)}`);
+  if (globalThis.__puts.length - putsBeforeTypedJump !== 1) {
+    throw new Error("gõ rồi bấm sang chỗ khác phải lưu ĐÚNG 1 lần, có " + (globalThis.__puts.length - putsBeforeTypedJump));
+  }
+  if (afterTypedJump.length !== textsBeforeTypedJump + 1) {
+    throw new Error(`phải thêm đúng 1 text, có ${afterTypedJump.length} (trước: ${textsBeforeTypedJump}) — dấu hiệu chốt hai lần`);
+  }
+  if (!stillOpen) throw new Error("chốt xong phải mở ngay ô nhập ở chỗ vừa bấm");
+  if (stillOpen.value !== "") throw new Error("ô nhập mới phải rỗng, không mang chữ của cái vừa chốt");
+  await act(async () => {
+    stillOpen.blur();
     await new Promise((r) => setTimeout(r, 30));
   });
 
