@@ -62,6 +62,18 @@ tranh chỗ (đảo trên trái, đảo người, và `.focus-banner` ở giữa
 trừ 2×N là chừa N mỗi bên; nút zoom bên phải rộng ~180 + mép 12 = 192, đảo hoàn
 tác bên trái chỉ ~88. Lấy 210 mỗi bên → `calc(100vw - 420px)`.
 
+**Mọi thứ "giao diện" về một chỗ.** Sáng/tối và skin đang nằm trong ☰, nền bảng
+và bộ màu nằm trong panel — cùng một họ mà rải hai nơi, muốn chỉnh thì phải nhớ
+mở hai chỗ. Gom cả vào panel Giao diện, kéo theo cả ngôn ngữ (nó cũng là thiết
+lập hiển thị của từng người; để lại một mình trong ☰ thì thành mồ côi).
+
+**Panel Giao diện chia đôi có nhãn.** Ngôn ngữ / sáng-tối / kiểu vẽ chỉ đổi cho
+mình (localStorage); nền bảng / bộ màu ghi vào dữ liệu board nên **mọi người cùng
+thấy**. Không nói rõ thì người ta đổi nền bảng mà tưởng chỉ mình thấy.
+
+**Nút bật panel Giao diện đứng tách sau một vạch ngăn.** Ba nút cạnh nó mở ra bộ
+LỌC (bấm chip là thẻ bị làm mờ), nó mở ra THIẾT LẬP và không lọc gì cả.
+
 **Mỗi panel tự xưng tên.** Bản cũ chỉ hiện tên khi panel nổi, vì lúc neo thì mỗi
 panel là một khối riêng có viền. Giờ nhiều panel bật cùng lúc nằm liền một dải
 trong cùng một đảo, không còn gì để mắt tự tách ra.
@@ -84,10 +96,10 @@ tốn một cú bấm mỗi lần — đây là cách duy nhất triệu hồi p
 | eyebrow "BẢN ĐỒ Ý TƯỞNG" | bỏ hẳn |
 | `h1.display` 19px Anton | tên board 13px thường, trong đảo trên trái |
 | TopMenu Board / Dữ liệu / Xem | gộp thành một ☰ |
-| LocaleToggle, sáng/tối, skin | vào trong ☰ |
+| LocaleToggle, sáng/tối, skin | vào panel Giao diện, cùng nền bảng + bộ màu |
 | Undo / Redo | đảo riêng góc dưới trái |
 | Ô tìm kiếm 180px | nút 🔍, bung ra khi bấm / `Ctrl+F` |
-| 4 nút panel | icon ở đảo nút, thanh đáy |
+| 4 nút panel | icon ở đảo nút, thanh đáy (Giao diện tách sau vạch ngăn) |
 | ★ Yêu thích | icon trong đảo trên trái |
 | Khớp N/M + Xoá lọc | hàng thứ hai trong đảo trên trái, chỉ khi đang lọc |
 | `.fb-dock` (39px luôn giữ chỗ) | đảo nội dung ở thanh đáy, không render khi rỗng |

@@ -88,11 +88,28 @@ Làm ngược lại thì mỗi task đều phải sống chung với layout cũ 
   - [x] Step 7: Cập nhật chặng smoke; thêm phép kiểm "không còn phần tử kéo-thả"
   - [x] Step 8: `npm test` 291/291 · smoke xanh · build sạch · i18n 226/226
 
+- [x] **Task 9: Gom mọi thứ "giao diện" về một panel** *(bổ sung sau lượt xem thứ hai)*
+
+  - [x] Step 1: `useTheme` trả `{ theme, setTheme, toggle }` thay vì mỗi hàm
+        toggle — panel cần TÔ SÁNG nút đang dùng; sửa 3 trang gọi còn lại
+  - [x] Step 2: Chặn thiếu `window.matchMedia` (jsdom không có) — gọi lúc mount
+        thì thiếu nó là sập cả trang
+  - [x] Step 3: Bỏ ngôn ngữ / sáng-tối / skin khỏi menu ☰
+  - [x] Step 4: Panel Giao diện thành 5 hàng, chia đôi bằng hai nhãn
+        "Chỉ mình bạn thấy" / "Mọi người cùng thấy"
+  - [x] Step 5: `FilterPanel` thêm prop `stack` (xếp cột); `.theme-section`
+  - [x] Step 6: Vạch ngăn trước nút Giao diện ở thanh đáy
+  - [x] Step 7: Cập nhật chặng smoke skin (nút đã rời menu ☰); thêm phép kiểm
+        5 hàng + 2 nhãn phân định
+  - [x] Step 8: `npm test` 291/291 · smoke xanh · build sạch · i18n 234/234
+
 ---
 
 ## Kiểm bằng mắt (phiên này không có công cụ trình duyệt — để lại cho người dùng)
 
 - [ ] Bảng trống: có đúng là **không còn dải nào** ăn chỗ trên đầu không
+- [ ] Panel Giao diện: 5 hàng có thẳng cột nhãn không, hai nhãn phân định
+      có đọc ra được là ranh giới của-mình / của-board không
 - [ ] Bật cả 4 panel cùng lúc — đảo nội dung ở đáy có phình quá rộng / quá cao
       không, và bốn nhãn panel có đọc ra được là bốn khối riêng không
 - [ ] Bảng màu nhiều màu (>20 ô): đảo nội dung có cuộn trong `max-height: 40vh`

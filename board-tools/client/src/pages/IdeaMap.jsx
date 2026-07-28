@@ -174,7 +174,7 @@ function IconRedo() {
 }
 
 export default function IdeaMap() {
-  const toggleTheme = useTheme();
+  const { theme, setTheme } = useTheme();
   const { skin, toggle: toggleSkin } = useSkin();
   const { t } = useLingui();
   // Tên preset nằm ở đây chứ không ở lib/board-theme.js: module đó là dữ liệu
@@ -2868,18 +2868,10 @@ export default function IdeaMap() {
             <div className="menubar-sep" />
             <button className="btn ghost" disabled={board.groups.length === 0} onClick={startPresentation}><Trans>Trình chiếu</Trans></button>
             <button className={"btn ghost toggle" + (outlineOpen ? " active" : "")} onClick={() => setOutlineOpen((v) => !v)}><Trans>Mục lục</Trans></button>
-            <div className="menubar-sep" />
-            {/* Ba thứ này là thiết lập của NGƯỜI dùng, không phải dữ liệu board,
-                nên không mang data-mutating: tài khoản chỉ xem vẫn đổi được hết. */}
-            <div className="menubar-row">
-              <LocaleToggle />
-              <button className="btn ghost icon" onClick={toggleTheme} title={t`Đổi giao diện sáng/tối`}>◐</button>
-              <button
-                className={"btn ghost icon" + (skin === "sketch" ? " toggle active" : "")}
-                onClick={toggleSkin}
-                title={t`Đổi kiểu giao diện: sạch / vẽ tay`}
-              ><IconSketch /></button>
-            </div>
+            {/* Ngôn ngữ, sáng/tối và skin đã rời menu này sang panel Giao diện ở
+                thanh đáy — chúng cùng một họ với nền bảng và bộ màu, để rải hai
+                chỗ thì muốn chỉnh giao diện phải nhớ mở hai nơi. Còn lại ở đây
+                đúng ba nhóm: đi đâu, dữ liệu, và cách xem. */}
           </TopMenu>
 
           <span className="island-name" title={boardName}>{boardName}</span>
@@ -2941,6 +2933,10 @@ export default function IdeaMap() {
             <button type="button" className={"island-btn" + (panels.status ? " on" : "")} title={t`Trạng thái`} onClick={() => togglePanel("status")}><IconStatus /></button>
             <button type="button" className={"island-btn" + (panels.tag ? " on" : "")} title={t`Nhãn`} onClick={() => togglePanel("tag")}><IconTag /></button>
             <button type="button" className={"island-btn" + (panels.palette ? " on" : "")} title={t`Bảng màu`} onClick={() => togglePanel("palette")}><IconPalette /></button>
+            {/* Vạch ngăn: ba nút bên trái mở ra BỘ LỌC (bấm chip là thẻ bị làm
+                mờ), nút này mở ra THIẾT LẬP giao diện và không lọc gì cả. Đứng
+                sát nhau không vạch thì đọc thành bốn thứ cùng loại. */}
+            <div className="island-sep" />
             <button type="button" className={"island-btn" + (panels.theme ? " on" : "")} title={t`Giao diện`} onClick={() => togglePanel("theme")}><IconBoardStyle /></button>
           </div>
         </div>
@@ -3044,7 +3040,48 @@ export default function IdeaMap() {
         )}
 
         {panels.theme && (
-          <FilterPanel title={t`Giao diện`}>
+          // Panel duy nhất xếp theo CỘT: nó gom năm hàng thiết lập, còn ba panel
+          // lọc kia chỉ là một dải chip. Và là panel duy nhất KHÔNG lọc gì cả —
+          // vì thế nút bật nó ở thanh đáy đứng tách sau một vạch ngăn.
+          <FilterPanel title={t`Giao diện`} stack>
+            {/* Ranh giới quan trọng nhất của panel này: ba hàng trên chỉ đổi cho
+                MÌNH (localStorage), hai hàng dưới ghi vào dữ liệu board nên MỌI
+                NGƯỜI cùng thấy. Không nói rõ thì người ta đổi nền bảng mà tưởng
+                chỉ mình thấy. Hai hàng dưới đã mang data-mutating nên tài khoản
+                chỉ xem thấy chúng mờ đi — thêm một tín hiệu nữa cùng hướng. */}
+            <div className="theme-section"><Trans>Chỉ mình bạn thấy</Trans></div>
+            <div className="theme-row">
+              <span className="fb-count"><Trans>Ngôn ngữ</Trans></span>
+              <div className="fb-chips"><LocaleToggle /></div>
+            </div>
+            <div className="theme-row">
+              <span className="fb-count"><Trans>Sáng/tối</Trans></span>
+              <div className="fb-chips">
+                <button
+                  className={"btn ghost toggle" + (theme === "light" ? " active" : "")}
+                  onClick={() => setTheme("light")}
+                ><Trans>Sáng</Trans></button>
+                <button
+                  className={"btn ghost toggle" + (theme === "dark" ? " active" : "")}
+                  onClick={() => setTheme("dark")}
+                ><Trans>Tối</Trans></button>
+              </div>
+            </div>
+            <div className="theme-row">
+              <span className="fb-count"><Trans>Kiểu vẽ</Trans></span>
+              <div className="fb-chips">
+                <button
+                  className={"btn ghost toggle" + (skin !== "sketch" ? " active" : "")}
+                  onClick={() => { if (skin === "sketch") toggleSkin(); }}
+                ><Trans>Sạch</Trans></button>
+                <button
+                  className={"btn ghost toggle" + (skin === "sketch" ? " active" : "")}
+                  onClick={() => { if (skin !== "sketch") toggleSkin(); }}
+                ><IconSketch /> <Trans>Vẽ tay</Trans></button>
+              </div>
+            </div>
+
+            <div className="theme-section"><Trans>Mọi người cùng thấy</Trans></div>
             <div className="theme-row">
               <span className="fb-count"><Trans>Nền bảng</Trans></span>
               <div className="fb-chips">

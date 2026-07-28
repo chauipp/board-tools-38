@@ -937,28 +937,26 @@ export async function run(log) {
   // Skin vẽ tay: lưới an toàn cho việc đổi <line> thành <path> ở lớp dây. Bấm
   // đúng cái nút thật thay vì tự đặt data-skin — làm vậy mới đi qua useSkin (nạp
   // font lười, ghi localStorage) và mới bắt được lỗi ở đó.
-  // Nút giờ nằm trong menu ☰ của đảo to, phải mở menu ra trước; menu chỉ được
-  // render khi đang mở nên không có đường tắt nào tới thẳng cái nút.
+  // Nút giờ nằm trong panel Giao diện ở thanh đáy — cùng chỗ với ngôn ngữ,
+  // sáng/tối, nền bảng, bộ màu. Phải bật panel đó lên trước.
   const edgesClean = document.querySelectorAll(".edge-layer .visible").length;
-  // Bấm một mục trong menu là menu tự đóng, phần tử nút rời khỏi cây. Nên phải
-  // mở lại và tìm lại nút cho MỖI lần bấm — giữ tham chiếu cũ thì cú bấm thứ hai
-  // rơi vào một node đã lìa cây và không làm gì cả, mà test vẫn chạy tiếp.
-  async function clickSkinBtn() {
-    const burger = document.querySelector(".island.tl .menubar-trigger");
-    if (!burger) throw new Error("không tìm thấy nút ☰ trên đảo to");
-    await act(async () => {
-      burger.click();
-      await new Promise((r) => setTimeout(r, 20));
-    });
-    const btn = Array.from(document.querySelectorAll(".island.tl .menubar-dropdown .btn"))
-      .find((b) => b.querySelector("svg"));
-    if (!btn) throw new Error("không tìm thấy nút đổi skin trong menu ☰");
+  const stylePanelBtn = Array.from(document.querySelectorAll(".hud-bottom .island-btn"))
+    .find((b) => b.title === "Giao diện");
+  if (!stylePanelBtn) throw new Error("không tìm thấy nút bật panel Giao diện ở thanh đáy");
+  await act(async () => { stylePanelBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
+
+  // Hai nút rời (Sạch / Vẽ tay) chứ không còn một nút bật-tắt: phải tìm theo chữ.
+  // Nút "Vẽ tay" mang cả icon lẫn chữ, nhưng <svg> không góp gì vào textContent.
+  async function pickSkin(label) {
+    const btn = Array.from(document.querySelectorAll(".filter-panel.stack .btn"))
+      .find((b) => b.textContent.trim() === label);
+    if (!btn) throw new Error(`không tìm thấy nút "${label}" trong panel Giao diện`);
     await act(async () => {
       btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
       await new Promise((r) => setTimeout(r, 80));
     });
   }
-  await clickSkinBtn();
+  await pickSkin("Vẽ tay");
   const skinAttr = document.documentElement.getAttribute("data-skin");
   const edgePaths = document.querySelectorAll(".edge-layer path.visible").length;
   const edgeLines = document.querySelectorAll(".edge-layer line.visible").length;
@@ -969,11 +967,25 @@ export async function run(log) {
   const dAttr = document.querySelector(".edge-layer path.visible")?.getAttribute("d") || "";
   if (!dAttr.includes("C")) throw new Error("path dây không phải nét rung (không có đoạn cong)");
 
-  // Tắt đi phải về đúng trạng thái cũ — skin là nút bật/tắt, không phải đường
-  // một chiều.
-  await clickSkinBtn();
+  // Tắt đi phải về đúng trạng thái cũ — không phải đường một chiều.
+  await pickSkin("Sạch");
   if (document.documentElement.getAttribute("data-skin") !== "clean") throw new Error("tắt skin không về clean");
   if (document.querySelectorAll(".edge-layer line.visible").length !== edgesClean) throw new Error("tắt skin mà dây không về <line>");
+
+  // Panel Giao diện gom cả thiết lập của MÌNH lẫn dữ liệu của BOARD; hai nửa đó
+  // phải có nhãn phân định, nếu không thì người ta đổi nền bảng mà tưởng chỉ mình
+  // thấy. Kiểm luôn là ngôn ngữ và sáng/tối đã về đây, không còn nằm trong ☰.
+  const styleRows = Array.from(document.querySelectorAll(".filter-panel.stack .theme-row .fb-count"))
+    .map((el) => el.textContent);
+  const sections = Array.from(document.querySelectorAll(".filter-panel.stack .theme-section"))
+    .map((el) => el.textContent);
+  log(`panel Giao diện: ${styleRows.length} hàng (${styleRows.join(", ")}) · ${sections.length} nhãn phân định`);
+  for (const want of ["Ngôn ngữ", "Sáng/tối", "Kiểu vẽ", "Nền bảng", "Bộ màu"]) {
+    if (!styleRows.includes(want)) throw new Error(`panel Giao diện thiếu hàng "${want}"`);
+  }
+  if (sections.length !== 2) throw new Error("panel Giao diện phải có 2 nhãn phân định của-mình / của-board");
+  await act(async () => { stylePanelBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
+  if (document.querySelector(".filter-panel.stack")) throw new Error("tắt nút mà panel Giao diện vẫn còn");
 
   // HUD đảo nổi. jsdom KHÔNG tính layout, nên không kiểm được "canvas cao bằng
   // cửa sổ" — thứ duy nhất kiểm được là cấu trúc: hai dải cũ đã rời khỏi cây, và

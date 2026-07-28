@@ -113,6 +113,17 @@
   min-width: 0; max-height: 40vh; overflow-y: auto; overflow-x: hidden;
 }
 .filter-panel { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+/* Panel Giao diện: năm hàng thiết lập, mỗi hàng một nhãn riêng. Nằm ngang thì
+   nhãn và nội dung của các hàng trộn vào nhau thành một dải không đọc được. */
+.filter-panel.stack { flex-direction: column; align-items: stretch; gap: 5px; }
+/* Vạch chia hai nửa của panel Giao diện: nửa trên chỉ đổi cho mình, nửa dưới ghi
+   vào dữ liệu board. Đây là ranh giới người dùng PHẢI thấy — đổi nền bảng mà
+   tưởng chỉ mình thấy là một cú làm phiền cả phòng. */
+.theme-section {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--ink-dim); padding-top: 6px; margin-top: 2px; border-top: 1px solid var(--line);
+}
+.theme-section:first-of-type { padding-top: 0; margin-top: 0; border-top: none; }
 .filter-title {
   font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--ink-dim); white-space: nowrap;
@@ -675,7 +686,12 @@
 .pal-swatch:hover { border-color: var(--ink); }
 /* Panel Giao diện: hai hàng "nhãn — dãy nút", mỗi hàng một việc. */
 .theme-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-.theme-row .fb-count { min-width: 56px; }
+/* Nhãn năm hàng của panel Giao diện phải thẳng cột thì mới đọc được thành bảng.
+   72px vừa đủ cho nhãn dài nhất ("Ngôn ngữ" / "Nền bảng" ở 10.5px). */
+.theme-row .fb-count { min-width: 72px; }
+/* Nút "Vẽ tay" mang cả icon lẫn chữ — .btn không phải flex nên icon sẽ nằm lệch
+   đường chân chữ nếu không nói rõ. */
+.theme-row .btn { display: inline-flex; align-items: center; gap: 5px; }
 
 /* Nút swatch tự tô bằng CHÍNH preset nó đại diện, qua data-bg — không lặp lại
    mã màu trong JS, nên sửa hex ở khối preset là nút đổi theo. */
