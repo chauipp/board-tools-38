@@ -17,9 +17,6 @@ function IconEraser() {
 function IconCard() {
   return <svg viewBox="0 0 20 20" width="18" height="18"><rect x="2.5" y="5" width="11" height="8" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M16 6.5 L16 12 M13.3 9.2 L18.7 9.2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>;
 }
-function IconRootCard() {
-  return <svg viewBox="0 0 20 20" width="18" height="18"><rect x="2.5" y="8" width="15" height="8" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.6" /><path d="M4.5 6 L6.5 3.5 L8.5 6 L10 3 L11.5 6 L13.5 3.5 L15.5 6 Z" fill="currentColor" /></svg>;
-}
 function IconFrame() {
   return <svg viewBox="0 0 20 20" width="18" height="18"><rect x="2.5" y="3.5" width="15" height="13" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeDasharray="3 2.4" /></svg>;
 }
@@ -34,8 +31,8 @@ function IconShape() {
 }
 
 export default function ToolRail({
-  mode, tool, canEdit, linkMode,
-  onMode, onTool, onAddNode, onAddRootNode, onAddGroup, onToggleLink, onCapture
+  mode, tool, placeTool, canEdit, linkMode,
+  onMode, onTool, onPlace, onToggleLink, onCapture
 }) {
   const { t } = useLingui();
   return (
@@ -90,11 +87,26 @@ export default function ToolRail({
         </div>
       )}
 
-      {/* Khu 3 — thêm. Luôn hiện, kể cả ở mode Sửa. */}
+      {/* Khu 3 — thêm. Luôn hiện, kể cả ở mode Sửa.
+          Hai nút đầu KHÔNG tạo gì ngay lúc bấm: chúng lên nòng một việc rồi
+          chờ người dùng chỉ chỗ trên bảng (bấm để đặt thẻ, tô để vẽ khung). Nên
+          chúng có trạng thái sáng như nút tool ở khu 2 — khác ở chỗ làm xong
+          MỘT lần là tự hạ nòng về mode Chuột, do IdeaMap lo. */}
       <div className="tool-group">
-        <button type="button" className="tool-btn" title={t`Thêm ý tưởng (N)`} disabled={!canEdit} onClick={onAddNode}><IconCard /></button>
-        <button type="button" className="tool-btn" title={t`Thêm thẻ gốc (Shift+N)`} disabled={!canEdit} onClick={onAddRootNode}><IconRootCard /></button>
-        <button type="button" className="tool-btn" title={t`Thêm khung`} disabled={!canEdit} onClick={onAddGroup}><IconFrame /></button>
+        <button
+          type="button"
+          className={"tool-btn" + (placeTool === "node" ? " on" : "")}
+          title={t`Thêm ý tưởng — bấm lên bảng để chọn chỗ (N)`}
+          disabled={!canEdit}
+          onClick={() => onPlace("node")}
+        ><IconCard /></button>
+        <button
+          type="button"
+          className={"tool-btn" + (placeTool === "group" ? " on" : "")}
+          title={t`Thêm khung — tô một vùng trên bảng`}
+          disabled={!canEdit}
+          onClick={() => onPlace("group")}
+        ><IconFrame /></button>
         <button
           type="button"
           className={"tool-btn" + (linkMode ? " on" : "")}

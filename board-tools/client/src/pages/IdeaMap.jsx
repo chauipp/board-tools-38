@@ -36,12 +36,18 @@ import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 import { compressImage } from "../lib/image-utils.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
 import { loadPenPrefs, savePenPrefs } from "../lib/pen.js";
+import { CARD_LEVEL_W, cardLevel, levelPatch, loadCardLevel, saveCardLevel } from "../lib/card-levels.js";
 import InkLayer from "../components/InkLayer.jsx";
 import { useInk } from "../lib/useInk.js";
 import { useInkLive } from "../lib/useInkLive.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
+// Cỡ nhỏ nhất của một cái khung. Dùng chung cho cả tay cầm kéo giãn LẪN cú tô ra
+// khung mới — tô được một cái khung 70x60 rồi kéo giãn không thu lại được nữa là
+// hai luật đá nhau; và khung bé hơn thế thì nút ×, tiêu đề, bốn dấu + chồng chất
+// lên nhau, không bấm trúng cái nào.
+const MIN_GROUP_W = 160, MIN_GROUP_H = 120;
 const MIN_SCALE = 0.3, MAX_SCALE = 2.4;
 const EMPTY_ARRAY = [];
 const EMPTY_MAP = new Map();
@@ -123,16 +129,27 @@ export default function IdeaMap() {
   // đóng. Chỉ giữ trong state — không lưu qua reload.
   const [panels, setPanels] = useState({ status: true, tag: true, palette: false });
   const [layouts, setLayouts] = useState(() => loadLayouts(window.localStorage));
-  // mode: "select" (thao tác thẻ như cũ) | "draw" (vẽ lên bảng).
+  // mode: "select" (thao tác thẻ như cũ) | "draw" (vẽ lên bảng) | "place" (đã
+  // lên nòng một việc ở khu 3, đang chờ người dùng chỉ chỗ trên bảng).
   // KHÔNG nhớ qua lần mở sau: mở board ra mà con trỏ đang là cây bút là điều
-  // gây bất ngờ vô cớ. Riêng màu bút và độ dày thì nhớ.
+  // gây bất ngờ vô cớ. Riêng màu bút, độ dày và bậc thẻ thì nhớ.
   const [mode, setMode] = useState("select");
   const [tool, setTool] = useState("pen");
+  // Việc đang lên nòng ở mode "place": "node" (bấm để đặt thẻ) | "group" (tô
+  // để vẽ khung). Khác tool vẽ ở một điểm: làm xong MỘT lần là tự về mode Chuột.
+  const [placeTool, setPlaceTool] = useState(null);
+  const [placeDraft, setPlaceDraft] = useState(null); // khung đang tô: {x,y,w,h}
   const [penPrefs, setPenPrefs] = useState(() => loadPenPrefs(window.localStorage));
+  const [cardLevelPref, setCardLevelPref] = useState(() => loadCardLevel(window.localStorage));
   const [paletteUI, setPaletteUI] = useState(null); // { mode: "create"|"edit", id?, hex, x, y } | null
   const [colorDrag, setColorDrag] = useState(null); // { token, x, y } | null
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [selectedEdgeIds, setSelectedEdgeIds] = useState(new Set());
+  // Khung (nhóm) cũng là một thứ chọn được, quét trúng là vào đây. Kéo một khung
+  // luôn kéo theo thẻ nằm trong nó, nên tập này KHÔNG chứa sẵn các thẻ thành
+  // viên — chúng được tính lại tại chỗ (selectionDragSet), vì thẻ có thể ra vào
+  // khung bất cứ lúc nào.
+  const [selectedGroupIds, setSelectedGroupIds] = useState(new Set());
   const [marquee, setMarquee] = useState(null);
   const [snapGuides, setSnapGuides] = useState([]);
   const [badgeUI, setBadgeUI] = useState(null); // { mode: "create"|"edit", kind, def?, x, y }
@@ -226,6 +243,7 @@ export default function IdeaMap() {
   }, [layouts]);
 
   useEffect(() => { savePenPrefs(window.localStorage, penPrefs); }, [penPrefs]);
+  useEffect(() => { saveCardLevel(window.localStorage, cardLevelPref); }, [cardLevelPref]);
 
   // Camera đổi từ nhiều chỗ (lăn chuột, kéo nền, zoom vừa khung, thoát trình
   // chiếu). Lưu ở một effect theo board.view — rải saveCamera vào từng handler
@@ -547,14 +565,14 @@ export default function IdeaMap() {
         deleteSelection();
       }
       else if (key === "escape") {
-        if (mode === "draw") setMode("select");
+        if (mode === "draw" || mode === "place") enterMode("select");
         else if (colorMenu) setColorMenu(null);
         else if (badgeUI) setBadgeUI(null);
         else if (edgeMenu) setEdgeMenu(null);
         else if (commentsFor) setCommentsFor(null);
         else if (linkMode) { setLinkMode(false); setPendingSource(null); }
         else if (focusId != null) setFocusId(null);
-        else if (selectedIds.size > 0 || selectedEdgeIds.size > 0) { setSelectedIds(new Set()); setSelectedEdgeIds(new Set()); }
+        else if (selectedIds.size > 0 || selectedEdgeIds.size > 0 || selectedGroupIds.size > 0) clearSelection();
       }
       // Enter trên thẻ đang chọn = tạo thẻ con bên phải, Shift+Enter = tạo thẻ
       // cùng cấp bên dưới. Handler đã thoát sớm khi con trỏ nằm trong
@@ -568,14 +586,19 @@ export default function IdeaMap() {
         if (e.shiftKey) createSiblingNode(id);
         else createLinkedNode(id, "right");
       }
+      // `n` không còn thả thẳng một thẻ ra giữa màn hình: nó lên nòng nút "thêm
+      // ý tưởng" y như bấm nút đó, rồi chờ bấm chỉ chỗ. Shift+N lên nòng luôn ở
+      // bậc 1 (thẻ gốc) — thay cho nút "thêm thẻ gốc" đã rời khỏi khu 3.
       else if (key === "n") {
         if (role === "viewer") return;
         e.preventDefault();
-        if (e.shiftKey) handleAddRootClick();
-        else handleAddClick();
+        // Shift+N luôn LÊN nòng, không bao giờ hạ: nó mang thêm ý "đổi sang bậc
+        // 1", nên bấm nó lúc đang lên nòng sẵn mà lại tắt đi là ngược ý.
+        if (e.shiftKey) { setCardLevelPref(1); setPlaceTool("node"); enterMode("place"); }
+        else armPlace("node");
       }
       // v chỉ đổi mode, không ghi gì — người chỉ xem vẫn dùng được.
-      else if (key === "v") { e.preventDefault(); setMode("select"); }
+      else if (key === "v") { e.preventDefault(); enterMode("select"); }
       // `p` = Pen. Trước đây là `b` (brush) — đổi vì tool này tên là Bút.
       else if (key === "p") { if (role === "viewer") return; e.preventDefault(); enterMode("draw"); setTool("pen"); }
       else if (key === "e") { if (role === "viewer") return; e.preventDefault(); enterMode("draw"); setTool("eraser"); }
@@ -590,7 +613,7 @@ export default function IdeaMap() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [board, past, future, selectedIds, selectedEdgeIds, linkMode, colorMenu, badgeUI, edgeMenu, commentsFor, focusId, presentIndex, role, editingId, mode]);
+  }, [board, past, future, selectedIds, selectedEdgeIds, selectedGroupIds, linkMode, colorMenu, badgeUI, edgeMenu, commentsFor, focusId, presentIndex, role, editingId, mode, placeTool]);
 
   useEffect(() => {
     function down(e) {
@@ -702,17 +725,100 @@ export default function IdeaMap() {
     commitAndSave(next);
   }
 
-  function handleAddClick() { addCenteredNode(null); }
-  function handleAddRootClick() { addCenteredNode({ isRoot: true }); }
-
-  function createGroup() {
+  // Điểm trên bảng (toạ độ canvas) ứng với một điểm trên màn hình. Đọc qua
+  // boardRef chứ không phải `board`: hàm này được gọi từ trong listener của một
+  // cú kéo dài vài giây, mà closure của listener giữ `board` của lượt render lúc
+  // mousedown — camera có thể đã đổi từ lúc đó.
+  function toCanvasPoint(clientX, clientY) {
     const rect = viewportRef.current.getBoundingClientRect();
-    const w = 480, h = 320;
-    const cx = (rect.width / 2 - board.view.panX) / board.view.scale;
-    const cy = (rect.height / 2 - board.view.panY) / board.view.scale;
-    const id = board.nextGroupId;
-    const group = { id, title: t`Khung mới`, x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), w, h, color: null };
-    commitAndSave({ ...board, groups: [...board.groups, group], nextGroupId: id + 1 });
+    const view = boardRef.current.view;
+    return {
+      x: (clientX - rect.left - view.panX) / view.scale,
+      y: (clientY - rect.top - view.panY) / view.scale
+    };
+  }
+
+  // Cùng kỷ luật refs-only như commitStroke (xem ghi chú dài ở đó): tô một cái
+  // khung mất vài giây, board:update của người khác về giữa chừng mà mình dựng
+  // `next` từ `board` đóng gói lúc mousedown thì cú PUT sau đó đè mất thay đổi
+  // của họ.
+  function createGroupAt({ x, y, w, h }) {
+    const current = boardRef.current;
+    if (!current) return;
+    const id = current.nextGroupId;
+    const group = {
+      id, title: t`Khung mới`, color: null,
+      x: Math.round(x), y: Math.round(y),
+      w: Math.max(MIN_GROUP_W, Math.round(w)), h: Math.max(MIN_GROUP_H, Math.round(h))
+    };
+    const next = { ...current, groups: [...current.groups, group], nextGroupId: id + 1 };
+    recordHistory(current);
+    setBoard(next);
+    boardRef.current = next;
+    saveNow(next);
+  }
+
+  // Khu 3 lên nòng một việc rồi chờ người dùng chỉ chỗ. Bấm lại đúng nút đang
+  // sáng thì hạ nòng — không có nút nào để "thoát" ngoài Esc thì nút đang sáng
+  // phải tự làm được việc đó.
+  function armPlace(next) {
+    if (mode === "place" && placeTool === next) { enterMode("select"); return; }
+    setPlaceTool(next);
+    enterMode("place");
+  }
+
+  // Thẻ canh giữa theo con trỏ chứ không lấy điểm bấm làm góc trên-trái: bậc 1
+  // rộng 260px, nếu neo góc thì thẻ mọc lệch hẳn sang phải chỗ vừa bấm.
+  // `- 40` là nửa chiều cao ước lượng của thẻ, giữ nguyên con số mà nút "thêm ở
+  // giữa màn hình" cũ đang dùng.
+  function placeNodeAt(clientX, clientY) {
+    const p = toCanvasPoint(clientX, clientY);
+    createNode(p.x - CARD_LEVEL_W[cardLevelPref] / 2, p.y - 40, levelPatch(cardLevelPref));
+    enterMode("select");
+  }
+
+  // Tô một vùng để ra khung. Bấm-không-tô (hoặc tô một vệt bé tí vì trượt tay)
+  // vẫn ra khung, nhưng ở cỡ mặc định và lấy chỗ bấm làm tâm — không ai muốn
+  // một cái khung 4x6 pixel. Vệt tô lớn hơn ngưỡng này thì lấy đúng vùng đã tô,
+  // nhưng vẫn bị createGroupAt kẹp lên cỡ nhỏ nhất cho phép.
+  const MIN_DRAWN_GROUP = 60;
+  function startPlaceGroup(e) {
+    e.preventDefault();
+    const a = toCanvasPoint(e.clientX, e.clientY);
+    let last = null;
+    // Chỉ việc VẼ khung nháp bị bóp theo khung hình; `last` cập nhật ở mọi nhịp
+    // chuột nên lúc thả không mất vị trí cuối dù có cancel() lần vẽ còn treo.
+    const paint = rafThrottle((rect) => setPlaceDraft(rect));
+    function onMove(ev) {
+      const b = toCanvasPoint(ev.clientX, ev.clientY);
+      last = {
+        x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
+        w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y)
+      };
+      paint(last);
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      paint.cancel();
+      setPlaceDraft(null);
+      const drawn = last && last.w >= MIN_DRAWN_GROUP && last.h >= MIN_DRAWN_GROUP;
+      createGroupAt(drawn ? last : { x: a.x - 240, y: a.y - 160, w: 480, h: 320 });
+      enterMode("select");
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  // Nhường đường cho lia bảng TRƯỚC khi nghĩ tới việc đặt — cùng thứ tự mà
+  // handleInkCaptureMouseDown dùng, nên chuột phải và Space+trái vẫn lia bảng
+  // bình thường trong lúc đang lên nòng.
+  function handlePlaceCaptureMouseDown(e) {
+    if (e.button === 2) { startPan(e); return; }
+    if (e.button === 0 && spacePanRef.current) { startPan(e); return; }
+    if (e.button !== 0) return;
+    if (placeTool === "node") placeNodeAt(e.clientX, e.clientY);
+    else if (placeTool === "group") startPlaceGroup(e);
   }
 
   // Trả về id đã cấp để useInk gửi kèm vào gói live `done` — người xem cần id
@@ -758,14 +864,17 @@ export default function IdeaMap() {
     saveNow(next);
   }
 
-  // Đổi sang mode Sửa thì bỏ lựa chọn và tắt nối dây: để lại một thẻ đang chọn
+  // Rời mode Chuột thì bỏ lựa chọn và tắt nối dây: để lại một thẻ đang chọn
   // trong lúc vẽ nghĩa là bấm Delete sẽ xoá thẻ đó, trong khi người dùng đang
-  // nghĩ mình xoá nét vẽ.
+  // nghĩ mình xoá nét vẽ. Mode "place" cũng vậy — lớp bắt chuột của nó phủ kín
+  // viewport nên thẻ đang chọn không còn bấm tới được.
   function enterMode(next) {
     setMode(next);
-    if (next === "draw") {
-      setSelectedIds(new Set());
-      setSelectedEdgeIds(new Set());
+    // Hạ nòng khu 3 khi đi sang mode khác. KHÔNG đụng tới placeTool khi vào
+    // chính mode "place": armPlace() đặt nó ngay trước lời gọi này.
+    if (next !== "place") setPlaceTool(null);
+    if (next !== "select") {
+      clearSelection();
       setLinkMode(false);
       setPendingSource(null);
     }
@@ -781,13 +890,6 @@ export default function IdeaMap() {
     if (turningOn) enterMode("select");
     setLinkMode(turningOn);
     setPendingSource(null);
-  }
-
-  function addCenteredNode(extra) {
-    const rect = viewportRef.current.getBoundingClientRect();
-    const cx = (rect.width / 2 - board.view.panX) / board.view.scale;
-    const cy = (rect.height / 2 - board.view.panY) / board.view.scale;
-    createNode(cx - CARD_W / 2, cy - 40, extra);
   }
 
   function groupSelectedCards() {
@@ -850,15 +952,42 @@ export default function IdeaMap() {
     if (e.button === 0 && spacePanRef.current) { e.stopPropagation(); startPan(e); return; }
     if (e.button !== 0) return;
     const group = board.groups.find((g) => g.id === groupId);
-    if (!group || group.locked) return;
+    if (!group) return;
     e.stopPropagation();
+
+    // Ctrl/Cmd+click = thêm/bớt khung khỏi vùng chọn, và KHÔNG kéo — cùng luật
+    // với thẻ (xem handleNodeMouseDown). Đặt TRƯỚC nhánh `locked`: khung khoá
+    // vẫn phải cộng/trừ được khỏi vùng chọn, khoá chỉ chặn di chuyển.
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedGroupIds((prev) => toggleId(prev, group.id));
+      return;
+    }
+    if (group.locked) { setSelectedGroupIds(new Set([group.id])); setSelectedIds(new Set()); return; }
+
+    // Kéo một khung ĐANG nằm trong vùng chọn nhiều thứ thì mang cả vùng chọn đi;
+    // kéo một khung ngoài vùng chọn thì thu vùng chọn về đúng khung đó, y như
+    // cách bấm vào một cái thẻ đang làm.
+    const inSelection = selectedGroupIds.has(group.id);
+    const many = inSelection && (selectedGroupIds.size > 1 || selectedIds.size > 0);
+    const dragSet = many
+      ? selectionDragSet(board, selectedGroupIds, selectedIds)
+      : selectionDragSet(board, new Set([group.id]), EMPTY_SET);
+    if (!many) { setSelectedGroupIds(new Set([group.id])); setSelectedIds(new Set()); setSelectedEdgeIds(new Set()); }
+
+    const dragGroupIds = dragSet.groupIds;
+    const memberIds = dragSet.nodeIds;
+    if (dragGroupIds.length === 0) return;
 
     const startX = e.clientX, startY = e.clientY;
     const scale = board.view.scale;
     const boardBeforeDrag = board;
-    const lockedById = new Map(board.nodes.map((n) => [n.id, !!n.locked]));
-    const memberIds = nodesInFrame(board.nodes, group, frameCardSize).filter((id) => !lockedById.get(id));
-    const startGroupPos = { x: group.x, y: group.y };
+    const movingGroupIds = new Set(dragGroupIds);
+    const startGroupPositions = new Map(
+      dragGroupIds.map((id) => {
+        const g = board.groups.find((gg) => gg.id === id);
+        return [id, { x: g.x, y: g.y, w: g.w, h: g.h }];
+      })
+    );
     const startNodePositions = new Map(
       memberIds.map((id) => {
         const n = board.nodes.find((nn) => nn.id === id);
@@ -874,7 +1003,7 @@ export default function IdeaMap() {
         const { w, h } = frameCardSize(n.id);
         return { x: n.x, y: n.y, w, h };
       }),
-      ...board.groups.filter((g) => g.id !== group.id).map((g) => ({ x: g.x, y: g.y, w: g.w, h: g.h }))
+      ...board.groups.filter((g) => !movingGroupIds.has(g.id)).map((g) => ({ x: g.x, y: g.y, w: g.w, h: g.h }))
     ];
     let latest = board;
     let moved = false;
@@ -884,8 +1013,12 @@ export default function IdeaMap() {
       let dy = (ev.clientY - startY) / scale;
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
 
-      const frameX = startGroupPos.x + dx, frameY = startGroupPos.y + dy;
-      let minX = frameX, minY = frameY, maxX = frameX + group.w, maxY = frameY + group.h;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      startGroupPositions.forEach((start) => {
+        const gx = start.x + dx, gy = start.y + dy;
+        minX = Math.min(minX, gx); minY = Math.min(minY, gy);
+        maxX = Math.max(maxX, gx + start.w); maxY = Math.max(maxY, gy + start.h);
+      });
       memberIds.forEach((id) => {
         const start = startNodePositions.get(id);
         const { w, h } = memberSizes.get(id);
@@ -903,11 +1036,14 @@ export default function IdeaMap() {
         setSnapGuides(snap.guides);
       }
 
-      const gx = Math.round(startGroupPos.x + dx), gy = Math.round(startGroupPos.y + dy);
       setBoard((prev) => {
         const next = {
           ...prev,
-          groups: prev.groups.map((g) => (g.id === group.id ? { ...g, x: gx, y: gy } : g)),
+          groups: prev.groups.map((g) => {
+            const start = startGroupPositions.get(g.id);
+            if (!start) return g;
+            return { ...g, x: Math.round(start.x + dx), y: Math.round(start.y + dy) };
+          }),
           nodes: prev.nodes.map((n) => {
             const start = startNodePositions.get(n.id);
             if (!start) return n;
@@ -919,12 +1055,15 @@ export default function IdeaMap() {
       });
       // Chỉ phát khi thật sự có dịch chuyển: bấm-không-kéo không được sinh
       // ra gói nào, để bên người xem không phải dựng overlay rồi lại nhả ra.
-      if (moved) publishGeom(movingItems(gx, gy, dx, dy));
+      if (moved) publishGeom(movingItems(dx, dy));
     });
 
-    function movingItems(gx, gy, dx, dy) {
+    function movingItems(dx, dy) {
       return {
-        groups: [{ id: group.id, x: gx, y: gy, w: group.w, h: group.h }],
+        groups: dragGroupIds.map((id) => {
+          const start = startGroupPositions.get(id);
+          return { id, x: Math.round(start.x + dx), y: Math.round(start.y + dy), w: start.w, h: start.h };
+        }),
         nodes: memberIds.map((id) => {
           const start = startNodePositions.get(id);
           return { id, x: Math.round(start.x + dx), y: Math.round(start.y + dy), w: nodeWidths.get(id) };
@@ -943,7 +1082,7 @@ export default function IdeaMap() {
       if (!moved) return;
       recordHistory(boardBeforeDrag);
       finishGeom({
-        groups: latest.groups.filter((g) => g.id === group.id),
+        groups: latest.groups.filter((g) => movingGroupIds.has(g.id)),
         nodes: latest.nodes.filter((n) => startNodePositions.has(n.id))
       });
       saveNow(latest);
@@ -960,7 +1099,7 @@ export default function IdeaMap() {
     const scale = board.view.scale;
     const boardBeforeDrag = board;
     const startW = group.w, startH = group.h;
-    const MIN_W = 160, MIN_H = 120;
+    const MIN_W = MIN_GROUP_W, MIN_H = MIN_GROUP_H;
     let latest = board;
     let moved = false;
 
@@ -1440,6 +1579,10 @@ export default function IdeaMap() {
 
     const boardBeforeDrag = board;
     let dragIds, baseBoard, isAlt = false, selectedIdsBeforeDrag;
+    // Khung cùng đi theo khi kéo một thẻ nằm trong vùng chọn có cả khung. Riêng
+    // Alt-kéo (nhân bản) thì KHÔNG: nhân bản là việc của thẻ, kéo theo một cái
+    // khung không được nhân bản sẽ làm khung rời khỏi ruột của nó.
+    let dragGroupIds = [];
 
     if (e.altKey) {
       isAlt = true;
@@ -1454,14 +1597,15 @@ export default function IdeaMap() {
       dragIds = dup.cloneIds;
       baseBoard = dup.next;
     } else {
-      dragIds = [node.id];
-      if (selectedIds.has(node.id) && selectedIds.size > 1) {
-        dragIds = Array.from(selectedIds).filter((id) => {
-          const n = board.nodes.find((nn) => nn.id === id);
-          return n && !n.locked;
-        });
+      const many = selectedIds.has(node.id) && (selectedIds.size > 1 || selectedGroupIds.size > 0);
+      if (many) {
+        const set = selectionDragSet(board, selectedGroupIds, selectedIds);
+        dragIds = set.nodeIds;
+        dragGroupIds = set.groupIds;
       } else {
+        dragIds = [node.id];
         setSelectedIds(new Set([node.id]));
+        setSelectedGroupIds(new Set());
       }
       baseBoard = board;
     }
@@ -1481,12 +1625,20 @@ export default function IdeaMap() {
     // to. Không có gì trong số đó đổi giữa chừng: thẻ khác đứng yên.
     const dragSizes = new Map(dragIds.map((id) => [id, frameCardSize(id)]));
     const dragWidths = new Map(dragIds.map((id) => [id, baseBoard.nodes.find((n) => n.id === id)?.w]));
+    const movingGroupIds = new Set(dragGroupIds);
+    const startGroupPositions = new Map(
+      dragGroupIds.map((id) => {
+        const g = baseBoard.groups.find((gg) => gg.id === id);
+        return [id, { x: g.x, y: g.y, w: g.w, h: g.h }];
+      })
+    );
     const otherRects = [
       ...baseBoard.nodes.filter((n) => !startPositions.has(n.id)).map((n) => {
         const { w, h } = frameCardSize(n.id);
         return { x: n.x, y: n.y, w, h };
       }),
-      ...baseBoard.groups.map((g) => ({ x: g.x, y: g.y, w: g.w, h: g.h }))
+      // Khung đang bị kéo theo không được tự làm mốc bắt dính cho chính nó.
+      ...baseBoard.groups.filter((g) => !movingGroupIds.has(g.id)).map((g) => ({ x: g.x, y: g.y, w: g.w, h: g.h }))
     ];
     let latest = baseBoard;
     let moved = false;
@@ -1504,6 +1656,11 @@ export default function IdeaMap() {
         minX = Math.min(minX, nx); minY = Math.min(minY, ny);
         maxX = Math.max(maxX, nx + w); maxY = Math.max(maxY, ny + h);
       });
+      startGroupPositions.forEach((start) => {
+        const gx = start.x + dx, gy = start.y + dy;
+        minX = Math.min(minX, gx); minY = Math.min(minY, gy);
+        maxX = Math.max(maxX, gx + start.w); maxY = Math.max(maxY, gy + start.h);
+      });
       const movingRect = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 
       if (ev.altKey) {
@@ -1519,19 +1676,28 @@ export default function IdeaMap() {
         return { id, x: Math.round(start.x + dx), y: Math.round(start.y + dy), w: dragWidths.get(id) };
       });
       const movingById = new Map(moving.map((m) => [m.id, m]));
+      const movingGroups = dragGroupIds.map((id) => {
+        const start = startGroupPositions.get(id);
+        return { id, x: Math.round(start.x + dx), y: Math.round(start.y + dy), w: start.w, h: start.h };
+      });
+      const movingGroupById = new Map(movingGroups.map((g) => [g.id, g]));
       setBoard((prev) => {
         const next = {
           ...prev,
           nodes: prev.nodes.map((n) => {
             const m = movingById.get(n.id);
             return m ? { ...n, x: m.x, y: m.y } : n;
+          }),
+          groups: movingGroups.length === 0 ? prev.groups : prev.groups.map((g) => {
+            const m = movingGroupById.get(g.id);
+            return m ? { ...g, x: m.x, y: m.y } : g;
           })
         };
         latest = next;
         return next;
       });
-      // Chỉ phát ĐÚNG những thẻ đang bị kéo, không phát cả bảng.
-      if (moved) publishGeom({ nodes: moving });
+      // Chỉ phát ĐÚNG những thứ đang bị kéo, không phát cả bảng.
+      if (moved) publishGeom(movingGroups.length ? { nodes: moving, groups: movingGroups } : { nodes: moving });
     });
     function onUp() {
       window.removeEventListener("mousemove", onMove);
@@ -1543,7 +1709,9 @@ export default function IdeaMap() {
         // Gói geom cuối được gửi TRƯỚC khi PUT trả về, và nó giữ vị trí mới bên
         // máy người khác cho tới khi board:update chính thức tới nơi — không còn
         // khoảng hở nào để thẻ nhảy về chỗ cũ rồi nhảy lại.
-        finishGeom({ nodes: latest.nodes.filter((n) => startPositions.has(n.id)) });
+        finishGeom(movingGroupIds.size
+          ? { nodes: latest.nodes.filter((n) => startPositions.has(n.id)), groups: latest.groups.filter((g) => movingGroupIds.has(g.id)) }
+          : { nodes: latest.nodes.filter((n) => startPositions.has(n.id)) });
         saveNow(latest);
       } else if (isAlt) {
         // Alt-click without drag: roll back the clone so nothing is silently duplicated.
@@ -1570,6 +1738,7 @@ export default function IdeaMap() {
     const additive = e.ctrlKey || e.metaKey;
     const baseNodeIds = additive ? selectedIds : EMPTY_SET;
     const baseEdgeIds = additive ? selectedEdgeIds : EMPTY_SET;
+    const baseGroupIds = additive ? selectedGroupIds : EMPTY_SET;
 
     function toCanvas(clientX, clientY) {
       const view = boardRef.current.view;
@@ -1583,6 +1752,15 @@ export default function IdeaMap() {
           return rectsOverlap(m.x, m.y, m.w, m.h, n.x, n.y, w, h);
         })
         .map((n) => n.id);
+    }
+
+    // Khung dính khi vùng quét CHẠM nó, cùng luật với thẻ — không đòi quét trùm
+    // kín. Khung thường to hơn cả khung nhìn, đòi trùm kín thì gần như không bao
+    // giờ chọn được bằng chuột.
+    function groupHitIdsFor(m) {
+      return boardRef.current.groups
+        .filter((g) => rectsOverlap(m.x, m.y, m.w, m.h, g.x, g.y, g.w, g.h))
+        .map((g) => g.id);
     }
 
     function edgeHitIdsFor(m) {
@@ -1611,6 +1789,7 @@ export default function IdeaMap() {
       // chẳng có gì thay đổi.
       setSelectedIds((prev) => unionIdSet(prev, baseNodeIds, hitIdsFor(m)));
       setSelectedEdgeIds((prev) => unionIdSet(prev, baseEdgeIds, edgeHitIdsFor(m)));
+      setSelectedGroupIds((prev) => unionIdSet(prev, baseGroupIds, groupHitIdsFor(m)));
     });
     function onUp() {
       window.removeEventListener("mousemove", onMove);
@@ -1619,7 +1798,7 @@ export default function IdeaMap() {
       // Bấm-không-kéo trên nền trống = bỏ chọn hết, NHƯNG có Ctrl thì không:
       // ở đó Ctrl nghĩa là "đang cộng dồn lựa chọn", trượt tay bấm nhầm nền
       // trống mà mất cả vùng chọn vừa gom là hỏng việc.
-      if (!dragging) { if (!additive) { setSelectedIds(new Set()); setSelectedEdgeIds(new Set()); } return; }
+      if (!dragging) { if (!additive) clearSelection(); return; }
       setMarquee(null);
     }
     window.addEventListener("mousemove", onMove);
@@ -1721,18 +1900,24 @@ export default function IdeaMap() {
   function deleteSelection() {
     const ids = selectedIds;
     const edgeIds = selectedEdgeIds;
-    if (ids.size === 0 && edgeIds.size === 0) return;
+    const groupIds = selectedGroupIds;
+    if (ids.size === 0 && edgeIds.size === 0 && groupIds.size === 0) return;
+    // Xoá khung chỉ bỏ CÁI KHUNG, thẻ bên trong ở nguyên — đúng như nút × trên
+    // khung vẫn làm. Khung là một cái vòng vẽ quanh, không phải cái hộp sở hữu
+    // thẻ; xoá nhầm mà mất luôn cả cụm ý tưởng thì quá đắt.
     commitAndSave({
       ...board,
       nodes: board.nodes.filter((n) => !ids.has(n.id)),
+      groups: board.groups.filter((g) => !groupIds.has(g.id)),
       edges: board.edges.filter((e) => !(
         edgeIds.has(e.id) ||
         (ids.has(e.from) && (e.fromKind || "node") === "node") ||
-        (ids.has(e.to) && (e.toKind || "node") === "node")
+        (ids.has(e.to) && (e.toKind || "node") === "node") ||
+        (groupIds.has(e.from) && (e.fromKind || "node") === "group") ||
+        (groupIds.has(e.to) && (e.toKind || "node") === "group")
       ))
     });
-    setSelectedIds(new Set());
-    setSelectedEdgeIds(new Set());
+    clearSelection();
   }
 
   function duplicateSelection() {
@@ -1742,10 +1927,45 @@ export default function IdeaMap() {
     setSelectedIds(new Set(cloneIds));
   }
 
+  function clearSelection() {
+    setSelectedIds(new Set());
+    setSelectedEdgeIds(new Set());
+    setSelectedGroupIds(new Set());
+  }
+
+  /**
+   * Những gì một cú kéo trong vùng chọn mang theo: các khung đang chọn, các thẻ
+   * đang chọn, CỘNG mọi thẻ nằm trong những khung đó — kéo khung mà bỏ ruột lại
+   * là hỏng ý nghĩa của cái khung. Thẻ/khung đang khoá bị loại ngay ở đây, nên
+   * mọi phần sau của cú kéo không phải nghĩ tới `locked` nữa.
+   */
+  function selectionDragSet(base, groupIds, nodeIds) {
+    const groups = base.groups.filter((g) => groupIds.has(g.id) && !g.locked);
+    const nodeSet = new Set();
+    base.nodes.forEach((n) => { if (nodeIds.has(n.id) && !n.locked) nodeSet.add(n.id); });
+    const lockedById = new Map(base.nodes.map((n) => [n.id, !!n.locked]));
+    groups.forEach((g) => {
+      nodesInFrame(base.nodes, g, frameCardSize).forEach((id) => {
+        if (!lockedById.get(id)) nodeSet.add(id);
+      });
+    });
+    return { groupIds: groups.map((g) => g.id), nodeIds: Array.from(nodeSet) };
+  }
+
   function applyToSelection(patch) {
     commitAndSave({
       ...board,
       nodes: board.nodes.map((n) => (selectedIds.has(n.id) ? { ...n, ...patch } : n))
+    });
+  }
+
+  // Màu là thuộc tính duy nhất mà thẻ và khung dùng chung một bộ token, nên nó
+  // là thứ duy nhất áp được cho cả hai trong một cú bấm.
+  function applyColorToSelection(color) {
+    commitAndSave({
+      ...board,
+      nodes: board.nodes.map((n) => (selectedIds.has(n.id) ? { ...n, color } : n)),
+      groups: board.groups.map((g) => (selectedGroupIds.has(g.id) ? { ...g, color } : g))
     });
   }
 
@@ -1951,23 +2171,33 @@ export default function IdeaMap() {
   }
 
   function nudgeSelection(dx, dy) {
-    if (selectedIds.size === 0) return;
+    if (selectedIds.size === 0 && selectedGroupIds.size === 0) return;
     if (nudgeBaseRef.current == null) {
       nudgeBaseRef.current = board;   // history recorded once per burst, at burst end
     }
+    // Cùng tập với cú kéo bằng chuột: khung đang chọn đi kèm ruột của nó.
+    const { groupIds, nodeIds } = selectionDragSet(board, selectedGroupIds, selectedIds);
+    const moveNodes = new Set(nodeIds);
+    const moveGroups = new Set(groupIds);
     const next = {
       ...board,
-      nodes: board.nodes.map((n) => (selectedIds.has(n.id) && !n.locked ? { ...n, x: n.x + dx, y: n.y + dy } : n))
+      nodes: board.nodes.map((n) => (moveNodes.has(n.id) ? { ...n, x: n.x + dx, y: n.y + dy } : n)),
+      groups: board.groups.map((g) => (moveGroups.has(g.id) ? { ...g, x: g.x + dx, y: g.y + dy } : g))
     };
     setBoard(next);
     // Nhích bằng phím mũi tên cũng là một cú "kéo": người khác phải thấy thẻ
     // chạy ngay, chứ không đợi bản lưu 500ms sau mới nhảy một phát.
-    const nudged = next.nodes.filter((n) => selectedIds.has(n.id) && !n.locked);
-    publishGeom({ nodes: nudged });
+    publishGeom({
+      nodes: next.nodes.filter((n) => moveNodes.has(n.id)),
+      groups: next.groups.filter((g) => moveGroups.has(g.id))
+    });
     saveDebounced(next);
     if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
     nudgeTimerRef.current = setTimeout(() => {
-      finishGeom({ nodes: boardRef.current.nodes.filter((n) => selectedIds.has(n.id) && !n.locked) });
+      finishGeom({
+        nodes: boardRef.current.nodes.filter((n) => moveNodes.has(n.id)),
+        groups: boardRef.current.groups.filter((g) => moveGroups.has(g.id))
+      });
       flushNudgeBurst();
     }, 600);
   }
@@ -2081,9 +2311,8 @@ export default function IdeaMap() {
   function applyNodeDashed(nodeId, dashed) {
     commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, dashed } : n)) });
   }
-  function toggleNodeRoot(id) {
-    commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, isRoot: !n.isRoot } : n)) });
-    setColorMenu(null);
+  function applyNodeLevel(nodeId, level) {
+    commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, ...levelPatch(level) } : n)) });
   }
   function toggleGroupLock(id) {
     commitAndSave({ ...board, groups: board.groups.map((g) => (g.id === id ? { ...g, locked: !g.locked } : g)) });
@@ -2470,21 +2699,34 @@ export default function IdeaMap() {
         <ToolRail
           mode={mode}
           tool={tool}
+          placeTool={mode === "place" ? placeTool : null}
           canEdit={role !== "viewer"}
           linkMode={linkMode}
           onMode={enterMode}
-          onTool={(next) => { setMode("draw"); setTool(next); }}
-          onAddNode={handleAddClick}
-          onAddRootNode={handleAddRootClick}
-          onAddGroup={createGroup}
+          onTool={(next) => { enterMode("draw"); setTool(next); }}
+          onPlace={armPlace}
           onToggleLink={toggleLinkMode}
           onCapture={() => setCaptureOpen(true)}
         />
-        {mode === "draw" && (
-          <ToolOptions tool={tool} prefs={penPrefs} onPrefs={setPenPrefs} />
+        {(mode === "draw" || mode === "place") && (
+          <ToolOptions
+            tool={mode === "place" ? placeTool : tool}
+            prefs={penPrefs}
+            onPrefs={setPenPrefs}
+            level={cardLevelPref}
+            onLevel={setCardLevelPref}
+          />
         )}
         {mode === "draw" && (
           <div className="ink-capture" onMouseDown={handleInkCaptureMouseDown} />
+        )}
+        {/* Lớp bắt chuột của mode Đặt: cùng vai trò với .ink-capture, để bấm
+            trúng một cái thẻ có sẵn vẫn ra thẻ mới chứ không phải chọn thẻ đó. */}
+        {mode === "place" && (
+          <div
+            className={"place-capture" + (placeTool === "group" ? " draw-frame" : "")}
+            onMouseDown={handlePlaceCaptureMouseDown}
+          />
         )}
         <div
           className="canvas"
@@ -2494,12 +2736,16 @@ export default function IdeaMap() {
           {marquee && (
             <div className="marquee-box" style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h }} />
           )}
+          {placeDraft && (
+            <div className="place-draft" style={{ left: placeDraft.x, top: placeDraft.y, width: placeDraft.w, height: placeDraft.h }} />
+          )}
           {liveGroups.map((group) => (
             <FrameBox
               key={group.id}
               group={group}
               editingTitle={editingGroupTitleId === group.id}
               dropTarget={!!dropTargetId && dropTargetId.kind === "group" && dropTargetId.id === group.id}
+              selected={selectedGroupIds.has(group.id)}
               h={groupHandlers}
             />
           ))}
@@ -2654,31 +2900,50 @@ export default function IdeaMap() {
           );
         })()}
 
-        {selectedIds.size >= 2 && (
+        {/* Thanh này vốn chỉ dành cho thẻ. Nay quét trúng cả khung, nên nó cũng
+            phải hiện khi chỉ có khung được chọn — không thì chọn xong hai cái
+            khung mà chẳng thấy nút "Xoá" hay "Bỏ chọn" nào. Các nút chỉ hợp lý
+            với thẻ (trạng thái, nhãn, gom nhóm, xếp gọn, nhân bản) tự ẩn khi
+            không có thẻ nào trong vùng chọn. */}
+        {(selectedIds.size + selectedGroupIds.size >= 2 || selectedGroupIds.size >= 1) && (
           <div className="bulk-bar" onMouseDown={(e) => e.stopPropagation()}>
-            <span className="bb-count mono"><Trans>{selectedIds.size} thẻ</Trans></span>
-            <select value="" onChange={(e) => { if (e.target.value !== "") applyToSelection({ statusId: e.target.value === "none" ? null : Number(e.target.value) }); }}>
-              <option value="">{t`Trạng thái…`}</option>
-              <option value="none">{t`Không trạng thái`}</option>
-              {board.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-            <select value="" onChange={(e) => { if (e.target.value !== "") applyToSelection({ tagId: e.target.value === "none" ? null : Number(e.target.value) }); }}>
-              <option value="">{t`Nhãn…`}</option>
-              <option value="none">{t`Không nhãn`}</option>
-              {board.tags.map((tg) => <option key={tg.id} value={tg.id}>{tg.name}</option>)}
-            </select>
+            <span className="bb-count mono">
+              {selectedIds.size > 0 && <Trans>{selectedIds.size} thẻ</Trans>}
+              {selectedIds.size > 0 && selectedGroupIds.size > 0 && " · "}
+              {selectedGroupIds.size > 0 && <Trans>{selectedGroupIds.size} khung</Trans>}
+            </span>
+            {selectedIds.size >= 2 && (
+              <>
+                <select value="" onChange={(e) => { if (e.target.value !== "") applyToSelection({ statusId: e.target.value === "none" ? null : Number(e.target.value) }); }}>
+                  <option value="">{t`Trạng thái…`}</option>
+                  <option value="none">{t`Không trạng thái`}</option>
+                  {board.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                <select value="" onChange={(e) => { if (e.target.value !== "") applyToSelection({ tagId: e.target.value === "none" ? null : Number(e.target.value) }); }}>
+                  <option value="">{t`Nhãn…`}</option>
+                  <option value="none">{t`Không nhãn`}</option>
+                  {board.tags.map((tg) => <option key={tg.id} value={tg.id}>{tg.name}</option>)}
+                </select>
+              </>
+            )}
+            {/* Ô màu áp cho CẢ thẻ lẫn khung đang chọn — cả hai đều nhận cùng
+                một `color` token, nên một hàng màu là đủ cho mọi thứ đang chọn. */}
             <div className="bb-swatches">
-              <button className="be-swatch dot-empty" onClick={() => applyToSelection({ color: null })} title={t`Không màu`} />
+              <button className="be-swatch dot-empty" onClick={() => applyColorToSelection(null)} title={t`Không màu`} />
               {BADGE_PALETTE.map((token) => (
-                <button key={token} className="be-swatch" style={{ background: colorVar(token) }} onClick={() => applyToSelection({ color: token })} title={token} />
+                <button key={token} className="be-swatch" style={{ background: colorVar(token) }} onClick={() => applyColorToSelection(token)} title={token} />
               ))}
             </div>
-            <button className="bb-clear" onClick={groupSelectedCards}><Trans>Gom nhóm</Trans></button>
-            <button className="bb-clear" onClick={tidySelection}><Trans>Xếp gọn</Trans></button>
-            <button className="bb-clear" onClick={duplicateSelection}><Trans>Nhân bản</Trans></button>
+            {selectedIds.size >= 2 && (
+              <>
+                <button className="bb-clear" onClick={groupSelectedCards}><Trans>Gom nhóm</Trans></button>
+                <button className="bb-clear" onClick={tidySelection}><Trans>Xếp gọn</Trans></button>
+                <button className="bb-clear" onClick={duplicateSelection}><Trans>Nhân bản</Trans></button>
+              </>
+            )}
             <button className="bb-clear danger" onClick={deleteSelection}><Trans>Xoá</Trans></button>
             <span className="bb-sep" />
-            <button className="bb-clear" onClick={() => { setSelectedIds(new Set()); setSelectedEdgeIds(new Set()); }}><Trans>Bỏ chọn</Trans></button>
+            <button className="bb-clear" onClick={clearSelection}><Trans>Bỏ chọn</Trans></button>
           </div>
         )}
 
@@ -2779,8 +3044,10 @@ export default function IdeaMap() {
             onSetShape={one((shape) => applyNodeShape(node.id, shape))}
             dashed={multi ? false : !!node.dashed}
             onSetDashed={one((dashed) => applyNodeDashed(node.id, dashed))}
-            isRoot={multi ? false : !!node.isRoot}
-            onToggleRoot={one(() => toggleNodeRoot(node.id))}
+            // Đổi bậc dùng được cho cả một tập thẻ đang chọn: hạ cả một nhánh
+            // xuống bậc phụ là việc hay làm, bắt sửa từng thẻ thì rất mỏi.
+            level={multi ? null : cardLevel(node)}
+            onSetLevel={(level) => (multi ? applyToSelection(levelPatch(level)) : applyNodeLevel(node.id, level))}
             onArrangeTree={one((direction) => arrangeAsTree("node", node.id, direction))}
           />
         );
@@ -2789,16 +3056,24 @@ export default function IdeaMap() {
       {colorMenu && colorMenu.kind === "group" && (() => {
         const group = board.groups.find((g) => g.id === colorMenu.id);
         if (!group) return null;
+        // Cùng luật với menu của thẻ: chuột phải vào một khung đang nằm trong
+        // vùng chọn thì tác động lên cả vùng chọn, và chỉ hiện những việc có
+        // nghĩa với nhiều khung.
+        const multi = selectedGroupIds.size > 1 && selectedGroupIds.has(group.id);
+        const one = (fn) => (multi ? undefined : fn);
         return (
           <ColorMenu
             x={colorMenu.x}
             y={colorMenu.y}
-            color={group.color ?? null}
-            onPick={(color) => applyGroupColor(group.id, color)}
+            kind="group"
+            count={multi ? selectedGroupIds.size : 1}
+            color={multi ? null : group.color ?? null}
+            onPick={(color) => (multi ? applyColorToSelection(color) : applyGroupColor(group.id, color))}
             onClose={() => setColorMenu(null)}
             locked={group.locked ?? false}
-            onToggleLock={() => toggleGroupLock(group.id)}
-            onArrangeTree={(direction) => arrangeAsTree("group", group.id, direction)}
+            onToggleLock={one(() => toggleGroupLock(group.id))}
+            onDelete={() => { setColorMenu(null); multi ? deleteSelection() : deleteGroup(group.id); }}
+            onArrangeTree={one((direction) => arrangeAsTree("group", group.id, direction))}
           />
         );
       })()}

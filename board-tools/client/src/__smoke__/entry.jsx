@@ -93,7 +93,7 @@ export async function run(log) {
   const railBtns = () => document.querySelectorAll(".tool-rail .tool-btn").length;
   const railGroups = () => document.querySelectorAll(".tool-rail .tool-group").length;
   log(`thanh công cụ: ${railBtns()} nút trong ${railGroups()} khung ở mode Chuột`);
-  if (railBtns() !== 7) throw new Error("mode Chuột phải có 7 nút (2 mode + 5 thêm), có " + railBtns());
+  if (railBtns() !== 6) throw new Error("mode Chuột phải có 6 nút (2 mode + 4 thêm), có " + railBtns());
   if (document.querySelector(".tool-options")) throw new Error("mode Chuột không được hiện khu 4");
   // Mỗi nhóm chức năng là một khung rời. Khu 2 (tool vẽ) chưa hiện ở mode Chuột
   // nên chỉ có 2 khung; mọi nút phải nằm TRONG một khung, không nút nào lạc ra
@@ -110,7 +110,7 @@ export async function run(log) {
   const drawBtn = document.querySelectorAll(".tool-rail .tool-btn")[1];
   await act(async () => { drawBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
   log(`sau khi bật mode Sửa: ${railBtns()} nút, khu 4 = ${document.querySelectorAll(".tool-options .pen-swatch").length} ô màu`);
-  if (railBtns() !== 10) throw new Error("mode Sửa phải có 10 nút (2 mode + 3 tool + 5 thêm), có " + railBtns());
+  if (railBtns() !== 9) throw new Error("mode Sửa phải có 9 nút (2 mode + 3 tool + 4 thêm), có " + railBtns());
   if (railGroups() !== 3) throw new Error("mode Sửa phải có 3 khung (mode + tool vẽ + thêm), có " + railGroups());
   if (document.querySelectorAll(".tool-rail .tool-group .tool-btn").length !== railBtns()) {
     throw new Error("có nút nằm ngoài .tool-group — nút đó sẽ không có khung");
@@ -656,6 +656,128 @@ export async function run(log) {
   }
   if (selCount() !== 2) throw new Error("thả vào thẻ ngoài vùng chọn không được phá vùng chọn");
   globalThis.__hitAt(null);
+
+  // ——— Khu 3: lên nòng rồi chỉ chỗ trên bảng ———
+  // Bất biến của cả nhóm này: nút khu 3 KHÔNG tạo gì lúc bấm, và làm xong đúng
+  // MỘT lần là tự về mode Chuột (khác khu 2, giữ nguyên tool cho tới khi đổi).
+  await act(async () => { cursorBtn().click(); await new Promise((r) => setTimeout(r, 20)); });
+  const addCardBtn = () => document.querySelectorAll(".tool-rail .tool-btn")[2];
+  const addFrameBtn = () => document.querySelectorAll(".tool-rail .tool-btn")[3];
+
+  const putsBeforeArm = globalThis.__puts.length;
+  const cardsBeforePlace = document.querySelectorAll(".idea-card").length;
+  await act(async () => { addCardBtn().click(); await new Promise((r) => setTimeout(r, 20)); });
+  const levelPicks = () => document.querySelectorAll(".tool-options .level-pick");
+  log(`lên nòng thêm thẻ: khu 4 có ${levelPicks().length} bậc · lớp bắt chuột ${document.querySelector(".place-capture") ? "có" : "KHÔNG"} · PUT thêm ${globalThis.__puts.length - putsBeforeArm} lần`);
+  if (levelPicks().length !== 5) throw new Error("khu 4 của nút thêm thẻ phải có 5 nút bậc, có " + levelPicks().length);
+  if (!document.querySelector(".place-capture")) throw new Error("lên nòng rồi phải có lớp bắt chuột .place-capture");
+  if (document.querySelector(".ink-capture")) throw new Error("mode Đặt không được dựng lớp bắt chuột của mode Sửa");
+  if (globalThis.__puts.length !== putsBeforeArm) throw new Error("bấm nút khu 3 KHÔNG được tạo gì — nó chỉ lên nòng");
+  if (document.querySelectorAll(".idea-card").length !== cardsBeforePlace) throw new Error("bấm nút khu 3 đã tạo thẻ ngay, đáng lẽ phải chờ bấm lên bảng");
+  if (!addCardBtn().className.includes("on")) throw new Error("nút khu 3 đang lên nòng phải sáng");
+
+  // Chọn bậc 5 (nhỏ nhất) rồi đặt: thẻ mới phải mang đúng class bậc đó.
+  await act(async () => { levelPicks()[4].click(); await new Promise((r) => setTimeout(r, 20)); });
+  if (!levelPicks()[4].className.includes("on")) throw new Error("bậc vừa bấm phải sáng lên");
+  await act(async () => {
+    mouse("mousedown", 640, 480, document.querySelector(".place-capture"));
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  const placed = document.querySelectorAll(".idea-card.lv-5").length;
+  log(`đặt thẻ bậc 5: ${cardsBeforePlace} → ${document.querySelectorAll(".idea-card").length} thẻ · lv-5 = ${placed} · PUT thêm ${globalThis.__puts.length - putsBeforeArm} lần`);
+  if (document.querySelectorAll(".idea-card").length !== cardsBeforePlace + 1) throw new Error("bấm lên bảng phải ra đúng 1 thẻ mới");
+  if (placed !== 1) throw new Error("thẻ mới phải mang class bậc đang chọn (lv-5), có " + placed);
+  // Đây là điểm khác then chốt so với khu 2: xong một lần là hạ nòng.
+  if (document.querySelector(".place-capture")) throw new Error("đặt xong phải tự về mode Chuột");
+  if (document.querySelector(".tool-options")) throw new Error("về mode Chuột thì khu 4 phải biến mất");
+  if (addCardBtn().className.includes("on")) throw new Error("đặt xong nút khu 3 phải hết sáng");
+
+  const savedPlace = globalThis.__puts[globalThis.__puts.length - 1];
+  const newNode = savedPlace.nodes[savedPlace.nodes.length - 1];
+  log(`thẻ đã lưu: level=${newNode.level} isRoot=${newNode.isRoot}`);
+  if (newNode.level !== 5) throw new Error("thẻ mới phải lưu level = 5, có " + newNode.level);
+  // Cờ cũ phải được ghi cho khớp, nếu không board mở bằng bản client cũ sẽ thấy
+  // một thẻ ghi chú đội vương miện.
+  if (newNode.isRoot !== false) throw new Error("bậc khác 1 phải lưu isRoot = false");
+
+  // Vẽ khung bằng cách TÔ một vùng, không phải thả một khung cỡ mặc định ra giữa
+  // màn hình.
+  const framesBefore = document.querySelectorAll(".frame-box").length;
+  await act(async () => { addFrameBtn().click(); await new Promise((r) => setTimeout(r, 20)); });
+  if (!document.querySelector(".place-capture.draw-frame")) throw new Error("nút thêm khung phải lên nòng ở chế độ tô");
+  if (document.querySelector(".tool-options")) throw new Error("nút thêm khung không có tuỳ chọn nào — khu 4 phải ẩn");
+  await act(async () => {
+    mouse("mousedown", 200, 200, document.querySelector(".place-capture"));
+    mouse("mousemove", 420, 380);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  const draft = document.querySelector(".place-draft");
+  log(`đang tô khung: khung nháp ${draft ? `${draft.style.width} x ${draft.style.height}` : "KHÔNG hiện"}`);
+  if (!draft) throw new Error("đang tô phải hiện khung nháp .place-draft");
+  await act(async () => { mouse("mouseup", 420, 380); await new Promise((r) => setTimeout(r, 40)); });
+
+  const framesAfter = document.querySelectorAll(".frame-box").length;
+  const savedFrame = globalThis.__puts[globalThis.__puts.length - 1];
+  const newGroup = savedFrame.groups[savedFrame.groups.length - 1];
+  log(`tô khung: ${framesBefore} → ${framesAfter} khung · khung mới ${newGroup.w}x${newGroup.h}`);
+  if (framesAfter !== framesBefore + 1) throw new Error("tô một vùng phải ra đúng 1 khung mới");
+  if (document.querySelector(".place-draft")) throw new Error("thả chuột xong khung nháp phải biến mất");
+  if (document.querySelector(".place-capture")) throw new Error("vẽ khung xong phải tự về mode Chuột");
+  // Khung phải lấy đúng vùng vừa tô, không phải cỡ mặc định 480x320.
+  if (newGroup.w === 480 && newGroup.h === 320) throw new Error("khung phải theo vùng vừa tô, không phải cỡ mặc định");
+
+  // ——— Bôi đen quét trúng cả khung ———
+  // Quét một vùng rộng trùm cả bảng: phải dính cả thẻ LẪN khung. Trước đợt này
+  // khung hoàn toàn nằm ngoài vùng chọn, quét kiểu gì cũng không trúng.
+  const viewport = document.querySelector(".viewport");
+  const selectedFrames = () => document.querySelectorAll(".frame-box.selected").length;
+  await act(async () => {
+    mouse("mousedown", -3000, -3000, viewport);
+    mouse("mousemove", -1000, -1000);
+    await new Promise((r) => setTimeout(r, 60));
+    mouse("mousemove", 4000, 4000);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", 4000, 4000); await new Promise((r) => setTimeout(r, 40)); });
+  log(`quét cả bảng: ${selCount()} thẻ · ${selectedFrames()} khung được chọn (có ${document.querySelectorAll(".frame-box").length} khung trên bảng)`);
+  if (selectedFrames() !== document.querySelectorAll(".frame-box").length) {
+    throw new Error("quét trùm cả bảng phải chọn được MỌI khung, chỉ có " + selectedFrames());
+  }
+  if (selCount() === 0) throw new Error("quét cả bảng vẫn phải chọn thẻ như cũ");
+
+  // Thanh nhiều-lựa-chọn phải nói ra cả hai loại.
+  const bulkText = document.querySelector(".bulk-bar .bb-count")?.textContent ?? "";
+  log(`thanh nhiều lựa chọn: ${JSON.stringify(bulkText)}`);
+  if (!bulkText.includes("thẻ") || !bulkText.includes("khung")) throw new Error("thanh phải đếm cả thẻ lẫn khung, đang là " + JSON.stringify(bulkText));
+
+  // Kéo một khung đang trong vùng chọn: khung ĐI, và thẻ trong khung đi theo.
+  const frameEl = document.querySelector(".frame-box.selected");
+  const frameLeftBefore = frameEl.style.left;
+  const anyCardLeftBefore = document.querySelector('.idea-card[data-id="1"]').style.left;
+  const putsBeforeFrameDrag = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", 60, 60, frameEl);
+    mouse("mousemove", 130, 110);
+    await new Promise((r) => setTimeout(r, 60));
+    mouse("mousemove", 200, 160);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", 200, 160); await new Promise((r) => setTimeout(r, 60)); });
+  const frameLeftAfter = document.querySelector(".frame-box").style.left;
+  log(`kéo khung đang chọn: khung left ${frameLeftBefore} → ${frameLeftAfter} · thẻ 1 left ${anyCardLeftBefore} → ${document.querySelector('.idea-card[data-id="1"]').style.left} · PUT thêm ${globalThis.__puts.length - putsBeforeFrameDrag} lần`);
+  if (frameLeftBefore === frameLeftAfter) throw new Error("kéo khung mà khung không dịch chuyển");
+  if (globalThis.__puts.length - putsBeforeFrameDrag !== 1) throw new Error("một cú kéo khung phải đúng 1 lần lưu");
+
+  // Xoá vùng chọn: khung biến mất, nhưng thẻ TRONG khung phải ở lại — khung là
+  // cái vòng vẽ quanh, không phải cái hộp sở hữu thẻ.
+  const framesBeforeDel = document.querySelectorAll(".frame-box").length;
+  await act(async () => {
+    document.querySelectorAll(".frame-box")[0].dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: 60, clientY: 60, button: 0, ctrlKey: true }));
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  const afterCtrl = selectedFrames();
+  log(`Ctrl+click khung đã chọn: còn ${afterCtrl}/${framesBeforeDel} khung được chọn`);
+  if (afterCtrl !== framesBeforeDel - 1) throw new Error("Ctrl+click khung phải BỚT nó khỏi vùng chọn");
 
   return true;
 }
