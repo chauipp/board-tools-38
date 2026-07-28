@@ -41,6 +41,10 @@ const boardSchema = new mongoose.Schema(
     statuses: { type: Array, default: [] },
     tags: { type: Array, default: [] },
     palette: { type: Array, default: [] },
+    // Giao diện của bảng: id preset nền và id bộ màu (xem client lib/board-theme.js).
+    // null = như trước khi có hai field này, nên board cũ không cần migration.
+    bg: { type: String, default: null },
+    pack: { type: String, default: null },
     drawings: { type: Array, default: [] },
     nextNodeId: { type: Number, default: 1 },
     nextEdgeId: { type: Number, default: 1 },
