@@ -648,12 +648,6 @@
   left: 66px; width: 62px;
   max-height: calc(100% - 24px); overflow-y: auto; overflow-x: hidden;
 }
-/* .tool-btn mặc định 34px — quá rộng cho một cột của .tool-grid, sẽ tràn ra
-   ngoài khối. Nút chọn hình và nút chế độ tô phải tự thu lại đúng bề rộng một
-   cột (22px, xem phép tính ở .tool-options). */
-.shape-pick, .fill-pick { width: 22px; height: 22px; }
-.shape-pick svg, .fill-pick svg { display: block; }
-
 .tool-btn {
   display: flex; align-items: center; justify-content: center;
   width: 34px; height: 34px; margin: 0 auto; padding: 0;
@@ -663,6 +657,17 @@
 .tool-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
 .tool-btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 .tool-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* .tool-btn mặc định 34px — quá rộng cho một cột của .tool-grid, sẽ tràn ra
+   ngoài khối. Nút chọn hình và nút chế độ tô phải tự thu lại đúng bề rộng một
+   cột (22px, xem phép tính ở .tool-options).
+   PHẢI đứng SAU khối .tool-btn: cả hai đều là selector một class nên độ đặc hiệu
+   bằng nhau, và khi đó thứ tự nguồn quyết định. Đặt trước thì `width: 34px` của
+   .tool-btn đè mất, track của .tool-grid bị min-content đội lên 34px, và cột
+   phải của bảng chọn hình bị cắt khỏi panel — lỗi này smoke test không thấy
+   được vì jsdom không tính cascade lẫn layout. */
+.shape-pick, .fill-pick { width: 22px; height: 22px; }
+.shape-pick svg, .fill-pick svg { display: block; }
 
 .tool-sep { height: 1px; margin: 3px 2px; background: var(--line); }
 

@@ -121,6 +121,25 @@ setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process
     process.exit(1);
   }
   console.log("  ·", "CSS: rule `.ink-layer path` không khai `fill` (đúng — fill do InkLayer gán tường minh trên từng <path>)");
+
+  // Cùng lý do như trên, một lớp lỗi khác mà jsdom không bắt được: THỨ TỰ NGUỒN.
+  // `.tool-btn` và `.shape-pick`/`.fill-pick` đều là selector MỘT class nên độ
+  // đặc hiệu bằng nhau, và khi đó cái đứng SAU thắng. Nếu `.shape-pick` đứng
+  // trước `.tool-btn` thì `width: 34px` của `.tool-btn` đè mất bề rộng 22px,
+  // track của `.tool-grid` bị min-content đội lên 34px, và cột phải của bảng
+  // chọn hình bị cắt khỏi panel 62px. Lỗi thuần layout + cascade: jsdom không
+  // tính cả hai thứ đó, nên chỉ đọc thứ tự trong file mới chốt được.
+  const iBtn = css.indexOf(".tool-btn {");
+  const iPick = css.search(/^\.shape-pick,\s*\.fill-pick\s*\{/m);
+  if (iBtn < 0 || iPick < 0) {
+    console.log("\n❌ SMOKE FAIL: không tìm thấy rule `.tool-btn` hoặc `.shape-pick, .fill-pick` trong idea-map.css — rule bị đổi tên thì bài kiểm thứ tự nguồn này vô nghĩa mà vẫn xanh");
+    process.exit(1);
+  }
+  if (iPick < iBtn) {
+    console.log("\n❌ SMOKE FAIL: `.shape-pick, .fill-pick` đứng TRƯỚC `.tool-btn` trong idea-map.css — cùng độ đặc hiệu một class nên `.tool-btn { width: 34px }` sẽ đè mất bề rộng 22px, và cột phải của bảng chọn hình ở khu 4 bị cắt khỏi panel");
+    process.exit(1);
+  }
+  console.log("  ·", "CSS: `.shape-pick/.fill-pick` đứng sau `.tool-btn` (đúng — cùng độ đặc hiệu thì thứ tự nguồn quyết định)");
 }
 
 const { run } = await import("./smoke-dist/smoke.js");
