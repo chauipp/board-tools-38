@@ -9,8 +9,7 @@ import { textLines, textBox, TEXT_LINE_H } from "../lib/text-el.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
 import { paletteCss, applyColorTo, applyColorToMany, removePaletteColor } from "../lib/palette.js";
 import { BOARD_BGS, COLOR_PACKS, isBoardBg, isColorPack } from "../lib/board-theme.js";
-import { loadLayouts, saveLayouts } from "../lib/dock.js";
-import DockPanel from "../components/DockPanel.jsx";
+import FilterPanel from "../components/FilterPanel.jsx";
 import LoadError from "../components/LoadError.jsx";
 import LocaleToggle from "../components/LocaleToggle.jsx";
 import InviteModal from "../components/InviteModal.jsx";
@@ -59,6 +58,11 @@ const CARD_W = 210;
 const TEXT_DRAG_THRESHOLD = 3;
 const MIN_GROUP_W = 160, MIN_GROUP_H = 120;
 const MIN_SCALE = 0.3, MAX_SCALE = 2.4;
+
+// Bốn panel lọc ở thanh đáy. Liệt kê ra một chỗ để "có panel nào đang bật không"
+// không phải viết tay bốn phép hoặc là một Object.keys trên state — thêm panel
+// thứ năm về sau chỉ phải sửa đúng danh sách này.
+const PANEL_KEYS = ["status", "tag", "palette", "theme"];
 const EMPTY_ARRAY = [];
 const EMPTY_MAP = new Map();
 const EMPTY_SET = new Set();
@@ -211,7 +215,6 @@ export default function IdeaMap() {
   // thoảng mới dùng. Đóng lại thì XOÁ luôn từ khoá — từ khoá còn sống mà ô nhập
   // biến mất là một bộ lọc vô hình, thẻ bị làm mờ mà không thấy vì sao.
   const [searchOpen, setSearchOpen] = useState(false);
-  const [layouts, setLayouts] = useState(() => loadLayouts(window.localStorage));
   // mode: "select" (thao tác thẻ như cũ) | "draw" (vẽ lên bảng) | "place" (đã
   // lên nòng một việc ở khu 3, đang chờ người dùng chỉ chỗ trên bảng).
   // KHÔNG nhớ qua lần mở sau: mở board ra mà con trỏ đang là cây bút là điều
@@ -274,7 +277,6 @@ export default function IdeaMap() {
   const { cardSize: frameCardSize, observeCard } = useCardSizes();
 
   const viewportRef = useRef(null);
-  const fbDockRef = useRef(null);
   const canvasRef = useRef(null);
   const searchInputRef = useRef(null);
   const saveTimerRef = useRef(null);
@@ -333,13 +335,6 @@ export default function IdeaMap() {
     return () => { cancelled = true; };
   }, [boardId]);
 
-  // Kéo panel cập nhật layouts mỗi mousemove; hoãn một nhịp để không ghi
-  // localStorage 60 lần/giây.
-  useEffect(() => {
-    const id = setTimeout(() => saveLayouts(window.localStorage, layouts), 200);
-    return () => clearTimeout(id);
-  }, [layouts]);
-
   // Mở ô tìm là để gõ ngay, không phải để rồi bấm thêm một cú vào nó. Đặt ở
   // effect chứ không ở toggleSearch: Ctrl+F lúc ô đang đóng thì ô nhập chưa nằm
   // trong cây, không có gì để focus tại thời điểm xử lý phím.
@@ -355,7 +350,7 @@ export default function IdeaMap() {
   // Camera đổi từ nhiều chỗ (lăn chuột, kéo nền, zoom vừa khung, thoát trình
   // chiếu). Lưu ở một effect theo board.view — rải saveCamera vào từng handler
   // thì sót, mà `view` cũng không còn được PUT lên server nữa (api.js bỏ nó).
-  // Hoãn một nhịp như layouts ở trên: lăn chuột đổi view liên tục.
+  // Hoãn một nhịp: lăn chuột đổi view liên tục.
   useEffect(() => {
     if (!board?.view) return;
     const id = setTimeout(() => saveCamera(window.localStorage, boardId, board.view), 200);
@@ -2604,11 +2599,7 @@ export default function IdeaMap() {
     setPanels((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
-  function setLayout(key, layout) {
-    setLayouts((prev) => ({ ...prev, [key]: layout }));
-  }
-
-  const hasDockedPanel = Object.keys(layouts).some((k) => panels[k] && !layouts[k].free);
+  const anyPanelOn = PANEL_KEYS.some((k) => panels[k]);
 
   function clearFilters() {
     setFilterStatus({});
@@ -2925,13 +2916,8 @@ export default function IdeaMap() {
 
           <div className="island-sep" />
 
-          {/* Bốn nút bật panel hiện thẳng dạng icon, không giấu sau ☰: đây là cách
-              DUY NHẤT triệu hồi panel, giấu đi là tốn một cú bấm mỗi lần. Chữ đầy
-              đủ "Trạng thái / Nhãn / Bảng màu / Giao diện" mất ~280px, icon 112px. */}
-          <button type="button" className={"island-btn" + (panels.status ? " on" : "")} title={t`Trạng thái`} onClick={() => togglePanel("status")}><IconStatus /></button>
-          <button type="button" className={"island-btn" + (panels.tag ? " on" : "")} title={t`Nhãn`} onClick={() => togglePanel("tag")}><IconTag /></button>
-          <button type="button" className={"island-btn" + (panels.palette ? " on" : "")} title={t`Bảng màu`} onClick={() => togglePanel("palette")}><IconPalette /></button>
-          <button type="button" className={"island-btn" + (panels.theme ? " on" : "")} title={t`Giao diện`} onClick={() => togglePanel("theme")}><IconBoardStyle /></button>
+          {/* ★ ở lại đảo này còn bốn nút bật panel thì xuống thanh đáy: ★ là bộ lọc
+              bật phát ăn ngay, không mở ra khối nội dung nào để phải đứng cạnh. */}
           <button type="button" className={"island-btn" + (filterFav ? " on" : "")} title={t`Chỉ hiện thẻ yêu thích`} onClick={() => setFilterFav((v) => !v)}><IconStar /></button>
         </div>
 
@@ -2944,16 +2930,26 @@ export default function IdeaMap() {
           </div>
         )}
 
-        {/* Khay neo nằm TRONG đảo, và co về 0 khi không panel nào neo. Panel neo
-            chảy cùng một hàng, hết chỗ mới xuống dòng — bật panel thứ ba không
-            được đẩy hai panel kia thành ba tầng.
-            Panel NỔI vẫn là con của khay này dù nhìn thì nó ở tận đâu: chúng
-            position: fixed nên không chiếm chỗ trong dòng chảy, và giữ chung một
-            cha là điều kiện để lượt kéo neo→nổi không bị React gắn lại giữa chừng
-            (xem .island-dock trong idea-map.css). */}
-        <div className={"island-dock" + (hasDockedPanel ? " on" : "")} ref={fbDockRef}>
+      </div>
+
+      {/* THANH ĐÁY — đảo nút bật panel, và ngay cạnh nó là đảo nội dung của panel
+          đang bật. Panel chỉ sống ở đúng chỗ này: không neo, không nổi, không kéo
+          đi đâu được. Đổi lại thì cũng không còn cách nào làm mất nó. */}
+      <div className="hud-bottom">
+        <div className="island">
+          <div className="island-row">
+            <button type="button" className={"island-btn" + (panels.status ? " on" : "")} title={t`Trạng thái`} onClick={() => togglePanel("status")}><IconStatus /></button>
+            <button type="button" className={"island-btn" + (panels.tag ? " on" : "")} title={t`Nhãn`} onClick={() => togglePanel("tag")}><IconTag /></button>
+            <button type="button" className={"island-btn" + (panels.palette ? " on" : "")} title={t`Bảng màu`} onClick={() => togglePanel("palette")}><IconPalette /></button>
+            <button type="button" className={"island-btn" + (panels.theme ? " on" : "")} title={t`Giao diện`} onClick={() => togglePanel("theme")}><IconBoardStyle /></button>
+          </div>
+        </div>
+
+        {anyPanelOn && (
+        <div className="island">
+        <div className="filter-dock">
         {panels.status && (
-          <DockPanel title={t`Trạng thái`} layout={layouts.status} barRef={fbDockRef} onLayout={(l) => setLayout("status", l)}>
+          <FilterPanel title={t`Trạng thái`}>
             <div className="fb-chips">
               {board.statuses.map((s) => {
                 const key = String(s.id);
@@ -2986,11 +2982,11 @@ export default function IdeaMap() {
               )}
               <button className="fb-add" onClick={(e) => openBadgeCreate(e, "status")} title={t`Thêm trạng thái`}>+</button>
             </div>
-          </DockPanel>
+          </FilterPanel>
         )}
 
         {panels.tag && (
-          <DockPanel title={t`Nhãn`} layout={layouts.tag} barRef={fbDockRef} onLayout={(l) => setLayout("tag", l)}>
+          <FilterPanel title={t`Nhãn`}>
             <div className="fb-chips">
               {board.tags.map((tg) => {
                 const key = String(tg.id);
@@ -3023,11 +3019,11 @@ export default function IdeaMap() {
               )}
               <button className="fb-add" onClick={(e) => openBadgeCreate(e, "tag")} title={t`Thêm nhãn`}>+</button>
             </div>
-          </DockPanel>
+          </FilterPanel>
         )}
 
         {panels.palette && (
-          <DockPanel title={t`Bảng màu`} layout={layouts.palette} barRef={fbDockRef} onLayout={(l) => setLayout("palette", l)}>
+          <FilterPanel title={t`Bảng màu`}>
             <div className="fb-chips">
               {board.palette.map((c) => (
                 <button
@@ -3044,11 +3040,11 @@ export default function IdeaMap() {
             {board.palette.length === 0 && (
               <span className="fb-count"><Trans>Chưa có màu nào — bấm + để tạo.</Trans></span>
             )}
-          </DockPanel>
+          </FilterPanel>
         )}
 
         {panels.theme && (
-          <DockPanel title={t`Giao diện`} layout={layouts.theme} barRef={fbDockRef} onLayout={(l) => setLayout("theme", l)}>
+          <FilterPanel title={t`Giao diện`}>
             <div className="theme-row">
               <span className="fb-count"><Trans>Nền bảng</Trans></span>
               <div className="fb-chips">
@@ -3095,9 +3091,11 @@ export default function IdeaMap() {
                 ))}
               </div>
             </div>
-          </DockPanel>
+          </FilterPanel>
         )}
         </div>
+        </div>
+        )}
       </div>
 
       {/* ĐẢO NGƯỜI — góc trên phải. Ai đang mở board + nút mời. */}

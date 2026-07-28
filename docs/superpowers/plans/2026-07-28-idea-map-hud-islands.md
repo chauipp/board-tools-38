@@ -72,19 +72,38 @@ Làm ngược lại thì mỗi task đều phải sống chung với layout cũ 
   - [x] Step 4: `npm test`, `npm run test:smoke`, `npm run build` — cả ba xanh
   - [x] Step 5: Viết summary, nối chuỗi spec ↔ plan ↔ summary
 
+- [x] **Task 8: Panel xuống thanh đáy, bỏ hẳn kéo thả** *(bổ sung sau khi người dùng xem bản chạy thật)*
+
+  - [x] Step 1: Tách `.island` thành mặt-kính (không định vị) và `.tl/.tr/.bl`
+        (neo góc); thêm `.hud-bottom` — bao ngoài trong suốt, hai đảo con
+  - [x] Step 2: Bốn nút bật panel rời đảo trên trái xuống đảo nút ở thanh đáy;
+        ★ Yêu thích ở lại (nó không mở ra khối nội dung nào)
+  - [x] Step 3: `.island-dock` → `.filter-dock` trong đảo nội dung; đảo này không
+        render khi không panel nào bật (`anyPanelOn`)
+  - [x] Step 4: `DockPanel.jsx` → `FilterPanel.jsx`, bỏ toàn bộ lượt kéo; tên
+        panel luôn hiện (`.filter-title`)
+  - [x] Step 5: Xoá `lib/dock.js` + `lib/dock.test.js` + state `layouts` +
+        `fbDockRef` + effect `saveLayouts`
+  - [x] Step 6: `.bulk-bar` lên `bottom: 60px` nhường đáy giữa cho `.hud-bottom`
+  - [x] Step 7: Cập nhật chặng smoke; thêm phép kiểm "không còn phần tử kéo-thả"
+  - [x] Step 8: `npm test` 291/291 · smoke xanh · build sạch · i18n 226/226
+
 ---
 
 ## Kiểm bằng mắt (phiên này không có công cụ trình duyệt — để lại cho người dùng)
 
 - [ ] Bảng trống: có đúng là **không còn dải nào** ăn chỗ trên đầu không
-- [ ] Bật cả 4 panel, neo hết vào đảo to — đảo có phình quá nửa màn hình không
-- [ ] Kéo panel ra khỏi đảo, thả sát 4 mép màn hình — có bị kẹp sai chỗ không
-- [ ] Kéo panel đè lên đảo to — panel phải nằm TRÊN đảo (không chui xuống gầm)
-- [ ] Mode Sửa: rail + khu 4 có đụng đảo to hoặc đảo hoàn tác không
+- [ ] Bật cả 4 panel cùng lúc — đảo nội dung ở đáy có phình quá rộng / quá cao
+      không, và bốn nhãn panel có đọc ra được là bốn khối riêng không
+- [ ] Bảng màu nhiều màu (>20 ô): đảo nội dung có cuộn trong `max-height: 40vh`
+      thay vì cao vống lên không
+- [ ] Cụm đáy có đụng đảo hoàn tác (trái) hoặc nút zoom (phải) không, ở 1366 và
+      ở màn hẹp ~1024
+- [ ] Chọn nhiều thẻ: thanh nhiều lựa chọn có nằm gọn TRÊN cụm đáy không
+- [ ] Mode Sửa: rail + khu 4 có đụng cụm đáy không
 - [ ] Mở Mục lục + đảo người cùng lúc — có chồng nhau không
 - [ ] Chế độ chỉ xem: banner có đụng đảo hoàn tác không
 - [ ] Cả hai skin (sạch / vẽ tay) × cả hai theme (sáng / tối)
-- [ ] Màn hẹp ~1280px: đảo to (có ô tìm bung ra) và đảo người có đụng nhau không
 
 ## Kết quả
 

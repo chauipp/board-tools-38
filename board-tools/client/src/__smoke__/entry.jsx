@@ -981,24 +981,34 @@ export async function run(log) {
   if (document.querySelector(".topbar") || document.querySelector(".filterbar")) {
     throw new Error("dải .topbar/.filterbar vẫn còn trong cây — canvas không tràn viền");
   }
-  for (const cls of [".island.tl", ".island.tr", ".island.bl"]) {
+  for (const cls of [".island.tl", ".island.tr", ".island.bl", ".hud-bottom"]) {
     if (!document.querySelector(cls)) throw new Error("thiếu đảo " + cls);
   }
+  // Kéo thả panel đã bỏ hẳn — không còn phần tử nào của cơ chế đó được sinh ra.
+  for (const cls of [".dock-panel", ".dock-grip", ".dock-guide", ".island-dock"]) {
+    if (document.querySelector(cls)) throw new Error("còn sót phần tử kéo-thả panel: " + cls);
+  }
 
-  // Khay neo phải CO LẠI khi không panel nào neo. Đây là toàn bộ lý do của đợt
-  // sửa này: khay cũ giữ chỗ 38px kể cả rỗng.
-  const dockOn = document.querySelector(".island-dock").classList.contains("on");
-  const panelBtn = (title) => Array.from(document.querySelectorAll(".island.tl .island-btn"))
+  // Đảo nội dung chỉ tồn tại khi có panel bật; tắt hết là nó biến mất khỏi cây,
+  // không phải chỉ rỗng ruột. Panel sống đúng một chỗ, không neo không nổi.
+  const panelBtn = (title) => Array.from(document.querySelectorAll(".hud-bottom .island-btn"))
     .find((b) => b.title === title);
+  const dockOn = !!document.querySelector(".filter-dock");
+  const titlesOn = Array.from(document.querySelectorAll(".filter-dock .filter-title"))
+    .map((el) => el.textContent);
   for (const title of ["Trạng thái", "Nhãn"]) {
     const btn = panelBtn(title);
-    if (!btn) throw new Error(`không tìm thấy nút bật panel "${title}" trên đảo to`);
+    if (!btn) throw new Error(`không tìm thấy nút bật panel "${title}" ở thanh đáy`);
     await act(async () => { btn.click(); await new Promise((r) => setTimeout(r, 20)); });
   }
-  const dockOff = document.querySelector(".island-dock").classList.contains("on");
-  log(`khay neo: có panel = ${dockOn ? "bật" : "tắt"} · tắt hết panel = ${dockOff ? "vẫn bật" : "co lại"}`);
-  if (!dockOn) throw new Error("mặc định có panel neo mà khay không mang class .on");
-  if (dockOff) throw new Error("tắt hết panel rồi mà khay neo vẫn giữ chỗ");
+  const dockOff = !!document.querySelector(".filter-dock");
+  log(`thanh đáy: bật ${titlesOn.length} panel (${titlesOn.join(", ")}) · tắt hết → đảo nội dung ${dockOff ? "VẪN còn" : "biến mất"}`);
+  if (!dockOn) throw new Error("mặc định có panel bật mà không thấy đảo nội dung");
+  if (titlesOn.length !== 2) throw new Error("mỗi panel phải tự xưng tên, chờ 2 nhãn, có " + titlesOn.length);
+  if (dockOff) throw new Error("tắt hết panel rồi mà đảo nội dung vẫn còn");
+  // Bật lại một cái: đảo nội dung phải quay lại.
+  await act(async () => { panelBtn("Nhãn").click(); await new Promise((r) => setTimeout(r, 20)); });
+  if (!document.querySelector(".filter-dock")) throw new Error("bật lại panel mà đảo nội dung không quay lại");
 
   // Ô tìm kiếm thu gọn: đóng lại phải XOÁ từ khoá, nếu không thì còn một bộ lọc
   // vô hình đang làm mờ thẻ mà không còn chỗ nào nhìn ra vì sao.
