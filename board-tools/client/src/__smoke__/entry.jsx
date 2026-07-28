@@ -797,6 +797,15 @@ export async function run(log) {
   const putsBeforeText = globalThis.__puts.length;
   await act(async () => { mouse("mousedown", 700, 400, inkCapture); await new Promise((r) => setTimeout(r, 30)); });
   if (!document.querySelector("textarea.text-input")) throw new Error("bấm bằng tool text phải mở ô nhập");
+  // Ô nhập mở ra mà không giữ được tiêu điểm thì coi như không mở: người dùng
+  // bấm xong gõ vào hư không. Trong trình duyệt thật, hành vi mặc định của
+  // mousedown đẩy tiêu điểm về <body> và cướp mất nó ngay sau khi ô nhập gắn
+  // vào cây — đó là lý do handleTextMouseDown phải gọi preventDefault. jsdom
+  // không mô phỏng cú cướp đó nên chốt này chỉ bắt được ca "quên focus hẳn";
+  // phần còn lại phải kiểm bằng tay trên trình duyệt.
+  if (document.activeElement !== document.querySelector("textarea.text-input")) {
+    throw new Error("ô nhập text phải đang giữ tiêu điểm ngay khi mở");
+  }
   await act(async () => {
     document.querySelector("textarea.text-input").dispatchEvent(new window.FocusEvent("blur", { bubbles: false }));
     await new Promise((r) => setTimeout(r, 30));

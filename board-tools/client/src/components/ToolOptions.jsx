@@ -60,21 +60,22 @@ export default function ToolOptions({ tool, prefs, onPrefs, level, onLevel }) {
     const SIZE_LABEL = { 14: t`Chữ nhỏ`, 20: t`Chữ vừa`, 30: t`Chữ lớn` };
     return (
       <div className="tool-options" onMouseDown={(e) => e.stopPropagation()}>
-        <div className="tool-grid">
-          {TEXT_SIZES.map((size) => (
-            <button
-              key={size}
-              type="button"
-              className={"tool-btn text-size" + (prefs.size === size ? " on" : "")}
-              title={SIZE_LABEL[size]}
-              onClick={() => onPrefs({ ...prefs, size })}
-            >
-              {/* Cỡ chữ trên nút tỉ lệ với cỡ thật, nhưng thu nhỏ lại cho vừa ô
-                  28px — nút phải đọc ra được "cái nào to hơn cái nào". */}
-              <span style={{ fontSize: Math.round(size * 0.55), lineHeight: 1 }}>A</span>
-            </button>
-          ))}
-        </div>
+        {/* Ba nút cỡ chữ xếp MỘT CỘT, không dùng .tool-grid: lưới đó 2 cột, ba
+            nút sẽ thành hàng 2 + hàng 1 lệch hẳn sang trái. Đây cũng là lý do
+            ba nút độ dày nét của bút không nằm trong lưới. */}
+        {TEXT_SIZES.map((size) => (
+          <button
+            key={size}
+            type="button"
+            className={"tool-btn text-size" + (prefs.size === size ? " on" : "")}
+            title={SIZE_LABEL[size]}
+            onClick={() => onPrefs({ ...prefs, size })}
+          >
+            {/* Cỡ chữ trên nút tỉ lệ với cỡ thật, nhưng thu nhỏ lại cho vừa ô
+                34px — nút phải đọc ra được "cái nào to hơn cái nào". */}
+            <span style={{ fontSize: Math.round(size * 0.55), lineHeight: 1 }}>A</span>
+          </button>
+        ))}
         <div className="tool-sep" />
         <div className="tool-grid">
           {PEN_COLORS.map((token) => (

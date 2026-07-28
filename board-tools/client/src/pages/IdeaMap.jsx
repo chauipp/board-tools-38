@@ -1981,6 +1981,15 @@ export default function IdeaMap() {
   // Bấm khi đang cầm tool Text. Trúng một text đã có thì mở nó ra sửa, trúng
   // chỗ trống thì tạo mới tại đúng chỗ bấm.
   function handleTextMouseDown(e) {
+    // BẮT BUỘC. Hành vi mặc định của mousedown là dời tiêu điểm: .ink-capture là
+    // một div không nhận được tiêu điểm nên trình duyệt đẩy nó về <body>. Mà
+    // React 18 xả sự kiện rời rạc NGAY trong lúc dispatch, nên ô nhập đã kịp gắn
+    // vào cây và tự lấy tiêu điểm (autoFocus) TRƯỚC khi hành vi mặc định chạy —
+    // rồi bị cướp tiêu điểm ngay sau đó, blur bắn ra, commitText thấy chuỗi rỗng
+    // và gỡ ô nhập đi. Triệu chứng đúng như đã thấy: bấm mà "không ra cái gì để
+    // viết". Không có dòng này thì mọi cách focus lại đều chỉ là vá ngọn.
+    e.preventDefault();
+
     // Đang gõ dở: cú bấm này chỉ để kết thúc (blur của textarea lo phần lưu).
     // Cố ý KHÔNG mở luôn ô mới ở đây — hai việc cùng một nhịp thì thứ tự
     // blur/mousedown khác nhau giữa các trình duyệt, và cái sai sẽ là mất chữ
@@ -3031,7 +3040,11 @@ export default function IdeaMap() {
         {textEdit && (
           <textarea
             className="text-input"
-            autoFocus
+            // Lưới an toàn cho tiêu điểm, thay cho autoFocus (chỉ chạy lúc gắn
+            // vào cây). Nếu có thứ gì cướp mất tiêu điểm giữa chừng thì lần vẽ
+            // lại kế tiếp đòi lại. Điều kiện activeElement giữ cho nó là lệnh
+            // rỗng ở mọi phím gõ, không phải một lệnh focus mỗi ký tự.
+            ref={(el) => { if (el && document.activeElement !== el) el.focus(); }}
             value={textEdit.value}
             style={{
               left: board.view.panX + textEdit.x * board.view.scale,
