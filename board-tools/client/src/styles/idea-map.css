@@ -1048,6 +1048,24 @@
 .place-capture { position: absolute; inset: 0; z-index: 8; cursor: copy; }
 .place-capture.draw-frame { cursor: crosshair; }
 
+/* Mode Laser: cùng vai trò và cùng z-index với .ink-capture. Con trỏ vẫn là
+   crosshair chứ KHÔNG ẩn đi: vệt laser tan hết sau chưa tới một giây, nên
+   người dừng tay một nhịp mà không có con trỏ sẽ mất dấu chuột hoàn toàn. */
+.laser-capture { position: absolute; inset: 0; z-index: 8; cursor: crosshair; }
+
+/* Cùng khuôn với .ink-layer: .canvas rộng 0 nên lớp con phải tự khai kích
+   thước. z-index 8 để vệt nằm trên cả nét vẽ (.ink-layer, 7) — laser là thứ
+   đang được chỉ vào, nó không bao giờ được nằm dưới thứ nó chỉ. */
+.laser-layer {
+  position: absolute; left: 0; top: 0; width: 4200px; height: 3200px;
+  overflow: visible; pointer-events: none; z-index: 8;
+}
+/* Màu do LaserLayer đặt một lần trên <g> (đỏ cho mình, màu con trỏ cho người
+   khác); ba lớp dưới đây đều lấy qua currentColor nên không có chỗ nào lệch. */
+.laser-halo { fill: currentColor; stroke: currentColor; stroke-linejoin: round; opacity: 0.2; }
+.laser-core { fill: currentColor; opacity: 0.92; }
+.laser-head { fill: currentColor; opacity: 0.92; }
+
 /* Khung nháp trong lúc tô — nét đứt như .marquee-box nhưng KHÔNG tô nền: nền mờ
    phủ lên thẻ bên dưới làm khó ướm khung vào đúng cụm thẻ muốn gom. */
 .place-draft {

@@ -5,6 +5,7 @@ import { I18nProvider } from "@lingui/react";
 import { i18n } from "../lib/i18n.js";
 import IdeaMap from "../pages/IdeaMap.jsx";
 import { AuthProvider } from "../context/AuthContext.jsx";
+import { LASER_FADE_MS } from "../lib/laser.js";
 
 export async function run(log) {
   const root = createRoot(document.getElementById("root"));
@@ -92,8 +93,14 @@ export async function run(log) {
   // mode Sửa. Đây là bất biến dễ vỡ nhất của vỏ giao diện này.
   const railBtns = () => document.querySelectorAll(".tool-rail .tool-btn").length;
   const railGroups = () => document.querySelectorAll(".tool-rail .tool-group").length;
+  // Tra nút theo TÊN, không theo vị trí. Cả file này trước đây bấm nút bằng chỉ
+  // số, mà thêm một nút vào khu 1 là mọi chỉ số phía sau dịch đi một — test sẽ
+  // bấm nhầm nút và vẫn xanh cho tới khi vỡ ở một chỗ chẳng liên quan. Nút Laser
+  // chính là lần đầu tiên chuyện đó xảy ra.
+  const railBtn = (name) => Array.from(document.querySelectorAll(".tool-rail .tool-btn"))
+    .find((b) => (b.title || "").startsWith(name));
   log(`thanh công cụ: ${railBtns()} nút trong ${railGroups()} khung ở mode Chuột`);
-  if (railBtns() !== 6) throw new Error("mode Chuột phải có 6 nút (2 mode + 4 thêm), có " + railBtns());
+  if (railBtns() !== 7) throw new Error("mode Chuột phải có 7 nút (3 mode + 4 thêm), có " + railBtns());
   if (document.querySelector(".tool-options")) throw new Error("mode Chuột không được hiện khu 4");
   // Mỗi nhóm chức năng là một khung rời. Khu 2 (tool vẽ) chưa hiện ở mode Chuột
   // nên chỉ có 2 khung; mọi nút phải nằm TRONG một khung, không nút nào lạc ra
@@ -107,10 +114,10 @@ export async function run(log) {
   const islandText = document.querySelector(".island.tl").textContent;
   if (islandText.includes("Nối ý tưởng")) throw new Error("nút Nối ý tưởng vẫn còn trên đảo to");
 
-  const drawBtn = document.querySelectorAll(".tool-rail .tool-btn")[1];
+  const drawBtn = railBtn("Sửa");
   await act(async () => { drawBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
   log(`sau khi bật mode Sửa: ${railBtns()} nút, khu 4 = ${document.querySelectorAll(".tool-options .pen-swatch").length} ô màu`);
-  if (railBtns() !== 10) throw new Error("mode Sửa phải có 10 nút (2 mode + 4 tool + 4 thêm), có " + railBtns());
+  if (railBtns() !== 11) throw new Error("mode Sửa phải có 11 nút (3 mode + 4 tool + 4 thêm), có " + railBtns());
   if (railGroups() !== 3) throw new Error("mode Sửa phải có 3 khung (mode + tool vẽ + thêm), có " + railGroups());
   if (document.querySelectorAll(".tool-rail .tool-group .tool-btn").length !== railBtns()) {
     throw new Error("có nút nằm ngoài .tool-group — nút đó sẽ không có khung");
@@ -164,7 +171,7 @@ export async function run(log) {
   if (document.querySelectorAll(".ink-layer path").length !== 3) throw new Error("mong đợi 3 nét trước khi gôm");
 
   // Bật cục gôm: nút thứ 4 trên thanh (2 mode + bút + gôm).
-  const eraserBtn = document.querySelectorAll(".tool-rail .tool-btn")[3];
+  const eraserBtn = railBtn("Cục gôm");
   await act(async () => { eraserBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
 
   const putsBeforeErase = globalThis.__puts.length;
@@ -198,7 +205,7 @@ export async function run(log) {
 
   // PHÁT: một nét bút phải ra gói seq 0 mang màu/độ dày, rồi các gói mang ĐIỂM
   // MỚI THÊM, rồi đúng một gói done mang drawingId.
-  const penBtn = document.querySelectorAll(".tool-rail .tool-btn")[2];
+  const penBtn = railBtn("Bút");
   await act(async () => { penBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
 
   const emittedBeforeInk = globalThis.__emitted.length;
@@ -307,7 +314,7 @@ export async function run(log) {
 
   // Tool hình khối: khu 4 phải mọc thêm bảng chọn hình và hai nút chế độ tô,
   // và nút "tô cả hình" phải mờ đi khi đang chọn một hình MỞ.
-  const shapeBtn = document.querySelectorAll(".tool-rail .tool-btn")[4];
+  const shapeBtn = railBtn("Hình khối");
   await act(async () => { shapeBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
   const picks = document.querySelectorAll(".tool-options .shape-pick").length;
   const fills = document.querySelectorAll(".tool-options .fill-pick").length;
@@ -376,7 +383,7 @@ export async function run(log) {
   // cũng xoá — không chỉ chạm viền.
   const putsBeforeShapeErase = globalThis.__puts.length;
   const pathsBeforeShapeErase = document.querySelectorAll(".ink-layer path").length;
-  await act(async () => { document.querySelectorAll(".tool-rail .tool-btn")[3].click(); await new Promise((r) => setTimeout(r, 20)); });
+  await act(async () => { railBtn("Cục gôm").click(); await new Promise((r) => setTimeout(r, 20)); });
   await act(async () => {
     // (1280,360) nằm giữa hình chữ nhật tô đặc vẽ ở nhóm trước (1200,300)-(1360,420)
     mouse("mousedown", 1280, 360, capture);
@@ -394,7 +401,7 @@ export async function run(log) {
   if (globalThis.__puts.length - putsBeforeShapeErase !== 1) throw new Error("một lần quét gôm phải đúng 1 lần lưu");
 
   // Hình CHỈ VIỀN: quét vào giữa vùng rỗng thì KHÔNG được xoá.
-  await act(async () => { document.querySelectorAll(".tool-rail .tool-btn")[4].click(); await new Promise((r) => setTimeout(r, 20)); });
+  await act(async () => { railBtn("Hình khối").click(); await new Promise((r) => setTimeout(r, 20)); });
   await act(async () => { fillBtns()[0].click(); await new Promise((r) => setTimeout(r, 20)); });
   await act(async () => {
     mouse("mousedown", 1200, 700, capture);
@@ -408,7 +415,7 @@ export async function run(log) {
   await act(async () => { mouse("mouseup", 1360, 820); await new Promise((r) => setTimeout(r, 40)); });
   const pathsWithOutlineRect = document.querySelectorAll(".ink-layer path").length;
 
-  await act(async () => { document.querySelectorAll(".tool-rail .tool-btn")[3].click(); await new Promise((r) => setTimeout(r, 20)); });
+  await act(async () => { railBtn("Cục gôm").click(); await new Promise((r) => setTimeout(r, 20)); });
   const putsBeforeHollow = globalThis.__puts.length;
   await act(async () => {
     // giữa hình chỉ viền → không chạm gì
@@ -423,7 +430,7 @@ export async function run(log) {
 
   // PHÁT: mọi gói của hình khối phải mang kind và pts đúng 4 số, và tổng số
   // "số" đã gửi không được phình lên như gói nét bút.
-  await act(async () => { document.querySelectorAll(".tool-rail .tool-btn")[4].click(); await new Promise((r) => setTimeout(r, 20)); });
+  await act(async () => { railBtn("Hình khối").click(); await new Promise((r) => setTimeout(r, 20)); });
   await act(async () => { shapePicks()[1].click(); await new Promise((r) => setTimeout(r, 20)); });   // ê-líp
   // Bật TÔ CẢ HÌNH trước khi kéo. Nhóm trước vừa đặt chế độ chỉ viền, nên nếu
   // không bật lại ở đây thì assertion `fill` dưới chỉ từng thấy `false` — và
@@ -505,8 +512,8 @@ export async function run(log) {
   // .ink-capture nên không chạy, còn listener mouseup gắn trên window thì chạy.
   // Phát trên body chứ không trên window vì handler onDocMouseDown của IdeaMap
   // gọi el.contains(e.target), mà window không phải Node.
-  for (const [name, btnIndex] of [["bút", 2], ["hình khối", 4]]) {
-    await act(async () => { document.querySelectorAll(".tool-rail .tool-btn")[btnIndex].click(); await new Promise((r) => setTimeout(r, 20)); });
+  for (const [name, btnName] of [["bút", "Bút"], ["hình khối", "Hình khối"]]) {
+    await act(async () => { railBtn(btnName).click(); await new Promise((r) => setTimeout(r, 20)); });
     const putsBeforeBlur = globalThis.__puts.length;
     const pathsBeforeBlur = document.querySelectorAll(".ink-layer path").length;
     await act(async () => {
@@ -540,7 +547,7 @@ export async function run(log) {
 
   // ——— Phím tắt Bút: `p`, không còn `b` ———
   const press = (k) => window.dispatchEvent(new window.KeyboardEvent("keydown", { key: k, bubbles: true }));
-  const cursorBtn = () => document.querySelectorAll(".tool-rail .tool-btn")[0];
+  const cursorBtn = () => railBtn("Chuột");
   await act(async () => { cursorBtn().click(); await new Promise((r) => setTimeout(r, 20)); });
   if (document.querySelector(".tool-options")) throw new Error("bấm nút Chuột phải về mode Chuột");
 
@@ -550,7 +557,7 @@ export async function run(log) {
   if (!bDidNothing) throw new Error("`b` phải hết tác dụng sau khi đổi phím Bút sang `p`");
 
   await act(async () => { press("p"); await new Promise((r) => setTimeout(r, 20)); });
-  const penOn = document.querySelectorAll(".tool-rail .tool-btn")[2]?.classList.contains("on");
+  const penOn = railBtn("Bút")?.classList.contains("on");
   log(`phím p: khu 4 ${document.querySelector(".tool-options") ? "hiện" : "KHÔNG hiện"} · nút Bút ${penOn ? "sáng" : "KHÔNG sáng"}`);
   if (!document.querySelector(".tool-options")) throw new Error("`p` phải vào mode Sửa (khu 4 hiện ra)");
   if (!penOn) throw new Error("`p` phải chọn đúng tool Bút, không phải gôm hay hình");
@@ -661,8 +668,8 @@ export async function run(log) {
   // Bất biến của cả nhóm này: nút khu 3 KHÔNG tạo gì lúc bấm, và làm xong đúng
   // MỘT lần là tự về mode Chuột (khác khu 2, giữ nguyên tool cho tới khi đổi).
   await act(async () => { cursorBtn().click(); await new Promise((r) => setTimeout(r, 20)); });
-  const addCardBtn = () => document.querySelectorAll(".tool-rail .tool-btn")[2];
-  const addFrameBtn = () => document.querySelectorAll(".tool-rail .tool-btn")[3];
+  const addCardBtn = () => railBtn("Thêm ý tưởng");
+  const addFrameBtn = () => railBtn("Thêm khung");
 
   const putsBeforeArm = globalThis.__puts.length;
   const cardsBeforePlace = document.querySelectorAll(".idea-card").length;
@@ -780,9 +787,9 @@ export async function run(log) {
   if (afterCtrl !== framesBeforeDel - 1) throw new Error("Ctrl+click khung phải BỚT nó khỏi vùng chọn");
 
   // ── Tool text ──────────────────────────────────────────────────────────
-  // Về mode Sửa rồi chọn tool Text (nút thứ 6: 2 mode + pen/eraser/shape/text).
-  await act(async () => { document.querySelectorAll(".tool-rail .tool-btn")[1].click(); await new Promise((r) => setTimeout(r, 20)); });
-  await act(async () => { document.querySelectorAll(".tool-rail .tool-btn")[5].click(); await new Promise((r) => setTimeout(r, 20)); });
+  // Về mode Sửa rồi chọn tool Text.
+  await act(async () => { railBtn("Sửa").click(); await new Promise((r) => setTimeout(r, 20)); });
+  await act(async () => { railBtn("Text").click(); await new Promise((r) => setTimeout(r, 20)); });
   const sizeBtns = document.querySelectorAll(".tool-options .text-size").length;
   const textSwatches = document.querySelectorAll(".tool-options .pen-swatch").length;
   const widthBtns = document.querySelectorAll(".tool-options .pen-width").length;
@@ -1056,6 +1063,64 @@ export async function run(log) {
   if (!hadTail) throw new Error("gõ từ khoá mà đuôi lọc không hiện");
   if (document.querySelector(".island.tl .search-box")) throw new Error("bấm lần hai mà ô tìm không đóng");
   if (stillTail) throw new Error("đóng ô tìm mà từ khoá vẫn còn — bộ lọc vô hình");
+
+  // ── Bút laser ──────────────────────────────────────────────────────────────
+  // Điều đáng kiểm nhất ở đây KHÔNG phải là vệt có vẽ ra không, mà là vệt có
+  // TỰ BIẾN MẤT không và có ghi gì vào board không. Một cây laser để lại vết
+  // hoặc để lại một entry trong drawings thì nó đã thành cây bút.
+  const laserBtn = Array.from(document.querySelectorAll(".tool-rail .tool-btn"))
+    .find((b) => (b.title || "").startsWith("Laser"));
+  if (!laserBtn) throw new Error("không tìm thấy nút Laser trên thanh công cụ");
+  if (laserBtn.disabled) throw new Error("nút Laser bị khoá — laser không ghi gì vào board, người chỉ xem cũng phải dùng được");
+
+  const putsBeforeLaser = globalThis.__puts.length;
+  const drawingsBeforeLaser = document.querySelectorAll(".ink-layer path").length;
+  await act(async () => { laserBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
+  const laserCapture = document.querySelector(".laser-capture");
+  if (!laserCapture) throw new Error("bật Laser mà không có lớp bắt chuột .laser-capture");
+
+  // Di chuột (KHÔNG giữ nút — đó là cả điểm của cây laser).
+  await act(async () => {
+    for (const x of [400, 440, 480, 520, 560]) mouse("mousemove", x, 300, laserCapture);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  const selfTrail = document.querySelectorAll(".laser-layer g").length;
+  const emittedLaser = globalThis.__emitted.filter((e) => e[0] === "live:laser");
+  const sentPts = emittedLaser.reduce((n, e) => n + e[1].pts.length / 2, 0);
+  log(`laser: di chuột → ${selfTrail} vệt · phát ${emittedLaser.length} gói mang ${sentPts} điểm`);
+  if (selfTrail !== 1) throw new Error("di chuột ở mode Laser mà không ra vệt nào");
+  if (!document.querySelector(".laser-layer .laser-core")) throw new Error("vệt không có lõi");
+  if (!document.querySelector(".laser-layer .laser-head")) throw new Error("vệt không có chấm ở đầu con trỏ");
+  if (!emittedLaser.length) throw new Error("không phát gói live:laser nào — người khác sẽ không thấy gì");
+  // Hợp đồng của pushLaserPoint: chỉ điểm nào THẬT SỰ vào vệt mới được phát.
+  // Lệch số là vệt hai bên tan theo hai nhịp khác nhau.
+  if (sentPts !== 5) throw new Error(`phát ${sentPts} điểm nhưng chỉ có 5 điểm vào vệt — hai bên sẽ thấy vệt khác nhau`);
+
+  // Vệt của người khác: màu phải KHÁC vệt của mình, nếu không thì hai người
+  // cùng chỉ vào bảng là không biết ai đang chỉ cái nào.
+  globalThis.__deliver("presence:join", { socketId: "peer-1", email: "ban@example.com", name: "Bạn" });
+  globalThis.__deliver("live:laser", { socketId: "peer-1", pts: [100, 700, 160, 700, 220, 700] });
+  await act(async () => { await new Promise((r) => setTimeout(r, 40)); });
+  const colors = Array.from(document.querySelectorAll(".laser-layer g")).map((g) => g.style.color);
+  log(`laser: thêm vệt của người khác → ${colors.length} vệt, màu ${JSON.stringify(colors)}`);
+  if (colors.length !== 2) throw new Error("gói live:laser của người khác không dựng ra vệt");
+  if (colors[0] === colors[1]) throw new Error("vệt của mình và của người khác cùng màu — không phân biệt được ai đang chỉ");
+
+  // Đứng yên một nhịp là vệt phải tan HẾT. Đây là thứ tách laser khỏi bút, và
+  // là thứ duy nhất ở đây cần thời gian thật trôi qua.
+  await act(async () => { await new Promise((r) => setTimeout(r, LASER_FADE_MS + 300)); });
+  const leftover = document.querySelectorAll(".laser-layer g").length;
+  log(`laser: đứng yên ${LASER_FADE_MS + 300}ms → còn ${leftover} vệt`);
+  if (leftover !== 0) throw new Error("vệt laser không tự tan — nó đang là nét vẽ chứ không phải cây laser");
+
+  // Và không để lại dấu vết nào trong dữ liệu.
+  const drawingsAfterLaser = document.querySelectorAll(".ink-layer path").length;
+  if (drawingsAfterLaser !== drawingsBeforeLaser) throw new Error("laser thêm nét vào .ink-layer — nó phải không ghi gì vào board");
+  if (globalThis.__puts.length !== putsBeforeLaser) throw new Error("laser gây ra một lần lưu board");
+
+  // Bấm lại nút là tắt, về mode Chuột — laser là thứ bật trong dăm câu nói rồi tắt.
+  await act(async () => { laserBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
+  if (document.querySelector(".laser-capture")) throw new Error("bấm lại nút Laser mà lớp bắt chuột vẫn còn");
 
   return true;
 }

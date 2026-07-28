@@ -45,6 +45,8 @@ import { CARD_LEVEL_W, cardLevel, levelPatch, loadCardLevel, saveCardLevel } fro
 import InkLayer from "../components/InkLayer.jsx";
 import { useInk } from "../lib/useInk.js";
 import { useInkLive } from "../lib/useInkLive.js";
+import LaserLayer from "../components/LaserLayer.jsx";
+import { useLaser } from "../lib/useLaser.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -227,7 +229,12 @@ export default function IdeaMap() {
   // biến mất là một bộ lọc vô hình, thẻ bị làm mờ mà không thấy vì sao.
   const [searchOpen, setSearchOpen] = useState(false);
   // mode: "select" (thao tác thẻ như cũ) | "draw" (vẽ lên bảng) | "place" (đã
-  // lên nòng một việc ở khu 3, đang chờ người dùng chỉ chỗ trên bảng).
+  // lên nòng một việc ở khu 3, đang chờ người dùng chỉ chỗ trên bảng) | "laser"
+  // (bút laser — vệt sáng chạy theo con trỏ rồi tan, không ghi gì vào board).
+  //
+  // Laser là MODE chứ không phải một tool nữa của mode Sửa, dù bề ngoài nó
+  // giống vẽ: tool của mode Sửa đều ghi vào board nên đều bị khoá với người chỉ
+  // xem và đều đi kèm bảng tuỳ chọn ở khu 4, còn laser thì không cái nào cả.
   // KHÔNG nhớ qua lần mở sau: mở board ra mà con trỏ đang là cây bút là điều
   // gây bất ngờ vô cớ. Riêng màu bút, độ dày và bậc thẻ thì nhớ.
   const [mode, setMode] = useState("select");
@@ -282,6 +289,7 @@ export default function IdeaMap() {
   const [inviteOpen, setInviteOpen] = useState(false);
   const { sendCursor, sendSelection, sendEdgeDraft, socket } = usePresence(user, boardId);
   const inkLive = useInkLive(socket);
+  const laser = useLaser(socket);
   // Kích thước thẻ đo bằng ResizeObserver thay cho querySelector + offsetWidth
   // tại chỗ (xem lib/card-sizes.js). `frameCardSize` giữ nguyên tên cũ vì nó là
   // tham số `sizeOf` của rất nhiều hàm hình học.
@@ -682,6 +690,10 @@ export default function IdeaMap() {
         if (key === "arrowright") { e.preventDefault(); stepPresentation(1); }
         else if (key === "arrowleft") { e.preventDefault(); stepPresentation(-1); }
         else if (key === "escape") { exitPresentation(); }
+        // `k` là ngoại lệ duy nhất trong danh sách phím tắt bị tắt khi trình
+        // chiếu, vì đang trình chiếu MỚI là lúc cần cây laser nhất. Nó cũng
+        // không đụng gì tới slide: chỉ đổi mode, không ghi, không lia bảng.
+        else if (key === "k") { e.preventDefault(); enterMode(mode === "laser" ? "select" : "laser"); }
         return;
       }
       // Undo/redo/nhân bản đều ghi dữ liệu. Với người chỉ xem chúng không lưu
@@ -712,7 +724,7 @@ export default function IdeaMap() {
         deleteSelection();
       }
       else if (key === "escape") {
-        if (mode === "draw" || mode === "place") enterMode("select");
+        if (mode === "draw" || mode === "place" || mode === "laser") enterMode("select");
         else if (colorMenu) setColorMenu(null);
         else if (badgeUI) setBadgeUI(null);
         else if (edgeMenu) setEdgeMenu(null);
@@ -752,6 +764,11 @@ export default function IdeaMap() {
       else if (key === "s") { if (role === "viewer") return; e.preventDefault(); enterMode("draw"); setTool("shape"); }
       else if (key === "t") { if (role === "viewer") return; e.preventDefault(); enterMode("draw"); setTool("text"); }
       else if (key === "l") { if (role === "viewer") return; e.preventDefault(); toggleLinkMode(); }
+      // `k` — chữ cái Excalidraw dùng cho laser. Bấm lần nữa là tắt: laser là
+      // thứ bật lên trong dăm câu nói rồi tắt, khác bút (chọn xong vẽ cả buổi),
+      // nên nó cần một phím BẬT/TẮT chứ không phải một phím chọn.
+      // Không có chốt viewer: laser không ghi gì vào board.
+      else if (key === "k") { e.preventDefault(); enterMode(mode === "laser" ? "select" : "laser"); }
       // `f` (vừa khung theo lựa chọn) chỉ đổi view — người chỉ xem vẫn dùng được.
       else if (key === "f") { e.preventDefault(); zoomToSelection(); }
       else if (key === "arrowleft") { if (role === "viewer") return; e.preventDefault(); nudgeSelection(e.shiftKey ? -10 : -1, 0); }
@@ -2027,6 +2044,23 @@ export default function IdeaMap() {
     ink.handleMouseDown(e);
   }
 
+  // Mode Laser. KHÔNG cần giữ nút: vệt chạy theo con trỏ ngay khi di. Giữ nút
+  // để chỉ trỏ là thứ không ai làm nổi trong lúc đang nói — đây cũng là cách
+  // Excalidraw và Miro làm.
+  function handleLaserMouseDown(e) {
+    // Nhường đường cho lia bảng y như .ink-capture: chuột phải và Space+trái
+    // vẫn lia được, chỉ cú bấm trái trơn là bị nuốt — nuốt có chủ ý, để lỡ tay
+    // bấm lúc đang chỉ trỏ không kéo mất một cái thẻ.
+    if (e.button === 2) { startPan(e); return; }
+    if (e.button === 0 && spacePanRef.current) { startPan(e); return; }
+  }
+
+  function handleLaserMouseMove(e) {
+    if (!viewportRef.current || !boardRef.current) return;
+    const p = eventToCanvas(e);
+    laser.track(p.x, p.y);
+  }
+
   // Chuột → toạ độ canvas. Bản sao của toCanvas trong useInk.js; không gom
   // chung được vì ở đó nó nhận `view` qua ref của hook, còn ở đây board đã có
   // sẵn trong tầm tay.
@@ -3206,6 +3240,15 @@ export default function IdeaMap() {
         {mode === "draw" && (
           <div className="ink-capture" onMouseDown={handleInkCaptureMouseDown} />
         )}
+        {/* Cùng vai trò .ink-capture: phủ kín khung nhìn để di chuột ngang qua
+            một cái thẻ vẫn ra vệt laser chứ không bị thẻ ăn mất chuột. */}
+        {mode === "laser" && (
+          <div
+            className="laser-capture"
+            onMouseDown={handleLaserMouseDown}
+            onMouseMove={handleLaserMouseMove}
+          />
+        )}
         {/* Ô nhập text. Nằm NGOÀI .canvas nên phải tự nhân camera vào: .canvas
             khai will-change: transform → nó là một stacking context, con của nó
             không thể nổi lên trên .ink-capture (z-index 8) để nhận được chuột.
@@ -3328,6 +3371,11 @@ export default function IdeaMap() {
             sketch={skin === "sketch"}
             editingTextId={textEdit ? textEdit.id : null}
           />
+
+          {/* Nằm trong .canvas nên vệt bám theo bảng khi lia/phóng — chỉ vào
+              một cái thẻ thì vệt ở lại đúng cái thẻ đó, không trôi ra chỗ khác
+              khi người xem lia bảng. */}
+          <LaserLayer socket={socket} store={laser.store} scale={board.view.scale} />
 
           {/* Tay cầm nổi trên cùng, tách khỏi .edge-layer: đầu dây thường trùng
               đúng chỗ connector-zone của thẻ (cả hai đều ở tâm cạnh), và thẻ

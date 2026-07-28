@@ -34,6 +34,18 @@ function IconText() {
 function IconShape() {
   return <svg viewBox="0 0 20 20" width="18" height="18"><rect x="2.5" y="2.5" width="10" height="10" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.6" /><circle cx="13" cy="13" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.6" /></svg>;
 }
+// Chấm sáng toả tia — cùng hình người ta quen thấy trên nút laser của máy chiếu.
+function IconLaser() {
+  return (
+    <svg viewBox="0 0 20 20" width="18" height="18">
+      <circle cx="10" cy="10" r="2.8" fill="currentColor" />
+      <path
+        d="M10 1.6 L10 4.2 M10 15.8 L10 18.4 M1.6 10 L4.2 10 M15.8 10 L18.4 10 M4.2 4.2 L6 6 M14 14 L15.8 15.8 M15.8 4.2 L14 6 M6 14 L4.2 15.8"
+        fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
 export default function ToolRail({
   mode, tool, placeTool, canEdit, linkMode,
@@ -62,6 +74,15 @@ export default function ToolRail({
           disabled={!canEdit}
           onClick={() => onMode("draw")}
         ><IconEdit /></button>
+        {/* KHÔNG có `disabled={!canEdit}`, khác hai nút vẽ ở khu 2 và mọi nút ở
+            khu 3: laser không ghi một chữ nào vào board, nó chỉ là cái que chỉ.
+            Người được mời vào chỉ để xem vẫn phải chỉ trỏ được khi họp. */}
+        <button
+          type="button"
+          className={"tool-btn" + (mode === "laser" ? " on" : "")}
+          title={t`Laser — chỉ trỏ khi thuyết trình (K)`}
+          onClick={() => onMode(mode === "laser" ? "select" : "laser")}
+        ><IconLaser /></button>
       </div>
 
       {/* Khu 2 — tool của mode Sửa. Mode Chuột thì ẩn hẳn, không phải làm mờ:
