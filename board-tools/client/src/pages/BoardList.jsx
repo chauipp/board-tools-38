@@ -11,7 +11,7 @@ export default function BoardList() {
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState(null);
   const navigate = useNavigate();
-  const toggleTheme = useTheme();
+  const { toggle: toggleTheme } = useTheme();
   const { t } = useLingui();
   // Dựng trong component: ngoài component `t` chưa có nên chuỗi không vào được
   // catalog và bản tiếng Anh sẽ hiện nguyên tiếng Việt (xem InviteModal.jsx).

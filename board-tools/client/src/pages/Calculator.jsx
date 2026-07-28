@@ -21,7 +21,7 @@ function findStat(stats, includes, excludes) {
 }
 
 export default function Calculator() {
-  const toggleTheme = useTheme();
+  const { toggle: toggleTheme } = useTheme();
   const { t } = useLingui();
   const [calc, setCalc] = useState(null);
   const [loadError, setLoadError] = useState(null);

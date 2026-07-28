@@ -9,6 +9,11 @@
         try {
           var saved = localStorage.getItem("theme-pref");
           if (saved) document.documentElement.setAttribute("data-theme", saved);
+          // Skin phải đặt ở đây chứ không đợi React: đặt muộn thì khung hình
+          // đầu tiên vẽ bằng skin sạch rồi mới nhảy sang vẽ tay. Font thì
+          // useSkin nạp lười sau, chỉ thuộc tính là cần sớm.
+          var skin = localStorage.getItem("skin-pref");
+          if (skin === "sketch") document.documentElement.setAttribute("data-skin", "sketch");
         } catch (e) {}
       })();
     </script>

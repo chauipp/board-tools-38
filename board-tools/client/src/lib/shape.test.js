@@ -201,3 +201,39 @@ test("drawingsHitBy: hình khối thiếu số hoặc kind lạ thì bỏ qua, k
 test("SHAPE_MIN_DIAGONAL: ngưỡng bỏ hình suy biến là 4", () => {
   assert.equal(SHAPE_MIN_DIAGONAL, 4);
 });
+
+test("drawingsHitBy: quét trúng text theo hộp chữ đã lưu", () => {
+  const drawings = [{ id: 7, kind: "text", pts: [100, 50], text: "chú thích", w: 60, h: 26 }];
+  assert.deepEqual(drawingsHitBy(drawings, { x: 110, y: 60 }, 8), [7]);
+  assert.deepEqual(drawingsHitBy(drawings, { x: 400, y: 60 }, 8), []);
+});
+
+// Vùng chạm của text KHÔNG được phình theo bề rộng chữ: với text, `w` là bề rộng
+// hộp chứ không phải độ dày nét, nên nhánh text cố ý không cộng w/2 như nét bút.
+// Không có chốt này thì một dòng chữ dài 400 có vùng chạm rộng thêm 200 mỗi phía
+// và cục gôm ăn oan mọi thứ quanh nó.
+test("drawingsHitBy: bề rộng text không nới vùng chạm ra", () => {
+  const drawings = [{ id: 7, kind: "text", pts: [0, 0], text: "x", w: 400, h: 26 }];
+  assert.deepEqual(drawingsHitBy(drawings, { x: -50, y: 13 }, 8), []);
+  assert.deepEqual(drawingsHitBy(drawings, { x: -5, y: 13 }, 8), [7]);
+});
+
+// Canh gác: thêm nhánh text không được làm hỏng ba nhánh đã có. Một danh sách
+// trộn cả ba loại, mỗi loại phải được bắt đúng loại của nó.
+test("drawingsHitBy: pen, hình khối và text sống chung không giẫm chân nhau", () => {
+  const drawings = [
+    { id: 1, kind: "pen", w: 4, pts: [0, 0, 100, 0] },
+    { id: 2, kind: "rect", w: 2, pts: [200, 0, 300, 60] },
+    { id: 3, kind: "text", pts: [400, 0], text: "a", w: 40, h: 26 }
+  ];
+  assert.deepEqual(drawingsHitBy(drawings, { x: 50, y: 0 }, 3), [1]);
+  assert.deepEqual(drawingsHitBy(drawings, { x: 200, y: 30 }, 3), [2]);
+  assert.deepEqual(drawingsHitBy(drawings, { x: 410, y: 10 }, 3), [3]);
+  assert.deepEqual(drawingsHitBy(drawings, { x: 1000, y: 1000 }, 3), []);
+});
+
+// Text thiếu w/h (dữ liệu cũ hoặc gói realtime lỗi) không được làm nổ cục gôm.
+test("drawingsHitBy: text thiếu hộp thì bỏ qua, không nổ", () => {
+  const drawings = [{ id: 9, kind: "text", pts: [0, 0], text: "a" }];
+  assert.deepEqual(drawingsHitBy(drawings, { x: 0, y: 0 }, 8), []);
+});

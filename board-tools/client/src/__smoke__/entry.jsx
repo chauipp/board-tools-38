@@ -103,14 +103,14 @@ export async function run(log) {
     throw new Error("có nút nằm ngoài .tool-group — nút đó sẽ không có khung");
   }
 
-  // Menu THÊM và nút Nối ý tưởng phải đã rời khỏi topbar — mỗi việc một chỗ bấm.
-  const topbarText = document.querySelector(".topbar").textContent;
-  if (topbarText.includes("Nối ý tưởng")) throw new Error("nút Nối ý tưởng vẫn còn trên topbar");
+  // Menu THÊM và nút Nối ý tưởng phải đã rời khỏi đảo to — mỗi việc một chỗ bấm.
+  const islandText = document.querySelector(".island.tl").textContent;
+  if (islandText.includes("Nối ý tưởng")) throw new Error("nút Nối ý tưởng vẫn còn trên đảo to");
 
   const drawBtn = document.querySelectorAll(".tool-rail .tool-btn")[1];
   await act(async () => { drawBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
   log(`sau khi bật mode Sửa: ${railBtns()} nút, khu 4 = ${document.querySelectorAll(".tool-options .pen-swatch").length} ô màu`);
-  if (railBtns() !== 9) throw new Error("mode Sửa phải có 9 nút (2 mode + 3 tool + 4 thêm), có " + railBtns());
+  if (railBtns() !== 10) throw new Error("mode Sửa phải có 10 nút (2 mode + 4 tool + 4 thêm), có " + railBtns());
   if (railGroups() !== 3) throw new Error("mode Sửa phải có 3 khung (mode + tool vẽ + thêm), có " + railGroups());
   if (document.querySelectorAll(".tool-rail .tool-group .tool-btn").length !== railBtns()) {
     throw new Error("có nút nằm ngoài .tool-group — nút đó sẽ không có khung");
@@ -778,6 +778,284 @@ export async function run(log) {
   const afterCtrl = selectedFrames();
   log(`Ctrl+click khung đã chọn: còn ${afterCtrl}/${framesBeforeDel} khung được chọn`);
   if (afterCtrl !== framesBeforeDel - 1) throw new Error("Ctrl+click khung phải BỚT nó khỏi vùng chọn");
+
+  // ── Tool text ──────────────────────────────────────────────────────────
+  // Về mode Sửa rồi chọn tool Text (nút thứ 6: 2 mode + pen/eraser/shape/text).
+  await act(async () => { document.querySelectorAll(".tool-rail .tool-btn")[1].click(); await new Promise((r) => setTimeout(r, 20)); });
+  await act(async () => { document.querySelectorAll(".tool-rail .tool-btn")[5].click(); await new Promise((r) => setTimeout(r, 20)); });
+  const sizeBtns = document.querySelectorAll(".tool-options .text-size").length;
+  const textSwatches = document.querySelectorAll(".tool-options .pen-swatch").length;
+  const widthBtns = document.querySelectorAll(".tool-options .pen-width").length;
+  log(`khu 4 của text: ${sizeBtns} cỡ · ${textSwatches} màu · ${widthBtns} độ dày (phải là 0)`);
+  if (sizeBtns !== 3) throw new Error("khu 4 của text phải có 3 nút cỡ chữ, có " + sizeBtns);
+  if (textSwatches !== 7) throw new Error("khu 4 của text phải có 7 ô màu, có " + textSwatches);
+  if (widthBtns !== 0) throw new Error("khu 4 của text KHÔNG được có nút độ dày nét");
+
+  // Bấm lên bảng rồi Escape ngay, không gõ gì: không được đẻ ra phần tử rỗng.
+  const inkCapture = document.querySelector(".ink-capture");
+  const drawingsBeforeText = globalThis.__lastBoard ? globalThis.__lastBoard.drawings.length : null;
+  const putsBeforeText = globalThis.__puts.length;
+  await act(async () => { mouse("mousedown", 700, 400, inkCapture); await new Promise((r) => setTimeout(r, 30)); });
+  if (!document.querySelector("textarea.text-input")) throw new Error("bấm bằng tool text phải mở ô nhập");
+  // Ô nhập mở ra mà không giữ được tiêu điểm thì coi như không mở: người dùng
+  // bấm xong gõ vào hư không. Trong trình duyệt thật, hành vi mặc định của
+  // mousedown đẩy tiêu điểm về <body> và cướp mất nó ngay sau khi ô nhập gắn
+  // vào cây — đó là lý do handleTextMouseDown phải gọi preventDefault. jsdom
+  // không mô phỏng cú cướp đó nên chốt này chỉ bắt được ca "quên focus hẳn";
+  // phần còn lại phải kiểm bằng tay trên trình duyệt.
+  if (document.activeElement !== document.querySelector("textarea.text-input")) {
+    throw new Error("ô nhập text phải đang giữ tiêu điểm ngay khi mở");
+  }
+  await act(async () => {
+    document.querySelector("textarea.text-input").blur();
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  log(`bấm rồi thoát, không gõ gì: PUT thêm ${globalThis.__puts.length - putsBeforeText} lần · ${document.querySelectorAll(".ink-layer text").length} text trên bảng`);
+  if (globalThis.__puts.length !== putsBeforeText) throw new Error("không gõ gì mà vẫn lưu — sẽ đẻ ra phần tử text rỗng");
+  if (document.querySelectorAll(".ink-layer text").length !== 0) throw new Error("không gõ gì mà vẫn ra text trên bảng");
+
+  // Đang mở ô nhập mà bấm sang chỗ khác: ô nhập phải NHẢY sang chỗ mới, không
+  // bắt bấm hai lần. Chưa gõ gì nên cũng không được lưu ra phần tử nào.
+  await act(async () => { mouse("mousedown", 700, 400, inkCapture); await new Promise((r) => setTimeout(r, 30)); });
+  const boxAt700 = document.querySelector("textarea.text-input").style.left;
+  const putsBeforeJump = globalThis.__puts.length;
+  await act(async () => { mouse("mousedown", 900, 560, inkCapture); await new Promise((r) => setTimeout(r, 30)); });
+  const jumped = document.querySelector("textarea.text-input");
+  log(`bấm sang chỗ khác lúc đang mở: ô nhập left ${boxAt700} → ${jumped?.style.left} · PUT thêm ${globalThis.__puts.length - putsBeforeJump} lần`);
+  if (!jumped) throw new Error("bấm sang chỗ khác phải mở ô nhập ở chỗ mới, không phải đóng hẳn");
+  if (jumped.style.left === boxAt700) throw new Error("ô nhập phải nhảy sang chỗ vừa bấm");
+  if (globalThis.__puts.length !== putsBeforeJump) throw new Error("chưa gõ gì mà đã lưu — sẽ đẻ ra phần tử text rỗng");
+  await act(async () => {
+    jumped.blur();
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  if (document.querySelectorAll(".ink-layer text").length !== 0) throw new Error("nhảy chỗ không được để lại text rỗng nào");
+
+  // Gõ thật, hai dòng, rồi Escape.
+  await act(async () => { mouse("mousedown", 700, 400, inkCapture); await new Promise((r) => setTimeout(r, 30)); });
+  const ta = document.querySelector("textarea.text-input");
+  await act(async () => {
+    // Đặt value qua setter gốc rồi phát `input`: React nghe onChange qua sự
+    // kiện input, gán thẳng .value thì nó không hay biết gì.
+    Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value")
+      .set.call(ta, "ghi chú\nhai dòng");
+    ta.dispatchEvent(new window.Event("input", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  await act(async () => {
+    ta.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    document.querySelector("textarea.text-input")?.blur();
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  const textEls = document.querySelectorAll(".ink-layer text");
+  const savedText = globalThis.__puts.length ? globalThis.__puts[globalThis.__puts.length - 1] : null;
+  const textDrawing = savedText && savedText.drawings.filter((d) => d.kind === "text");
+  log(`gõ text hai dòng: ${textEls.length} <text> · ${textEls[0]?.querySelectorAll("tspan").length} tspan · lưu ${textDrawing?.length} phần tử kind=text · PUT thêm ${globalThis.__puts.length - putsBeforeText} lần`);
+  if (textEls.length !== 1) throw new Error("phải có đúng 1 <text> trên bảng, có " + textEls.length);
+  if (textEls[0].querySelectorAll("tspan").length !== 2) throw new Error("text hai dòng phải ra 2 tspan");
+  if (!textDrawing || textDrawing.length !== 1) throw new Error("board phải có đúng 1 drawings kind=text");
+  const td = textDrawing[0];
+  if (td.pts.length !== 2) throw new Error("pts của text phải đúng 2 số (điểm neo), có " + td.pts.length);
+  if (!(td.w > 0) || !(td.h > 0)) throw new Error("text phải lưu kèm hộp w/h cho hit-test");
+  if (td.text !== "ghi chú\nhai dòng") throw new Error("nội dung text lưu sai: " + JSON.stringify(td.text));
+  if (drawingsBeforeText != null && savedText.drawings.length !== drawingsBeforeText + 1) {
+    throw new Error("phải thêm đúng 1 phần tử drawings");
+  }
+
+  // Một cú bấm lên text phục vụ hai việc, phân biệt bằng ngưỡng di chuyển.
+  // Nhánh 1 — di quá ngưỡng: kéo đi, lưu đúng 1 lần, KHÔNG mở ô nhập.
+  const posBefore = [...td.pts];
+  const putsBeforeDrag = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", 705, 405, inkCapture);
+    mouse("mousemove", 760, 460);
+    await new Promise((r) => setTimeout(r, 40));
+    mouse("mousemove", 820, 520);
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  await act(async () => { mouse("mouseup", 820, 520); await new Promise((r) => setTimeout(r, 40)); });
+  const afterDrag = globalThis.__puts[globalThis.__puts.length - 1].drawings.find((d) => d.kind === "text");
+  log(`kéo text: [${posBefore}] → [${afterDrag.pts}] · PUT thêm ${globalThis.__puts.length - putsBeforeDrag} lần · ô nhập mở = ${!!document.querySelector("textarea.text-input")}`);
+  if (afterDrag.pts[0] === posBefore[0] && afterDrag.pts[1] === posBefore[1]) throw new Error("kéo text mà toạ độ không đổi");
+  if (globalThis.__puts.length - putsBeforeDrag !== 1) throw new Error("một cú kéo text phải đúng 1 lần lưu, có " + (globalThis.__puts.length - putsBeforeDrag));
+  if (document.querySelector("textarea.text-input")) throw new Error("kéo text không được mở ô nhập");
+
+  // Nhánh 2 — bấm tại chỗ (di dưới ngưỡng): mở ô nhập mang sẵn nội dung cũ,
+  // và KHÔNG lưu gì thêm.
+  const putsBeforeReopen = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", 825, 525, inkCapture);
+    mouse("mousemove", 826, 526);
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  await act(async () => { mouse("mouseup", 826, 526); await new Promise((r) => setTimeout(r, 30)); });
+  const reopened = document.querySelector("textarea.text-input");
+  log(`bấm tại chỗ lên text: ô nhập mở = ${!!reopened} · nội dung = ${JSON.stringify(reopened?.value)} · PUT thêm ${globalThis.__puts.length - putsBeforeReopen} lần`);
+  if (!reopened) throw new Error("bấm tại chỗ lên text phải mở ô nhập để sửa");
+  if (reopened.value !== "ghi chú\nhai dòng") throw new Error("ô nhập phải mang sẵn nội dung cũ");
+  if (globalThis.__puts.length !== putsBeforeReopen) throw new Error("mở ra sửa mà chưa đổi gì thì không được lưu");
+  // Đóng lại mà không sửa gì: KHÔNG được lưu. Ghi lại một nội dung y hệt vừa
+  // tốn một lượt PUT vừa đẻ ra một bước hoàn tác rỗng — Ctrl+Z mấy lần liền mà
+  // màn hình không đổi gì.
+  const putsBeforeNoopClose = globalThis.__puts.length;
+  await act(async () => {
+    reopened.blur();
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  log(`đóng ô nhập mà không sửa gì: PUT thêm ${globalThis.__puts.length - putsBeforeNoopClose} lần`);
+  if (globalThis.__puts.length !== putsBeforeNoopClose) throw new Error("đóng mà không sửa gì thì không được lưu");
+
+  // Ca quan trọng nhất của việc "ô nhập nhảy chỗ": GÕ RỒI mới bấm sang chỗ khác.
+  // Phải chốt cái cũ đúng MỘT lần rồi mở ô mới. Đây là chỗ mà thiếu chốt chống
+  // chốt-hai-lần (textEditRef) sẽ đẻ ra hai phần tử text giống hệt nhau.
+  const textsBeforeTypedJump = document.querySelectorAll(".ink-layer text").length;
+  const putsBeforeTypedJump = globalThis.__puts.length;
+  await act(async () => { mouse("mousedown", 1100, 650, inkCapture); await new Promise((r) => setTimeout(r, 30)); });
+  const ta2 = document.querySelector("textarea.text-input");
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set.call(ta2, "chú thích hai");
+    ta2.dispatchEvent(new window.Event("input", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  await act(async () => { mouse("mousedown", 1250, 700, inkCapture); await new Promise((r) => setTimeout(r, 40)); });
+  const stillOpen = document.querySelector("textarea.text-input");
+  const afterTypedJump = globalThis.__puts[globalThis.__puts.length - 1].drawings.filter((d) => d.kind === "text");
+  log(`gõ rồi bấm sang chỗ khác: lưu ${afterTypedJump.length} text · PUT thêm ${globalThis.__puts.length - putsBeforeTypedJump} lần · ô nhập mới mở = ${!!stillOpen} · nội dung = ${JSON.stringify(stillOpen?.value)}`);
+  if (globalThis.__puts.length - putsBeforeTypedJump !== 1) {
+    throw new Error("gõ rồi bấm sang chỗ khác phải lưu ĐÚNG 1 lần, có " + (globalThis.__puts.length - putsBeforeTypedJump));
+  }
+  if (afterTypedJump.length !== textsBeforeTypedJump + 1) {
+    throw new Error(`phải thêm đúng 1 text, có ${afterTypedJump.length} (trước: ${textsBeforeTypedJump}) — dấu hiệu chốt hai lần`);
+  }
+  if (!stillOpen) throw new Error("chốt xong phải mở ngay ô nhập ở chỗ vừa bấm");
+  if (stillOpen.value !== "") throw new Error("ô nhập mới phải rỗng, không mang chữ của cái vừa chốt");
+  await act(async () => {
+    stillOpen.blur();
+    await new Promise((r) => setTimeout(r, 30));
+  });
+
+  // Skin vẽ tay: lưới an toàn cho việc đổi <line> thành <path> ở lớp dây. Bấm
+  // đúng cái nút thật thay vì tự đặt data-skin — làm vậy mới đi qua useSkin (nạp
+  // font lười, ghi localStorage) và mới bắt được lỗi ở đó.
+  // Nút giờ là bảng Giao diện bung ra dưới nút của nó trên đảo trên trái — cùng
+  // chỗ với ngôn ngữ, sáng/tối, nền bảng, bộ màu. Phải mở bảng đó ra trước.
+  // Tìm theo title chứ không theo thứ tự: đảo trên trái có HAI .menubar-trigger
+  // (☰ và Giao diện), lấy theo index thì thêm cái thứ ba là test trỏ nhầm.
+  const edgesClean = document.querySelectorAll(".edge-layer .visible").length;
+  const stylePanelBtn = Array.from(document.querySelectorAll(".island.tl .menubar-trigger"))
+    .find((b) => b.title === "Giao diện");
+  if (!stylePanelBtn) throw new Error("không tìm thấy nút Giao diện trên đảo trên trái");
+  await act(async () => { stylePanelBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
+
+  // Hai nút rời (Sạch / Vẽ tay) chứ không còn một nút bật-tắt: phải tìm theo chữ.
+  // Nút "Vẽ tay" mang cả icon lẫn chữ, nhưng <svg> không góp gì vào textContent.
+  async function pickSkin(label) {
+    const btn = Array.from(document.querySelectorAll(".menubar-dropdown.wide .btn"))
+      .find((b) => b.textContent.trim() === label);
+    if (!btn) throw new Error(`không tìm thấy nút "${label}" trong bảng Giao diện`);
+    await act(async () => {
+      btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 80));
+    });
+  }
+  await pickSkin("Vẽ tay");
+  const skinAttr = document.documentElement.getAttribute("data-skin");
+  const edgePaths = document.querySelectorAll(".edge-layer path.visible").length;
+  const edgeLines = document.querySelectorAll(".edge-layer line.visible").length;
+  log(`skin vẽ tay: data-skin=${skinAttr} · dây ${edgesClean} <line> → ${edgePaths} <path> (còn ${edgeLines} line)`);
+  if (skinAttr !== "sketch") throw new Error("bấm nút mà data-skin không thành sketch");
+  if (edgePaths !== edgesClean) throw new Error(`mất dây khi đổi skin: ${edgesClean} → ${edgePaths}`);
+  if (edgeLines !== 0) throw new Error("còn sót <line> hiển thị ở skin vẽ tay");
+  const dAttr = document.querySelector(".edge-layer path.visible")?.getAttribute("d") || "";
+  if (!dAttr.includes("C")) throw new Error("path dây không phải nét rung (không có đoạn cong)");
+
+  // Tắt đi phải về đúng trạng thái cũ — không phải đường một chiều.
+  await pickSkin("Sạch");
+  if (document.documentElement.getAttribute("data-skin") !== "clean") throw new Error("tắt skin không về clean");
+  if (document.querySelectorAll(".edge-layer line.visible").length !== edgesClean) throw new Error("tắt skin mà dây không về <line>");
+
+  // Panel Giao diện gom cả thiết lập của MÌNH lẫn dữ liệu của BOARD; hai nửa đó
+  // phải có nhãn phân định, nếu không thì người ta đổi nền bảng mà tưởng chỉ mình
+  // thấy. Kiểm luôn là ngôn ngữ và sáng/tối đã về đây, không còn nằm trong ☰.
+  const styleRows = Array.from(document.querySelectorAll(".menubar-dropdown.wide .theme-row .fb-count"))
+    .map((el) => el.textContent);
+  const sections = Array.from(document.querySelectorAll(".menubar-dropdown.wide .theme-section"))
+    .map((el) => el.textContent);
+  log(`bảng Giao diện: ${styleRows.length} hàng (${styleRows.join(", ")}) · ${sections.length} nhãn phân định`);
+  for (const want of ["Ngôn ngữ", "Sáng/tối", "Kiểu vẽ", "Nền bảng", "Bộ màu"]) {
+    if (!styleRows.includes(want)) throw new Error(`bảng Giao diện thiếu hàng "${want}"`);
+  }
+  if (sections.length !== 2) throw new Error("bảng Giao diện phải có 2 nhãn phân định của-mình / của-board");
+  // Bấm hai lần vào hai nút KHÁC nhau trong bảng mà bảng vẫn mở: đây là lý do
+  // TopMenu phải có closeOnClick tắt được. Menu hành động đóng sau một cú bấm là
+  // đúng, bảng thiết lập thì bắt mở lại năm lần.
+  if (!document.querySelector(".menubar-dropdown.wide")) throw new Error("bấm trong bảng Giao diện mà bảng tự đóng");
+  await act(async () => { stylePanelBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
+  if (document.querySelector(".menubar-dropdown.wide")) throw new Error("bấm lại nút mà bảng Giao diện không đóng");
+
+  // Giao diện KHÔNG được nằm trong nhóm lọc ở thanh đáy nữa — nó là thiết lập.
+  const bottomTitles = Array.from(document.querySelectorAll(".hud-bottom .island-btn")).map((b) => b.title);
+  if (bottomTitles.includes("Giao diện")) throw new Error("nút Giao diện vẫn còn trong nhóm lọc ở thanh đáy");
+  if (!bottomTitles.some((x) => x.includes("yêu thích"))) throw new Error("★ phải nằm cùng nhóm lọc ở thanh đáy");
+
+  // HUD đảo nổi. jsdom KHÔNG tính layout, nên không kiểm được "canvas cao bằng
+  // cửa sổ" — thứ duy nhất kiểm được là cấu trúc: hai dải cũ đã rời khỏi cây, và
+  // ba đảo có mặt. Đó cũng đúng là thứ hay hỏng khi sửa lại JSX sau này.
+  if (document.querySelector(".topbar") || document.querySelector(".filterbar")) {
+    throw new Error("dải .topbar/.filterbar vẫn còn trong cây — canvas không tràn viền");
+  }
+  for (const cls of [".island.tl", ".island.tr", ".island.bl", ".hud-bottom"]) {
+    if (!document.querySelector(cls)) throw new Error("thiếu đảo " + cls);
+  }
+  // Kéo thả panel đã bỏ hẳn — không còn phần tử nào của cơ chế đó được sinh ra.
+  for (const cls of [".dock-panel", ".dock-grip", ".dock-guide", ".island-dock"]) {
+    if (document.querySelector(cls)) throw new Error("còn sót phần tử kéo-thả panel: " + cls);
+  }
+
+  // Đảo nội dung chỉ tồn tại khi có panel bật; tắt hết là nó biến mất khỏi cây,
+  // không phải chỉ rỗng ruột. Panel sống đúng một chỗ, không neo không nổi.
+  const panelBtn = (title) => Array.from(document.querySelectorAll(".hud-bottom .island-btn"))
+    .find((b) => b.title === title);
+  const dockOn = !!document.querySelector(".filter-dock");
+  const titlesOn = Array.from(document.querySelectorAll(".filter-dock .filter-title"))
+    .map((el) => el.textContent);
+  for (const title of ["Trạng thái", "Nhãn"]) {
+    const btn = panelBtn(title);
+    if (!btn) throw new Error(`không tìm thấy nút bật panel "${title}" ở thanh đáy`);
+    await act(async () => { btn.click(); await new Promise((r) => setTimeout(r, 20)); });
+  }
+  const dockOff = !!document.querySelector(".filter-dock");
+  log(`thanh đáy: bật ${titlesOn.length} panel (${titlesOn.join(", ")}) · tắt hết → đảo nội dung ${dockOff ? "VẪN còn" : "biến mất"}`);
+  if (!dockOn) throw new Error("mặc định có panel bật mà không thấy đảo nội dung");
+  if (titlesOn.length !== 2) throw new Error("mỗi panel phải tự xưng tên, chờ 2 nhãn, có " + titlesOn.length);
+  if (dockOff) throw new Error("tắt hết panel rồi mà đảo nội dung vẫn còn");
+  // Bật lại một cái: đảo nội dung phải quay lại.
+  await act(async () => { panelBtn("Nhãn").click(); await new Promise((r) => setTimeout(r, 20)); });
+  if (!document.querySelector(".filter-dock")) throw new Error("bật lại panel mà đảo nội dung không quay lại");
+
+  // Ô tìm kiếm thu gọn: đóng lại phải XOÁ từ khoá, nếu không thì còn một bộ lọc
+  // vô hình đang làm mờ thẻ mà không còn chỗ nào nhìn ra vì sao.
+  const searchBtn = Array.from(document.querySelectorAll(".island.tl .island-btn"))
+    .find((b) => b.title.includes("Tìm kiếm"));
+  if (!searchBtn) throw new Error("không tìm thấy nút tìm kiếm trên đảo to");
+  await act(async () => { searchBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
+  const searchInput = document.querySelector(".island.tl .search-box input");
+  if (!searchInput) throw new Error("bấm nút tìm kiếm mà không hiện ô nhập");
+  if (document.activeElement !== searchInput) throw new Error("mở ô tìm mà con trỏ không vào ô");
+  await act(async () => {
+    // Cùng lý do với ô nhập text ở trên: gán thẳng .value thì React không hay biết.
+    Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")
+      .set.call(searchInput, "thẻ");
+    searchInput.dispatchEvent(new window.Event("input", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  const hadTail = !!document.querySelector(".island.tl .fb-tail");
+  await act(async () => { searchBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
+  const stillTail = !!document.querySelector(".island.tl .fb-tail");
+  log(`ô tìm: gõ vào → đuôi lọc ${hadTail ? "hiện" : "KHÔNG hiện"} · đóng ô → ${stillTail ? "VẪN còn lọc" : "hết lọc"}`);
+  if (!hadTail) throw new Error("gõ từ khoá mà đuôi lọc không hiện");
+  if (document.querySelector(".island.tl .search-box")) throw new Error("bấm lần hai mà ô tìm không đóng");
+  if (stillTail) throw new Error("đóng ô tìm mà từ khoá vẫn còn — bộ lọc vô hình");
 
   return true;
 }
