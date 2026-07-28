@@ -67,6 +67,11 @@ function IdeaCard({
   if (dropTarget) classNames.push("drop-target");
   if (selected) classNames.push("selected");
   if (flash) classNames.push("flash");
+  // Màu thẻ tô NỀN chứ không còn là vạch viền trái. Giá trị thật do CSS trộn ra
+  // từ --tint (xem .idea-card.tinted), nên một token màu tự cho ra nền đúng ở
+  // cả hai theme.
+  if (node.color) classNames.push("tinted");
+  const tintStyle = node.color ? { "--tint": colorVar(node.color) } : null;
   if (node.shape === "ellipse") classNames.push("shape-ellipse");
   if (node.dashed) classNames.push("border-dashed");
   // Bậc 5 mặc định viền đứt, nên chọn "viền liền" ở menu chuột phải phải có một
@@ -98,7 +103,7 @@ function IdeaCard({
         className={classNames.join(" ")}
         data-id={node.id}
         ref={setEl}
-        style={{ left: node.x, top: node.y, ...(node.w ? { width: node.w } : {}) }}
+        style={{ left: node.x, top: node.y, ...(node.w ? { width: node.w } : {}), ...tintStyle }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="edit-form">
@@ -133,7 +138,7 @@ function IdeaCard({
       style={{
         left: node.x, top: node.y,
         ...(node.w ? { width: node.w } : {}),
-        ...(node.color ? { borderLeftColor: colorVar(node.color), borderLeftWidth: 4 } : {})
+        ...tintStyle
       }}
       onMouseDown={(e) => h.mouseDown(e, node.id)}
       onClick={() => h.click(node.id)}
