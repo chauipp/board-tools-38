@@ -160,6 +160,60 @@
   background: var(--bg); color: var(--ink);
 }
 
+/* ─── Nền sa bàn (board.bg) ───────────────────────────────────────────────
+   Preset gán --board-bg / --board-grid, KHÔNG gán --bg: --bg còn là nền hover
+   của .menubar-trigger và nền <body>, đổi nó thì một board nền tối sẽ kéo cả
+   thanh menu tối theo trong lúc người dùng đang để giao diện sáng.
+
+   Mỗi preset phải khai cả bản sáng lẫn bản tối. Thứ tự ba khối dưới đây là cố
+   ý và không được đảo: bản sáng đi kèm biến thể [data-theme="light"] có độ đặc
+   hiệu cao hơn khối @media, nên máy để tối mà người dùng bấm chọn sáng thì vẫn
+   ra nền sáng. */
+:root[data-bg="paper"], :root[data-theme="light"][data-bg="paper"] { --board-bg: #E6E0CC; --board-grid: rgba(36,38,29,0.20); }
+:root[data-bg="white"], :root[data-theme="light"][data-bg="white"] { --board-bg: #FBFAF7; --board-grid: rgba(24,26,20,0.15); }
+:root[data-bg="slate"], :root[data-theme="light"][data-bg="slate"] { --board-bg: #E4E6E4; --board-grid: rgba(28,34,36,0.17); }
+:root[data-bg="mint"],  :root[data-theme="light"][data-bg="mint"]  { --board-bg: #E2EDE6; --board-grid: rgba(20,50,35,0.17); }
+:root[data-bg="blush"], :root[data-theme="light"][data-bg="blush"] { --board-bg: #F1E6E4; --board-grid: rgba(60,25,20,0.15); }
+
+@media (prefers-color-scheme: dark) {
+  :root[data-bg="paper"] { --board-bg: #241F16; --board-grid: rgba(236,231,210,0.13); }
+  :root[data-bg="white"] { --board-bg: #141414; --board-grid: rgba(255,255,255,0.10); }
+  :root[data-bg="slate"] { --board-bg: #1B1E1F; --board-grid: rgba(230,238,240,0.11); }
+  :root[data-bg="mint"]  { --board-bg: #141F19; --board-grid: rgba(210,240,225,0.11); }
+  :root[data-bg="blush"] { --board-bg: #221715; --board-grid: rgba(245,220,215,0.11); }
+}
+:root[data-theme="dark"][data-bg="paper"] { --board-bg: #241F16; --board-grid: rgba(236,231,210,0.13); }
+:root[data-theme="dark"][data-bg="white"] { --board-bg: #141414; --board-grid: rgba(255,255,255,0.10); }
+:root[data-theme="dark"][data-bg="slate"] { --board-bg: #1B1E1F; --board-grid: rgba(230,238,240,0.11); }
+:root[data-theme="dark"][data-bg="mint"]  { --board-bg: #141F19; --board-grid: rgba(210,240,225,0.11); }
+:root[data-theme="dark"][data-bg="blush"] { --board-bg: #221715; --board-grid: rgba(245,220,215,0.11); }
+
+/* ─── Bộ màu (board.pack) ─────────────────────────────────────────────────
+   Chỉ gán lại 8 token --dot-*. Thẻ / nhãn / dây lưu TÊN token ("dot-3") chứ
+   không lưu mã màu, nên đổi bộ màu là cả bản đồ đổi theo mà không sửa một byte
+   dữ liệu nào — và không tạo một bước hoàn tác nào.
+
+   Không có bản tối riêng, đúng như bộ Cổ điển trong index.css: khối màu tối ở
+   đó cố tình không khai lại --dot-*. Tám màu này phải đọc được trên cả hai nền,
+   nên pastel ở đây là pastel ĐỤC chứ không phải pastel nhạt như phấn.
+
+   KHÔNG đụng --st-* (năm màu trạng thái mang nghĩa cố định: đang chọn / bị loại
+   / tạm gác) và --pen-* (hệ màu bút riêng, xem ghi chú trong index.css). */
+:root[data-pack="pastel"] {
+  --dot-1: #7E9BB8; --dot-2: #A38FC4; --dot-3: #6FA588; --dot-4: #C6A45C;
+  --dot-5: #C2865A; --dot-6: #8FAF95; --dot-7: #B37E8C; --dot-8: #7AA3B0;
+}
+:root[data-pack="vivid"] {
+  --dot-1: #2F6FD0; --dot-2: #8B3FD4; --dot-3: #17915C; --dot-4: #D89A0A;
+  --dot-5: #D8560E; --dot-6: #4FA83C; --dot-7: #C82F5B; --dot-8: #0E93A8;
+}
+/* Đơn sắc: tám sắc độ của cùng một màu chàm, phân biệt bằng ĐẬM NHẠT chứ không
+   bằng sắc màu — hợp với bản đồ mà màu chỉ để nhóm chứ không để mang nghĩa. */
+:root[data-pack="mono"] {
+  --dot-1: #2E3A47; --dot-2: #3D4C5C; --dot-3: #4C5E71; --dot-4: #5B7086;
+  --dot-5: #6B829B; --dot-6: #7C94AC; --dot-7: #8EA5BC; --dot-8: #A2B6CA;
+}
+
 .viewport {
   position: relative; flex: 1 1 auto; overflow: hidden; cursor: default;
   background: radial-gradient(var(--board-grid) 1px, transparent 1px) 0 0 / var(--grid-size) var(--grid-size), var(--board-bg);
