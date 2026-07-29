@@ -13,7 +13,7 @@ import { seedFrom, sketchyLine } from "../lib/sketchy.js";
 function EdgeLayer({
   edges, nodeById, groupById, cardSize, sketch,
   hoveredEdgeId, selectedEdgeIds, edgeDragId, snapGuides, linkDraft, edgeDraft,
-  onEdgeEnter, onEdgeLeave, onEdgeClick
+  onEdgeEnter, onEdgeLeave, onEdgeClick, onEdgeContextMenu
 }) {
   return (
     <svg className="edge-layer">
@@ -41,6 +41,7 @@ function EdgeLayer({
               data-edge-id={edge.id}
               x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
               onClick={(e) => onEdgeClick(e, edge.id)}
+              onContextMenu={(e) => onEdgeContextMenu(e, edge.id)}
             />
             {/* Chỉ nét NHÌN THẤY đổi sang path rung. Thẻ <line className="hit">
                 bên trên — vùng bấm dày 16px — giữ nguyên đường thẳng: vùng bấm

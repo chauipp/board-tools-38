@@ -1539,5 +1539,114 @@ export async function run(log) {
   if (inkCountNow() !== inkBeforeSweep - 2) throw new Error("Backspace không xoá hết nét đang chọn");
   if (inkSelCount() !== 0) throw new Error("xoá xong mà viền chọn vẫn còn");
 
+  // ── Dây nối: trái để chọn, phải để sửa ──────────────────────────────────
+  const edgeHit = document.querySelector(".edge-layer line.hit");
+  if (!edgeHit) throw new Error("không thấy vùng bấm của dây nối");
+  const edgeId = edgeHit.getAttribute("data-edge-id");
+  await act(async () => {
+    edgeHit.dispatchEvent(new window.MouseEvent("click", { bubbles: true, clientX: 400, clientY: 400, button: 0 }));
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  const selectedEdges = () => document.querySelectorAll(".edge-layer .visible.selected").length;
+  log(`chuột trái lên dây ${edgeId}: ${selectedEdges()} dây đang chọn · menu mở = ${!!document.querySelector(".edge-menu")}`);
+  if (document.querySelector(".edge-menu")) throw new Error("chuột trái lên dây không được mở menu sửa");
+  if (selectedEdges() !== 1) throw new Error("chuột trái lên dây phải chọn đúng dây đó");
+
+  // Ctrl+trái cộng dồn dây thứ hai.
+  const edgeHits = document.querySelectorAll(".edge-layer line.hit");
+  if (edgeHits.length > 1) {
+    await act(async () => {
+      edgeHits[1].dispatchEvent(new window.MouseEvent("click", { bubbles: true, clientX: 420, clientY: 420, button: 0, ctrlKey: true }));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+    log(`Ctrl+trái lên dây thứ hai: ${selectedEdges()} dây đang chọn`);
+    if (selectedEdges() !== 2) throw new Error("Ctrl+trái không cộng dồn được dây thứ hai");
+  }
+
+  // Chuột phải mới mở menu sửa dây (nhãn, kiểu nét, hướng, màu).
+  await act(async () => {
+    edgeHit.dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, clientX: 400, clientY: 400, button: 2 }));
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  const edgeMenuEl = document.querySelector(".edge-menu");
+  log(`chuột phải lên dây: menu mở = ${!!edgeMenuEl}`);
+  if (!edgeMenuEl) throw new Error("chuột phải lên dây phải mở menu sửa");
+  const labelInput = edgeMenuEl.querySelector("input.be-name");
+  if (!labelInput) throw new Error("menu dây phải có ô nhập nhãn");
+
+  // Gõ nhãn + Enter: chữ phải hiện lên giữa dây.
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value").set;
+    setter.call(labelInput, "phụ thuộc");
+    labelInput.dispatchEvent(new window.Event("input", { bubbles: true }));
+    labelInput.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  const labelEl = Array.from(document.querySelectorAll(".edge-layer .edge-label"))
+    .find((el) => el.textContent === "phụ thuộc");
+  log(`nhãn dây: ${labelEl ? labelEl.textContent : "(không thấy)"}`);
+  if (!labelEl) throw new Error("gõ nhãn cho dây mà chữ không hiện lên trên bản đồ");
+  await act(async () => {
+    window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await new Promise((r) => setTimeout(r, 20));
+  });
+
+  // ── Bản đồ thu nhỏ ──────────────────────────────────────────────────────
+  // Thứ chỉ dựng cả app lên mới thấy: ô "đang xem ở đây" có bám theo camera
+  // không, và bấm vào bản đồ có dời camera mà KHÔNG đổi mức phóng, KHÔNG lưu
+  // board (camera là của riêng từng người) không.
+  const mini = document.querySelector(".minimap");
+  if (!mini) throw new Error("không thấy bản đồ thu nhỏ ở góc dưới phải");
+  const viewBox = () => {
+    const r = mini.querySelector(".mini-view");
+    return { x: +r.getAttribute("x"), y: +r.getAttribute("y"), w: +r.getAttribute("width") };
+  };
+  if (!mini.querySelectorAll(".mini-node").length) throw new Error("bản đồ thu nhỏ không vẽ thẻ nào");
+  const zoomPct = () => document.querySelector(".zoom-ctrl .pct").textContent;
+  const beforeGo = viewBox();
+  const pctBefore = zoomPct();
+  const putsBeforeMini = globalThis.__puts.length;
+
+  const miniSvg = mini.querySelector("svg");
+  await act(async () => {
+    miniSvg.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: 20, clientY: 20, button: 0 }));
+    window.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true, clientX: 20, clientY: 20, button: 0 }));
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  const afterGo = viewBox();
+  log(`bấm minimap: ô khung nhìn ${beforeGo.x.toFixed(1)},${beforeGo.y.toFixed(1)} → ${afterGo.x.toFixed(1)},${afterGo.y.toFixed(1)} · zoom ${pctBefore} → ${zoomPct()}`);
+  if (Math.abs(afterGo.x - beforeGo.x) < 0.5 && Math.abs(afterGo.y - beforeGo.y) < 0.5) {
+    throw new Error("bấm vào minimap mà khung nhìn không dời");
+  }
+  if (zoomPct() !== pctBefore) throw new Error("bấm minimap không được đổi mức phóng");
+  if (globalThis.__puts.length !== putsBeforeMini) throw new Error("lia camera không được lưu board");
+
+  // Lia bảng bằng chuột thì ô khung nhìn trên minimap phải chạy theo.
+  const beforePan = viewBox();
+  await act(async () => {
+    canvasEl.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: 600, clientY: 400, button: 2 }));
+    mouse("mousemove", 900, 550);
+    await new Promise((r) => setTimeout(r, 40));
+    mouse("mouseup", 900, 550);
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  const afterPan = viewBox();
+  log(`lia bảng: ô khung nhìn ${beforePan.x.toFixed(1)} → ${afterPan.x.toFixed(1)}`);
+  if (Math.abs(afterPan.x - beforePan.x) < 0.5 && Math.abs(afterPan.y - beforePan.y) < 0.5) {
+    throw new Error("lia bảng mà ô khung nhìn trên minimap không nhúc nhích");
+  }
+
+  // Nút trong cụm zoom bật/tắt được, và × trên bản đồ cũng tắt được.
+  const miniToggle = Array.from(document.querySelectorAll(".zoom-ctrl button"))
+    .find((b) => (b.title || "").includes("bản đồ thu nhỏ"));
+  if (!miniToggle) throw new Error("cụm zoom không có nút bật/tắt bản đồ thu nhỏ");
+  await act(async () => { miniToggle.click(); await new Promise((r) => setTimeout(r, 20)); });
+  if (document.querySelector(".minimap")) throw new Error("bấm nút mà bản đồ thu nhỏ vẫn còn");
+  await act(async () => { miniToggle.click(); await new Promise((r) => setTimeout(r, 20)); });
+  if (!document.querySelector(".minimap")) throw new Error("bấm lại mà bản đồ thu nhỏ không hiện lại");
+  await act(async () => { document.querySelector(".minimap .mini-close").click(); await new Promise((r) => setTimeout(r, 20)); });
+  if (document.querySelector(".minimap")) throw new Error("bấm × mà bản đồ thu nhỏ vẫn còn");
+  log("minimap: nút zoom và nút × đều bật/tắt được");
+
   return true;
 }
