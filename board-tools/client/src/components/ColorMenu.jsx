@@ -27,7 +27,7 @@ function ArrowIcon({ rotate }) {
   );
 }
 
-export default function ColorMenu({ x, y, color, count = 1, kind = "card", onPick, onEdit, onGroup, onTidy, onFocus, onDuplicate, onComments, onCopyLink, onDelete, onClose, locked, onToggleLock, shape, onSetShape, dashed, onSetDashed, level, onSetLevel, onArrangeTree }) {
+export default function ColorMenu({ x, y, color, count = 1, kind = "card", onPick, onEdit, onGroup, onTidy, onFocus, onDuplicate, onComments, onCopyLink, onDelete, onClose, locked, onToggleLock, shape, onSetShape, dashed, onSetDashed, level, onSetLevel, onArrangeTree, onTreePanel }) {
   const { t } = useLingui();
   const ref = useRef(null);
   const pos = usePopoverPosition(ref, x, y);
@@ -136,6 +136,11 @@ export default function ColorMenu({ x, y, color, count = 1, kind = "card", onPic
               <ArrowIcon rotate={90} />
             </button>
           </div>
+          {/* Bốn nút trên là lối tắt một hướng; ai muốn cây toả hai bên hay muốn
+              nới/bó khoảng cách thì mở bảng bên phải. */}
+          {onTreePanel && (
+            <button className="cm-item tp-open" onClick={onTreePanel}>{t`Tuỳ chỉnh cây…`}</button>
+          )}
         </div>
       )}
       <div className="cm-items">

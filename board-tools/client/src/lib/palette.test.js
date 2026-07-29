@@ -9,7 +9,8 @@ function makeBoard() {
     nodes: [{ id: 10, color: "pal-1" }, { id: 11, color: "dot-3" }],
     edges: [{ id: 20, color: "pal-1" }, { id: 21 }],
     statuses: [{ id: 30, name: "A", color: "pal-1" }, { id: 31, name: "B", color: "st-chosen" }],
-    tags: [{ id: 40, name: "C", color: "pal-2" }]
+    tags: [{ id: 40, name: "C", color: "pal-2" }],
+    drawings: [{ id: 50, w: 4, pts: [0, 0, 10, 10], color: "pal-1" }, { id: 51, w: 4, pts: [0, 0], color: "pen-blue" }]
   };
 }
 
@@ -88,4 +89,34 @@ test("removePaletteColor gỡ token khỏi mọi chỗ đang dùng", () => {
   assert.equal(next.nodes.find((n) => n.id === 11).color, "dot-3");
   assert.equal(next.statuses.find((s) => s.id === 31).color, "st-chosen");
   assert.equal(next.tags.find((tg) => tg.id === 40).color, "pal-2");
+});
+
+// Nét bút, hình khối và chữ nằm chung trong board.drawings, và nhận màu BẢNG
+// (dot-*/pal-*) chứ không riêng bảy màu bút: trên bảng chỉ có một hộp màu.
+test("applyColorTo tô được nét vẽ, không đụng nét khác", () => {
+  const b = makeBoard();
+  const after = applyColorTo(b, { kind: "drawing", id: 51 }, "pal-2");
+  assert.equal(after.drawings.find((d) => d.id === 51).color, "pal-2");
+  assert.equal(after.drawings.find((d) => d.id === 50).color, "pal-1");
+  assert.equal(after.nodes[0].color, "pal-1", "thẻ không bị đụng tới");
+});
+
+test("applyColorToMany tô cả cụm nét đang chọn", () => {
+  const b = makeBoard();
+  const after = applyColorToMany(b, "drawing", [50, 51], "dot-2");
+  assert.deepEqual(after.drawings.map((d) => d.color), ["dot-2", "dot-2"]);
+});
+
+test("applyColorTo trên board chưa có drawings không nổ", () => {
+  const b = makeBoard();
+  delete b.drawings;
+  assert.deepEqual(applyColorTo(b, { kind: "drawing", id: 1 }, "dot-2").drawings, []);
+});
+
+// Nét vẽ không được về null như thẻ: một nét màu var(--null) là nét vô hình.
+test("removePaletteColor: nét vẽ mang màu vừa xoá lùi về mực đen, không mất màu", () => {
+  const after = removePaletteColor(makeBoard(), 1);
+  assert.equal(after.drawings.find((d) => d.id === 50).color, "pen-mono");
+  assert.equal(after.drawings.find((d) => d.id === 51).color, "pen-blue", "nét màu khác giữ nguyên");
+  assert.equal(after.nodes.find((n) => n.id === 10).color, null, "thẻ vẫn về không màu như cũ");
 });

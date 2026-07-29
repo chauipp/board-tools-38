@@ -3,7 +3,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   SHAPE_KINDS, SHAPE_CLOSED, SHAPE_MIN_DIAGONAL,
-  normalizeBox, shapePath, shapeOutline, drawingsHitBy
+  normalizeBox, shapePath, shapeOutline, drawingsHitBy,
+  drawingBox, drawingsInRect, moveDrawing
 } from "./shape.js";
 
 test("SHAPE_KINDS: sáu hình, đúng thứ tự hiện ở khu 4", () => {
@@ -236,4 +237,64 @@ test("drawingsHitBy: pen, hình khối và text sống chung không giẫm chân
 test("drawingsHitBy: text thiếu hộp thì bỏ qua, không nổ", () => {
   const drawings = [{ id: 9, kind: "text", pts: [0, 0], text: "a" }];
   assert.deepEqual(drawingsHitBy(drawings, { x: 0, y: 0 }, 8), []);
+});
+
+// ── Hộp bao, quét vùng và dời chỗ ────────────────────────────────────────────
+
+test("drawingBox: nét bút ôm hết các điểm và nới ra nửa độ dày nét", () => {
+  const pen = { id: 1, w: 4, pts: [10, 20, 50, 60, 30, 40] };
+  assert.deepEqual(drawingBox(pen), { x: 8, y: 18, w: 44, h: 44 });
+});
+
+test("drawingBox: hình khối lấy hộp đã chuẩn hoá, vẽ ngược chiều cũng đúng", () => {
+  const box = { id: 2, kind: "rect", w: 2, pts: [100, 80, 20, 10] };
+  assert.deepEqual(drawingBox(box), { x: 19, y: 9, w: 82, h: 72 });
+});
+
+test("drawingBox: text dùng thẳng hộp chữ đã lưu, không nới theo w", () => {
+  const el = { id: 3, kind: "text", pts: [40, 50], w: 120, h: 26, text: "xin chào" };
+  assert.deepEqual(drawingBox(el), { x: 40, y: 50, w: 120, h: 26 });
+});
+
+test("drawingBox: dữ liệu thiếu trả null chứ không trả hộp rỗng", () => {
+  assert.equal(drawingBox(null), null);
+  assert.equal(drawingBox({ id: 1, w: 4, pts: [] }), null);
+  assert.equal(drawingBox({ id: 1, kind: "rect", w: 4, pts: [0, 0] }), null);
+  assert.equal(drawingBox({ id: 1, kind: "text", pts: [0, 0] }), null, "text thiếu w/h");
+});
+
+test("drawingsInRect: dính khi CHẠM vùng quét, không đòi trùm kín", () => {
+  const drawings = [
+    { id: 1, w: 2, pts: [0, 0, 100, 100] },
+    { id: 2, w: 2, pts: [500, 500, 600, 600] }
+  ];
+  assert.deepEqual(drawingsInRect(drawings, { x: 90, y: 90, w: 20, h: 20 }), [1], "chỉ chạm góc");
+  assert.deepEqual(drawingsInRect(drawings, { x: -10, y: -10, w: 700, h: 700 }), [1, 2]);
+  assert.deepEqual(drawingsInRect(drawings, { x: 200, y: 200, w: 50, h: 50 }), []);
+});
+
+test("drawingsInRect: nét hỏng bị bỏ qua, không nổ và không dính oan", () => {
+  const drawings = [{ id: 1, w: 2 }, { id: 2, kind: "text", pts: [0, 0] }];
+  assert.deepEqual(drawingsInRect(drawings, { x: -100, y: -100, w: 999, h: 999 }), []);
+});
+
+test("moveDrawing: cộng dx/dy vào đúng cặp toạ độ, làm tròn về số nguyên", () => {
+  const pen = { id: 1, w: 4, pts: [10, 20, 30, 40] };
+  assert.deepEqual(moveDrawing(pen, 5.4, -3.6).pts, [15, 16, 35, 36]);
+});
+
+test("moveDrawing: một phép cộng chạy đúng cho cả text và hình khối", () => {
+  const el = { id: 3, kind: "text", pts: [40, 50], w: 120, h: 26, text: "a" };
+  const box = { id: 2, kind: "rect", w: 2, pts: [0, 0, 80, 60] };
+  assert.deepEqual(moveDrawing(el, 10, 10).pts, [50, 60]);
+  assert.deepEqual(moveDrawing(box, -5, 5).pts, [-5, 5, 75, 65]);
+});
+
+test("moveDrawing: giữ nguyên mọi thuộc tính khác, không đụng nét gốc", () => {
+  const el = { id: 3, kind: "text", pts: [40, 50], w: 120, h: 26, text: "a", color: "pen-red" };
+  const out = moveDrawing(el, 1, 1);
+  assert.equal(out.text, "a");
+  assert.equal(out.color, "pen-red");
+  assert.equal(out.w, 120);
+  assert.deepEqual(el.pts, [40, 50], "nét gốc không bị sửa tại chỗ");
 });
