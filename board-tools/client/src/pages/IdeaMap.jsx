@@ -4,13 +4,15 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { getBoard, saveBoard } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import { useSkin } from "../lib/useSkin.js";
-import { drawingsHitBy, drawingsInRect, moveDrawing } from "../lib/shape.js";
+import { drawingsHitBy, drawingsInRect, moveDrawing, drawingBox } from "../lib/shape.js";
 import { textLines, textBox, TEXT_LINE_H } from "../lib/text-el.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
 import { paletteCss, applyColorTo, applyColorToMany, removePaletteColor } from "../lib/palette.js";
 import { BOARD_BGS, COLOR_PACKS, isBoardBg, isColorPack } from "../lib/board-theme.js";
 import FilterPanel from "../components/FilterPanel.jsx";
 import TreePanel from "../components/TreePanel.jsx";
+import MiniMap from "../components/MiniMap.jsx";
+import { rectsOf, panForCenter } from "../lib/minimap.js";
 import LoadError from "../components/LoadError.jsx";
 import LocaleToggle from "../components/LocaleToggle.jsx";
 import InviteModal from "../components/InviteModal.jsx";
@@ -158,6 +160,16 @@ function IconSketch() {
 function IconMenu() {
   return <svg viewBox="0 0 20 20" width="16" height="16"><path d="M3.5 6 L16.5 6 M3.5 10 L16.5 10 M3.5 14 L16.5 14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>;
 }
+// Khung to là cả bảng, khung nhỏ đặc là chỗ đang nhìn — vẽ đúng cái mà minimap
+// hiển thị, nên nút không cần nhãn chữ.
+function MiniMapIcon() {
+  return (
+    <svg viewBox="0 0 20 20" width="16" height="16">
+      <rect x="2.5" y="4" width="15" height="12" rx="1.6" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <rect x="5" y="6.5" width="6.5" height="5" rx="1" fill="currentColor" opacity="0.55" />
+    </svg>
+  );
+}
 function IconSearch() {
   return <svg viewBox="0 0 20 20" width="16" height="16"><circle cx="8.5" cy="8.5" r="5" fill="none" stroke="currentColor" strokeWidth="1.7" /><path d="M12.3 12.3 L16.5 16.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>;
 }
@@ -222,6 +234,9 @@ export default function IdeaMap() {
   const [filterFav, setFilterFav] = useState(false);
   const [search, setSearch] = useState("");
   const [outlineOpen, setOutlineOpen] = useState(false);
+  // Bản đồ thu nhỏ ở góc dưới phải. Mặc định BẬT: nó chỉ có nghĩa khi luôn ở
+  // đó — thứ phải bật lên mới xem được thì lúc lạc đường đã không nhớ là có.
+  const [miniOpen, setMiniOpen] = useState(true);
   // Bảng Xếp cây bên phải: { kind, id } của thẻ/khung đang làm gốc. Tuỳ chọn
   // sống riêng để đóng bảng rồi mở lại cây khác vẫn giữ nguyên cách xếp vừa dò
   // được. treeBaseRef giữ board TRƯỚC khi mở bảng: mọi lần kéo thanh trượt đều
@@ -400,6 +415,31 @@ export default function IdeaMap() {
   useEffect(() => { saveLaserPrefs(window.localStorage, laserPrefs); }, [laserPrefs]);
   useEffect(() => { saveCardLevel(window.localStorage, cardLevelPref); }, [cardLevelPref]);
 
+  // Kích thước khung nhìn, để minimap biết vẽ ô "đang xem ở đây" to bằng nào.
+  // Giữ trong state chứ không đo lúc render: đo DOM giữa lượt render là ép trình
+  // duyệt tính lại layout, mà minimap render lại ở MỌI nhịp lia bảng.
+  // ResizeObserver có thể vắng mặt (jsdom trong smoke test) — đo một lần rồi
+  // thôi, vẫn đúng vì ở đó cửa sổ không đổi kích thước.
+  const [viewportSize, setViewportSize] = useState({ w: 0, h: 0 });
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el) return;
+    const measure = () => {
+      const r = el.getBoundingClientRect();
+      // Lùi về cỡ cửa sổ khi đo ra 0: khung nhìn vốn phủ kín cửa sổ, mà môi
+      // trường không có layout thật (jsdom) trả về đúng 0×0 — không có bước lùi
+      // này thì minimap không bao giờ dựng được ở đó.
+      const w = r.width || window.innerWidth;
+      const h = r.height || window.innerHeight;
+      setViewportSize((prev) => (prev.w === w && prev.h === h ? prev : { w, h }));
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [board != null]);
+
   // Camera đổi từ nhiều chỗ (lăn chuột, kéo nền, zoom vừa khung, thoát trình
   // chiếu). Lưu ở một effect theo board.view — rải saveCamera vào từng handler
   // thì sót, mà `view` cũng không còn được PUT lên server nữa (api.js bỏ nó).
@@ -478,6 +518,13 @@ export default function IdeaMap() {
     if (!textDrag) return list;
     return list.map((d) => (d.id === textDrag.id ? { ...d, pts: [textDrag.x, textDrag.y] } : d));
   }, [board?.drawings, textDrag]);
+
+  // Hình khối cho minimap. Tính lại khi NỘI DUNG đổi, không phải khi camera đổi:
+  // lia bảng là chuyện xảy ra liên tục, mà lia thì mấy cái hộp này không hề khác.
+  const miniShapes = useMemo(
+    () => (board ? rectsOf(board, CARD_W, drawingBox) : null),
+    [board?.nodes, board?.groups, board?.drawings]
+  );
 
   // Nền và bộ màu là DỮ LIỆU BOARD, nhưng thuộc tính lại đặt trên <html> — cùng
   // chỗ với data-theme (thiết lập của người dùng). Hai lý do: chip nhãn/trạng
@@ -576,7 +623,26 @@ export default function IdeaMap() {
   }), []);
   const onEdgeEnter = useMemo(() => (id) => setHoveredEdgeId(id), []);
   const onEdgeLeave = useMemo(() => (id) => setHoveredEdgeId((cur) => (cur === id ? null : cur)), []);
+  // Chuột TRÁI trên dây = chọn, y như bấm vào thẻ: một mình nó, hoặc Ctrl để
+  // cộng dồn. Chuột PHẢI mới mở menu sửa dây — cùng luật với thẻ và khung, nên
+  // không phải nhớ riêng cho dây một kiểu bấm khác.
   const onEdgeClick = useMemo(() => (e, id) => {
+    setColorMenu(null);
+    setCommentsFor(null);
+    setEdgeMenu(null);
+    if (e.ctrlKey || e.metaKey) {
+      setSelectedEdgeIds((prev) => toggleId(prev, id));
+      return;
+    }
+    setSelectedEdgeIds(new Set([id]));
+    setSelectedIds(EMPTY_SET);
+    setSelectedGroupIds(EMPTY_SET);
+    setSelectedDrawingIds(EMPTY_SET);
+  }, []);
+
+  const onEdgeContextMenu = useMemo(() => (e, id) => {
+    e.preventDefault();
+    e.stopPropagation();
     setColorMenu(null);
     setCommentsFor(null);
     setEdgeMenu({ id, x: e.clientX, y: e.clientY });
@@ -2452,6 +2518,20 @@ export default function IdeaMap() {
     setCamera(next.view);
   }
 
+  // Bấm/kéo trên minimap: chỉ dời camera, giữ nguyên mức phóng. Camera là của
+  // riêng từng người (api.js không gửi `view` lên server) nên đây không phải một
+  // sửa đổi board — không ghi lịch sử, không lưu, không phát cho ai.
+  function goToPoint(pt) {
+    const el = viewportRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const view = boardRef.current.view;
+    setBoard((prev) => ({
+      ...prev,
+      view: { ...prev.view, ...panForCenter(pt, view, { w: rect.width, h: rect.height }) }
+    }));
+  }
+
   function fitToView() {
     if (board.nodes.length === 0) return;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -3611,6 +3691,7 @@ export default function IdeaMap() {
             onEdgeEnter={onEdgeEnter}
             onEdgeLeave={onEdgeLeave}
             onEdgeClick={onEdgeClick}
+            onEdgeContextMenu={onEdgeContextMenu}
           />
 
           {liveNodes.map((liveNode) => {
@@ -3702,12 +3783,31 @@ export default function IdeaMap() {
           </div>
         )}
 
+        {/* Minimap là một đảo riêng NGAY TRÊN nút zoom, không nhét vào trong nó:
+            hai thứ cùng là "chuyện camera" nên đứng cạnh nhau, nhưng một cái là
+            hàng nút cao 30px còn cái kia là một mảng 120px. */}
+        {miniOpen && miniShapes && viewportSize.w > 0 && (
+          <MiniMap
+            shapes={miniShapes}
+            view={board.view}
+            viewportSize={viewportSize}
+            onGoTo={goToPoint}
+            onClose={() => setMiniOpen(false)}
+          />
+        )}
+
         <div className="zoom-ctrl">
           <button onClick={() => zoomButton(1 / 1.2)} title={t`Thu nhỏ`}>−</button>
           <span className="pct mono">{Math.round(board.view.scale * 100)}%</span>
           <button onClick={() => zoomButton(1.2)} title={t`Phóng to`}>+</button>
           <div className="sep" />
           <button onClick={fitToView} style={{ width: "auto", padding: "0 8px", fontSize: 11 }}><Trans>Vừa khung</Trans></button>
+          <div className="sep" />
+          <button
+            className={miniOpen ? "on" : undefined}
+            onClick={() => setMiniOpen((v) => !v)}
+            title={miniOpen ? t`Ẩn bản đồ thu nhỏ` : t`Hiện bản đồ thu nhỏ`}
+          ><MiniMapIcon /></button>
         </div>
 
         {outlineOpen && (() => {
