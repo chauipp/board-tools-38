@@ -16,6 +16,36 @@ const router = Router();
 // chỉ để xét quyền là rất đắt — nhất là ở PUT, nơi client autosave mỗi 500ms.
 // Route nào không cần nội dung board thì truyền AUTH_FIELDS.
 const AUTH_FIELDS = "ownerEmail members";
+// PUT cần thêm `updatedAt` để so với mốc client khai là mình đang dựa trên —
+// đó là toàn bộ cơ chế phát hiện hai người lưu đè nhau. Vẫn KHÔNG đọc nội dung
+// board: một Date thì rẻ, còn nodes[] có ảnh base64 thì không.
+const AUTH_FIELDS_VERSIONED = "ownerEmail members updatedAt";
+
+// Nội dung board trả cho client. Dùng chung cho GET và cho thân của 409
+// (conflict) — hai chỗ đó phải trả ĐÚNG một hình dạng, lệch nhau là phía client
+// ghép nhầm một board thiếu field.
+function boardPayload(obj) {
+  return {
+    nodes: obj.nodes,
+    edges: obj.edges,
+    groups: obj.groups,
+    statuses: obj.statuses,
+    tags: obj.tags,
+    palette: obj.palette,
+    bg: obj.bg,
+    grid: obj.grid,
+    pack: obj.pack,
+    drawings: obj.drawings,
+    nextNodeId: obj.nextNodeId,
+    nextEdgeId: obj.nextEdgeId,
+    nextGroupId: obj.nextGroupId,
+    nextStatusId: obj.nextStatusId,
+    nextTagId: obj.nextTagId,
+    nextPaletteId: obj.nextPaletteId,
+    nextDrawingId: obj.nextDrawingId,
+    updatedAt: obj.updatedAt
+  };
+}
 
 // Trả 404 (không phải 403) khi người gọi không có role nào trên board —
 // tránh lộ việc board có tồn tại hay không cho người ngoài.
@@ -90,25 +120,8 @@ router.get("/:id", async (req, res) => {
       id: String(obj._id),
       name: obj.name,
       role,
-      nodes: obj.nodes,
-      edges: obj.edges,
-      groups: obj.groups,
-      statuses: obj.statuses,
-      tags: obj.tags,
-      palette: obj.palette,
-      bg: obj.bg,
-      grid: obj.grid,
-      pack: obj.pack,
-      drawings: obj.drawings,
-      nextNodeId: obj.nextNodeId,
-      nextEdgeId: obj.nextEdgeId,
-      nextGroupId: obj.nextGroupId,
-      nextStatusId: obj.nextStatusId,
-      nextTagId: obj.nextTagId,
-      nextPaletteId: obj.nextPaletteId,
-      nextDrawingId: obj.nextDrawingId,
-      view: obj.view,
-      updatedAt: obj.updatedAt
+      ...boardPayload(obj),
+      view: obj.view
     });
   } catch (e) {
     if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
@@ -118,14 +131,38 @@ router.get("/:id", async (req, res) => {
 
 router.put("/:id", async (req, res) => {
   try {
-    const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS);
+    const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS_VERSIONED);
     if (!found) return;
     const {
       nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
       nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, nextDrawingId,
       view,
-      clientId
+      clientId,
+      baseUpdatedAt
     } = req.body;
+
+    // Kiểm phiên bản. Client khai "bản tôi đang dựa trên có mốc này"; nếu mốc
+    // trên server đã khác thì trong lúc client dựng payload đã có người khác lưu
+    // xong, và cú PUT này mang một board KHÔNG chứa thay đổi của họ — ghi thẳng
+    // là xoá sổ nó, âm thầm, cả trên server lẫn trên màn hình họ khi gói
+    // board:update phát lại về.
+    //
+    // Trả kèm luôn nội dung mới nhất để client ghép thay đổi của mình lên đó rồi
+    // lưu lại (client/src/lib/rebase.js) — đỡ một vòng mạng nữa đúng vào lúc hai
+    // người đang thao tác nhanh. Đây là chỗ DUY NHẤT ở PUT đọc nội dung board,
+    // và nó chỉ chạy khi thật sự va chạm.
+    //
+    // Không khai `baseUpdatedAt` thì bỏ qua chốt này: client cũ, và luồng "Nhập
+    // JSON" (cố ý thay cả bảng) vẫn ghi đè được như trước.
+    if (baseUpdatedAt) {
+      const current = found.board.updatedAt;
+      if (current && new Date(baseUpdatedAt).getTime() !== new Date(current).getTime()) {
+        const fresh = await Board.findById(req.params.id);
+        if (!fresh) return res.status(404).json({ error: "not_found" });
+        return res.status(409).json({ error: "conflict", board: boardPayload(fresh.toObject()) });
+      }
+    }
+
     const updatedAt = new Date();
     await Board.findByIdAndUpdate(req.params.id, {
       nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,

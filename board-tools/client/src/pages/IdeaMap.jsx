@@ -35,7 +35,8 @@ import { treeLayout, buildTree, edgeKey, carryGroupMembers } from "../lib/tree-l
 import { useAuth } from "../context/AuthContext.jsx";
 import { usePresence } from "../lib/usePresence.js";
 import { useFollow } from "../lib/useFollow.js";
-import { useLiveSync, applyGeomOverlay } from "../lib/useLiveSync.js";
+import { useLiveSync, applyGeomOverlay, mergeRemoteBoard } from "../lib/useLiveSync.js";
+import { rebaseBoard } from "../lib/rebase.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { rafThrottle } from "../lib/raf-throttle.js";
 import { replaceIdSet, toggleId, unionIdSet } from "../lib/selection.js";
@@ -361,6 +362,13 @@ export default function IdeaMap() {
   // sau có mới hơn không (useLiveSync.js: isStaleUpdate).
   const socketRef = useRef(null);
   const lastUpdatedAtRef = useRef(null);
+  // Bản board mà ta TIN là server đang giữ. Không phải `board`: board còn chứa
+  // những thay đổi mình vừa làm và chưa chắc đã lưu xong. Khi server từ chối một
+  // lần lưu vì có người chen vào, đây là mốc để tính "từ lần đồng bộ cuối tới
+  // giờ mình đã đổi những gì" rồi đắp đúng chừng ấy lên bản của họ
+  // (lib/rebase.js). Cập nhật ở ba chỗ: lúc tải xong, lúc lưu thành công, và
+  // lúc áp một board:update của người khác.
+  const serverBaseRef = useRef(null);
   const selectedIdsRef = useRef(selectedIds);
   const suppressContextMenuRef = useRef(false);
   const nudgeTimerRef = useRef(null);
@@ -403,7 +411,9 @@ export default function IdeaMap() {
         const camera = loadCamera(window.localStorage, boardId);
         // Board cũ chưa có palette → mặc định rỗng, để mọi chỗ đọc board.palette
         // không phải ?? [] khắp nơi.
-        setBoard({ palette: [], nextPaletteId: 1, drawings: [], nextDrawingId: 1, bg: null, grid: null, pack: null, ...boardData, ...(camera ? { view: camera } : {}) });
+        const loaded = { palette: [], nextPaletteId: 1, drawings: [], nextDrawingId: 1, bg: null, grid: null, pack: null, ...boardData, ...(camera ? { view: camera } : {}) };
+        setBoard(loaded);
+        serverBaseRef.current = loaded;
       })
       .catch((e) => { if (!cancelled) setLoadError(e.code || "UNKNOWN"); });
     return () => { cancelled = true; };
@@ -509,6 +519,10 @@ export default function IdeaMap() {
   // tục vẽ một bản tạm đè lên dữ liệu thật vừa nhận — nét nhấp nháy.
   const applyRemoteBoard = useCallback((next) => {
     setBoard(next);
+    // Vừa áp bản của người khác → đó là bản mới nhất ta biết server đang giữ.
+    // Thiếu dòng này thì lần va chạm sau sẽ tính delta từ một mốc quá cũ và đắp
+    // lại cả những thay đổi đã được lưu từ lâu.
+    serverBaseRef.current = next;
     inkLive.reconcile(next);
   }, [inkLive.reconcile]);
 
@@ -754,12 +768,58 @@ export default function IdeaMap() {
   // cả khi được gọi từ một closure cũ. Handler nào gắn với deps [] (listener
   // paste, .then() của readImageFile…) đóng gói `role` lúc mount — khi đó board
   // chưa tải xong nên role vẫn null và chốt chặn sẽ hở. Ref thì luôn mới.
-  function saveNow(next) {
+  // Trần số lần ghép lại. Mỗi vòng đều tiến (mốc mới hơn, delta nhỏ đi), nên
+  // chạm trần nghĩa là có ai đó đang lưu liên tục nhanh hơn mình — lúc đó đi
+  // đường dự phòng còn hơn quay vòng mãi.
+  const MAX_REBASE_TRIES = 3;
+
+  function saveNow(next, tries = 0) {
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
     if (roleRef.current === "viewer") return;
-    saveBoard(boardId, next, socketRef.current?.id)
-      .then((res) => { lastUpdatedAtRef.current = res.updatedAt; setSaveError(null); })
-      .catch(() => setSaveError(true));
+    // Mốc và bản nền được CHỐT ngay đây, trước khi cú PUT rời máy: nếu đọc lại ở
+    // trong .catch thì lúc đó chúng có thể đã bị một gói board:update chen vào
+    // sửa mất, và delta sẽ tính từ nhầm mốc.
+    const base = serverBaseRef.current;
+    const baseUpdatedAt = lastUpdatedAtRef.current;
+    saveBoard(boardId, next, socketRef.current?.id, baseUpdatedAt)
+      .then((res) => {
+        lastUpdatedAtRef.current = res.updatedAt;
+        serverBaseRef.current = next;
+        setSaveError(null);
+      })
+      .catch((e) => {
+        if (e.code !== "CONFLICT") { setSaveError(true); return; }
+        // Có người lưu chen vào giữa. Bản của họ đi kèm ngay trong lỗi; đắp
+        // những gì mình đã đổi (base → next) lên đó rồi lưu lại.
+        const server = e.board;
+        const rebased = server ? rebaseBoard(server, base, next) : null;
+        if (!rebased || tries >= MAX_REBASE_TRIES) {
+          // Đường dự phòng = đúng hành vi trước khi có chốt này: ghi đè. Không
+          // đẹp, nhưng nó bảo đảm việc thêm chốt không bao giờ làm mọi thứ TỆ
+          // HƠN trước — trường hợp xấu nhất chỉ là quay về mức cũ.
+          // Tới đây nghĩa là ghép ra một board không lành lặn (id trùng, dây mất
+          // đầu) hoặc đã thử quá số lần.
+          saveBoard(boardId, next, socketRef.current?.id)
+            .then((res) => {
+              lastUpdatedAtRef.current = res.updatedAt;
+              serverBaseRef.current = next;
+              setSaveError(null);
+            })
+            .catch(() => setSaveError(true));
+          return;
+        }
+        // Giữ nguyên camera của mình và giữ nguyên đúng cái thẻ đang gõ dở —
+        // cùng luật với lúc áp một board:update, nên không có hai cách trộn
+        // khác nhau để lệch nhau.
+        const local = boardRef.current;
+        const merged = local ? mergeRemoteBoard(local, rebased, editingIdRef.current) : rebased;
+        lastUpdatedAtRef.current = server.updatedAt;
+        serverBaseRef.current = server;
+        setBoard(merged);
+        boardRef.current = merged;
+        inkLive.reconcile(merged);
+        saveNow(merged, tries + 1);
+      });
   }
 
   function saveDebounced(next) {

@@ -86,12 +86,37 @@ globalThis.__hitAt = (el) => { hitTarget = el; };
 
 globalThis.__board = board;
 globalThis.__puts = [];
+
+// Bản mà "server" đang giữ — chính là thân của lần PUT được nhận gần nhất. Cần
+// nó để dựng được một cú 409 THẬT: bản server trả về lúc va chạm phải là bản
+// nền của client CỘNG thay đổi của người kia, chứ không phải bản client vừa gửi
+// (bản đó đã chứa sẵn thay đổi của client, dùng nó thì bài kiểm tự đúng).
+let lastAccepted = structuredClone(board);
+let pendingConflict = null;
+// __conflictOnce(mutate): cú PUT KẾ TIẾP bị từ chối 409, kèm bản server đã được
+// `mutate` sửa — đúng cảnh "có người lưu chen vào giữa".
+globalThis.__conflictOnce = (mutate) => { pendingConflict = mutate; };
+
 globalThis.fetch = async (url, opts = {}) => {
   const method = opts.method || "GET";
   if (url.includes("/api/auth/me")) return json({ user: { name: "Tôi", email: "toi@example.com" } });
   if (url.includes("/api/boards/b1") && method === "GET") return json(board);
   if (url.includes("/api/boards/b1") && method === "PUT") {
-    globalThis.__puts.push(JSON.parse(opts.body));
+    const body = JSON.parse(opts.body);
+    globalThis.__puts.push(body);
+    if (pendingConflict) {
+      const mutate = pendingConflict;
+      pendingConflict = null;
+      const server = mutate(structuredClone(lastAccepted));
+      // Cùng hình dạng với server thật (boardPayload trong server/boards.js):
+      // không có id/name/role/view.
+      delete server.id; delete server.name; delete server.role; delete server.view;
+      delete server.clientId; delete server.baseUpdatedAt;
+      server.updatedAt = new Date().toISOString();
+      lastAccepted = structuredClone(server);
+      return { ok: false, status: 409, json: async () => ({ error: "conflict", board: server }) };
+    }
+    lastAccepted = structuredClone(body);
     return json({ ok: true, updatedAt: new Date().toISOString() });
   }
   return json({});
@@ -176,6 +201,26 @@ setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process
     process.exit(1);
   }
   console.log("  ·", "CSS: `.tool-group` bật lại pointer-events và mang mặt kính (nền/viền/đổ bóng)");
+
+  // Cùng loại "chỉ đọc được từ nguồn" như mấy bài CSS trên, nhưng lý do khác:
+  // đây là bài kiểm HIỆU NĂNG, mà hiệu năng thì jsdom không đo được — nó không
+  // có layout, không có paint, và một component thiếu memo vẫn cho ra đúng cây
+  // DOM ấy, chỉ tốn thêm thời gian. Không có bài kiểm nào ở tầng DOM bắt được.
+  //
+  // Vì sao đáng canh: InkLayer render lại ở MỌI khung hình trong lúc có người vẽ
+  // (`draft` đổi mỗi nhịp chuột của mình, `liveStrokes` đổi mỗi gói của người
+  // khác). Nếu Stroke/TextEl không memo thì mỗi lượt đó dựng lại chuỗi `d` cho
+  // TOÀN BỘ nét đã lưu — đo được 28.8µs cho một nét bút 120 điểm, tức 500 nét
+  // ngốn 14.4ms/khung hình trên ngân sách 16.7ms. Bỏ memo đi là bảng vẽ nhiều
+  // nét giật đúng lúc đang vẽ, mà mọi test khác vẫn xanh.
+  const ink = fs.readFileSync(new URL("./src/components/InkLayer.jsx", import.meta.url), "utf8");
+  for (const name of ["Stroke", "TextEl"]) {
+    if (!new RegExp(`const ${name}\\s*=\\s*memo\\(`).test(ink)) {
+      console.log(`\n❌ SMOKE FAIL: \`${name}\` trong InkLayer.jsx không còn bọc memo() — cả lớp vẽ render lại mỗi khung hình lúc đang vẽ, nên mọi nét đã lưu sẽ dựng lại chuỗi path ở từng khung (28.8µs/nét bút; 500 nét = 14.4ms trên ngân sách 16.7ms). jsdom không đo được hiệu năng nên không bài kiểm DOM nào bắt được lỗi này`);
+      process.exit(1);
+    }
+  }
+  console.log("  ·", "InkLayer: Stroke và TextEl đều bọc memo (nét đã lưu không dựng lại path ở mỗi khung hình lúc đang vẽ)");
 }
 
 const { run } = await import("./smoke-dist/smoke.js");

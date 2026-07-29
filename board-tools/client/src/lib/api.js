@@ -43,16 +43,27 @@ export async function getBoard(boardId) {
   return res.json();
 }
 
-export async function saveBoard(boardId, state, clientId) {
+// `baseUpdatedAt` = mốc của bản mà `state` được dựng lên từ đó. Server so nó với
+// mốc hiện có và trả 409 nếu đã có người lưu chen vào giữa — không có nó thì cú
+// PUT này lặng lẽ xoá sổ thay đổi của người kia. Bỏ trống là tắt chốt (luồng
+// "Nhập JSON" cố ý thay cả bảng).
+export async function saveBoard(boardId, state, clientId, baseUpdatedAt) {
   // Camera (pan/zoom) không còn là dữ liệu đồng bộ — xem lib/camera.js.
   const { view, ...rest } = state;
   const res = await fetch(`/api/boards/${boardId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...rest, clientId })
+    body: JSON.stringify({ ...rest, clientId, baseUpdatedAt: baseUpdatedAt ?? undefined })
   });
   checkAuthExpired(res);
   if (res.status === 403) throw apiError("READ_ONLY");
+  if (res.status === 409) {
+    // Bản mới nhất của server đi kèm luôn trong thân lỗi, để chỗ gọi ghép thay
+    // đổi của mình lên đó mà không phải tải lại board lần nữa.
+    const err = apiError("CONFLICT");
+    try { err.board = (await res.json()).board; } catch { err.board = null; }
+    throw err;
+  }
   if (!res.ok) throw apiError("BOARD_SAVE_FAILED");
   return res.json();
 }

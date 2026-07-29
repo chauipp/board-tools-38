@@ -19,7 +19,15 @@ import { TEXT_LINE_H } from "../lib/text-el.js";
 const SEL_PAD = 4;
 const EMPTY_SET = new Set();
 
-function TextEl({ text, color, size, pts, erasing }) {
+// memo: cả lớp này render lại ở MỌI khung hình trong lúc có người vẽ (`draft`
+// đổi mỗi nhịp chuột của mình, `liveStrokes` đổi mỗi gói của người khác). Không
+// có memo thì mỗi lượt đó dựng lại chuỗi `d` cho TOÀN BỘ nét đã lưu — đo được
+// 28.8µs cho một nét bút 120 điểm, tức 500 nét đã lưu ngốn 14.4ms/khung hình,
+// gần trọn ngân sách 16.7ms, và đó là trước cả React diff lẫn repaint.
+// `pts` giữ nguyên tham chiếu qua các lần render (inkDrawings trả thẳng
+// board.drawings khi không kéo text), nên phép so sánh nông của memo ăn thật:
+// chỉ nét đang vẽ mới phải dựng lại.
+const TextEl = memo(function TextEl({ text, color, size, pts, erasing }) {
   const lines = String(text ?? "").replace(/\r\n?/g, "\n").split("\n");
   const [x, y] = pts;
   return (
@@ -38,11 +46,12 @@ function TextEl({ text, color, size, pts, erasing }) {
       ))}
     </text>
   );
-}
+});
 
 // Một đường vẽ duy nhất cho cả ba nguồn: nét đã lưu trong board, nét mình đang
 // kéo, và nét người khác đang vẽ. Không có code path thứ hai để lệch nhau.
-function Stroke({ id, kind, color, w, pts, fill, erasing, sketch }) {
+// memo vì cùng lý do với TextEl ở trên — xem ghi chú ở đó.
+const Stroke = memo(function Stroke({ id, kind, color, w, pts, fill, erasing, sketch }) {
   // Nét BÚT không đụng tới ở skin vẽ tay: nó vốn đã là nét tay thật, rung thêm
   // một lớp nữa chỉ làm nó nhoè.
   const d = !kind || kind === "pen"
@@ -64,7 +73,7 @@ function Stroke({ id, kind, color, w, pts, fill, erasing, sketch }) {
       fill={fill ? penVar(color) : "none"}
     />
   );
-}
+});
 
 function InkLayer({ drawings, draft, eraseIds, liveStrokes, sketch, editingTextId, selectedIds }) {
   // Nét bị đánh dấu xoá: của mình đang quét, hoặc của người khác đang quét.
