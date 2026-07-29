@@ -8,7 +8,7 @@ import { drawingsHitBy, drawingsInRect, moveDrawing, drawingBox } from "../lib/s
 import { textLines, textBox, TEXT_LINE_H } from "../lib/text-el.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
 import { paletteCss, applyColorTo, applyColorToMany, removePaletteColor } from "../lib/palette.js";
-import { BOARD_BGS, COLOR_PACKS, isBoardBg, isColorPack } from "../lib/board-theme.js";
+import { BOARD_BGS, BOARD_GRIDS, COLOR_PACKS, isBoardBg, isBoardGrid, isColorPack } from "../lib/board-theme.js";
 import FilterPanel from "../components/FilterPanel.jsx";
 import TreePanel from "../components/TreePanel.jsx";
 import MiniMap from "../components/MiniMap.jsx";
@@ -218,10 +218,15 @@ export default function IdeaMap() {
   // thuần, test bằng node:test, không kéo được `t` của lingui vào.
   const BG_LABEL = {
     paper: t`Giấy kraft`, white: t`Trắng`, slate: t`Xám đá`,
-    mint: t`Bạc hà`, blush: t`Hồng phấn`
+    mint: t`Bạc hà`, blush: t`Hồng phấn`, sky: t`Xanh trời`,
+    sand: t`Cát`, lavender: t`Oải hương`, blueprint: t`Bản vẽ`
+  };
+  const GRID_LABEL = {
+    dots: t`Lưới chấm`, lines: t`Lưới ô`, plain: t`Không lưới`
   };
   const PACK_LABEL = {
-    pastel: t`Pastel`, vivid: t`Rực`, mono: t`Đơn sắc`
+    pastel: t`Pastel`, vivid: t`Rực`, mono: t`Đơn sắc`,
+    earth: t`Đất`, neon: t`Neon`
   };
   const [board, setBoard] = useState(null);
   const [loadError, setLoadError] = useState(null);
@@ -396,7 +401,7 @@ export default function IdeaMap() {
         const camera = loadCamera(window.localStorage, boardId);
         // Board cũ chưa có palette → mặc định rỗng, để mọi chỗ đọc board.palette
         // không phải ?? [] khắp nơi.
-        setBoard({ palette: [], nextPaletteId: 1, drawings: [], nextDrawingId: 1, bg: null, pack: null, ...boardData, ...(camera ? { view: camera } : {}) });
+        setBoard({ palette: [], nextPaletteId: 1, drawings: [], nextDrawingId: 1, bg: null, grid: null, pack: null, ...boardData, ...(camera ? { view: camera } : {}) });
       })
       .catch((e) => { if (!cancelled) setLoadError(e.code || "UNKNOWN"); });
     return () => { cancelled = true; };
@@ -536,13 +541,19 @@ export default function IdeaMap() {
     // Lọc trước khi đặt: giá trị này có thể tới từ "Nhập JSON", không phải lúc
     // nào cũng từ cú bấm trong panel.
     const bg = isBoardBg(board?.bg) ? board?.bg : null;
+    const grid = isBoardGrid(board?.grid) ? board?.grid : null;
     const pack = isColorPack(board?.pack) ? board?.pack : null;
     if (bg) el.setAttribute("data-bg", bg); else el.removeAttribute("data-bg");
+    if (grid) el.setAttribute("data-grid", grid); else el.removeAttribute("data-grid");
     if (pack) el.setAttribute("data-pack", pack); else el.removeAttribute("data-pack");
     // Gỡ khi rời trang: sang danh sách board mà còn nền của board vừa xem thì
     // trông như lỗi hiển thị.
-    return () => { el.removeAttribute("data-bg"); el.removeAttribute("data-pack"); };
-  }, [board?.bg, board?.pack]);
+    return () => {
+      el.removeAttribute("data-bg");
+      el.removeAttribute("data-grid");
+      el.removeAttribute("data-pack");
+    };
+  }, [board?.bg, board?.grid, board?.pack]);
 
   // Bộ lọc dựng MỘT lần cho mỗi lần đổi điều kiện, thay vì tính lại
   // Object.keys(...).filter(...) bên trong mỗi thẻ ở mỗi lần render.
@@ -3134,6 +3145,11 @@ export default function IdeaMap() {
     commitAndSave({ ...board, bg: next });
   }
 
+  function setBoardGrid(next) {
+    if ((board.grid ?? null) === next) return;
+    commitAndSave({ ...board, grid: next });
+  }
+
   function setBoardPack(next) {
     if (board.pack === next) return;
     commitAndSave({ ...board, pack: next });
@@ -3370,6 +3386,33 @@ export default function IdeaMap() {
                     disabled={role === "viewer"}
                     onClick={() => setBoardBg(id)}
                     title={BG_LABEL[id]}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="theme-row">
+              <span className="fb-count"><Trans>Lưới</Trans></span>
+              <div className="fb-chips">
+                {/* Lưới chấm là kiểu duy nhất có từ đầu nên nó là grid = null,
+                    y hệt "theo giao diện" ở hàng nền: board cũ trong DB không có
+                    field này và phải vẽ ra đúng như trước. */}
+                <button
+                  className={"grid-swatch" + (board.grid == null ? " on" : "")}
+                  data-grid="dots"
+                  data-mutating
+                  disabled={role === "viewer"}
+                  onClick={() => setBoardGrid(null)}
+                  title={GRID_LABEL.dots}
+                />
+                {BOARD_GRIDS.map((id) => (
+                  <button
+                    key={id}
+                    className={"grid-swatch" + (board.grid === id ? " on" : "")}
+                    data-grid={id}
+                    data-mutating
+                    disabled={role === "viewer"}
+                    onClick={() => setBoardGrid(id)}
+                    title={GRID_LABEL[id]}
                   />
                 ))}
               </div>

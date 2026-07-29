@@ -27,6 +27,14 @@
      thanh menu — chỗ đó cũng đang dùng var(--bg). */
   --board-bg: var(--bg);
   --board-grid: var(--line);
+  /* Mực của lưới, tách khỏi --board-grid: preset nền chọn MÀU lưới, còn skin vẽ
+     tay làm nhạt mực đi — hai thứ khác nhau, nếu dùng chung một biến thì bên
+     nào ghi sau cũng xoá mất bên kia. */
+  --grid-ink: var(--board-grid);
+  /* Hình của lưới, để .viewport chỉ phải viết `background: var(--board-pattern),
+     var(--board-bg)` một lần. Preset kiểu lưới (data-grid) gán lại đúng biến
+     này — xem khối "Kiểu lưới" trong idea-map.css. */
+  --board-pattern: radial-gradient(var(--grid-ink) 1px, transparent 1px) 0 0 / var(--grid-size) var(--grid-size);
 
   /* Hình dạng vật thể trên canvas — KHÔNG phải màu. Tách riêng vì skin
      (data-skin) gán lại cả khối này, còn theme sáng/tối thì không đụng: ba khối

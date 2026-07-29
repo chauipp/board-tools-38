@@ -7,6 +7,7 @@ import IdeaMap from "../pages/IdeaMap.jsx";
 import { AuthProvider } from "../context/AuthContext.jsx";
 import { LASER_FADE_MS, LASER_WIDTHS } from "../lib/laser.js";
 import { PEN_COLORS } from "../lib/pen.js";
+import { BOARD_BGS, BOARD_GRIDS, COLOR_PACKS } from "../lib/board-theme.js";
 
 export async function run(log) {
   const root = createRoot(document.getElementById("root"));
@@ -1088,10 +1089,61 @@ export async function run(log) {
   const sections = Array.from(document.querySelectorAll(".menubar-dropdown.wide .theme-section"))
     .map((el) => el.textContent);
   log(`bảng Giao diện: ${styleRows.length} hàng (${styleRows.join(", ")}) · ${sections.length} nhãn phân định`);
-  for (const want of ["Ngôn ngữ", "Sáng/tối", "Kiểu vẽ", "Nền bảng", "Bộ màu"]) {
+  for (const want of ["Ngôn ngữ", "Sáng/tối", "Kiểu vẽ", "Nền bảng", "Lưới", "Bộ màu"]) {
     if (!styleRows.includes(want)) throw new Error(`bảng Giao diện thiếu hàng "${want}"`);
   }
   if (sections.length !== 2) throw new Error("bảng Giao diện phải có 2 nhãn phân định của-mình / của-board");
+
+  // Ba trục preset của board. Kiểm hai thứ ở mỗi trục: nút có ĐỦ không (số nút =
+  // số preset + 1 nút mặc định), và bấm vào thì vừa đổi thuộc tính trên <html>
+  // vừa đi vào bản lưu — đổi được trên màn hình mà không lưu thì tải lại trang
+  // là mất, một lỗi không ai thấy trong lúc thử tay.
+  const swatchCount = document.querySelectorAll(".menubar-dropdown.wide .bg-swatch").length;
+  const gridCount = document.querySelectorAll(".menubar-dropdown.wide .grid-swatch").length;
+  const packCount = Array.from(document.querySelectorAll(".menubar-dropdown.wide .theme-row"))
+    .find((r) => r.querySelector(".fb-count")?.textContent === "Bộ màu")
+    ?.querySelectorAll(".btn").length || 0;
+  log(`preset: ${swatchCount} nền · ${gridCount} lưới · ${packCount} bộ màu`);
+  if (swatchCount !== BOARD_BGS.length + 1) throw new Error(`nút nền: ${swatchCount}, phải là ${BOARD_BGS.length + 1}`);
+  if (gridCount !== BOARD_GRIDS.length + 1) throw new Error(`nút lưới: ${gridCount}, phải là ${BOARD_GRIDS.length + 1}`);
+  if (packCount !== COLOR_PACKS.length + 1) throw new Error(`nút bộ màu: ${packCount}, phải là ${COLOR_PACKS.length + 1}`);
+
+  async function clickPreset(sel, what) {
+    const btn = document.querySelector(".menubar-dropdown.wide " + sel);
+    if (!btn) throw new Error(`không tìm thấy nút ${what} (${sel})`);
+    await act(async () => {
+      btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 30));
+    });
+  }
+  const putsBeforePreset = globalThis.__puts.length;
+  await clickPreset('.bg-swatch[data-bg="blueprint"]', "nền Bản vẽ");
+  await clickPreset('.grid-swatch[data-grid="lines"]', "lưới ô");
+  const packBtn = Array.from(document.querySelectorAll(".menubar-dropdown.wide .btn"))
+    .find((b) => b.textContent.trim() === "Đất");
+  if (!packBtn) throw new Error("không tìm thấy nút bộ màu Đất");
+  await act(async () => {
+    packBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  const htmlEl = document.documentElement;
+  const savedPreset = globalThis.__puts[globalThis.__puts.length - 1];
+  log(`chọn preset: data-bg=${htmlEl.getAttribute("data-bg")} data-grid=${htmlEl.getAttribute("data-grid")}`
+    + ` data-pack=${htmlEl.getAttribute("data-pack")} · bản lưu {bg:${savedPreset.bg}, grid:${savedPreset.grid}, pack:${savedPreset.pack}}`
+    + ` · PUT thêm ${globalThis.__puts.length - putsBeforePreset} lần`);
+  if (htmlEl.getAttribute("data-bg") !== "blueprint") throw new Error("chọn nền mới mà data-bg không đổi");
+  if (htmlEl.getAttribute("data-grid") !== "lines") throw new Error("chọn lưới ô mà data-grid không đổi");
+  if (htmlEl.getAttribute("data-pack") !== "earth") throw new Error("chọn bộ màu Đất mà data-pack không đổi");
+  if (savedPreset.bg !== "blueprint" || savedPreset.grid !== "lines" || savedPreset.pack !== "earth") {
+    throw new Error("preset đổi trên màn hình nhưng không đi vào bản lưu");
+  }
+  if (globalThis.__puts.length - putsBeforePreset !== 3) throw new Error("ba cú chọn preset phải là đúng 3 lần lưu");
+
+  // Về mặc định phải GỠ thuộc tính, không phải đặt data-grid="dots": CSS không
+  // có khối nào cho "dots", đặt vào là lưới biến mất.
+  await clickPreset('.grid-swatch[data-grid="dots"]', "lưới chấm (mặc định)");
+  if (htmlEl.hasAttribute("data-grid")) throw new Error("về lưới chấm mà data-grid vẫn còn trên <html>");
+  if (globalThis.__puts[globalThis.__puts.length - 1].grid !== null) throw new Error("về lưới chấm phải lưu grid = null");
   // Bấm hai lần vào hai nút KHÁC nhau trong bảng mà bảng vẫn mở: đây là lý do
   // TopMenu phải có closeOnClick tắt được. Menu hành động đóng sau một cú bấm là
   // đúng, bảng thiết lập thì bắt mở lại năm lần.
