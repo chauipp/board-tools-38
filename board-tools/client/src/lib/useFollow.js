@@ -84,10 +84,15 @@ export function useFollow({ socket, sendFollow, viewportSize, applyCamera, minSc
   const tick = useCallback((ts) => {
     frameRef.current = 0;
     const size = sizeRef.current;
-    const peerView = targetViewRef.current;
-    if (!peerView || !size || size.w <= 0 || size.h <= 0) return;
+    const held = targetViewRef.current;
+    // View được cất kèm CHỦ của nó, và kiểm lại ngay tại đây. Trước đây chủ được
+    // "bảo đảm" bằng một effect xoá sạch view mỗi lần đổi mục tiêu — mà effect
+    // chạy sau khi vẽ xong, nên gói view đầu tiên (về ngay sát gói xác nhận) bị
+    // effect đó xoá mất, và màn hình đứng im cho tới khi người kia lia tiếp.
+    if (!held || held.socketId !== followingIdRef.current) return;
+    if (!size || size.w <= 0 || size.h <= 0) return;
 
-    const target = followCamera(peerView, size, minScale, maxScale);
+    const target = followCamera(held.view, size, minScale, maxScale);
 
     // curRef rỗng = vừa bấm ghim (stopLoop xoá nó mỗi lần đổi mục tiêu). Nhảy
     // THẲNG tới khung nhìn của họ thay vì nội suy: bò từ chỗ mình đang đứng qua
@@ -131,7 +136,7 @@ export function useFollow({ socket, sendFollow, viewportSize, applyCamera, minSc
       // Gói của người mình KHÔNG ghim (đang trong lúc đổi mục tiêu, gói cũ còn
       // trên đường) thì bỏ — không thì camera giật một nhịp sang chỗ người cũ.
       if (socketId !== followingIdRef.current || !isUsableView(view)) return;
-      targetViewRef.current = view;
+      targetViewRef.current = { socketId, view };
       kick();
     }
     // Server phát cho cả phòng, KỂ CẢ chính mình — và gói gửi cho chính mình
@@ -142,10 +147,18 @@ export function useFollow({ socket, sendFollow, viewportSize, applyCamera, minSc
       if (socketId !== socket.id) return;
       clearAck();
       setFollowError(null);
+      // Gán ref NGAY, không đợi lượt render của setFollowingId. Gói view đầu
+      // tiên về ngay sát gói xác nhận này (server báo cho người kia là có khán
+      // giả đúng lúc nhận cú ghim, họ trả lời tức thì) — mà lúc đó React chưa
+      // vẽ lại, nên nếu chỉ dựa vào ref gán lúc render thì onView đọc ra `null`
+      // và VỨT đúng cái gói làm nên cú nhảy đầu tiên. Người dùng bấm ghim rồi
+      // ngồi nhìn màn hình đứng im cho tới khi người kia lia tiếp.
+      followingIdRef.current = id;
       setFollowingId(id);
     }
     function onDenied({ reason } = {}) {
       clearAck();
+      followingIdRef.current = null;
       setFollowingId(null);
       setFollowError(reason || "denied");
     }
@@ -172,6 +185,7 @@ export function useFollow({ socket, sendFollow, viewportSize, applyCamera, minSc
     if (!socket) return;
     function onDown() {
       clearAck();
+      followingIdRef.current = null;
       setFollowingId(null);
       setWatcherCount(0);
     }
@@ -191,12 +205,21 @@ export function useFollow({ socket, sendFollow, viewportSize, applyCamera, minSc
     return () => clearTimeout(id);
   }, [followError]);
 
-  // Đổi mục tiêu (hoặc bỏ ghim): xoá view cũ và dừng vòng ngay, không để camera
-  // bò nốt quãng còn lại về chỗ người cũ sau khi đã bỏ ghim.
+  // Đổi mục tiêu (hoặc bỏ ghim): dừng vòng ngay, không để camera bò nốt quãng
+  // còn lại về chỗ người cũ. stopLoop cũng xoá curRef, nên lần bám mới bắt đầu
+  // bằng một cú NHẢY thẳng tới khung nhìn của người mới thay vì nội suy.
+  //
+  // KHÔNG xoá targetViewRef ở đây nữa: effect chạy sau khi vẽ xong, mà gói view
+  // đầu tiên về ngay sát gói xác nhận, nên lần xoá này hay nuốt mất đúng cái gói
+  // làm nên cú nhảy — người dùng bấm ghim rồi ngồi nhìn màn hình đứng im. View
+  // cũ giờ vô hại vì nó mang theo socketId chủ và tick tự loại.
+  //
+  // kick lại ngay sau khi dừng, vì gói view có thể đã tới TRƯỚC effect này và
+  // vòng vừa bị stopLoop cắt mất; tick sẽ tự thoát nếu chưa có view đúng chủ.
   useEffect(() => {
-    targetViewRef.current = null;
     stopLoop();
-  }, [followingId, stopLoop]);
+    if (followingId) kick();
+  }, [followingId, stopLoop, kick]);
 
   useEffect(() => stopLoop, [stopLoop]);
 
