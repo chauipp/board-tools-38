@@ -1734,7 +1734,25 @@ export async function run(log) {
   if (followEmits.length !== 1 || followEmits[0][1].targetId !== "peer-f") {
     throw new Error("bấm Ghim không gửi follow:update đúng mục tiêu: " + JSON.stringify(followEmits));
   }
-  if (!document.querySelector(".follow-frame")) throw new Error("đang ghim mà không có viền chỉ báo trên màn hình");
+
+  // Chưa có xác nhận của server: được phép hiện "đang chờ", nhưng TUYỆT ĐỐI
+  // không được hiện như đã ghim xong. Đây đúng là ca đã lọt lần trước — server
+  // chạy code cũ, không hồi âm, mà giao diện vẫn lên viền đặc như thật.
+  const pendingFrame = document.querySelector(".follow-frame");
+  if (!pendingFrame) throw new Error("bấm Ghim mà không có dấu hiệu nào là đang chờ");
+  if (!pendingFrame.classList.contains("pending")) {
+    throw new Error("server chưa xác nhận mà đã hiện như ghim xong — giao diện đang nói dối");
+  }
+
+  // Server ừ → giờ mới là ghim thật.
+  await act(async () => {
+    globalThis.__deliver("follow:update", { socketId: "self-socket", followingId: "peer-f" });
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  const liveFrame = document.querySelector(".follow-frame");
+  if (!liveFrame || liveFrame.classList.contains("pending")) {
+    throw new Error("server đã xác nhận mà viền vẫn ở trạng thái chờ");
+  }
 
   // Camera của người kia về → màn hình mình phải chạy theo. Người kia có màn
   // hình RỘNG GẤP ĐÔI, nên mình phải THU NHỎ lại để thấy trọn vùng họ thấy,
@@ -1805,6 +1823,22 @@ export async function run(log) {
   if (!(v.w > 0 && v.h > 0) || !Number.isFinite(v.scale)) {
     throw new Error("gói view thiếu kích thước khung nhìn — người xem không khớp được hai màn hình: " + JSON.stringify(v));
   }
+
+  // Server câm hẳn (đúng cảnh chạy nhầm bản cũ): phải HẾT GIỜ rồi kêu lên, chứ
+  // không được treo mãi ở trạng thái chờ. Đây là lưới an toàn cho đúng loại lỗi
+  // đã làm mất cả buổi để lần ra.
+  const peerAvatar2 = Array.from(document.querySelectorAll(".presence-peer .presence-avatar"))
+    .find((a) => a.title === "Sếp");
+  await act(async () => { peerAvatar2.click(); await new Promise((r) => setTimeout(r, 20)); });
+  const pinAgain = Array.from(document.querySelectorAll(".peer-menu .btn"))
+    .find((b) => (b.textContent || "").includes("Ghim màn hình"));
+  await act(async () => { pinAgain.click(); await new Promise((r) => setTimeout(r, 20)); });
+  if (!document.querySelector(".follow-frame.pending")) throw new Error("bấm ghim lại mà không vào trạng thái chờ");
+  await act(async () => { await new Promise((r) => setTimeout(r, 3000)); });
+  const errFrame = document.querySelector(".follow-frame.error");
+  log(`ghim: server câm 3s → ${errFrame ? "báo lỗi \"" + errFrame.textContent.trim() + "\"" : "KHÔNG báo gì"}`);
+  if (!errFrame) throw new Error("server không hồi âm mà giao diện treo mãi ở trạng thái chờ, không báo lỗi");
+  if (document.querySelector(".follow-frame.pending")) throw new Error("hết giờ rồi mà vẫn còn trạng thái chờ");
 
   return true;
 }

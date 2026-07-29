@@ -232,6 +232,14 @@
 }
 .follow-chip .btn:hover { background: var(--accent-ink); color: var(--peer-color); }
 
+/* Đang chờ server ừ: viền ĐỨT, cố ý khác hẳn viền đặc lúc đã bám. Người dùng
+   phải phân biệt được "đang kết nối" với "đã xong" chỉ bằng liếc mắt — nếu hai
+   trạng thái vẽ giống nhau thì một cú ghim chết lặng lại trông y như thành công. */
+.follow-frame.pending { border-style: dashed; opacity: 0.75; }
+/* Không ghim được: KHÔNG có viền (camera vẫn là của mình), chỉ một dòng báo. */
+.follow-frame.error { border: none; }
+.follow-frame.error .follow-chip { background: var(--danger); color: #fff; padding: 6px 14px; }
+
 .chip-toggle {
   display: inline-flex; align-items: center; gap: 5px;
   border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px;
