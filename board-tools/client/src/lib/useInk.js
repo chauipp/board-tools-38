@@ -102,6 +102,36 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       live?.beginStroke(penPrefs.color, penPrefs.w, [Math.round(start.x), Math.round(start.y)]);
     }
 
+    // Điểm chuột mới nhất và trạng thái Shift mới nhất của lượt này. Giữ lại để
+    // phím Shift nhấn/nhả GIỮA CHỪNG tính lại được hình ngay tại chỗ: bản cũ chỉ
+    // đọc ev.shiftKey trong mousemove, nên giữ Shift mà tay đứng yên thì hình
+    // không nhúc nhích — người dùng tưởng tính năng không có.
+    let lastPoint = start;
+    let lastShift = false;
+
+    function drawShape(p, shift) {
+      const s = startRef.current;
+      if (!s) return;
+      lastPoint = p;
+      lastShift = shift;
+      const kind = penPrefs.kind;
+      const closed = SHAPE_CLOSED.has(kind);
+      // Shift: hình đóng thì ép vuông/tròn đều, hình mở thì ép hướng 0/45/90.
+      const box = normalizeBox(s.x, s.y, p.x, p.y, closed ? { square: shift } : { snap: shift });
+      boxRef.current = box;
+      pushDraft.current(penPrefs.color, penPrefs.w, box, kind, closed && penPrefs.fill === true);
+      live?.pushShape(box);
+    }
+
+    // Giữ Shift bắn keydown liên tục (auto-repeat): chỉ tính lại khi trạng thái
+    // THẬT SỰ đổi, không thì mỗi nhịp lặp là một gói live thừa.
+    function onShiftKey(ev) {
+      if (ev.key !== "Shift" || activeRef.current !== "shape") return;
+      const shift = ev.type === "keydown";
+      if (shift === lastShift) return;
+      drawShape(lastPoint, shift);
+    }
+
     function onMove(ev) {
       const b = boardRef.current;
       if (!b) return;
@@ -123,14 +153,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       }
 
       if (activeRef.current === "shape") {
-        const s = startRef.current;
-        const kind = penPrefs.kind;
-        const closed = SHAPE_CLOSED.has(kind);
-        // Shift: hình đóng thì ép vuông/tròn đều, hình mở thì ép hướng 0/45/90.
-        const box = normalizeBox(s.x, s.y, p.x, p.y, closed ? { square: ev.shiftKey } : { snap: ev.shiftKey });
-        boxRef.current = box;
-        pushDraft.current(penPrefs.color, penPrefs.w, box, kind, closed && penPrefs.fill === true);
-        live?.pushShape(box);
+        drawShape(p, ev.shiftKey);
         return;
       }
 
@@ -145,6 +168,8 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
     function cleanup() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", finish);
+      window.removeEventListener("keydown", onShiftKey);
+      window.removeEventListener("keyup", onShiftKey);
       activeRef.current = null;
       cleanupRef.current = null;
     }
@@ -202,6 +227,11 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
     cleanupRef.current = cleanup;
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", finish);
+    // Chỉ hình khối mới nghe Shift: bút và cục gôm không có ràng buộc nào để ép.
+    if (activeRef.current === "shape") {
+      window.addEventListener("keydown", onShiftKey);
+      window.addEventListener("keyup", onShiftKey);
+    }
   }, [tool, penPrefs, boardRef, viewportRef, onStrokeDone, onEraseDone, live]);
 
   // Cửa sổ mất focus giữa nét: mouseup sẽ không bao giờ tới, nên phải tự huỷ —

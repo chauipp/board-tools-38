@@ -170,3 +170,55 @@ export function drawingsHitBy(drawings, point, radius) {
   }
   return out;
 }
+
+// Hộp bao của một nét/hình/chữ, dùng để vẽ viền "đang chọn" và để quét vùng.
+// Trả null nếu dữ liệu không đủ dựng hình — người gọi lọc ra là xong, không có
+// hộp rỗng nào lọt vào phép so.
+//
+// Nét bút và hình khối nới ra w/2 mỗi phía vì `w` là ĐỘ DÀY NÉT: hộp ôm đúng
+// đường tâm sẽ cắt mất nửa nét ở mọi mép. Text thì `w`/`h` đã là kích thước hộp
+// chữ sẵn (cùng cái bẫy đã ghi ở drawingsHitBy).
+export function drawingBox(d) {
+  if (!d) return null;
+  const pts = d.pts || [];
+  const kind = d.kind || "pen";
+  if (kind === "text") {
+    if (pts.length < 2 || !(d.w > 0) || !(d.h > 0)) return null;
+    return { x: pts[0], y: pts[1], w: d.w, h: d.h };
+  }
+  if (pts.length < 2) return null;
+  let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+  if (kind === "pen") {
+    for (let i = 0; i + 1 < pts.length; i += 2) {
+      l = Math.min(l, pts[i]); r = Math.max(r, pts[i]);
+      t = Math.min(t, pts[i + 1]); b = Math.max(b, pts[i + 1]);
+    }
+  } else {
+    if (pts.length < 4) return null;
+    const s = sorted(pts);
+    l = s.l; t = s.t; r = s.r; b = s.b;
+  }
+  const pad = (d.w || 0) / 2;
+  return { x: l - pad, y: t - pad, w: (r - l) + pad * 2, h: (b - t) + pad * 2 };
+}
+
+// Quét vùng: dính khi hộp bao CHẠM vùng quét, cùng luật với thẻ và khung —
+// không đòi quét trùm kín.
+export function drawingsInRect(drawings, rect) {
+  const out = [];
+  for (const d of drawings || []) {
+    const box = drawingBox(d);
+    if (!box) continue;
+    if (box.x < rect.x + rect.w && rect.x < box.x + box.w &&
+        box.y < rect.y + rect.h && rect.y < box.y + box.h) out.push(d.id);
+  }
+  return out;
+}
+
+// Dời một nét/hình/chữ đi (dx, dy). Mọi kind đều chỉ là danh sách toạ độ xen kẽ
+// x, y — kể cả text (pts là điểm neo) và hình khối (hai góc đối) — nên một phép
+// cộng chạy đúng cho cả ba, không cần rẽ nhánh theo kind.
+export function moveDrawing(d, dx, dy) {
+  const pts = d.pts || [];
+  return { ...d, pts: pts.map((v, i) => Math.round(i % 2 === 0 ? v + dx : v + dy)) };
+}

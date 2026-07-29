@@ -1,6 +1,6 @@
 import { memo } from "react";
 import { strokePath } from "../lib/stroke.js";
-import { shapePath } from "../lib/shape.js";
+import { shapePath, drawingBox } from "../lib/shape.js";
 import { penVar } from "../lib/pen.js";
 import { seedFrom, sketchyPath } from "../lib/sketchy.js";
 import { TEXT_LINE_H } from "../lib/text-el.js";
@@ -13,6 +13,12 @@ import { TEXT_LINE_H } from "../lib/text-el.js";
 // bật skin vẽ tay là chữ trên bảng thành chữ viết tay mà không cần một dòng JS
 // nào. Cố ý KHÔNG dùng sketchy.js: nét rung làm mềm hình khối, còn bẻ cong chữ
 // thì chỉ làm nó khó đọc.
+// Viền chọn nới ra một chút cho khỏi cắt sát vào nét, và một Set rỗng dùng
+// chung để prop `selectedIds` vắng mặt không sinh Set mới ở mỗi lần render (memo
+// trên InkLayer sẽ vô nghĩa).
+const SEL_PAD = 4;
+const EMPTY_SET = new Set();
+
 function TextEl({ text, color, size, pts, erasing }) {
   const lines = String(text ?? "").replace(/\r\n?/g, "\n").split("\n");
   const [x, y] = pts;
@@ -60,12 +66,13 @@ function Stroke({ id, kind, color, w, pts, fill, erasing, sketch }) {
   );
 }
 
-function InkLayer({ drawings, draft, eraseIds, liveStrokes, sketch, editingTextId }) {
+function InkLayer({ drawings, draft, eraseIds, liveStrokes, sketch, editingTextId, selectedIds }) {
   // Nét bị đánh dấu xoá: của mình đang quét, hoặc của người khác đang quét.
   const dimmed = new Set(eraseIds);
   for (const e of liveStrokes.values()) {
     if (e.erase) for (const id of e.erase) dimmed.add(id);
   }
+  const picked = selectedIds || EMPTY_SET;
 
   return (
     <svg className="ink-layer">
@@ -85,6 +92,23 @@ function InkLayer({ drawings, draft, eraseIds, liveStrokes, sketch, editingTextI
         e.pts ? <Stroke key={"live-" + key} id={0} kind={e.kind} color={e.color} w={e.w} pts={e.pts} fill={e.fill} sketch={sketch} /> : null
       ))}
       {draft && <Stroke id={0} kind={draft.kind} color={draft.color} w={draft.w} pts={draft.pts} fill={draft.fill} sketch={sketch} />}
+      {/* Viền chọn vẽ SAU cùng nên luôn nằm trên nét; và là hộp bao chứ không
+          phải tô sáng chính nét vẽ: một nét mảnh màu vàng được tô sáng thì gần
+          như không thấy khác gì, còn cái hộp thì nói rõ "cụm này đang được
+          chọn, kéo được". */}
+      {drawings.map((d) => {
+        if (!picked.has(d.id)) return null;
+        const box = drawingBox(d);
+        if (!box) return null;
+        return (
+          <rect
+            key={"sel-" + d.id}
+            className="ink-selected"
+            x={box.x - SEL_PAD} y={box.y - SEL_PAD}
+            width={box.w + SEL_PAD * 2} height={box.h + SEL_PAD * 2}
+          />
+        );
+      })}
     </svg>
   );
 }
