@@ -150,8 +150,12 @@
 .presence-peers { display: flex; align-items: center; }
 /* Chồng mép nhau như xếp bài — 5-6 người vẫn gọn trong một hàng filter đã chật. */
 .presence-peers .presence-avatar { margin-right: -7px; }
-.presence-peers .presence-avatar:last-child { margin-right: 0; }
+/* Bám vào .presence-peer chứ không .presence-avatar:last-child: mỗi avatar giờ
+   nằm trong một bọc riêng (chỗ neo cho menu ghim), nên nó LUÔN là con cuối của
+   bọc đó và quy tắc cũ sẽ khớp với mọi người thay vì đúng người cuối hàng. */
+.presence-peers .presence-peer:last-child .presence-avatar { margin-right: 0; }
 .presence-peers .presence-avatar:hover { z-index: 2; transform: translateY(-1px); }
+.presence-peer { position: relative; display: flex; }
 
 .presence-avatar {
   position: relative; flex-shrink: 0;
@@ -178,7 +182,55 @@
 }
 .presence-menu-name { font-size: 12px; font-weight: 600; }
 .presence-menu-email { font-size: 10.5px; color: var(--ink-dim); word-break: break-all; }
+.presence-menu-note { font-size: 10.5px; color: var(--accent); }
 .presence-menu .btn { margin-top: 6px; width: 100%; text-align: center; }
+/* Avatar đầu hàng nằm sát mép trái của đảo; menu neo phải sẽ chui ra ngoài màn
+   hình khi đảo bị dồn sang trái, nên menu của peer neo TRÁI. */
+.peer-menu { right: auto; left: 0; min-width: 168px; }
+.peer-menu .btn { margin-top: 4px; }
+
+/* GHIM MÀN HÌNH ------------------------------------------------------------ */
+
+/* Người mình đang bám: vòng đặc màu của họ, phân biệt với box-shadow nền
+   --surface mà mọi avatar đều có. */
+.presence-avatar.following { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--peer-color); }
+/* Người đang bám mình: chấm nhỏ góc dưới phải. Nhẹ hơn hẳn vòng ở trên vì đây
+   là thông tin nền, không phải trạng thái do mình chọn. */
+.presence-avatar.watching-me::after {
+  content: ""; position: absolute; right: -1px; bottom: -1px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); border: 1.5px solid var(--surface);
+}
+
+.watched-chip {
+  border: 1px solid var(--accent); border-radius: 999px; padding: 3px 9px;
+  font-size: 10.5px; color: var(--accent); white-space: nowrap;
+}
+
+/* Viền quanh TOÀN màn hình lúc đang bám. position: fixed và pointer-events: none
+   — nó phủ lên mọi thứ nên không được ăn một cú bấm nào; riêng cái chip bên
+   trong bật lại pointer-events để bấm "Bỏ ghim" được. */
+.follow-frame {
+  /* 60: trên các đảo HUD (50) để viền không bị chúng cắt, nhưng dưới menu và
+     modal (90) — hộp thoại mở ra phải che được cái chip này, không phải ngược
+     lại. */
+  position: fixed; inset: 0; z-index: 60; pointer-events: none;
+  border: 3px solid var(--peer-color);
+  display: flex; justify-content: center; align-items: flex-end;
+}
+.follow-chip {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 14px; padding: 5px 6px 5px 12px;
+  border-radius: 999px; font-size: 11.5px;
+  background: var(--peer-color); color: var(--accent-ink);
+  box-shadow: var(--shadow);
+}
+.follow-chip .btn {
+  border-color: var(--accent-ink); color: var(--accent-ink);
+  padding: 3px 10px; font-size: 10.5px;
+}
+.follow-chip .btn:hover { background: var(--accent-ink); color: var(--peer-color); }
 
 .chip-toggle {
   display: inline-flex; align-items: center; gap: 5px;
