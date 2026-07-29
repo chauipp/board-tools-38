@@ -17,6 +17,7 @@ import LoadError from "../components/LoadError.jsx";
 import LocaleToggle from "../components/LocaleToggle.jsx";
 import InviteModal from "../components/InviteModal.jsx";
 import PresenceBar from "../components/PresenceBar.jsx";
+import FollowBanner from "../components/FollowBanner.jsx";
 import BadgeEditor from "../components/BadgeEditor.jsx";
 import ColorMenu from "../components/ColorMenu.jsx";
 import FrameBox from "../components/FrameBox.jsx";
@@ -33,6 +34,7 @@ import { gridLayout, layerLayout } from "../lib/layout.js";
 import { treeLayout, buildTree, edgeKey, carryGroupMembers } from "../lib/tree-layout.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { usePresence } from "../lib/usePresence.js";
+import { useFollow } from "../lib/useFollow.js";
 import { useLiveSync, applyGeomOverlay } from "../lib/useLiveSync.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { rafThrottle } from "../lib/raf-throttle.js";
@@ -337,7 +339,7 @@ export default function IdeaMap() {
   const [role, setRole] = useState(null);
   const [boardName, setBoardName] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
-  const { sendCursor, sendSelection, sendEdgeDraft, socket } = usePresence(user, boardId);
+  const { sendCursor, sendSelection, sendEdgeDraft, sendView, sendFollow, socket } = usePresence(user, boardId);
   const inkLive = useInkLive(socket);
   const laser = useLaser(socket);
   // Kích thước thẻ đo bằng ResizeObserver thay cho querySelector + offsetWidth
@@ -473,6 +475,35 @@ export default function IdeaMap() {
       : null;
     sendEdgeDraft(draft);
   }, [linkDraft, edgeDrag, sendEdgeDraft]);
+
+  // Đường ghi camera dành RIÊNG cho vòng bám khi ghim màn hình. Cố ý không đi
+  // qua setCamera: setCamera là "người dùng chủ động đổi camera" nên nó huỷ
+  // ghim, mà vòng bám cũng đổi camera — dùng chung một cửa thì vòng bám tự huỷ
+  // mình ngay khung hình đầu tiên.
+  const applyFollowCamera = useCallback((view) => {
+    setBoard((prev) => (prev ? { ...prev, view: { ...prev.view, ...view } } : prev));
+  }, []);
+
+  const { followingId, watcherCount, follow, stopFollow } = useFollow({
+    socket, sendFollow, viewportSize,
+    applyCamera: applyFollowCamera,
+    minScale: MIN_SCALE, maxScale: MAX_SCALE
+  });
+
+  // Chỉ phát camera khi THỰC SỰ có người đang xem. Ghim là tính năng dùng theo
+  // đợt (lúc họp), nên mặc định phải là im lặng tuyệt đối: không ai ghim thì
+  // không một gói nào rời máy, dù người dùng có cuộn cả buổi.
+  useEffect(() => {
+    if (!board || watcherCount === 0) return;
+    // Kích thước khung nhìn đi kèm camera, vì người xem cần biết mình đang thấy
+    // VÙNG nào chứ không phải pan/zoom bao nhiêu — hai màn hình khác cỡ thì hai
+    // con số đó nghĩa khác nhau (lib/follow.js).
+    if (viewportSize.w <= 0 || viewportSize.h <= 0) return;
+    sendView({
+      panX: board.view.panX, panY: board.view.panY, scale: board.view.scale,
+      w: viewportSize.w, h: viewportSize.h
+    });
+  }, [board?.view, viewportSize, watcherCount, sendView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Overlay nào đã được board thật bắt kịp phải bỏ NGAY. Giữ lại nghĩa là tiếp
   // tục vẽ một bản tạm đè lên dữ liệu thật vừa nhận — nét nhấp nháy.
@@ -697,6 +728,8 @@ export default function IdeaMap() {
       e.preventDefault();
       const current = boardRef.current;
       if (!current) return;
+      // Cuộn/zoom là người dùng tự lái camera → thôi bám theo người khác.
+      stopFollow();
       // Lăn chuột = thu phóng tại vị trí con trỏ. Giữ Shift để lia ngang/dọc
       // (hữu ích cho trackpad hoặc khi muốn cuộn thay vì zoom).
       if (e.shiftKey) {
@@ -710,10 +743,12 @@ export default function IdeaMap() {
     }
     el.addEventListener("wheel", wheelHandler, { passive: false });
     return () => el.removeEventListener("wheel", wheelHandler);
+    // stopFollow là useCallback ổn định (chỉ phụ thuộc sendFollow, cũng ổn
+    // định), nên thêm vào deps không làm listener gắn lại thêm lần nào.
     // Re-chạy khi board tải xong: lúc mount đầu board còn null nên viewport
     // chưa render (return "Đang tải…"), viewportRef.current == null và listener
     // sẽ không được gắn nếu chỉ phụ thuộc [].
-  }, [board != null]);
+  }, [board != null, stopFollow]);
 
   // Đọc roleRef chứ không đọc `role`: saveNow là chốt chặn cuối, nó phải đúng kể
   // cả khi được gọi từ một closure cũ. Handler nào gắn với deps [] (listener
@@ -2139,6 +2174,10 @@ export default function IdeaMap() {
 
   function startPan(e) {
     e.preventDefault();
+    // Tự lia nền → thôi bám theo người khác. Đặt ở đây (mousedown) chứ không
+    // trong onMove: người dùng vừa chạm vào là dừng ngay, không phải đợi camera
+    // giằng co với vòng bám qua vài khung hình.
+    stopFollow();
     const startX = e.clientX, startY = e.clientY;
     const startPanX = board.view.panX, startPanY = board.view.panY;
     let dragging = false;
@@ -2519,7 +2558,13 @@ export default function IdeaMap() {
   // KHÔNG ghi được gì lên server, nhưng vẫn đẩy cả board kèm ảnh base64 đi và
   // bắt server phát board:update cho mọi người — nghĩa là chỉ cần một người
   // cuộn chuột là màn hình của tất cả những người còn lại bị dựng lại.
+  //
+  // Đây cũng là chỗ huỷ ghim màn hình: người dùng tự lái camera thì thôi bám
+  // theo người khác. Không có chốt này thì họ zoom xong màn hình bị kéo ngược
+  // lại ngay lập tức — trông y như app treo. Vòng bám đi cửa riêng
+  // (applyFollowCamera) nên không tự huỷ mình ở đây.
   function setCamera(view) {
+    stopFollow();
     setBoard((prev) => ({ ...prev, view }));
   }
 
@@ -2535,6 +2580,8 @@ export default function IdeaMap() {
   function goToPoint(pt) {
     const el = viewportRef.current;
     if (!el) return;
+    // Bấm/kéo trên minimap cũng là tự lái camera → thôi bám theo người khác.
+    stopFollow();
     const rect = el.getBoundingClientRect();
     const view = boardRef.current.view;
     setBoard((prev) => ({
@@ -2803,13 +2850,14 @@ export default function IdeaMap() {
   // Đưa con trỏ của một người khác vào giữa màn hình. Camera là dữ liệu riêng
   // từng máy (lib/camera.js) nên chỉ setBoard, không commit vào lịch sử undo —
   // nhìn sang chỗ đồng đội không phải là một thao tác sửa board.
+  //
+  // Đi qua setCamera (không setBoard thẳng) để nó huỷ ghim: đang bám màn hình A
+  // mà bấm nhảy tới con trỏ B thì vòng bám sẽ kéo ngược về A ngay khung hình
+  // sau, và cú bấm trông như không có tác dụng gì.
   function jumpToPeer(peer) {
     const rect = viewportRef.current.getBoundingClientRect();
     const { scale } = board.view;
-    setBoard({
-      ...board,
-      view: { scale, panX: rect.width / 2 - peer.x * scale, panY: rect.height / 2 - peer.y * scale }
-    });
+    setCamera({ scale, panX: rect.width / 2 - peer.x * scale, panY: rect.height / 2 - peer.y * scale });
     // Con trỏ peer nhỏ và có thể đang đứng yên giữa một rừng thẻ — nháy sáng
     // một nhịp để mắt bắt được sau khi màn hình vừa nhảy.
     setSpotlightPeerId(peer.socketId);
@@ -3580,9 +3628,15 @@ export default function IdeaMap() {
             onInvite={() => setInviteOpen(true)}
             onJumpToPeer={jumpToPeer}
             onLogout={logout}
+            followingId={followingId}
+            watcherCount={watcherCount}
+            onFollowPeer={follow}
+            onStopFollow={stopFollow}
           />
         </div>
       </div>
+
+      <FollowBanner socket={socket} followingId={followingId} onStop={stopFollow} />
 
       {/* ĐẢO HOÀN TÁC — góc dưới trái, đối xứng với nút zoom ở góc dưới phải:
           cả hai đều là thao tác lên TRẠNG THÁI khung nhìn/bảng chứ không tạo ra

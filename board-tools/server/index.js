@@ -18,6 +18,7 @@ import {
 } from "./auth.js";
 import { Board, upsertUser } from "./models.js";
 import boardsRouter from "./boards.js";
+import { sanitizeView, resolveFollow, countWatchers, releaseFollowersOf } from "./follow.js";
 
 dotenv.config();
 
@@ -209,7 +210,7 @@ io.use(async (socket, next) => {
   next();
 });
 
-// boardId -> Map<socket.id, { socketId, email, name, picture, x, y }>
+// boardId -> Map<socket.id, { socketId, email, name, picture, x, y, followingId }>
 const presencePeers = new Map();
 
 // Kênh live:geom giờ chỉ mang ĐÚNG những item đang bị kéo (thường là 1), không
@@ -351,8 +352,23 @@ io.on("connection", (socket) => {
   const room = "board:" + socket.data.boardId;
   socket.join(room);
   const peers = peersForBoard(socket.data.boardId);
-  const peer = { socketId: socket.id, ...socket.data.user, x: 0, y: 0, selectedIds: [], edgeDraft: null };
+  const peer = {
+    socketId: socket.id, ...socket.data.user,
+    x: 0, y: 0, selectedIds: [], edgeDraft: null,
+    // Ai người này đang ghim màn hình. Nằm trong peer (không phải state riêng)
+    // để nó đi kèm presence:sync — người mới vào thấy ngay ai đang xem theo ai.
+    followingId: null
+  };
   peers.set(socket.id, peer);
+
+  // Báo cho MỘT người biết hiện có bao nhiêu người đang xem màn hình họ. Client
+  // dùng con số này làm công tắc: bằng 0 thì không phát view:update lấy một gói
+  // nào. Ghim là tính năng dùng theo đợt (lúc họp), nên mặc định phải là im
+  // lặng tuyệt đối chứ không phải "cứ phát rồi ai cần thì nghe".
+  function sendWatchedCount(targetId) {
+    if (!targetId) return;
+    io.to(targetId).emit("follow:watched", { count: countWatchers(peers, targetId) });
+  }
   socket.emit("presence:sync", Array.from(peers.values()));
   socket.to(room).emit("presence:join", peer);
 
@@ -439,6 +455,47 @@ io.on("connection", (socket) => {
     });
   });
 
+  // Khung nhìn (pan/zoom) của người này, cho tính năng ghim màn hình. Presence
+  // thuần như cursor/laser: không ghi một chữ nào vào board, nên KHÔNG chặn
+  // viewer — người được mời vào chỉ để xem vẫn phải bám theo màn hình người
+  // đang thuyết trình.
+  //
+  // .volatile: đây là "vị trí camera HIỆN TẠI", gói cũ xếp hàng rồi phát bù là
+  // cảnh màn hình người xem chạy giật lùi qua cả chuỗi khung nhìn đã lỗi thời —
+  // cùng lý do với cursor:move.
+  socket.on("view:update", (payload) => {
+    const view = sanitizeView(payload);
+    if (!view) return;
+    // Chỉ gửi cho ĐÚNG những người đang ghim mình, không phát cả phòng: trong
+    // một cuộc họp 6 người mà 5 người ghim 1, người còn lại không việc gì phải
+    // nhận 20 gói/giây về camera của người khác.
+    for (const [id, p] of peers) {
+      if (p.followingId === socket.id) io.to(id).volatile.emit("view:update", { socketId: socket.id, view });
+    }
+  });
+
+  // Bắt đầu / ngừng ghim màn hình một người. targetId = null là bỏ ghim.
+  socket.on("follow:update", (payload) => {
+    const p = peers.get(socket.id);
+    if (!p) return;
+    const targetId = payload?.targetId ?? null;
+    const res = resolveFollow(peers, socket.id, targetId);
+    if (!res.ok) {
+      // Báo lại cho chính người bấm: nút ghim của họ đang ở trạng thái "đang
+      // ghim" trên màn hình, không nói gì thì nó kẹt ở đó vĩnh viễn.
+      socket.emit("follow:denied", { targetId, reason: res.reason });
+      return;
+    }
+    const prevId = p.followingId;
+    if (prevId === res.targetId) return;
+    p.followingId = res.targetId;
+    socket.to(room).emit("follow:update", { socketId: socket.id, followingId: p.followingId });
+    // Cả mục tiêu CŨ lẫn MỚI đều đổi số người xem — quên bên cũ thì người vừa
+    // bị bỏ ghim cứ phát view mãi cho một khán giả không còn ai.
+    sendWatchedCount(prevId);
+    sendWatchedCount(res.targetId);
+  });
+
   // Nội dung đang gõ dở — không lưu DB, chỉ relay để người khác thấy chữ
   // chạy gần real-time; bản chính thức vẫn qua saveNodeEdit → PUT như cũ.
   socket.on("live:text", (payload) => {
@@ -472,7 +529,20 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
+    const leaving = peers.get(socket.id);
     peers.delete(socket.id);
+
+    // Người vừa rời đang bị người khác ghim: thả họ ra. Không thả thì họ ngồi
+    // chờ view của một socket đã chết — màn hình đứng im, trông hệt như mạng
+    // lag, và cái viền "đang xem màn hình của X" treo lại vĩnh viễn.
+    for (const id of releaseFollowersOf(peers, socket.id)) {
+      io.to(room).emit("follow:update", { socketId: id, followingId: null });
+    }
+    // Người vừa rời đang ghim ai đó: người đó nay ít đi một khán giả, và nếu về
+    // 0 thì ngừng phát view. Tính SAU khi đã xoá khỏi peers để không đếm nhầm
+    // chính người vừa đi.
+    if (leaving?.followingId) sendWatchedCount(leaving.followingId);
+
     if (peers.size === 0) presencePeers.delete(socket.data.boardId);
     socket.to(room).emit("presence:leave", { socketId: socket.id });
   });

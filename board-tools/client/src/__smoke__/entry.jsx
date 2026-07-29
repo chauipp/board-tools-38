@@ -1700,5 +1700,111 @@ export async function run(log) {
   if (document.querySelector(".minimap")) throw new Error("bấm × mà bản đồ thu nhỏ vẫn còn");
   log("minimap: nút zoom và nút × đều bật/tắt được");
 
+  // ── Ghim màn hình người khác ────────────────────────────────────────────
+  const camera = () => {
+    const s = document.querySelector(".canvas").style.transform;
+    const m = s.match(/translate\((-?[\d.]+)px,\s*(-?[\d.]+)px\)\s*scale\(([\d.]+)\)/);
+    if (!m) throw new Error("không đọc được transform của .canvas: " + s);
+    return { panX: +m[1], panY: +m[2], scale: +m[3] };
+  };
+
+  // Chưa ai ghim ai: KHÔNG được phát một gói view:update nào. Đây là điểm mấu
+  // chốt của thiết kế — cả buổi không ai dùng ghim thì kênh này phải câm.
+  if (globalThis.__emitted.some((e) => e[0] === "view:update")) {
+    throw new Error("chưa ai ghim mà đã phát view:update — kênh camera không được mặc định bật");
+  }
+
+  await act(async () => {
+    globalThis.__deliver("presence:join", { socketId: "peer-f", email: "sep@example.com", name: "Sếp" });
+    await new Promise((r) => setTimeout(r, 20));
+  });
+
+  // Chọn ĐÚNG avatar của "Sếp": phần laser ở trên đã cho peer-1 và peer-2 vào
+  // phòng, nên avatar đầu hàng không phải người mình muốn ghim.
+  const peerAvatar = Array.from(document.querySelectorAll(".presence-peer .presence-avatar"))
+    .find((a) => a.title === "Sếp");
+  if (!peerAvatar) throw new Error("người mới vào không hiện avatar trong PresenceBar");
+  await act(async () => { peerAvatar.click(); await new Promise((r) => setTimeout(r, 20)); });
+  const pinBtn = Array.from(document.querySelectorAll(".peer-menu .btn"))
+    .find((b) => (b.textContent || "").includes("Ghim màn hình"));
+  if (!pinBtn) throw new Error("menu của peer không có nút Ghim màn hình");
+  await act(async () => { pinBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
+
+  const followEmits = globalThis.__emitted.filter((e) => e[0] === "follow:update");
+  if (followEmits.length !== 1 || followEmits[0][1].targetId !== "peer-f") {
+    throw new Error("bấm Ghim không gửi follow:update đúng mục tiêu: " + JSON.stringify(followEmits));
+  }
+  if (!document.querySelector(".follow-frame")) throw new Error("đang ghim mà không có viền chỉ báo trên màn hình");
+
+  // Camera của người kia về → màn hình mình phải chạy theo. Người kia có màn
+  // hình RỘNG GẤP ĐÔI, nên mình phải THU NHỎ lại để thấy trọn vùng họ thấy,
+  // chứ không phải copy nguyên scale của họ.
+  const camBefore = camera();
+  await act(async () => {
+    globalThis.__deliver("view:update", {
+      socketId: "peer-f",
+      view: { panX: -2400, panY: -1600, scale: 1, w: window.innerWidth * 2, h: window.innerHeight * 2 }
+    });
+    await new Promise((r) => setTimeout(r, 400));
+  });
+  const camAfter = camera();
+  log(`ghim: camera ${camBefore.panX.toFixed(0)},${camBefore.panY.toFixed(0)}@${camBefore.scale.toFixed(2)} → ${camAfter.panX.toFixed(0)},${camAfter.panY.toFixed(0)}@${camAfter.scale.toFixed(2)}`);
+  if (Math.abs(camAfter.panX - camBefore.panX) < 1 && Math.abs(camAfter.panY - camBefore.panY) < 1) {
+    throw new Error("nhận view của người bị ghim mà camera mình không nhúc nhích");
+  }
+  if (camAfter.scale >= 0.9) {
+    throw new Error(`màn hình họ rộng gấp đôi thì mình phải thu nhỏ còn ~0.5, đang là ${camAfter.scale}`);
+  }
+
+  // Người kia đứng yên thì camera mình cũng phải ĐỨNG HẲN, không rung tiệm cận.
+  const settled1 = camera();
+  await act(async () => { await new Promise((r) => setTimeout(r, 250)); });
+  const settled2 = camera();
+  if (settled1.panX !== settled2.panX || settled1.scale !== settled2.scale) {
+    throw new Error("người kia đứng yên mà camera mình vẫn còn bò — vòng bám không dừng");
+  }
+
+  // Tự lăn chuột = tự lái camera → phải TỰ BỎ GHIM. Không có chốt này thì cú
+  // cuộn đầu tiên bị vòng bám kéo ngược lại, trông y như app treo.
+  const emittedBeforeUnfollow = globalThis.__emitted.length;
+  await act(async () => {
+    canvasEl.dispatchEvent(new window.WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -240, clientX: 500, clientY: 400 }));
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  const unfollow = globalThis.__emitted.slice(emittedBeforeUnfollow).filter((e) => e[0] === "follow:update");
+  log(`ghim: lăn chuột → ${unfollow.length} gói bỏ ghim, viền ${document.querySelector(".follow-frame") ? "còn" : "mất"}`);
+  if (unfollow.length !== 1 || unfollow[0][1].targetId !== null) {
+    throw new Error("tự lăn chuột mà không tự bỏ ghim: " + JSON.stringify(unfollow));
+  }
+  if (document.querySelector(".follow-frame")) throw new Error("đã bỏ ghim mà viền chỉ báo vẫn còn");
+
+  // Bỏ ghim rồi thì gói view của người cũ (còn trên đường) không được kéo camera.
+  const camAfterUnfollow = camera();
+  await act(async () => {
+    globalThis.__deliver("view:update", {
+      socketId: "peer-f", view: { panX: 500, panY: 500, scale: 2, w: 1200, h: 800 }
+    });
+    await new Promise((r) => setTimeout(r, 200));
+  });
+  if (camera().panX !== camAfterUnfollow.panX || camera().scale !== camAfterUnfollow.scale) {
+    throw new Error("đã bỏ ghim mà gói view cũ vẫn kéo được camera");
+  }
+
+  // Chiều ngược lại: có người ghim MÌNH thì mới bắt đầu phát camera, và phải
+  // hiện cho mình biết là đang bị xem.
+  await act(async () => {
+    globalThis.__deliver("follow:watched", { count: 2 });
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  const chip = document.querySelector(".watched-chip");
+  if (!chip) throw new Error("có người ghim mình mà không hiện chỉ báo nào");
+  const viewEmits = globalThis.__emitted.filter((e) => e[0] === "view:update");
+  log(`ghim: bị ${2} người xem → chip "${chip.textContent}" · phát ${viewEmits.length} gói view`);
+  if (viewEmits.length === 0) throw new Error("có người ghim mình mà không phát gói view nào");
+  const v = viewEmits[viewEmits.length - 1][1];
+  if (!(v.w > 0 && v.h > 0) || !Number.isFinite(v.scale)) {
+    throw new Error("gói view thiếu kích thước khung nhìn — người xem không khớp được hai màn hình: " + JSON.stringify(v));
+  }
+
   return true;
 }
