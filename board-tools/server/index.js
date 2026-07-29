@@ -489,7 +489,11 @@ io.on("connection", (socket) => {
     const prevId = p.followingId;
     if (prevId === res.targetId) return;
     p.followingId = res.targetId;
-    socket.to(room).emit("follow:update", { socketId: socket.id, followingId: p.followingId });
+    // io.to chứ KHÔNG socket.to: chính người bấm cũng phải nhận gói này. Client
+    // cố ý không tự bật trạng thái ghim mà chờ server ừ — nếu không, một server
+    // đang chạy code cũ (không hiểu sự kiện này) sẽ để giao diện hiện "đang
+    // ghim" với đủ viền và chip, trong khi thực tế không có gì xảy ra cả.
+    io.to(room).emit("follow:update", { socketId: socket.id, followingId: p.followingId });
     // Cả mục tiêu CŨ lẫn MỚI đều đổi số người xem — quên bên cũ thì người vừa
     // bị bỏ ghim cứ phát view mãi cho một khán giả không còn ai.
     sendWatchedCount(prevId);

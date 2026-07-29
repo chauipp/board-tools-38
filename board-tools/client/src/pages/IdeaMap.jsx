@@ -484,7 +484,7 @@ export default function IdeaMap() {
     setBoard((prev) => (prev ? { ...prev, view: { ...prev.view, ...view } } : prev));
   }, []);
 
-  const { followingId, watcherCount, follow, stopFollow } = useFollow({
+  const { followingId, pendingId, followError, watcherCount, follow, stopFollow } = useFollow({
     socket, sendFollow, viewportSize,
     applyCamera: applyFollowCamera,
     minScale: MIN_SCALE, maxScale: MAX_SCALE
@@ -3636,7 +3636,13 @@ export default function IdeaMap() {
         </div>
       </div>
 
-      <FollowBanner socket={socket} followingId={followingId} onStop={stopFollow} />
+      <FollowBanner
+        socket={socket}
+        followingId={followingId}
+        pendingId={pendingId}
+        followError={followError}
+        onStop={stopFollow}
+      />
 
       {/* ĐẢO HOÀN TÁC — góc dưới trái, đối xứng với nút zoom ở góc dưới phải:
           cả hai đều là thao tác lên TRẠNG THÁI khung nhìn/bảng chứ không tạo ra

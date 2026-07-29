@@ -7,6 +7,14 @@ import { followCamera, isUsableView, stepFollow } from "./follow.js";
 // mạng, đủ nhanh để không tụt lại sau lời người đang nói.
 const TAU_MS = 90;
 
+// Chờ server ừ bao lâu trước khi coi như hỏng. Đây là đường đi socket trong một
+// phòng đã kết nối sẵn, nên hồi âm bình thường tính bằng mili giây; 2.5s rộng
+// rãi cho mạng tệ mà vẫn đủ ngắn để người dùng không ngồi nhìn màn hình đứng im
+// tự hỏi mình bấm trượt hay app hỏng.
+const ACK_TIMEOUT_MS = 2500;
+// Báo lỗi tự tan sau ngần này. Nó là thông báo nhất thời, không phải trạng thái.
+const ERROR_FADE_MS = 5000;
+
 /**
  * Ghim màn hình một người: camera của mình bám theo camera của họ.
  *
@@ -17,9 +25,20 @@ const TAU_MS = 90;
  * `applyCamera` phải là đường ghi camera KHÔNG kèm huỷ ghim — nếu nó gọi vào
  * cùng hàm mà cú cuộn chuột của người dùng gọi, thì chính vòng bám sẽ tự huỷ
  * mình ngay khung hình đầu tiên.
+ *
+ * Trạng thái ghim KHÔNG tự bật lúc bấm mà chờ server xác nhận. Lý do rất cụ
+ * thể: bản đầu tự bật, và khi server đang chạy code cũ (chưa biết sự kiện
+ * `follow:update`), giao diện hiện đủ viền màu lẫn chip "đang xem màn hình
+ * của X" trong khi thực tế không một gói nào được relay. Giao diện nói dối là
+ * kiểu lỗi tốn nhiều thời gian nhất để lần ra, nên ở đây phải im cho tới khi
+ * server ừ, và phải kêu lên nếu quá 2.5s không ai trả lời.
  */
 export function useFollow({ socket, sendFollow, viewportSize, applyCamera, minScale, maxScale }) {
   const [followingId, setFollowingId] = useState(null);
+  // Đã bấm, đã gửi, chưa được xác nhận. Tách hẳn khỏi followingId để giao diện
+  // nói đúng ba trạng thái: chưa ghim / đang chờ / đang bám.
+  const [pendingId, setPendingId] = useState(null);
+  const [followError, setFollowError] = useState(null);
   const [watcherCount, setWatcherCount] = useState(0);
 
   const targetViewRef = useRef(null);   // view mới nhất của người bị ghim
@@ -30,10 +49,19 @@ export function useFollow({ socket, sendFollow, viewportSize, applyCamera, minSc
   // toàn bộ listener.
   const followingIdRef = useRef(null);
   followingIdRef.current = followingId;
+  const pendingIdRef = useRef(null);
+  const ackTimerRef = useRef(null);
   const frameRef = useRef(0);
   const lastTsRef = useRef(0);
   const applyRef = useRef(applyCamera);
   applyRef.current = applyCamera;
+
+  const clearAck = useCallback(() => {
+    if (ackTimerRef.current) clearTimeout(ackTimerRef.current);
+    ackTimerRef.current = null;
+    pendingIdRef.current = null;
+    setPendingId(null);
+  }, []);
 
   const stopLoop = useCallback(() => {
     if (frameRef.current) cancelAnimationFrame(frameRef.current);
@@ -106,15 +134,20 @@ export function useFollow({ socket, sendFollow, viewportSize, applyCamera, minSc
       targetViewRef.current = view;
       kick();
     }
-    // Server phát cho cả phòng, kể cả chính mình — và "chính mình" ở đây là lúc
-    // mục tiêu rời phòng nên server thả mình ra. usePeers không bắt được ca này
-    // vì nó đã loại socket của mình khỏi danh sách peer.
+    // Server phát cho cả phòng, KỂ CẢ chính mình — và gói gửi cho chính mình
+    // chính là lời xác nhận: chỉ tới đây trạng thái ghim mới thật sự bật. Nó
+    // cũng là đường về khi mục tiêu rời phòng và server thả mình ra; usePeers
+    // không bắt được ca đó vì nó đã loại socket của mình khỏi danh sách peer.
     function onFollow({ socketId, followingId: id }) {
-      if (socketId === socket.id) setFollowingId(id);
+      if (socketId !== socket.id) return;
+      clearAck();
+      setFollowError(null);
+      setFollowingId(id);
     }
-    function onDenied() {
-      // Nút đang hiển thị "đang ghim"; không trả trạng thái về thì nó kẹt ở đó.
+    function onDenied({ reason } = {}) {
+      clearAck();
       setFollowingId(null);
+      setFollowError(reason || "denied");
     }
     function onWatched({ count }) {
       setWatcherCount(Number.isFinite(count) ? count : 0);
@@ -130,7 +163,7 @@ export function useFollow({ socket, sendFollow, viewportSize, applyCamera, minSc
       socket.off("follow:denied", onDenied);
       socket.off("follow:watched", onWatched);
     };
-  }, [socket, kick]);
+  }, [socket, kick, clearAck]);
 
   // Mất kết nối là mất luôn cả hai chiều: mình không còn nhận view của ai, và
   // server đã quên mất ai đang xem mình. Giữ nguyên trạng thái cũ trên màn hình
@@ -138,6 +171,7 @@ export function useFollow({ socket, sendFollow, viewportSize, applyCamera, minSc
   useEffect(() => {
     if (!socket) return;
     function onDown() {
+      clearAck();
       setFollowingId(null);
       setWatcherCount(0);
     }
@@ -147,7 +181,15 @@ export function useFollow({ socket, sendFollow, viewportSize, applyCamera, minSc
       socket.off("disconnect", onDown);
       socket.off("connect_error", onDown);
     };
-  }, [socket]);
+  }, [socket, clearAck]);
+
+  // Báo lỗi là thông báo nhất thời, không phải trạng thái — tự tan để không nằm
+  // lì trên màn hình sau khi người dùng đã đọc và đã thử lại.
+  useEffect(() => {
+    if (!followError) return;
+    const id = setTimeout(() => setFollowError(null), ERROR_FADE_MS);
+    return () => clearTimeout(id);
+  }, [followError]);
 
   // Đổi mục tiêu (hoặc bỏ ghim): xoá view cũ và dừng vòng ngay, không để camera
   // bò nốt quãng còn lại về chỗ người cũ sau khi đã bỏ ghim.
@@ -158,20 +200,40 @@ export function useFollow({ socket, sendFollow, viewportSize, applyCamera, minSc
 
   useEffect(() => stopLoop, [stopLoop]);
 
+  // Bấm ghim: CHỈ gửi và chờ. Trạng thái thật do onFollow bật khi server ừ.
   const follow = useCallback((targetId) => {
-    setFollowingId(targetId);
+    if (ackTimerRef.current) clearTimeout(ackTimerRef.current);
+    setFollowError(null);
+    pendingIdRef.current = targetId;
+    setPendingId(targetId);
     sendFollow(targetId);
+    ackTimerRef.current = setTimeout(() => {
+      ackTimerRef.current = null;
+      // Người dùng có thể đã bấm sang người khác trong lúc chờ — cú hết giờ của
+      // lần bấm cũ không được xoá trạng thái của lần bấm mới.
+      if (pendingIdRef.current !== targetId) return;
+      pendingIdRef.current = null;
+      setPendingId(null);
+      setFollowError("timeout");
+    }, ACK_TIMEOUT_MS);
   }, [sendFollow]);
 
   const stopFollow = useCallback(() => {
-    // Ra sớm khi không ghim ai: hàm này được gọi từ MỌI thao tác camera của
-    // người dùng (cuộn, lia, zoom) — tức là hàng chục lần mỗi giây lúc kéo nền,
-    // và tuyệt đại đa số thời gian là chẳng ghim ai cả.
-    if (followingIdRef.current === null) return;
+    // Ra sớm khi không ghim và không chờ ai: hàm này được gọi từ MỌI thao tác
+    // camera của người dùng (cuộn, lia, zoom) — hàng chục lần mỗi giây lúc kéo
+    // nền, mà tuyệt đại đa số thời gian là chẳng ghim ai cả.
+    if (followingIdRef.current === null && pendingIdRef.current === null) return;
+    // Bỏ ghim thì KHÔNG chờ xác nhận, khác hẳn lúc bấm ghim: người dùng vừa đòi
+    // lại quyền lái camera, bắt họ đợi một vòng mạng là camera còn bị kéo thêm
+    // vài khung hình nữa. Gói null vẫn gửi đi để server ngừng relay.
+    if (ackTimerRef.current) clearTimeout(ackTimerRef.current);
+    ackTimerRef.current = null;
     followingIdRef.current = null;
+    pendingIdRef.current = null;
     setFollowingId(null);
+    setPendingId(null);
     sendFollow(null);
   }, [sendFollow]);
 
-  return { followingId, watcherCount, follow, stopFollow };
+  return { followingId, pendingId, followError, watcherCount, follow, stopFollow };
 }
