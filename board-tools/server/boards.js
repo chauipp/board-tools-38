@@ -97,6 +97,7 @@ router.get("/:id", async (req, res) => {
       tags: obj.tags,
       palette: obj.palette,
       bg: obj.bg,
+      grid: obj.grid,
       pack: obj.pack,
       drawings: obj.drawings,
       nextNodeId: obj.nextNodeId,
@@ -120,14 +121,14 @@ router.put("/:id", async (req, res) => {
     const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS);
     if (!found) return;
     const {
-      nodes, edges, groups, statuses, tags, palette, bg, pack, drawings,
+      nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
       nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, nextDrawingId,
       view,
       clientId
     } = req.body;
     const updatedAt = new Date();
     await Board.findByIdAndUpdate(req.params.id, {
-      nodes, edges, groups, statuses, tags, palette, bg, pack, drawings,
+      nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
       nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, nextDrawingId,
       view, updatedAt
     });
@@ -140,7 +141,7 @@ router.put("/:id", async (req, res) => {
     // không từ URL — hex viết hoa/thường khác nhau vẫn phải vào đúng phòng.
     const room = "board:" + String(found.board._id);
     const payload = {
-      nodes, edges, groups, statuses, tags, palette, bg, pack, drawings,
+      nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
       nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, nextDrawingId,
       updatedAt: updatedAt.toISOString()
     };

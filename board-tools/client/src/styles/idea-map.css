@@ -220,6 +220,12 @@
 :root[data-bg="slate"], :root[data-theme="light"][data-bg="slate"] { --board-bg: #E4E6E4; --board-grid: rgba(28,34,36,0.17); }
 :root[data-bg="mint"],  :root[data-theme="light"][data-bg="mint"]  { --board-bg: #E2EDE6; --board-grid: rgba(20,50,35,0.17); }
 :root[data-bg="blush"], :root[data-theme="light"][data-bg="blush"] { --board-bg: #F1E6E4; --board-grid: rgba(60,25,20,0.15); }
+:root[data-bg="sky"],   :root[data-theme="light"][data-bg="sky"]   { --board-bg: #E0E9F5; --board-grid: rgba(18,42,74,0.17); }
+:root[data-bg="sand"],  :root[data-theme="light"][data-bg="sand"]  { --board-bg: #F2E6C9; --board-grid: rgba(74,54,16,0.18); }
+:root[data-bg="lavender"], :root[data-theme="light"][data-bg="lavender"] { --board-bg: #EAE5F4; --board-grid: rgba(48,32,74,0.16); }
+/* Bản vẽ kỹ thuật: nền vẫn sáng để bút mực đậm còn đọc được, chất "giấy can"
+   đến từ LƯỚI — đậm gấp đôi các preset khác và ngả xanh. */
+:root[data-bg="blueprint"], :root[data-theme="light"][data-bg="blueprint"] { --board-bg: #DBE6F3; --board-grid: rgba(22,66,120,0.30); }
 
 @media (prefers-color-scheme: dark) {
   :root[data-bg="paper"] { --board-bg: #241F16; --board-grid: rgba(236,231,210,0.13); }
@@ -227,12 +233,32 @@
   :root[data-bg="slate"] { --board-bg: #1B1E1F; --board-grid: rgba(230,238,240,0.11); }
   :root[data-bg="mint"]  { --board-bg: #141F19; --board-grid: rgba(210,240,225,0.11); }
   :root[data-bg="blush"] { --board-bg: #221715; --board-grid: rgba(245,220,215,0.11); }
+  :root[data-bg="sky"]   { --board-bg: #151C27; --board-grid: rgba(214,230,250,0.11); }
+  :root[data-bg="sand"]  { --board-bg: #241E12; --board-grid: rgba(248,235,205,0.12); }
+  :root[data-bg="lavender"] { --board-bg: #1D1826; --board-grid: rgba(230,220,250,0.11); }
+  :root[data-bg="blueprint"] { --board-bg: #0E1F35; --board-grid: rgba(126,178,240,0.22); }
 }
 :root[data-theme="dark"][data-bg="paper"] { --board-bg: #241F16; --board-grid: rgba(236,231,210,0.13); }
 :root[data-theme="dark"][data-bg="white"] { --board-bg: #141414; --board-grid: rgba(255,255,255,0.10); }
 :root[data-theme="dark"][data-bg="slate"] { --board-bg: #1B1E1F; --board-grid: rgba(230,238,240,0.11); }
 :root[data-theme="dark"][data-bg="mint"]  { --board-bg: #141F19; --board-grid: rgba(210,240,225,0.11); }
 :root[data-theme="dark"][data-bg="blush"] { --board-bg: #221715; --board-grid: rgba(245,220,215,0.11); }
+:root[data-theme="dark"][data-bg="sky"]   { --board-bg: #151C27; --board-grid: rgba(214,230,250,0.11); }
+:root[data-theme="dark"][data-bg="sand"]  { --board-bg: #241E12; --board-grid: rgba(248,235,205,0.12); }
+:root[data-theme="dark"][data-bg="lavender"] { --board-bg: #1D1826; --board-grid: rgba(230,220,250,0.11); }
+:root[data-theme="dark"][data-bg="blueprint"] { --board-bg: #0E1F35; --board-grid: rgba(126,178,240,0.22); }
+
+/* ─── Kiểu lưới (board.grid) ──────────────────────────────────────────────
+   Trục thứ hai của nền, độc lập với màu: mọi preset màu ở trên đều dùng được
+   với cả ba kiểu lưới. Nền sa bàn được ghép từ `var(--board-pattern)` (khai ở
+   index.css) nên chỗ này chỉ cần gán lại MỘT biến — không lặp lại câu
+   `background:` của .viewport, và không phải nhân ba nó cho skin vẽ tay. */
+:root[data-grid="lines"] {
+  --board-pattern:
+    linear-gradient(var(--grid-ink) 1px, transparent 1px) 0 0 / var(--grid-size) var(--grid-size),
+    linear-gradient(90deg, var(--grid-ink) 1px, transparent 1px) 0 0 / var(--grid-size) var(--grid-size);
+}
+:root[data-grid="plain"] { --board-pattern: none; }
 
 /* ─── Bộ màu (board.pack) ─────────────────────────────────────────────────
    Chỉ gán lại 8 token --dot-*. Thẻ / nhãn / dây lưu TÊN token ("dot-3") chứ
@@ -259,11 +285,24 @@
   --dot-1: #2E3A47; --dot-2: #3D4C5C; --dot-3: #4C5E71; --dot-4: #5B7086;
   --dot-5: #6B829B; --dot-6: #7C94AC; --dot-7: #8EA5BC; --dot-8: #A2B6CA;
 }
+/* Đất: tám sắc đất nung / rêu / đá, cùng độ chói thấp nên không màu nào nhảy
+   ra trước — hợp bảng đọc lâu và hợp cả với nền Giấy kraft lẫn Cát. */
+:root[data-pack="earth"] {
+  --dot-1: #9C6B44; --dot-2: #A85340; --dot-3: #77853F; --dot-4: #C08A2E;
+  --dot-5: #B05A26; --dot-6: #5F7A55; --dot-7: #8A6156; --dot-8: #4E7278;
+}
+/* Neon: bộ chói nhất, dựng cho bảng nền tối. Vàng và xanh lá đã hạ một nấc so
+   với neon "thật" — ở nguyên #FFEE00 thì trên nền sáng chữ trên thẻ không đọc
+   được nữa, mà bộ màu phải dùng được ở CẢ hai giao diện. */
+:root[data-pack="neon"] {
+  --dot-1: #1F7AFF; --dot-2: #A93BFF; --dot-3: #00B863; --dot-4: #E8B400;
+  --dot-5: #FF6A00; --dot-6: #57C400; --dot-7: #FF2D78; --dot-8: #00BFD0;
+}
 
 /* inset: 0 chứ không phải flex: 1 — canvas chiếm trọn cửa sổ, chrome nổi đè lên. */
 .viewport {
   position: absolute; inset: 0; overflow: hidden; cursor: default;
-  background: radial-gradient(var(--board-grid) 1px, transparent 1px) 0 0 / var(--grid-size) var(--grid-size), var(--board-bg);
+  background: var(--board-pattern), var(--board-bg);
 }
 .viewport.panning { cursor: grabbing; }
 /* will-change: giữ .canvas trên một lớp compositor riêng, nên lia/thu phóng
@@ -798,6 +837,10 @@
 .bg-swatch[data-bg="slate"] { background: #E4E6E4; }
 .bg-swatch[data-bg="mint"]  { background: #E2EDE6; }
 .bg-swatch[data-bg="blush"] { background: #F1E6E4; }
+.bg-swatch[data-bg="sky"]   { background: #E0E9F5; }
+.bg-swatch[data-bg="sand"]  { background: #F2E6C9; }
+.bg-swatch[data-bg="lavender"] { background: #EAE5F4; }
+.bg-swatch[data-bg="blueprint"] { background: #DBE6F3; }
 /* Nền tối: nút phải cho thấy màu nó sẽ RA, không phải màu của bản sáng. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .bg-swatch[data-bg="paper"] { background: #241F16; }
@@ -805,17 +848,49 @@
   :root:not([data-theme="light"]) .bg-swatch[data-bg="slate"] { background: #1B1E1F; }
   :root:not([data-theme="light"]) .bg-swatch[data-bg="mint"]  { background: #141F19; }
   :root:not([data-theme="light"]) .bg-swatch[data-bg="blush"] { background: #221715; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="sky"]   { background: #151C27; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="sand"]  { background: #241E12; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="lavender"] { background: #1D1826; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="blueprint"] { background: #0E1F35; }
 }
 :root[data-theme="dark"] .bg-swatch[data-bg="paper"] { background: #241F16; }
 :root[data-theme="dark"] .bg-swatch[data-bg="white"] { background: #141414; }
 :root[data-theme="dark"] .bg-swatch[data-bg="slate"] { background: #1B1E1F; }
 :root[data-theme="dark"] .bg-swatch[data-bg="mint"]  { background: #141F19; }
 :root[data-theme="dark"] .bg-swatch[data-bg="blush"] { background: #221715; }
+:root[data-theme="dark"] .bg-swatch[data-bg="sky"]   { background: #151C27; }
+:root[data-theme="dark"] .bg-swatch[data-bg="sand"]  { background: #241E12; }
+:root[data-theme="dark"] .bg-swatch[data-bg="lavender"] { background: #1D1826; }
+:root[data-theme="dark"] .bg-swatch[data-bg="blueprint"] { background: #0E1F35; }
 /* "Theo giao diện": nửa sáng nửa tối, đọc ra ngay là "không chọn màu nào". */
 .bg-swatch.bg-none { background: linear-gradient(135deg, var(--surface) 50%, var(--ink) 50%); }
 .bg-swatch:hover { border-color: var(--ink); }
 .bg-swatch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
 .bg-swatch:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Nút kiểu lưới mang chính cái lưới nó đại diện, thu nhỏ lại — nhãn chữ
+   ("chấm" / "ô" / "trơn") mất nhiều chỗ hơn mà vẫn phải đoán. Bước lưới ở đây
+   là 6px cố định, không dùng --grid-size: nút chỉ 22px, kẻ theo bước thật của
+   sa bàn thì cả nút chỉ còn đúng một vạch. */
+.grid-swatch {
+  width: 22px; height: 22px; border-radius: 5px; padding: 0; flex-shrink: 0;
+  border: 1px solid var(--line); cursor: pointer;
+  background-color: var(--surface);
+  background-position: 1px 1px;
+  background-size: 6px 6px;
+}
+.grid-swatch[data-grid="dots"] {
+  background-image: radial-gradient(color-mix(in srgb, var(--ink) 45%, transparent) 1px, transparent 1px);
+}
+.grid-swatch[data-grid="lines"] {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--ink) 45%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--ink) 45%, transparent) 1px, transparent 1px);
+}
+.grid-swatch[data-grid="plain"] { background-image: none; }
+.grid-swatch:hover { border-color: var(--ink); }
+.grid-swatch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+.grid-swatch:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .badge-editor.pal-editor { width: 150px; }
 .badge-editor .pal-input {
@@ -1227,8 +1302,7 @@
 :root[data-skin="sketch"] .idea-card:hover {
   box-shadow: var(--card-shadow), 3px 5px 10px rgba(0,0,0,0.13);
 }
-/* Lưới chấm mờ hẳn đi: nền giấy vẽ tay mà chấm đều tăm tắp thì lộ ngay là máy kẻ. */
-:root[data-skin="sketch"] .viewport {
-  background: radial-gradient(color-mix(in srgb, var(--board-grid) 55%, transparent) 1px, transparent 1px)
-              0 0 / var(--grid-size) var(--grid-size), var(--board-bg);
-}
+/* Lưới mờ hẳn đi: nền giấy vẽ tay mà kẻ đều tăm tắp thì lộ ngay là máy kẻ. Đổi
+   MỰC của lưới chứ không đổi hình nó, nên cả ba kiểu lưới (chấm / ô / trơn)
+   đều tự nhạt theo mà không phải viết lại từng cái. */
+:root[data-skin="sketch"] { --grid-ink: color-mix(in srgb, var(--board-grid) 55%, transparent); }
