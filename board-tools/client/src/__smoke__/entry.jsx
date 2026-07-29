@@ -1744,14 +1744,29 @@ export async function run(log) {
     throw new Error("server chưa xác nhận mà đã hiện như ghim xong — giao diện đang nói dối");
   }
 
-  // Server ừ → giờ mới là ghim thật.
+  // Server ừ → giờ mới là ghim thật. Gói xác nhận và gói view ĐẦU TIÊN về sát
+  // nhau trong đời thật (server báo cho người kia là có khán giả ngay khi nhận
+  // cú ghim, họ trả lời tức thì), nên thả cả hai trong CÙNG một nhịp: đúng cuộc
+  // đua đã làm cú nhảy đầu tiên bị nuốt mất.
+  const camAtPin = camera();
   await act(async () => {
     globalThis.__deliver("follow:update", { socketId: "self-socket", followingId: "peer-f" });
-    await new Promise((r) => setTimeout(r, 30));
+    globalThis.__deliver("view:update", {
+      socketId: "peer-f",
+      view: { panX: -900, panY: -700, scale: 1, w: window.innerWidth, h: window.innerHeight }
+    });
+    await new Promise((r) => setTimeout(r, 250));
   });
   const liveFrame = document.querySelector(".follow-frame");
   if (!liveFrame || liveFrame.classList.contains("pending")) {
     throw new Error("server đã xác nhận mà viền vẫn ở trạng thái chờ");
+  }
+  const camAfterPin = camera();
+  log(`ghim: gói view đầu về cùng nhịp với xác nhận → camera ${camAtPin.panX.toFixed(0)},${camAtPin.panY.toFixed(0)} → ${camAfterPin.panX.toFixed(0)},${camAfterPin.panY.toFixed(0)}`);
+  // Cùng cỡ màn hình nên phải nhảy tới ĐÚNG khung nhìn của họ, ngay lập tức,
+  // không cần họ lia thêm cú nào nữa.
+  if (Math.abs(camAfterPin.panX + 900) > 1 || Math.abs(camAfterPin.panY + 700) > 1) {
+    throw new Error(`bấm ghim mà không nhảy ngay tới màn hình người kia: đang ở ${camAfterPin.panX},${camAfterPin.panY}, phải là -900,-700`);
   }
 
   // Camera của người kia về → màn hình mình phải chạy theo. Người kia có màn
