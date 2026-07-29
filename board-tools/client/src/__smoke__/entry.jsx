@@ -1855,5 +1855,55 @@ export async function run(log) {
   if (!errFrame) throw new Error("server không hồi âm mà giao diện treo mãi ở trạng thái chờ, không báo lỗi");
   if (document.querySelector(".follow-frame.pending")) throw new Error("hết giờ rồi mà vẫn còn trạng thái chờ");
 
+  // ---- Hai người lưu đè nhau ----
+  // Test thuần trong lib/rebase.test.js đã phủ phép ghép, và bài kiểm tích hợp
+  // đã phủ phía server. Cái CHƯA ai chạy là đoạn nối trong IdeaMap.jsx: chốt
+  // đúng mốc trước khi PUT, bắt được 409, ghép, rồi lưu lại. Đúng loại đường
+  // nối mà hai lần trước đã lọt lưới vì mọi test khác vẫn xanh.
+  await act(async () => { await new Promise((r) => setTimeout(r, 600)); });   // để mọi lần lưu đang treo lắng xuống
+  const putsBefore = globalThis.__puts.length;
+
+  // Người khác thêm một cái thẻ, ngay trong lúc mình đang kéo một thẻ khác.
+  globalThis.__conflictOnce((server) => {
+    const id = server.nextNodeId;
+    server.nodes = [...server.nodes, { id, title: "THẺ CỦA NGƯỜI KHÁC", desc: "", x: 900, y: 900, tagId: null, statusId: null }];
+    server.nextNodeId = id + 1;
+    return server;
+  });
+
+  const victim = document.querySelector(".idea-card");
+  const victimId = Number(victim.dataset.id);
+  await act(async () => {
+    mouse("mousedown", 300, 300, victim);
+    mouse("mousemove", 380, 380);
+    mouse("mousemove", 460, 460);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", 460, 460); await new Promise((r) => setTimeout(r, 200)); });
+
+  const tries = globalThis.__puts.length - putsBefore;
+  const rebasedPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const peerCardInPut = rebasedPut.nodes.find((n) => n.title === "THẺ CỦA NGƯỜI KHÁC");
+  const minePut = rebasedPut.nodes.find((n) => n.id === victimId);
+  const mineNow = document.querySelector(`.idea-card[data-id="${victimId}"]`);
+  log(`va chạm lưu: ${tries} lượt PUT (1 bị từ chối + 1 ghép lại) · trong bản gửi lại có thẻ người kia = ${!!peerCardInPut} · thẻ mình ở ${minePut?.x},${minePut?.y}`);
+
+  if (tries !== 2) throw new Error(`bị 409 thì phải ghép rồi lưu LẠI: mong 2 lượt PUT, có ${tries}`);
+  // Không khai mốc thì server không có gì để so, và va chạm sẽ lại trôi qua âm
+  // thầm y như trước — nên bản thân cái mốc cũng phải được canh.
+  const rejectedPut = globalThis.__puts[putsBefore];
+  if (!rejectedPut.baseUpdatedAt) throw new Error("cú PUT không khai baseUpdatedAt — server không thể phát hiện va chạm");
+  if (!rebasedPut.baseUpdatedAt || rebasedPut.baseUpdatedAt === rejectedPut.baseUpdatedAt) {
+    throw new Error("lần gửi lại phải dựa trên MỐC MỚI của server, không thì nó lại bị từ chối ngay");
+  }
+  if (!peerCardInPut) throw new Error("bản gửi lại không có thẻ của người kia — đã đè mất họ, đúng cái lỗi cần chữa");
+  if (!minePut || minePut.x !== Number.parseFloat(mineNow.style.left)) {
+    throw new Error(`thay đổi của mình không sống sót qua lần ghép: gửi ${minePut?.x}, trên màn hình ${mineNow?.style.left}`);
+  }
+  if (!document.querySelector(`.idea-card[data-id="${peerCardInPut.id}"]`)) {
+    throw new Error("ghép xong mà thẻ của người kia không hiện trên màn hình — board cục bộ chưa được cập nhật");
+  }
+  log(`va chạm lưu: thẻ người kia (id ${peerCardInPut.id}) đã hiện trên bảng, thẻ mình vẫn ở chỗ vừa kéo`);
+
   return true;
 }
