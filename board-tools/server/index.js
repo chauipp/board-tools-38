@@ -248,18 +248,35 @@ const MAX_LIVE_INK_COORD = 20000;
 // MAX_LIVE_INK_NUMBERS; nhỏ hơn vì client chỉ gom điểm trong 40ms rồi xả.
 const MAX_LIVE_LASER_NUMBERS = 120;
 
+// Thời gian tan của vệt, do người chỉ đặt ở khu 4 (LASER_FADE_MIN/MAX trong
+// client/src/lib/laser.js). Chấp một dải rộng hơn client một chút, cùng lý do
+// với MIN/MAX_LIVE_INK_W: không phải redeploy server mỗi khi client nới biên độ.
+// Vẫn phải có trần — một gói fade: 1e9 là vệt của người đó không bao giờ tan
+// trên màn hình cả phòng, và không ai xoá được nó vì laser không có id để gôm.
+const MIN_LIVE_LASER_FADE = 100;
+const MAX_LIVE_LASER_FADE = 10000;
+
 // Bản sao TAY của SHAPE_KINDS trong game-tools/client/src/lib/shape.js, cộng
 // "pen". Server không import được lib của client. Thêm một kind mới thì phải
 // sửa cả hai chỗ — client sẽ vẽ được nhưng server sẽ chặn gói nếu quên.
-const LIVE_INK_KINDS = new Set(["pen", "rect", "ellipse", "line", "arrow", "triangle", "diamond"]);
+const LIVE_INK_KINDS = new Set(["pen", "rect", "ellipse", "line", "arrow", "triangle", "diamond", "quad"]);
 // Bản sao TAY của SHAPE_CLOSED trong game-tools/client/src/lib/shape.js — cũng
 // vì server không import được lib client, cũng phải sửa hai chỗ nếu đổi.
 // Chỉ bốn hình ĐÓNG mới có vùng trong để tô. Client không bao giờ gắn `fill`
 // cho line/arrow, nên nếu server chấp thì một gói {kind:"arrow", fill:true} làm
 // đầu mũi tên hiện thành nêm tô đặc lúc peer kéo rồi biến mất khi board:update
 // về — nhấp nháy không giải thích được.
-const LIVE_INK_FILLABLE_KINDS = new Set(["rect", "ellipse", "triangle", "diamond"]);
+const LIVE_INK_FILLABLE_KINDS = new Set(["rect", "ellipse", "triangle", "diamond", "quad"]);
 const LIVE_INK_BOX_NUMBERS = 4;
+// Hình có dạng ĐỈNH THẬT thì pts dài hơn 4 số. Hộp bao chỉ tả được hình "chuẩn"
+// (tam giác cân, chữ nhật thẳng trục), mà hình nhận ra từ nét vẽ tay — hoặc hình
+// vừa bị kéo tay cầm đỉnh — thì đủ loại: tam giác vuông/tù/bè, hình bình hành,
+// hình thang. Xem ghi chú đầu game-tools/client/src/lib/shape.js.
+//
+// Đây là bản sao TAY của VERTEX_NUMBERS ở đó, cùng lý do với LIVE_INK_KINDS:
+// server không import được lib của client. Thêm một hình N đỉnh mới thì phải sửa
+// cả hai chỗ — client sẽ vẽ được nhưng server sẽ chặn gói nếu quên.
+const LIVE_INK_VERTEX_NUMBERS = { triangle: 6, quad: 8 };
 
 function sanitizeInk(payload) {
   if (!payload || typeof payload !== "object") return null;
@@ -292,10 +309,15 @@ function sanitizeInk(payload) {
     if (typeof payload.kind !== "string" || !LIVE_INK_KINDS.has(payload.kind)) return null;
     kind = payload.kind;
   }
-  // Hình khối: pts là hai góc đối, đúng 4 số. Kiểm ĐỘ DÀI GỐC trước khi slice —
-  // nếu kiểm sau thì một mảng 4000 số bị cắt còn MAX_LIVE_INK_NUMBERS rồi vẫn
-  // không phải 4, nhưng một mảng gửi kèm kind sai vẫn có thể lọt qua nhờ bị cắt.
-  if (kind !== "pen" && payload.pts.length !== LIVE_INK_BOX_NUMBERS) return null;
+  // Hình khối: pts là hai góc đối, đúng 4 số — riêng hình có dạng đỉnh thật thì
+  // nhận thêm đúng số toạ độ của dạng đó (tam giác 6, tứ giác 8). Kiểm ĐỘ DÀI GỐC trước khi slice — nếu kiểm sau thì một mảng
+  // 4000 số bị cắt còn MAX_LIVE_INK_NUMBERS rồi vẫn không phải 4, nhưng một mảng
+  // gửi kèm kind sai vẫn có thể lọt qua nhờ bị cắt.
+  if (kind !== "pen") {
+    const okLen = payload.pts.length === LIVE_INK_BOX_NUMBERS
+      || payload.pts.length === LIVE_INK_VERTEX_NUMBERS[kind];
+    if (!okLen) return null;
+  }
 
   const pts = payload.pts.slice(0, MAX_LIVE_INK_NUMBERS);
   if (pts.length < 2 || pts.length % 2 !== 0) return null;
@@ -313,6 +335,9 @@ function sanitizeInk(payload) {
     // Không tin kiểu client gửi: chỉ đúng `true` mới là tô đặc. Và chỉ hình
     // ĐÓNG mới được mang `fill` — nét bút, line, arrow thì không có field này.
     if (LIVE_INK_FILLABLE_KINDS.has(kind)) clean.fill = payload.fill === true;
+    // Nét đứt thì áp cho MỌI kind, kể cả nét bút — khác `fill` ngay trên, vốn chỉ
+    // có nghĩa với hình đóng. Cũng không tin kiểu client gửi: chỉ đúng `true`.
+    clean.dashed = payload.dashed === true;
   }
   return clean;
 }
@@ -445,10 +470,18 @@ io.on("connection", (socket) => {
     // sanitizeLaserStyle(), nơi mới biết đâu là token màu thật.
     if (typeof payload.color !== "string" || payload.color.length > MAX_LIVE_INK_COLOR_LEN) return;
     if (!Number.isFinite(payload.w) || payload.w < MIN_LIVE_INK_W || payload.w > MAX_LIVE_INK_W) return;
+    // fade VẮNG MẶT thì cho qua chứ không chặn gói: client bản cũ (tab đang mở từ
+    // trước lần deploy này) không gửi field đó, và chặn nghĩa là vệt của họ biến
+    // mất hẳn với cả phòng. Bên nhận tự lùi về mặc định (sanitizeLaserStyle).
+    // Có gửi thì phải là số trong biên độ — số rác thì bỏ RIÊNG field đó.
+    const fade = Number.isFinite(payload.fade)
+      && payload.fade >= MIN_LIVE_LASER_FADE
+      && payload.fade <= MAX_LIVE_LASER_FADE
+      ? payload.fade : undefined;
     // socketId do SERVER đính vào, không tin id client tự khai — cùng cách
     // live:ink và selection:update đang làm.
     socket.volatile.to(room).emit("live:laser", {
-      pts, color: payload.color, w: payload.w,
+      pts, color: payload.color, w: payload.w, fade,
       // Cú bấm chuột mới bên người gửi: người nhận bỏ vệt cũ thay vì nối tiếp.
       reset: payload.reset === true,
       socketId: socket.id

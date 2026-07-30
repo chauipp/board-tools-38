@@ -102,12 +102,12 @@ export function useInkLive(socket) {
 
   // Gói đầu phải đi NGAY, không nằm chờ trong throttle: nó mang màu và độ dày,
   // thiếu nó thì mọi gói sau bị người nhận bỏ (xem mergeInkPacket).
-  const beginStroke = useCallback((color, w, pts) => {
+  const beginStroke = useCallback((color, w, pts, dashed) => {
     flushPtsRef.current.cancel();
     pendingPtsRef.current = [];
     strokeIdRef.current += 1;
     seqRef.current = 0;
-    emitNow({ strokeId: strokeIdRef.current, seq: 0, color, w, pts });
+    emitNow({ strokeId: strokeIdRef.current, seq: 0, color, w, pts, dashed: dashed === true });
   }, [emitNow]);
 
   const pushPoints = useCallback((unsent) => {
@@ -128,12 +128,15 @@ export function useInkLive(socket) {
 
   // Gói đầu phải đi NGAY: nó mang kind, màu, độ dày và chế độ tô; thiếu nó thì
   // mọi gói sau bị người nhận bỏ (xem mergeInkPacket).
-  const beginShape = useCallback((kind, color, w, fill, box) => {
+  const beginShape = useCallback((kind, color, w, fill, box, dashed) => {
     flushBoxRef.current.cancel();
     strokeIdRef.current += 1;
     seqRef.current = 0;
     kindRef.current = kind;
-    emitNow({ strokeId: strokeIdRef.current, seq: 0, kind, color, w, fill: fill === true, pts: box });
+    emitNow({
+      strokeId: strokeIdRef.current, seq: 0, kind, color, w,
+      fill: fill === true, dashed: dashed === true, pts: box
+    });
   }, [emitNow]);
 
   const pushShape = useCallback((box) => {

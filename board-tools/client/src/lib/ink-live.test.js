@@ -16,7 +16,7 @@ test("inkKey: khoá theo socketId + strokeId", () => {
 test("mergeInkPacket: gói đầu tạo entry đủ màu, độ dày, điểm", () => {
   const m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, pts: [0, 0, 10, 10] }), NOW);
   assert.deepEqual(m.get("s1:1"), {
-    kind: "pen", fill: false,
+    kind: "pen", fill: false, dashed: false,
     color: "pen-red", w: 4, pts: [0, 0, 10, 10],
     drawingId: null, erase: null, expiresAt: NOW + INK_LIVE_TTL_MS
   });
@@ -111,7 +111,7 @@ test("mergeInkPacket: gói đầu của hình khối giữ kind và fill", () =>
     NOW
   );
   assert.deepEqual(m.get("s1:1"), {
-    kind: "rect", fill: true,
+    kind: "rect", fill: true, dashed: false,
     color: "pen-blue", w: 8, pts: [0, 0, 100, 60],
     drawingId: null, erase: null, expiresAt: NOW + INK_LIVE_TTL_MS
   });
@@ -158,4 +158,32 @@ test("mergeInkPacket: gói sau của hình khối THIẾU kind vẫn phải THAY
   let m = mergeInkPacket(new Map(), pkt({ seq: 0, kind: "rect", color: "pen-blue", w: 8, fill: false, pts: [0, 0, 10, 10] }), NOW);
   m = mergeInkPacket(m, pkt({ seq: 1, pts: [0, 0, 50, 40] }), NOW + 40); // không có kind
   assert.deepEqual(m.get("s1:1").pts, [0, 0, 50, 40]);
+});
+
+// `dashed` chỉ đi ở gói seq 0, cùng chỗ với color/w/fill. Gói giữa chừng chỉ
+// mang điểm, nên nếu nhánh nối/thay điểm lỡ dựng entry mới thay vì `{ ...cur }`
+// thì nét của người khác sẽ NHẢY từ đứt sang liền ngay giữa lúc đang vẽ.
+test("mergeInkPacket: dashed sống qua các gói giữa chừng của nét bút", () => {
+  let m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, dashed: true, pts: [0, 0] }), NOW);
+  m = mergeInkPacket(m, pkt({ seq: 1, pts: [10, 10] }), NOW);
+  m = mergeInkPacket(m, pkt({ seq: 2, pts: [20, 20] }), NOW);
+  assert.equal(m.get("s1:1").dashed, true);
+  assert.deepEqual(m.get("s1:1").pts, [0, 0, 10, 10, 20, 20], "vẫn nối điểm như thường");
+});
+
+test("mergeInkPacket: dashed sống qua các gói giữa chừng của hình khối", () => {
+  let m = mergeInkPacket(
+    new Map(),
+    pkt({ seq: 0, kind: "rect", color: "pen-blue", w: 8, dashed: true, pts: [0, 0, 10, 10] }),
+    NOW
+  );
+  m = mergeInkPacket(m, pkt({ seq: 1, kind: "rect", pts: [0, 0, 200, 120] }), NOW);
+  assert.equal(m.get("s1:1").dashed, true);
+  assert.deepEqual(m.get("s1:1").pts, [0, 0, 200, 120], "hộp vẫn được THAY chứ không nối");
+});
+
+// Không tin kiểu client gửi: chỉ đúng `true` mới là nét đứt.
+test("mergeInkPacket: dashed sai kiểu thì coi như nét liền", () => {
+  const m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, dashed: "yes", pts: [0, 0] }), NOW);
+  assert.equal(m.get("s1:1").dashed, false);
 });

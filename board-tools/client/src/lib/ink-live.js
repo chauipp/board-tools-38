@@ -34,7 +34,7 @@ export function mergeInkPacket(prev, packet, now) {
     }
     const next = new Map(prev);
     next.set(key, {
-      kind: null, fill: false,
+      kind: null, fill: false, dashed: false,
       color: null, w: null, pts: null, drawingId: null, erase: merged,
       expiresAt: now + (packet.done === true ? INK_SETTLE_TTL_MS : INK_LIVE_TTL_MS)
     });
@@ -72,7 +72,10 @@ export function mergeInkPacket(prev, packet, now) {
   if (packet.seq === 0) {
     const kind = typeof packet.kind === "string" ? packet.kind : "pen";
     next.set(key, {
-      kind, fill: packet.fill === true,
+      // `dashed` chỉ đi ở gói seq 0, cùng chỗ với color/w/fill: nó không đổi
+      // giữa chừng một nét. Gói sau chỉ mang điểm, và nhánh `{ ...cur }` bên
+      // dưới tự giữ lại nó.
+      kind, fill: packet.fill === true, dashed: packet.dashed === true,
       color: packet.color, w: packet.w, pts: pts.slice(),
       drawingId: null, erase: null, expiresAt: now + INK_LIVE_TTL_MS
     });
