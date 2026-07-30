@@ -47,3 +47,63 @@ export function sanitizeLiveText(payload, isOpen) {
   out.editId = Number.isFinite(payload?.editId) ? payload.editId : null;
   return out;
 }
+
+// ── Gói `moving`: nét đang bị người khác dời / co giãn / sửa hình ────────────
+//
+// Mang TRẠNG THÁI TUYỆT ĐỐI của từng nét (pts hiện tại) chứ không mang độ dời —
+// lý do ở applyInkMoves bên client/src/lib/ink-live.js. Vì tuyệt đối nên gói to
+// hơn hẳn các gói khác trên kênh này, và đó là chỗ phải chặn.
+//
+// Trần trùng với phía client (useInkLive.js) nhưng KHÔNG phải chỉ để nhắc lại:
+// client tự kìm mình để khỏi ngốn băng thông, còn ở đây là để một client đã bị
+// sửa không bơm được. Hai chốt cho hai mối lo khác nhau, cùng một con số.
+const MAX_MOVE_ITEMS = 60;
+const MAX_MOVE_NUMBERS = 4000;
+
+// Cùng biên độ toạ độ với MAX_LIVE_INK_COORD bên index.js, chép lại vì module
+// này không import ngược lên đó. Number.isFinite một mình cho qua 1e9.
+const MAX_MOVE_COORD = 20000;
+
+// Trả về danh sách đã lọc, hoặc null nếu gói phải bị loại cả.
+//
+// LOẠI CẢ GÓI chứ không cắt bớt, khác hẳn cách xử đoạn văn quá dài ở trên. Với
+// chữ, một bản bị cắt vẫn đọc được và vẫn có ích. Với một cú kéo, danh sách bị
+// cắt nghĩa là người nhận thấy nửa cụm nhúc nhích còn nửa kia đứng yên — sai
+// lệch đó khó hiểu hơn hẳn việc không thấy gì.
+// `kindAllowed` là vị từ kiểm kind, do index.js truyền vào — danh sách kind hợp
+// lệ là bản sao tay của SHAPE_KINDS bên client và nó phải có ĐÚNG MỘT chỗ ở.
+export function sanitizeLiveMoves(list, kindAllowed) {
+  if (!Array.isArray(list) || !list.length || list.length > MAX_MOVE_ITEMS) return null;
+  const out = [];
+  let total = 0;
+  for (const m of list) {
+    if (!m || !Number.isFinite(m.id) || !Array.isArray(m.pts)) return null;
+    // pts là [x0,y0,…]: lẻ một số là dữ liệu hỏng, không phải thiếu điểm cuối.
+    if (m.pts.length < 2 || m.pts.length % 2 !== 0) return null;
+    total += m.pts.length;
+    if (total > MAX_MOVE_NUMBERS) return null;
+    if (!m.pts.every((v) => Number.isFinite(v) && Math.abs(v) <= MAX_MOVE_COORD)) return null;
+    const item = { id: m.id, pts: m.pts };
+    // Kéo tay cầm một góc đổi CẢ kind (chữ nhật thành tứ giác, tam giác cân
+    // thành tam giác thường), nên kind phải đi kèm — thiếu nó thì người nhận vẽ
+    // hình cũ với bộ toạ độ mới, tức một chữ nhật đọc pts 8 số.
+    if (m.kind !== undefined) {
+      if (typeof m.kind !== "string" || !kindAllowed(m.kind)) return null;
+      item.kind = m.kind;
+    }
+    // Chỉ chữ mới mang ba field này (co giãn đổi cả cỡ chữ lẫn hộp chữ). Không
+    // đòi hỏi chúng, nhưng có thì phải là số hợp lệ — một `size: 1e9` lọt qua là
+    // một chữ cái phủ kín màn hình cả phòng.
+    if (m.size !== undefined) {
+      if (!Number.isFinite(m.size) || m.size < MIN_LIVE_INK_TEXT_SIZE || m.size > MAX_LIVE_INK_TEXT_SIZE) return null;
+      item.size = m.size;
+    }
+    for (const f of ["w", "h"]) {
+      if (m[f] === undefined) continue;
+      if (!Number.isFinite(m[f]) || m[f] < 0 || m[f] > MAX_MOVE_COORD) return null;
+      item[f] = m[f];
+    }
+    out.push(item);
+  }
+  return out;
+}

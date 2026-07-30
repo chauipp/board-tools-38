@@ -19,7 +19,7 @@ import {
 import { Board, upsertUser } from "./models.js";
 import boardsRouter from "./boards.js";
 import { sanitizeView, resolveFollow, countWatchers, releaseFollowersOf } from "./follow.js";
-import { sanitizeLiveText } from "./live-text.js";
+import { sanitizeLiveText, sanitizeLiveMoves } from "./live-text.js";
 
 dotenv.config();
 
@@ -286,6 +286,14 @@ function sanitizeInk(payload) {
   const done = payload.done === true;
 
   if (payload.cancel === true) return { strokeId, cancel: true };
+
+  // Lượt dời / co giãn / sửa hình: gói mang trạng thái tuyệt đối của các nét
+  // đang bị thao tác. Xét TRƯỚC nhánh pts vì nó không có `pts` ở cấp gói.
+  if (Array.isArray(payload.moving)) {
+    const moving = sanitizeLiveMoves(payload.moving, (k) => LIVE_INK_KINDS.has(k));
+    if (!moving) return null;
+    return { strokeId, seq: Number.isFinite(payload.seq) ? payload.seq : 0, moving, done };
+  }
 
   if (Array.isArray(payload.erase)) {
     const erase = payload.erase

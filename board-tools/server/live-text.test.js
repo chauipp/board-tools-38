@@ -4,7 +4,8 @@ import {
   sanitizeLiveText,
   MAX_LIVE_INK_TEXT_LEN,
   MIN_LIVE_INK_TEXT_SIZE,
-  MAX_LIVE_INK_TEXT_SIZE
+  MAX_LIVE_INK_TEXT_SIZE,
+  sanitizeLiveMoves
 } from "./live-text.js";
 
 test("gói mở hợp lệ: giữ chữ, cỡ chữ và id đang sửa", () => {
@@ -76,4 +77,69 @@ test("payload rác không làm nổ", () => {
 test("text sai kiểu bị ép về chuỗi", () => {
   assert.equal(typeof sanitizeLiveText({ text: { a: 1 }, size: 20 }, true).text, "string");
   assert.equal(typeof sanitizeLiveText({ text: 12345, size: 20 }, true).text, "string");
+});
+
+// ── sanitizeLiveMoves ───────────────────────────────────────────────────────
+const anyKind = (k) => ["pen", "rect", "quad", "text"].includes(k);
+
+test("danh sách hợp lệ đi qua nguyên vẹn", () => {
+  const got = sanitizeLiveMoves([{ id: 1, pts: [0, 0, 10, 10] }], anyKind);
+  assert.deepEqual(got, [{ id: 1, pts: [0, 0, 10, 10] }]);
+});
+
+test("kind hợp lệ được giữ, kind lạ thì LOẠI cả gói", () => {
+  assert.equal(sanitizeLiveMoves([{ id: 1, pts: [0, 0], kind: "quad" }], anyKind)[0].kind, "quad");
+  assert.equal(sanitizeLiveMoves([{ id: 1, pts: [0, 0], kind: "hexagon" }], anyKind), null);
+  assert.equal(sanitizeLiveMoves([{ id: 1, pts: [0, 0], kind: 7 }], anyKind), null);
+});
+
+test("pts lẻ số hoặc rỗng là dữ liệu hỏng, LOẠI cả gói", () => {
+  assert.equal(sanitizeLiveMoves([{ id: 1, pts: [0, 0, 5] }], anyKind), null);
+  assert.equal(sanitizeLiveMoves([{ id: 1, pts: [] }], anyKind), null);
+});
+
+// Number.isFinite một mình cho qua 1e9 — cùng bài học với MAX_LIVE_INK_COORD.
+test("toạ độ khổng lồ bị LOẠI, không phủ kín màn hình cả phòng", () => {
+  assert.equal(sanitizeLiveMoves([{ id: 1, pts: [0, 1e9] }], anyKind), null);
+  assert.equal(sanitizeLiveMoves([{ id: 1, pts: [0, Infinity] }], anyKind), null);
+  assert.equal(sanitizeLiveMoves([{ id: 1, pts: [0, NaN] }], anyKind), null);
+});
+
+test("id thiếu hoặc sai kiểu thì LOẠI cả gói", () => {
+  assert.equal(sanitizeLiveMoves([{ pts: [0, 0] }], anyKind), null);
+  assert.equal(sanitizeLiveMoves([{ id: "1", pts: [0, 0] }], anyKind), null);
+});
+
+// LOẠI CẢ GÓI chứ không cắt bớt: nửa cụm nhúc nhích còn nửa kia đứng yên thì
+// khó hiểu hơn hẳn việc cả cụm cùng đứng yên.
+test("quá nhiều nét thì LOẠI cả gói, không cắt bớt danh sách", () => {
+  const many = Array.from({ length: 61 }, (_, i) => ({ id: i, pts: [0, 0] }));
+  assert.equal(sanitizeLiveMoves(many, anyKind), null);
+});
+
+test("tổng số toạ độ vượt trần thì LOẠI cả gói", () => {
+  const heavy = Array.from({ length: 20 }, (_, i) => ({ id: i, pts: new Array(400).fill(1) }));
+  assert.equal(sanitizeLiveMoves(heavy, anyKind), null);
+});
+
+test("cỡ chữ trong gói dời cũng bị kiểm, không lọt size khổng lồ", () => {
+  assert.equal(sanitizeLiveMoves([{ id: 1, pts: [0, 0], size: 1e9 }], anyKind), null);
+  assert.equal(sanitizeLiveMoves([{ id: 1, pts: [0, 0], size: 24 }], anyKind)[0].size, 24);
+});
+
+test("w/h âm hoặc khổng lồ bị LOẠI", () => {
+  assert.equal(sanitizeLiveMoves([{ id: 1, pts: [0, 0], w: -5 }], anyKind), null);
+  assert.equal(sanitizeLiveMoves([{ id: 1, pts: [0, 0], h: 1e9 }], anyKind), null);
+});
+
+test("field lạ không được chép sang gói sạch", () => {
+  const got = sanitizeLiveMoves([{ id: 1, pts: [0, 0], evil: "<script>", locked: true }], anyKind);
+  assert.deepEqual(Object.keys(got[0]), ["id", "pts"]);
+});
+
+test("danh sách rỗng hoặc rác không làm nổ", () => {
+  assert.equal(sanitizeLiveMoves([], anyKind), null);
+  assert.equal(sanitizeLiveMoves(null, anyKind), null);
+  assert.equal(sanitizeLiveMoves("moving", anyKind), null);
+  assert.equal(sanitizeLiveMoves([null], anyKind), null);
 });
