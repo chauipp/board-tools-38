@@ -20,7 +20,7 @@ export const SELF_KEY = "self";
 // Nên kho này là một object thường có đăng ký nghe. Chỉ LaserLayer nghe nó, nên
 // chỉ LaserLayer vẽ lại. IdeaMap không render thêm một lượt nào.
 export function createLaserStore() {
-  const trails = new Map();          // khoá -> { color, w, pts: [{x, y, t}] }
+  const trails = new Map();          // khoá -> { color, w, fade, pts: [{x, y, t}] }
   const listeners = new Set();
 
   function notify() {
@@ -36,25 +36,26 @@ export function createLaserStore() {
     // Bắt đầu một lượt chỉ MỚI. Bỏ hẳn vệt cũ chứ không nối tiếp: thả chuột ở
     // một góc màn hình rồi bấm lại ở góc kia mà vẫn nối thì có một vạch thẳng
     // băng qua cả bảng, đúng chỗ người ta vừa không hề rê chuột.
-    begin(key, color, w, x, y, now) {
-      trails.set(key, { color, w, pts: [{ x, y, t: now }] });
+    begin(key, color, w, fade, x, y, now) {
+      trails.set(key, { color, w, fade, pts: [{ x, y, t: now }] });
       notify();
     },
-    add(key, color, w, x, y, now) {
+    add(key, color, w, fade, x, y, now) {
       const cur = trails.get(key);
       // Chưa có lượt nào mà đã có điểm: gói `reset` bị rơi trên đường truyền
       // (kênh này .volatile). Dựng lượt mới thay vì bỏ điểm — mất một chỗ ngắt
       // còn hơn mất cả vệt.
       if (!cur) {
-        trails.set(key, { color, w, pts: [{ x, y, t: now }] });
+        trails.set(key, { color, w, fade, pts: [{ x, y, t: now }] });
         notify();
         return true;
       }
       const next = pushLaserPoint(cur.pts, x, y, now);
       if (next === cur.pts) return false;   // điểm bị chối vì quá gần điểm cuối
-      // Màu và độ đậm đi kèm MỌI gói, không chỉ gói đầu, nên đổi màu giữa lượt
-      // là vệt đổi màu ngay trên màn hình mọi người.
-      trails.set(key, { color, w, pts: next });
+      // Màu, độ đậm và thời gian tan đi kèm MỌI gói, không chỉ gói đầu, nên đổi
+      // màu hay kéo thanh thời gian giữa lượt là vệt đổi ngay trên màn hình mọi
+      // người.
+      trails.set(key, { color, w, fade, pts: next });
       notify();
       return true;
     },
@@ -63,7 +64,7 @@ export function createLaserStore() {
     // khung hình nữa cho chính mình, thành vòng lặp không bao giờ dừng.
     sweep(now) {
       for (const [key, trail] of trails) {
-        const next = trimLaserTrail(trail.pts, now);
+        const next = trimLaserTrail(trail.pts, now, trail.fade);
         if (next === trail.pts) continue;
         if (next.length) trails.set(key, { ...trail, pts: next });
         else trails.delete(key);
@@ -101,8 +102,8 @@ export function useLaser(socket) {
       if (!pendingRef.current.length) return;
       const pts = pendingRef.current;
       pendingRef.current = [];
-      const { color, w } = styleRef.current;
-      socketRef.current?.emit("live:laser", { pts, color, w });
+      const { color, w, fade } = styleRef.current;
+      socketRef.current?.emit("live:laser", { pts, color, w, fade });
     }, LASER_SEND_MS);
   }
 
@@ -112,23 +113,23 @@ export function useLaser(socket) {
   // throttle: nó mang cờ `reset` báo cho người khác bỏ vệt cũ, mà 40ms chậm trễ
   // của cờ đó là 40ms người ta thấy một vạch nối sai.
   const begin = useCallback((x, y, prefs) => {
-    const style = sanitizeLaserStyle(prefs?.color, prefs?.w);
+    const style = sanitizeLaserStyle(prefs?.color, prefs?.w, prefs?.fade);
     styleRef.current = style;
     flushRef.current.cancel();
     pendingRef.current = [];
-    store.begin(SELF_KEY, style.color, style.w, x, y, Date.now());
+    store.begin(SELF_KEY, style.color, style.w, style.fade, x, y, Date.now());
     socketRef.current?.emit("live:laser", {
-      pts: [Math.round(x), Math.round(y)], color: style.color, w: style.w, reset: true
+      pts: [Math.round(x), Math.round(y)], color: style.color, w: style.w, fade: style.fade, reset: true
     });
   }, [store]);
 
   const track = useCallback((x, y, prefs) => {
-    const style = sanitizeLaserStyle(prefs?.color, prefs?.w);
+    const style = sanitizeLaserStyle(prefs?.color, prefs?.w, prefs?.fade);
     styleRef.current = style;
     // Chỉ phát điểm nào THẬT SỰ vào được vệt của mình: pushLaserPoint chối
     // những điểm quá gần, và nếu vẫn phát chúng thì vệt người khác thấy sẽ dày
     // điểm hơn vệt mình thấy — hai bên tan theo hai nhịp khác nhau.
-    if (!store.add(SELF_KEY, style.color, style.w, x, y, Date.now())) return;
+    if (!store.add(SELF_KEY, style.color, style.w, style.fade, x, y, Date.now())) return;
     pendingRef.current.push(Math.round(x), Math.round(y));
     flushRef.current();
   }, [store]);
