@@ -3445,5 +3445,77 @@ export async function run(log) {
   log(`gói giữa chừng của người khác: thay được cả đoạn = ${liveGrown}`);
   if (!liveGrown) throw new Error("gói chữ giữa chừng không cập nhật được đoạn văn");
 
+  // ——— KÉO NÉT CŨNG PHẢI REALTIME ———
+  //
+  // Trước đây IdeaMap còn ghi chú thừa nhận chỗ này: gói geom chỉ chở thẻ và
+  // khung, nên nét vẽ / hình / chữ bị kéo thì người khác chỉ thấy nó nhảy tới
+  // chỗ mới ở lần lưu.
+  await act(async () => { railBtn("Chuột").click(); await new Promise((r) => setTimeout(r, 30)); });
+  const moveViewport = document.querySelector(".viewport");
+  const moveBoard0 = globalThis.__puts[globalThis.__puts.length - 1];
+  const moveTarget = (moveBoard0.drawings || []).find((d) => d.kind === "pen" && (d.pts || []).length >= 4);
+  if (!moveTarget) throw new Error("không tìm thấy nét bút nào để thử kéo");
+  const moveCam = camera();
+  const grabX = Math.round(moveTarget.pts[0] * moveCam.scale + moveCam.panX);
+  const grabY = Math.round(moveTarget.pts[1] * moveCam.scale + moveCam.panY);
+  const moveEmitBefore = globalThis.__emitted.length;
+  await act(async () => {
+    mouse("mousedown", grabX, grabY, moveViewport);
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  for (let i = 1; i <= 5; i++) {
+    await act(async () => {
+      mouse("mousemove", grabX + i * 14, grabY + i * 9);
+      await new Promise((r) => setTimeout(r, 55));
+    });
+  }
+  const movePkts = globalThis.__emitted.slice(moveEmitBefore)
+    .filter((e) => e[0] === "live:ink").map((e) => e[1]).filter((p) => Array.isArray(p.moving));
+  if (!movePkts.length) throw new Error("kéo nét mà không phát gói `moving` nào — vẫn chưa realtime");
+  const lastMoving = movePkts[movePkts.length - 1].moving[0];
+  // Tra lại nét theo ĐÚNG id mà gói báo, thay vì đòi nó phải là nét mình nhắm:
+  // cuối phiên smoke bảng đã dày nét, cú bấm có thể trúng nét khác — mà điều cần
+  // kiểm là "gói mang trạng thái tuyệt đối của một nét ĐÃ DỜI", không phải là
+  // "cú bấm trúng đúng nét nào".
+  const movedOrig = (moveBoard0.drawings || []).find((d) => d.id === lastMoving.id);
+  log(`kéo nét: phát ${movePkts.length} gói \`moving\` · gói cuối mang ${movePkts[movePkts.length - 1].moving.length} nét`
+    + ` · id ${lastMoving.id} kind="${movedOrig?.kind}"`);
+  if (!movedOrig) throw new Error("gói dời mang id không có trong board");
+  // Trạng thái TUYỆT ĐỐI, không phải độ dời: đây là thứ giữ cho việc đắp overlay
+  // lên một board đã cập nhật là phép rỗng thay vì dời lần thứ hai.
+  if (lastMoving.pts.length !== movedOrig.pts.length) {
+    throw new Error(`gói dời phải mang trọn pts hiện tại (${movedOrig.pts.length} số), mang ${lastMoving.pts.length}`);
+  }
+  if (lastMoving.pts[0] === movedOrig.pts[0] && lastMoving.pts[1] === movedOrig.pts[1]) {
+    throw new Error("gói dời mang pts CŨ — nó đang phát vị trí gốc chứ không phát vị trí hiện tại");
+  }
+  await act(async () => {
+    mouse("mouseup", grabX + 70, grabY + 45);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  const moveDone = globalThis.__emitted.slice(moveEmitBefore)
+    .filter((e) => e[0] === "live:ink").map((e) => e[1]).filter((p) => p.done && Array.isArray(p.moving)).pop();
+  log(`chốt cú kéo: gói done mang ${moveDone?.moving.length} nét (phải cầm cự tới lúc board:update về)`);
+  if (!moveDone) throw new Error("chốt cú kéo phải phát gói done kèm trạng thái CUỐI, không thì cụm nhảy về chỗ cũ rồi nhảy lại");
+
+  // CHIỀU NHẬN: gói của người khác phải DỜI nét sẵn có, không vẽ thêm bản thứ hai.
+  const recvBoard = globalThis.__puts[globalThis.__puts.length - 1];
+  const recvTarget = (recvBoard.drawings || []).find((d) => d.kind === "pen" && (d.pts || []).length >= 4);
+  if (recvTarget) {
+    const pathsBefore = document.querySelectorAll(".ink-layer path").length;
+    await act(async () => {
+      globalThis.__deliver("live:ink", {
+        socketId: "peer8", strokeId: 77, seq: 1,
+        moving: [{ id: recvTarget.id, pts: recvTarget.pts.map((v, i) => v + (i % 2 === 0 ? 400 : 250)) }]
+      });
+      await new Promise((r) => setTimeout(r, 40));
+    });
+    const pathsAfter = document.querySelectorAll(".ink-layer path").length;
+    log(`nhận gói dời của người khác: số path ${pathsBefore} → ${pathsAfter} (phải bằng nhau — DỜI chứ không nhân bản)`);
+    if (pathsAfter !== pathsBefore) {
+      throw new Error("gói dời phải THAY vị trí nét sẵn có, không được vẽ thêm một bản thứ hai");
+    }
+  }
+
   return true;
 }
