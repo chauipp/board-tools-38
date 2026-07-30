@@ -462,8 +462,16 @@ export function recognizeShape(raw) {
 // nối hai đầu" là một mẩu cụt chẳng liên quan gì tới thứ đã vẽ — thà không làm
 // gì. Và đoạn thẳng phải đủ dài (MIN_DIAG) mới đáng thay cho cả một nét.
 export function snapShape(raw) {
-  const rec = recognizeShape(raw);
-  if (rec) return rec;
+  return recognizeShape(raw) || snapLine(raw);
+}
+
+// CHỈ đoạn thẳng nối hai đầu, không đoán hình gì khác. Tách ra khỏi snapShape vì
+// cử chỉ dựng NÉT GẤP KHÚC cần đúng phép này: khi đang chốt dần từng cạnh của
+// một hình, mỗi lần giữ tay chỉ được ra một đoạn thẳng — để snapShape đoán tự do
+// thì một cạnh vẽ hơi vòng sẽ ra một cái ê-líp và cả cái hình đang dựng dở bị
+// vứt đi. Việc đoán hình để dành cho lúc khép vòng (polygon-snap.js), khi đã có
+// đủ các đỉnh để nói chắc chắn.
+export function snapLine(raw) {
   const prep = prepare(raw);
   if (!prep || !isOpenStroke(prep) || prep.gap < MIN_DIAG) return null;
   return { kind: "line", pts: roundBox(prep.x0, prep.y0, prep.x1, prep.y1) };

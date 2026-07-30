@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { recognizeShape, snapShape, SNAP_HOLD_MS, SNAP_MOVE_TOL } from "./recognize.js";
+import { recognizeShape, snapShape, snapLine, SNAP_HOLD_MS, SNAP_MOVE_TOL } from "./recognize.js";
 
 // Nét tay giả lập: mỗi điểm bị đẩy lệch một chút theo một dãy giả ngẫu nhiên CỐ
 // ĐỊNH (không dùng Math.random — test phải cho cùng kết quả mọi lần chạy).
@@ -403,4 +403,29 @@ test("cùng một hình vẽ ở mọi tốc độ đều cho cùng một đáp 
     const kinds = [80, 45, 25, 10, 4].map((step) => recognizeShape(sample(corners, step, 1.5, 3, true))?.kind);
     assert.equal(new Set(kinds).size, 1, `đổi đáp án theo tốc độ vẽ: ${JSON.stringify(kinds)}`);
   }
+});
+
+// ── snapLine: cố ý KHÔNG đoán hình ──────────────────────────────────────────
+//
+// Cử chỉ dựng nét gấp khúc gọi hàm này thay cho snapShape, và cả giá trị của nó
+// nằm ở chỗ nó KHÔNG nhận ra hình: đang chốt dần từng cạnh của một hình mà một
+// cạnh vẽ hơi vòng lại ra cái ê-líp thì mấy đỉnh đã đặt công phu bị vứt sạch.
+test("snapLine trả về đoạn thẳng ngay cả khi nét rõ ràng là hình khác", () => {
+  const arc = [];
+  for (let i = 0; i <= 24; i++) {
+    const a = (i / 24) * Math.PI;
+    arc.push(150 - 150 * Math.cos(a), -120 * Math.sin(a));
+  }
+  assert.equal(recognizeShape(arc), null, "cung cong này vốn không được nhận là hình nào");
+  const got = snapLine(arc);
+  assert.equal(got.kind, "line");
+  // So từng số chứ không deepEqual cả mảng: Math.round(-0.0) ra -0, mà -0 khác 0
+  // với deepStrictEqual (và chỉ với nó — JSON, phép so, phép vẽ đều coi như nhau).
+  assert.deepEqual(got.pts.map((v) => v + 0), [0, 0, 300, 0], "hai đầu của đoạn thẳng phải là hai đầu đã vẽ");
+});
+
+test("snapLine bỏ qua nét KÍN — đoạn nối hai đầu chập nhau thì vô nghĩa", () => {
+  const ring = sample([[0, 0], [200, 0], [200, 200], [0, 200]], 12, 1.5, 5, true);
+  assert.equal(snapLine(ring), null);
+  assert.equal(snapShape(ring)?.kind, "rect", "cùng nét đó qua snapShape thì vẫn phải ra hình");
 });
