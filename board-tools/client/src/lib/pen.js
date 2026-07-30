@@ -32,9 +32,17 @@ export const PEN_WIDTHS = [2, 4, 8];
 // quét vô ý ở kiểu này chỉ mất một nét — hoàn tác là xong. Kiểu "theo độ rộng"
 // thì một cú quét cắt vụn nhiều nét thành nhiều mảnh, khó gỡ hơn hẳn, nên nó
 // phải là thứ người dùng CHỌN chứ không phải thứ họ gặp.
+//
+// `scratch` (gạch xoá — scribble.js) mặc định BẬT, nhưng lý do khác hẳn `snap`
+// và đáng ghi ra: đây là cử chỉ XOÁ, tức là sai một cái thì mất việc của người
+// ta chứ không phải chỉ nắn lại cái nét. Nó bật sẵn được là vì hai chốt của
+// chính nó đã hẹp: phải đổi chiều năm lần liên tiếp (không nét vẽ thường nào
+// làm thế), VÀ phải cắt qua đúng thứ gì đó hai lần — gạch giữa chỗ trống thì
+// vẫn ra một nét vẽ bình thường. Nút tắt vẫn phải có, cho ai vẽ nhiều hình răng
+// cưa đè lên nhau.
 export const PEN_DEFAULT = {
   color: "pen-red", w: 4, kind: "rect", fill: false, size: 20, snap: true, dashed: false,
-  erase: ERASE_STROKE, ew: 24
+  scratch: true, erase: ERASE_STROKE, ew: 24
 };
 
 export function penVar(token) {
@@ -79,6 +87,9 @@ export function loadPenPrefs(storage) {
     // này không có field `snap`, mà mặc định của nó là bật — `=== true` sẽ tắt
     // tính năng cho đúng những người đã dùng app lâu nhất.
     snap: saved.snap !== false,
+    // `!== false` cùng lý do với `snap`: prefs lưu từ trước khi có tính năng này
+    // không có field `scratch`, mà mặc định của nó là bật.
+    scratch: saved.scratch !== false,
     // Ngược lại với `snap`: mặc định là TẮT (nét liền), nên `=== true` mới đúng —
     // prefs cũ không có field này phải ra nét liền.
     dashed: saved.dashed === true,
@@ -93,7 +104,8 @@ export function savePenPrefs(storage, prefs) {
   try {
     storage.setItem(KEY, JSON.stringify({
       color: prefs.color, w: prefs.w, kind: prefs.kind, fill: prefs.fill === true,
-      size: prefs.size, snap: prefs.snap !== false, dashed: prefs.dashed === true,
+      size: prefs.size, snap: prefs.snap !== false, scratch: prefs.scratch !== false,
+      dashed: prefs.dashed === true,
       erase: prefs.erase, ew: prefs.ew
     }));
   } catch {

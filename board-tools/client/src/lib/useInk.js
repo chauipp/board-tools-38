@@ -9,6 +9,7 @@ import {
   snapPolygon, CLOSE_STICK_PX, CLOSE_UNSTICK_PX, CHAIN_MIN_PX, CHAIN_MIN_MS
 } from "./polygon-snap.js";
 import { ERASE_PART, eraseRadius, eraseBounds, cuttableOutline, cutPartsAlong } from "./erase.js";
+import { isScribble, scribbleTargets } from "./scribble.js";
 import { createStillWatch, STILL_TOL } from "./pointer-input.js";
 
 // Bán kính gôm KIỂU "CẢ NÉT", đơn vị toạ độ canvas. Cộng thêm w/2 của từng nét
@@ -306,6 +307,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
     // rung chừng vài pixel bất kể bảng đang zoom bao nhiêu.
     const isPen = activeRef.current === "pen";
     const snapOn = isPen && penPrefs.snap !== false;
+    const scratchOn = isPen && penPrefs.scratch !== false;
     // Nét nằm ngay dưới chỗ vừa ấn xuống. Nét vẽ sau cùng nằm trên, nên trúng
     // nhiều thì lấy cái trên — cùng luật với cú bấm chọn ở mode Chuột.
     const pressHits = isPen ? drawingsHitBy(board.drawings || [], start, ERASE_RADIUS) : [];
@@ -356,6 +358,13 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
     // theo sát con trỏ. doSnap chạy từ một timer nên nó không có sự kiện chuột
     // nào để hỏi — đây là đường duy nhất để nó biết tay đang ở đâu.
     let lastScreen = { x: e.clientX, y: e.clientY };
+    // Chỗ ẤN XUỐNG và tay đi xa nhất được bao nhiêu tính từ đó, pixel MÀN HÌNH,
+    // giữ nguyên suốt lượt. Khác `anchor` ngay trên: anchor là mốc của bộ đếm
+    // giữ tay nên nó nhảy theo mỗi lần bộ đếm lên nòng lại; cái này thì không,
+    // vì nó trả lời một câu hỏi khác hẳn — "cú vừa rồi là một cú BẤM hay một
+    // nét VẼ?". Xem chỗ dùng ở cuối finish().
+    const pressScreen = { x: e.clientX, y: e.clientY };
+    let moveFar = 0;
     // Đoạn đang vẽ dở SAU một cú chốt: đi xa nhất được bao nhiêu (pixel màn hình,
     // đo từ chỗ đã chốt), bắt đầu lúc nào, và mốc thời gian của nhịp chuột gần
     // nhất. Ba con số này quyết định cái đuôi ấy là một cạnh thật hay chỉ là cú
@@ -382,7 +391,22 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
     // file này tránh bằng ptsRef và rafThrottle.
     function hideHint() {
       if (hintShown) { hintShown = false; setSnapHint(null); }
-      if (dimmed) { dimmed = false; setEraseIds(EMPTY_IDS); }
+      // Trả về danh sách của cú GẠCH XOÁ, không phải về rỗng: hai thứ cùng dùng
+      // một ô `eraseIds` để làm nét mờ đi, mà bộ đếm giữ tay thì bị huỷ đi huỷ
+      // lại suốt lượt vẽ (mỗi lần armHold lên nòng lại là một lần clearHold).
+      // Trả về rỗng ở đây thì mấy nét đang bị gạch cứ nhấp nháy theo. Lúc không
+      // gạch gì thì scratchDim CHÍNH LÀ EMPTY_IDS, nên hành vi cũ y nguyên.
+      if (dimmed) { dimmed = false; setEraseIds(scratchDim); }
+    }
+
+    // Những nét cú gạch xoá đang nhắm tới, để chúng mờ đi NGAY TRONG LÚC gạch.
+    // Cử chỉ này xoá đồ mà không hỏi và không có khoảng chờ nào, nên nó phải nói
+    // trước là sắp xoá cái gì — còn kịp nhấc tay ra nếu nhắm sai.
+    let scratchDim = EMPTY_IDS;
+    function showScratch(ids) {
+      if (ids.length === scratchDim.length && ids.every((v, i) => v === scratchDim[i])) return;
+      scratchDim = ids.length ? ids : EMPTY_IDS;
+      setEraseIds(scratchDim);
     }
 
     function clearHold() {
@@ -521,6 +545,12 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       // cạnh vẽ hơi vòng mà bị đoán ra ê-líp sẽ vứt luôn cả cái hình đang dựng
       // dở — mất mấy cái đỉnh đã đặt công phu để đổi lấy một hình chẳng ai muốn.
       // Việc đoán hình để dành cho lúc khép vòng, khi đã đủ đỉnh để nói chắc.
+      // ĐANG GẠCH XOÁ thì không đoán hình. Người ta gạch qua lại vài nhát rồi
+      // ngập ngừng một giây trước khi nhấc tay là chuyện thường, mà cú ngập ngừng
+      // đó rơi đúng vào bộ đếm giữ tay: nét gạch sẽ bị nắn thành một cái đường
+      // thẳng, `snapped` được đặt, và lúc nhả chuột thì nhánh gạch xoá dưới kia
+      // không bao giờ chạy tới. Trả về lặng lẽ, để nguyên nét cho lúc nhả tay xử.
+      if (scratchOn && isScribble(ptsRef.current)) return;
       const rec = verts.length ? snapLine(ptsRef.current) : snapShape(ptsRef.current);
       // Không ra được gì: im lặng bỏ qua, nét vẫn là nét tay và người dùng vẽ tiếp
       // bình thường. Tới đây thì hiếm — snapShape đã có sẵn phương án cuối là nắn
@@ -672,6 +702,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       // chục pixel mỗi giây sẽ không bao giờ bắt được hình. Xem createStillWatch.
       lastScreen = { x: ev.clientX, y: ev.clientY };
       lastTs = ev.timeStamp;
+      moveFar = Math.max(moveFar, Math.hypot(ev.clientX - pressScreen.x, ev.clientY - pressScreen.y));
       const going = still.moving(ev.timeStamp, ev.clientX, ev.clientY);
       const left = Math.hypot(ev.clientX - anchor.x, ev.clientY - anchor.y) > SNAP_MOVE_TOL;
       // Tay đã rời khỏi chỗ ấn xuống: đây là một nét vẽ thật, không còn là cú
@@ -761,6 +792,14 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       live?.pushPoints(unsentRef.current);
       if (stuck) return;
 
+      // Nét đang thành một cú gạch xoá: làm mấy thứ nó gạch trúng mờ đi ngay.
+      //
+      // Chạy ở MỌI nhịp chuột chứ không thưa hơn: bỏ nhịp thì nét mờ đi trễ một
+      // quãng, mà đây là lời cảnh báo trước khi xoá — trễ là hỏng ý nghĩa. Giá
+      // của nó nằm trong tầm cục gôm vốn đã trả ở mỗi nhịp: một lượt rút gọn nét
+      // đang vẽ, rồi loại theo hộp bao trước khi đếm giao điểm với số ít còn lại.
+      if (scratchOn) showScratch(scribbleTargets(ptsRef.current, b.drawings || []));
+
       // Lên nòng bắt hình ở nhịp chuột ĐẦU TIÊN (chưa có bộ đếm nào chạy), rồi
       // chỉ lên nòng LẠI khi tay thật sự đang ĐI.
       if (snapOn && (!holdTimer || going)) armHold("snap", ev.clientX, ev.clientY);
@@ -772,6 +811,9 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       window.removeEventListener("keydown", onShiftKey);
       window.removeEventListener("keyup", onShiftKey);
       clearHold();
+      // Lượt vẽ đóng lại thì vệt mờ của cú gạch cũng phải tắt, kể cả khi lượt bị
+      // huỷ ngang (cửa sổ mất focus giữa nét) chứ không đi qua finish().
+      showScratch([]);
       activeRef.current = null;
       cleanupRef.current = null;
     }
@@ -909,9 +951,25 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       const pts = simplifyStroke(ptsRef.current);
       ptsRef.current = [];
       unsentRef.current = [];
-      // BẤM RỒI NHẢ MÀ KHÔNG DI. Không phải một nét — một điểm thì không vẽ ra
-      // gì cả. Trước đây cú bấm này rơi vào hư không; giờ nó là cú CHỌN: trúng
+      // BẤM RỒI NHẢ MÀ KHÔNG ĐI ĐÂU. Không phải một nét — vài pixel thì không vẽ
+      // ra gì cả. Trước đây cú bấm này rơi vào hư không; giờ nó là cú CHỌN: trúng
       // một nét thì chọn nét đó, trúng chỗ trống thì bỏ chọn.
+      //
+      // Đo bằng PIXEL MÀN HÌNH (moveFar), không bằng số điểm đã ghi được. Bàn
+      // tay rung chừng vài pixel ở mọi cú bấm, và ở mức zoom bình thường chỉ hai
+      // ba pixel đó đã vượt MIN_DIST của simplifyStroke (2 ĐƠN VỊ CANVAS) và ghi
+      // ra đủ hai điểm — tức cú bấm hoá thành "một nét vẽ", không chọn được gì
+      // mà còn để lại một chấm mực bằng hạt bụi. Số điểm ghi được là hệ quả của
+      // mức zoom và tốc độ tay, nên nó không bao giờ là thước đo đúng cho câu
+      // hỏi này; tay rung bao nhiêu pixel mới là.
+      //
+      // Dùng lại đúng SNAP_MOVE_TOL chứ không đặt thêm một ngưỡng riêng: đó đã
+      // là ngưỡng "tay còn coi như đứng ở chỗ ấn" của cả file này (nó giữ cho bộ
+      // đếm tẩy sống). Hai con số khác nhau sẽ mở ra một khe mà cú nhả vừa không
+      // phải cú bấm, vừa chưa đủ để huỷ bộ đếm tẩy.
+      //
+      // Vế `pts.length < 4` vẫn giữ cho chiều ngược lại: zoom rất nhỏ thì kéo
+      // hẳn vài chục pixel màn hình cũng chỉ ra một điểm canvas duy nhất.
       //
       // Đang cầm bút mà chọn được nét thì vừa vẽ vừa sửa không phải đổi tool:
       // giữ tay cho nét về hình chuẩn, bấm một cái lên nó, rồi kéo góc / đổi
@@ -920,11 +978,32 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       // Không tranh với cử chỉ nào: cú bấm-không-di chưa bao giờ tạo ra nét, cử
       // chỉ giữ-để-tẩy đòi giữ 650ms nên một cú bấm nhanh không chạm tới nó, và
       // cử chỉ bấm-hai-lần-đổi-nét-đứt chỉ ăn từ lần bấm thứ HAI.
-      if (pts.length < 4) {
+      if (moveFar <= SNAP_MOVE_TOL || pts.length < 4) {
         live?.cancelStroke();
         onPick?.(pickTargetId, pickAdditive);
         return;
       }
+      // GẠCH XOÁ: nét vừa vẽ là một cú gạch ngoằn ngoèo, và nó gạch trúng thứ gì
+      // đó. Xoá những thứ đó, và chính nét gạch thì KHÔNG lưu lại — nó là một cử
+      // chỉ, không phải một hình vẽ.
+      //
+      // Mảng rỗng là "không phải cú gạch, HOẶC gạch vào chỗ trống", và cả hai đều
+      // rơi xuống nhánh lưu nét bình thường bên dưới. Nhờ vậy vẽ một cái răng cưa
+      // giữa bãi đất trống vẫn ra đúng cái răng cưa đó — xem scribbleTargets.
+      if (scratchOn) {
+        const scratched = scribbleTargets(pts, boardRef.current?.drawings || []);
+        if (scratched.length) {
+          // Với người khác: huỷ nét bút đang phát rồi đi ĐÚNG đường của cục gôm,
+          // y như doErase. Không có bước này thì nét gạch treo lại trên màn hình
+          // họ cho tới lúc board:update về, rồi mọi thứ nhảy một phát.
+          live?.cancelStroke();
+          live?.beginErase(scratched);
+          live?.endErase();
+          onEraseDone(scratched);
+          return;
+        }
+      }
+
       const penStroke = { kind: "pen", color: penPrefs.color, w: penPrefs.w, pts };
       if (dashed) penStroke.dashed = true;
       const drawingId = onStrokeDone(penStroke);
