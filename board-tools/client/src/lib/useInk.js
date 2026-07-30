@@ -4,9 +4,10 @@ import {
   drawingsHitBy, drawingBox, normalizeBox, ptsFromBox, shapeKindOf, SHAPE_CLOSED, SHAPE_MIN_DIAGONAL
 } from "./shape.js";
 import { rafThrottle } from "./raf-throttle.js";
-import { snapShape, SNAP_HOLD_MS, SNAP_HINT_MS, SNAP_MOVE_TOL } from "./recognize.js";
+import { snapShape, snapLine, SNAP_HOLD_MS, SNAP_HINT_MS, SNAP_MOVE_TOL } from "./recognize.js";
+import { snapPolygon, CLOSE_STICK_PX, CLOSE_UNSTICK_PX } from "./polygon-snap.js";
 import { ERASE_PART, eraseRadius, eraseBounds, cuttableOutline, cutPartsAlong } from "./erase.js";
-import { createStillWatch } from "./pointer-input.js";
+import { createStillWatch, STILL_TOL } from "./pointer-input.js";
 
 // Bán kính gôm KIỂU "CẢ NÉT", đơn vị toạ độ canvas. Cộng thêm w/2 của từng nét
 // trong drawingsHitBy, nên nét dày dễ chạm hơn nét mảnh — đúng cảm giác mong đợi.
@@ -283,10 +284,17 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
     // 1. Ấn xuống ĐÚNG một nét đã có rồi giữ yên HOLD_ERASE_MS → tẩy nét đó.
     //    Xoá một nét lỡ tay không phải đi đổi sang cục gôm rồi đổi về.
     // 2. Vẽ một đường rồi ĐỨNG YÊN hơn SNAP_HOLD_MS → nét tự nhảy về hình chuẩn
-    //    gần nhất (recognize.js). Sau khi đã nhảy thì lượt vẽ COI NHƯ ĐÃ CHỐT:
-    //    di chuột thêm không sửa gì nữa, thả chuột là lưu hình đó. Cố ý không cho
-    //    sửa tiếp — nét tay đã bị thay bằng hình rồi, "vẽ tiếp" từ đó không có
-    //    nghĩa gì rõ ràng, và bất ngờ thì tệ hơn là thiếu linh hoạt.
+    //    gần nhất (recognize.js). Ra một HÌNH KÍN thì lượt vẽ chốt tại đó: nét
+    //    tay đã bị thay bằng hình rồi, "vẽ tiếp" từ đó không có nghĩa gì rõ ràng.
+    // 3. Ra một ĐOẠN THẲNG thì ngược lại — lượt vẽ ĐI TIẾP từ đúng đầu mút vừa
+    //    chốt, và giữ tay lần nữa lại chốt thêm một đoạn. Cứ thế dựng dần một nét
+    //    gấp khúc. Kéo đoạn cuối về DÍNH vào điểm xuất phát rồi giữ tay ở đó thì
+    //    cả vòng khép lại thành hình (polygon-snap.js).
+    //
+    //    Vì sao đoạn thẳng được đi tiếp còn hình kín thì không: một hình kín đã
+    //    tả trọn thứ người ta vẽ, còn một đoạn thẳng thì gần như bao giờ cũng là
+    //    một CẠNH của thứ gì đó lớn hơn. Và đi tiếp không mất gì cả — thả chuột
+    //    lúc nào là chốt lúc đó, đúng bằng hành vi cũ.
     //
     // Hai cái KHÔNG tranh nhau vì chúng ở hai thời điểm khác hẳn: tẩy là giữ
     // ngay lúc ấn xuống khi chưa vẽ gì, bắt hình là giữ sau khi đã vẽ. Nhích tay
@@ -323,7 +331,31 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
     let anchor = { x: e.clientX, y: e.clientY };
     // Mới cho MỖI lượt vẽ: cửa sổ đo vận tốc không được mang theo mấy nhịp cuối
     // của nét trước, không thì nhịp đầu của nét này bị đọc thành một cú nhảy xa.
-    const still = createStillWatch();
+    // `let` chứ không `const`: mỗi lần chốt xong một đoạn của nét gấp khúc cũng
+    // phải thay cửa sổ mới, vì lý do y hệt.
+    let still = createStillWatch();
+
+    // ── Nét gấp khúc đang dựng dở ────────────────────────────────────────────
+    //
+    // Các đỉnh ĐÃ CHỐT, phẳng [x,y,x,y,…], theo thứ tự đã vẽ. Rỗng nghĩa là chưa
+    // chốt đoạn nào — và khi rỗng thì mọi thứ dưới đây im lặng đứng ngoài, lượt
+    // vẽ chạy y hệt trước khi có tính năng này.
+    //
+    // Đỉnh CUỐI của mảng cũng chính là điểm ĐẦU của ptsRef: hai thứ chồng nhau
+    // đúng một điểm, cố ý, để không chỗ nào phải nhớ "nối chúng lại thì cộng hay
+    // trừ một điểm". Xem fullPts().
+    let verts = [];
+    // Vừa chốt một đoạn xong, đang đợi tay đi lại thật sự, và chỗ tay đứng lúc
+    // chốt. Xem chỗ dùng trong onMove về việc vì sao không ghi điểm lúc này.
+    let waiting = false;
+    let waitFrom = null;
+    // Chỗ con trỏ ở nhịp chuột gần nhất, toạ độ MÀN HÌNH. Khác `anchor`: cái kia
+    // là mốc của bộ đếm giữ tay và chỉ đổi khi bộ đếm lên nòng lại, còn cái này
+    // theo sát con trỏ. doSnap chạy từ một timer nên nó không có sự kiện chuột
+    // nào để hỏi — đây là đường duy nhất để nó biết tay đang ở đâu.
+    let lastScreen = { x: e.clientX, y: e.clientY };
+    // Đầu nét đang DÍNH vào điểm xuất phát (và bộ đếm khép hình đang chạy).
+    let stuck = false;
     // Bộ đếm đang chạy là loại nào: "erase" / "swap" (đo từ CHỖ ẤN XUỐNG) hay
     // "snap" (đo VẬN TỐC). Hai loại bị huỷ bởi hai điều kiện khác hẳn nhau, nên
     // phải biết đang giữ loại nào mới huỷ đúng cái cần huỷ.
@@ -394,6 +426,72 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       onSwapTool();
     }
 
+    // Toàn bộ nét đang thấy trên màn hình: các đỉnh đã chốt, nối tiếp bằng đoạn
+    // tay đang vẽ dở. Cắt đỉnh cuối đi vì nó CHÍNH LÀ điểm đầu của ptsRef — hai
+    // mảng chồng nhau đúng một điểm, cố ý (xem `verts`).
+    function fullPts() {
+      return verts.length ? verts.slice(0, -2).concat(ptsRef.current) : ptsRef.current.slice();
+    }
+
+    function drawPen(pts) {
+      pushDraft.current({ color: penPrefs.color, w: penPrefs.w, pts, dashed });
+    }
+
+    // Mở LẠI lượt bút trên kênh live, lấy `pts` làm gói seq 0.
+    //
+    // Không phát thêm điểm nối tiếp được: gói giữa chừng của bút mang ĐIỂM MỚI
+    // THÊM và người nhận NỐI chúng vào (xem mergeInkPacket), nên không có cách
+    // nào bảo họ "quên mấy chục điểm tay vừa rồi đi, thay bằng một đoạn thẳng".
+    // Mở lại là cách duy nhất, và nó rẻ: nét đã nắn chỉ còn vài cái đỉnh.
+    function republish(pts) {
+      live?.cancelStroke();
+      live?.beginStroke(penPrefs.color, penPrefs.w, pts.map((v) => Math.round(v)), dashed);
+      unsentRef.current = [];
+    }
+
+    // Chốt xong một đoạn: ghi đỉnh mới rồi mở đoạn kế tiếp NGAY TỪ đỉnh đó.
+    function pushVertex(rec) {
+      // Đoạn đầu tiên đóng góp cả hai đầu; từ đoạn thứ hai trở đi chỉ lấy đầu
+      // MÚT, bỏ đầu kia. Đầu kia là chỗ trimHold đoán ra sau khi cắt vạt điểm
+      // đứng yên, và nó xê dịch vài đơn vị so với cái đỉnh đã chốt lần trước —
+      // giữ nó thì nét gấp khúc hở một mẩu ở mỗi khớp, mà ở mức zoom cao thì mẩu
+      // đó nhìn thấy rõ.
+      if (!verts.length) verts = rec.pts.slice(0, 4);
+      else verts.push(rec.pts[2], rec.pts[3]);
+      ptsRef.current = verts.slice(-2);
+      waiting = true;
+      waitFrom = lastScreen;
+      // Cửa sổ đo vận tốc phải thay mới, cùng lý do với lúc bắt đầu lượt vẽ: giữ
+      // lại thì nó còn nhớ mấy nhịp của đoạn vừa chốt và đọc ra "tay đang đi".
+      still = createStillWatch();
+      const pts = fullPts();
+      drawPen(pts);
+      republish(pts);
+    }
+
+    // Khép vòng: đoạn đang vẽ đã dính về điểm xuất phát và tay giữ đủ lâu.
+    function doClose() {
+      clearHold();
+      // `verts` KHÔNG lặp lại điểm xuất phát ở cuối — cạnh khép kín là ngầm định
+      // với mọi hình đóng, thêm nó vào là một tam giác đếm ra bốn đỉnh.
+      const rec = snapPolygon(verts);
+      if (rec) {
+        snapped = rec;
+        pushDraft.current({ color: penPrefs.color, w: penPrefs.w, pts: rec.pts, kind: rec.kind, fill: false, dashed });
+        live?.cancelStroke();
+        live?.beginShape(rec.kind, penPrefs.color, penPrefs.w, false, rec.pts, dashed);
+        return;
+      }
+      // Không kind nào tả được (từ năm đỉnh trở lên): giữ nguyên nét gấp khúc,
+      // chỉ khép kín nó lại. Vẫn CHỐT lượt vẽ ở đây chứ không im lặng bỏ qua —
+      // người dùng đã giữ tay hơn một giây để yêu cầu khép hình, và cái vòng kín
+      // đúng là thứ họ vừa yêu cầu, chỉ là nó không mang tên nào.
+      const closed = verts.concat(verts.slice(0, 2));
+      snapped = { kind: "pen", pts: closed };
+      drawPen(closed);
+      republish(closed);
+    }
+
     function doSnap() {
       clearHold();
       // HẠN CHẾ ĐÃ BIẾT, chưa chữa ở đây: bàn tay tì trên chuột trôi đều chừng
@@ -408,13 +506,21 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       // cắt hụt mất đoạn cuối và tự tạo ra chừng 15 đơn vị sai số ngay cả khi
       // tay không trôi tí nào. Muốn chữa đúng thì phải gắn mốc thời gian cho
       // từng điểm.
-      const rec = snapShape(ptsRef.current);
+      // ĐANG DỰNG NÉT GẤP KHÚC thì chỉ nhận đoạn thẳng, không cho đoán hình. Một
+      // cạnh vẽ hơi vòng mà bị đoán ra ê-líp sẽ vứt luôn cả cái hình đang dựng
+      // dở — mất mấy cái đỉnh đã đặt công phu để đổi lấy một hình chẳng ai muốn.
+      // Việc đoán hình để dành cho lúc khép vòng, khi đã đủ đỉnh để nói chắc.
+      const rec = verts.length ? snapLine(ptsRef.current) : snapShape(ptsRef.current);
       // Không ra được gì: im lặng bỏ qua, nét vẫn là nét tay và người dùng vẽ tiếp
       // bình thường. Tới đây thì hiếm — snapShape đã có sẵn phương án cuối là nắn
       // về đoạn thẳng nối hai đầu — chỉ còn nét KÍN mà không giống hình nào mới
       // rơi vào nhánh này. Nhích chuột một cái là bộ đếm lên nòng lại (xem
       // onMove), nên vẽ thêm rồi giữ tay lần nữa là thử lại được.
       if (!rec) return;
+      // ĐOẠN THẲNG: chốt nó thành một cạnh rồi VẼ TIẾP — lượt vẽ chưa kết thúc.
+      // Xem ghi chú "Hai cử chỉ GIỮ TAY" ở trên về việc vì sao đoạn thẳng được đi
+      // tiếp còn hình kín thì không.
+      if (rec.kind === "line") { pushVertex(rec); return; }
       snapped = rec;
       // Nét đứt theo NGUYÊN cây bút vừa vẽ: vẽ bằng bút nét đứt rồi giữ tay cho
       // nó về hình chuẩn thì cái hình đó vẫn phải là nét đứt — nếu không, cử chỉ
@@ -435,7 +541,10 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       clearHold();
       holdKind = kind;
       anchor = { x: cx, y: cy };
-      const wait = kind === "snap" ? SNAP_HOLD_MS : HOLD_ERASE_MS;
+      // Hai cử chỉ ĐO TỪ CHỖ ẤN XUỐNG chờ ngắn; hai cử chỉ của bút ("snap" và
+      // "close") chờ đúng bằng nhau — chúng là cùng một thao tác trong mắt người
+      // dùng ("giữ tay để chốt"), nên hai nhịp chờ khác nhau thì tay không học được.
+      const wait = kind === "erase" || kind === "swap" ? HOLD_ERASE_MS : SNAP_HOLD_MS;
       hintTimer = setTimeout(() => {
         hintTimer = 0;
         hintShown = true;
@@ -453,6 +562,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
         holdTimer = 0;
         if (kind === "erase") doErase();
         else if (kind === "swap") doSwap();
+        else if (kind === "close") doClose();
         else doSnap();
       }, wait);
     }
@@ -531,18 +641,23 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
         return;
       }
 
-      ptsRef.current.push(p.x, p.y);
-      unsentRef.current.push(Math.round(p.x), Math.round(p.y));
-      pushDraft.current({ color: penPrefs.color, w: penPrefs.w, pts: ptsRef.current.slice(), dashed });
-      // Gói mang đúng những điểm chưa gửi; trailingThrottle bên useInkLive gộp
-      // các lần gọi trong cùng 40ms nên phải xả `unsent` ở ĐÓ, không phải ở đây.
-      live?.pushPoints(unsentRef.current);
-
+      // HAI PHÉP ĐO CHẠY TRƯỚC KHI ĐỤNG TỚI NÉT, vì chính chúng quyết định điểm
+      // này có được ghi vào nét hay không. Cửa sổ vận tốc cũng phải được ăn đủ
+      // MỌI nhịp chuột, kể cả nhịp bị bỏ ở mấy nhánh bên dưới — bỏ nhịp là nó đo
+      // ra một cú nhảy xa ở lần gọi kế tiếp.
+      //
+      // Hai phép cố ý không dùng chung ngưỡng: `left` đo từ chỗ ấn xuống (cú này
+      // còn là giữ tay hay đã thành kéo), còn `going` đo VẬN TỐC qua một cửa sổ
+      // thời gian. Lấy `left` cho cả hai — như bản trước — thì cái trôi tay cộng
+      // dồn tới lúc vượt 6px và đặt lại đồng hồ, nên bàn tay nào trượt đều vài
+      // chục pixel mỗi giây sẽ không bao giờ bắt được hình. Xem createStillWatch.
+      lastScreen = { x: ev.clientX, y: ev.clientY };
+      const going = still.moving(ev.timeStamp, ev.clientX, ev.clientY);
+      const left = Math.hypot(ev.clientX - anchor.x, ev.clientY - anchor.y) > SNAP_MOVE_TOL;
       // Tay đã rời khỏi chỗ ấn xuống: đây là một nét vẽ thật, không còn là cú
       // giữ để tẩy. Bỏ hẳn đích tẩy, không bao giờ quay lại — nếu còn giữ nó thì
       // vẽ một đường dài rồi dừng tay sẽ tẩy mất cái nét mà mình chỉ vô tình bắt
       // đầu vẽ đè lên.
-      const left = Math.hypot(ev.clientX - anchor.x, ev.clientY - anchor.y) > SNAP_MOVE_TOL;
       if (left) eraseTargetId = null;
       // Tay đã rời chỗ ấn xuống ⇒ HAI bộ đếm đo-từ-chỗ-ấn phải chết ngay, bất kể
       // sau đó có lên nòng bắt hình hay không. Trước đây việc này xảy ra nhờ ăn
@@ -550,15 +665,77 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       // của bắt hình đổi sang đo VẬN TỐC thì cái ăn may đó mất — vẽ chậm hơn 36
       // px/giây là `going` không bao giờ lên true, bộ đếm đổi tool sống sót và
       // nổ ở 650ms, cướp mất nét đang vẽ và lẳng lặng đổi sang cục gôm.
-      if (left && holdKind !== "snap") clearHold();
+      //
+      // "close" cũng đứng ngoài luật này, và vì một lý do khác hẳn "snap": nó
+      // không đo từ chỗ ấn xuống mà đo từ ĐIỂM XUẤT PHÁT của nét, nên khoảng
+      // cách tới chỗ ấn chẳng nói được gì về nó.
+      if (left && holdKind !== "snap" && holdKind !== "close") clearHold();
+
+      // VỪA CHỐT XONG MỘT ĐOẠN, TAY CÒN ĐANG ĐỨNG. Mọi điểm sinh ra lúc này là
+      // TRÔI TAY chứ không phải nét, và ghi chúng vào thì đoạn kế tiếp mở đầu
+      // bằng một cú ngoặt bịa ra — đủ để phép đo thẳng trượt ngưỡng, và cạnh sau
+      // sẽ không bao giờ chốt được dù người ta kẻ thẳng tới đâu. Đợi tới khi phép
+      // đo vận tốc nói tay ĐI THẬT.
+      //
+      // Mất chừng STILL_TOL pixel đầu đoạn, và đó không phải mất mát: điểm xuất
+      // phát của đoạn đã bị ép về đúng đỉnh vừa chốt rồi (xem pushVertex), nên
+      // mấy điểm đầu chỉ còn dùng cho phép đo thẳng — nơi bỏ chúng đi càng tốt.
+      //
+      // HAI đường thoát chứ không chỉ một, và đường thứ hai là bắt buộc: phép đo
+      // vận tốc đọc "đang đi" ở mốc STILL_TOL trên một cửa sổ 500ms, tức 36
+      // px/giây. Người vẽ chậm hơn thế thì `going` KHÔNG BAO GIỜ lên true, và
+      // nếu đó là điều kiện duy nhất thì họ không mở nổi cạnh thứ hai — cái nét
+      // của họ đứng im ở đỉnh vừa chốt cho tới lúc thả chuột. Nên cũng thoát khi
+      // tay đã đi được ĐÚNG QUÃNG ẤY tính từ chỗ đứng, bất kể mất bao lâu: cùng
+      // một con số cho cùng một câu hỏi, chỉ khác là bỏ vế thời gian đi.
+      if (waiting) {
+        const gone = waitFrom && Math.hypot(ev.clientX - waitFrom.x, ev.clientY - waitFrom.y) > STILL_TOL;
+        if (!going && !gone) return;
+        waiting = false;
+      }
+
+      // DÍNH VÀO ĐIỂM XUẤT PHÁT, để khép nét gấp khúc thành hình. Chỉ mở từ đỉnh
+      // thứ BA trở đi: khép vòng với hai đỉnh chỉ ra một cái lưỡi liềm dẹt lép.
+      //
+      // Đo bằng toạ độ CANVAS quy ra pixel màn hình (nhân scale) chứ không đo
+      // bằng clientX/clientY: hỏi getBoundingClientRect ở mỗi nhịp chuột là mỗi
+      // nhịp bắt trình duyệt tính lại layout, mà nhánh này chạy cả trăm lần mỗi
+      // giây. Chỉ lúc DÍNH mới hỏi một lần, để đặt vòng chờ.
+      const home = verts.length >= 6 ? { x: verts[0], y: verts[1] } : null;
+      // Vào thì chặt, ra thì rộng — xem CLOSE_STICK_PX/CLOSE_UNSTICK_PX.
+      const near = !!home
+        && Math.hypot(p.x - home.x, p.y - home.y) * b.view.scale <= (stuck ? CLOSE_UNSTICK_PX : CLOSE_STICK_PX);
+      if (near !== stuck) {
+        stuck = near;
+        if (!near) clearHold();
+        else {
+          // Vòng chờ đặt ở ĐIỂM XUẤT PHÁT chứ không ở đầu ngón tay: nó đang nói
+          // "chỗ này sắp khép lại", mà chỗ đó là cái đỉnh chứ không phải con trỏ.
+          const box = viewportEl.getBoundingClientRect();
+          armHold("close",
+            box.left + home.x * b.view.scale + b.view.panX,
+            box.top + home.y * b.view.scale + b.view.panY);
+        }
+      } else if (stuck) {
+        // Đã dính từ nhịp trước: nhích tay trong vùng dính không đổi được nét,
+        // nên không có gì để ghi — và tuyệt đối không được đụng vào bộ đếm khép
+        // hình đang chạy, không thì giữ tay mãi cũng không bao giờ khép được.
+        return;
+      }
+
+      // Dính thì ghi ĐÚNG CÁI ĐỈNH, không ghi chỗ con trỏ: vòng phải khép kín
+      // tuyệt đối, hở một hai pixel ở mức zoom cao là nhìn thấy ngay.
+      const q = stuck ? home : p;
+      ptsRef.current.push(q.x, q.y);
+      unsentRef.current.push(Math.round(q.x), Math.round(q.y));
+      drawPen(fullPts());
+      // Gói mang đúng những điểm chưa gửi; trailingThrottle bên useInkLive gộp
+      // các lần gọi trong cùng 40ms nên phải xả `unsent` ở ĐÓ, không phải ở đây.
+      live?.pushPoints(unsentRef.current);
+      if (stuck) return;
+
       // Lên nòng bắt hình ở nhịp chuột ĐẦU TIÊN (chưa có bộ đếm nào chạy), rồi
-      // chỉ lên nòng LẠI khi tay thật sự đang ĐI. Hai phép đo khác nhau và cố ý
-      // không dùng chung ngưỡng: `left` đo từ chỗ ấn xuống (cú này còn là giữ
-      // tay hay đã thành kéo), còn `going` đo VẬN TỐC qua một cửa sổ thời gian.
-      // Lấy `left` cho cả hai — như bản trước — thì cái trôi tay cộng dồn tới
-      // lúc vượt 6px và đặt lại đồng hồ, nên bàn tay nào trượt đều vài chục
-      // pixel mỗi giây sẽ không bao giờ bắt được hình. Xem createStillWatch.
-      const going = still.moving(ev.timeStamp, ev.clientX, ev.clientY);
+      // chỉ lên nòng LẠI khi tay thật sự đang ĐI.
       if (snapOn && (!holdTimer || going)) armHold("snap", ev.clientX, ev.clientY);
     }
 
@@ -666,7 +843,46 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
         if (SHAPE_CLOSED.has(snapped.kind)) stroke.fill = false;
         if (dashed) stroke.dashed = true;
         const snapId = onStrokeDone(stroke);
-        live?.endShape(snapId);
+        // Vòng kín không mang tên nào thì lưu ra nét BÚT, và lượt live đang mở
+        // cũng là lượt bút (xem doClose) — phải đóng đúng cái đang mở.
+        if (snapped.kind === "pen") live?.endStroke(snapId);
+        else live?.endShape(snapId);
+        return;
+      }
+
+      // NÉT GẤP KHÚC ĐANG DỞ: đã chốt được vài cạnh nhưng chưa khép vòng. Thả
+      // chuột lúc nào là lưu lúc đó, đúng bằng hành vi của một nét bút thường.
+      if (verts.length) {
+        pushDraft.current.cancel();
+        setDraft(null);
+        // Đuôi chưa chốt chỉ được tính là một cạnh nữa nếu tay đã thật sự đi khỏi
+        // đỉnh. Ngay sau một cú chốt thì ptsRef chỉ có đúng cái đỉnh (xem cửa
+        // chặn `waiting` trong onMove), nên phép này thường trả về 0 và nét dừng
+        // gọn ở đỉnh cuối.
+        //
+        // Đo bằng KHOẢNG CÁCH XA NHẤT, không hỏi snapLine như thoạt nghĩ: hàm đó
+        // đòi tối thiểu sáu điểm, mà một cú vẩy tay nhanh 200 đơn vị có khi chỉ
+        // bắn ra bốn nhịp chuột. Hỏi nó thì đúng những cú vẽ dứt khoát nhất lại
+        // bị vứt, còn cú vẽ chậm rề thì được giữ — ngược hẳn.
+        const raw = ptsRef.current;
+        let far = 0;
+        for (let i = 2; i + 1 < raw.length; i += 2) {
+          far = Math.max(far, Math.hypot(raw[i] - raw[0], raw[i + 1] - raw[1]));
+        }
+        const tail = far > SHAPE_MIN_DIAGONAL ? simplifyStroke(raw) : verts.slice(-2);
+        const chain = verts.slice(0, -2).concat(tail);
+        ptsRef.current = [];
+        unsentRef.current = [];
+        // Đúng hai đỉnh và không có đuôi: đó vẫn là một ĐOẠN THẲNG và phải lưu ra
+        // kind "line", y như trước khi có tính năng nối tiếp này. Lưu ra nét bút
+        // hai điểm thì nhìn giống hệt nhưng mất tay cầm hai đầu — tức cử chỉ bắt
+        // hình lặng lẽ trả về ít hơn nó vẫn trả.
+        const chained = chain.length === 4
+          ? { kind: "line", color: penPrefs.color, w: penPrefs.w, pts: chain }
+          : { kind: "pen", color: penPrefs.color, w: penPrefs.w, pts: chain };
+        if (dashed) chained.dashed = true;
+        const chainId = onStrokeDone(chained);
+        live?.endStroke(chainId);
         return;
       }
 

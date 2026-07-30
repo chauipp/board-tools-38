@@ -1395,6 +1395,14 @@
    cầm trên tay, nên nó phải khác Ở DẠNG chứ không chỉ khác ở sắc độ. */
 .snap-hint.swap { border-color: var(--ink-dim); border-style: dashed; }
 
+/* Cùng vòng đó nhưng là cử chỉ KHÉP HÌNH: đầu nét gấp khúc đã dính về điểm xuất
+   phát, giữ thêm một nhịp là cả vòng thành hình. Vẫn màu accent vì việc sắp xảy
+   ra vẫn là "sắp tạo ra một hình" — khác ở chỗ nó ĐẶC RUỘT, đọc ra được ngay là
+   "chỗ này khép lại" chứ không phải "cái nét này nắn lại". Vòng này cũng là thứ
+   duy nhất báo cho người dùng biết đầu nét đã dính, nên nó không được lẫn với
+   ba vòng kia. */
+.snap-hint.close { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+
 /* Mode Đặt: cùng vai trò và cùng z-index với .ink-capture — bấm trúng một thẻ
    có sẵn vẫn phải ra thẻ mới ở đúng chỗ đó, chứ không phải chọn thẻ cũ.
    `copy` cho việc đặt thẻ (con trỏ có dấu +, nghĩa là "thả xuống đây một cái
