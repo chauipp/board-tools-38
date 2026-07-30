@@ -1,5 +1,6 @@
-// Bấm nhiều lần liên tiếp lên NỀN TRỐNG của bảng: 2 lần là hoàn tác, 3 lần là
-// làm lại. Không dính React, không đụng DOM — nhờ vậy test được bằng node:test.
+// Bấm nhiều lần liên tiếp trên bảng. Trên NỀN TRỐNG: 2 lần là hoàn tác, 3 lần là
+// làm lại. Trên MỘT NÉT VẼ: 2 lần là đổi nét liền ↔ nét đứt của đúng nét đó.
+// Không dính React, không đụng DOM — nhờ vậy test được bằng node:test.
 //
 // Vì sao tự đếm thay vì đọc `event.detail` mà trình duyệt đã đếm sẵn: `detail`
 // đếm theo cửa sổ riêng của từng trình duyệt (Chrome chừng 500ms, không chỉnh
@@ -28,11 +29,23 @@ export function multiClickAction(count) {
 export function createMultiClick(windowMs = MULTI_CLICK_MS) {
   let count = 0;
   let last = -Infinity;
+  // Đích của lần bấm trước. Cố ý khởi tạo là `undefined` chứ không phải `null`:
+  // `null` là một đích THẬT (nền trống), nên nếu khởi tạo bằng nó thì cú bấm đầu
+  // tiên trong đời bộ đếm sẽ so ra "cùng đích" — vô hại lúc này vì `last` vẫn là
+  // -Infinity, nhưng là một cái bẫy chỉ chờ ai đó đổi luật thời gian.
+  let target;
   return {
-    // Số lần bấm liên tiếp TÍNH CẢ lần này.
-    click(now) {
-      count = now - last <= windowMs ? count + 1 : 1;
+    // Số lần bấm liên tiếp TÍNH CẢ lần này. `at` là thứ đang bị bấm: id của nét
+    // vẽ nằm dưới con trỏ, hay null cho nền trống.
+    //
+    // Đổi đích là chuỗi BẮT ĐẦU LẠI từ 1, không cộng dồn. Thiếu vế này thì một cú
+    // bấm lên nét rồi một cú bấm lên nền — hai việc chẳng liên quan gì nhau, và
+    // là chuyện xảy ra liên tục khi vừa vẽ vừa sửa — sẽ đếm thành 2 và người dùng
+    // ăn một cú hoàn tác không ai gọi.
+    click(now, at = null) {
+      count = now - last <= windowMs && at === target ? count + 1 : 1;
       last = now;
+      target = at;
       return count;
     },
     // Kết thúc một chuỗi: sau khi đã làm xong việc, hoặc khi có thứ chen vào
@@ -40,6 +53,7 @@ export function createMultiClick(windowMs = MULTI_CLICK_MS) {
     cancel() {
       count = 0;
       last = -Infinity;
+      target = undefined;
     }
   };
 }

@@ -58,3 +58,55 @@ test("các hằng số ở mức hợp lý", () => {
   assert.ok(MULTI_CLICK_MS >= 200 && MULTI_CLICK_MS <= 600, "cửa sổ bấm nhiều lần");
   assert.ok(CLICK_DRAG_TOL > 0 && CLICK_DRAG_TOL <= 10, "ngưỡng phân biệt bấm với kéo");
 });
+
+// ── Đích của cú bấm ────────────────────────────────────────────────────────
+//
+// Nền trống (null) và một nét vẽ (id) là hai đích khác nhau, và cả hai đều có
+// cử chỉ bấm nhiều lần riêng. Không phân biệt được đích thì hai chuỗi trộn vào
+// nhau và người dùng ăn thao tác mình không gọi.
+
+test("đổi đích thì chuỗi bắt đầu lại từ 1", () => {
+  const mc = createMultiClick(300);
+  assert.equal(mc.click(0, 7), 1, "bấm lên nét 7");
+  // Trong cửa sổ thời gian, nhưng sang nền trống: KHÔNG được thành 2 (tức không
+  // được thành một cú hoàn tác).
+  assert.equal(mc.click(50, null), 1, "sang nền trống");
+  assert.equal(mc.click(100, 7), 1, "quay lại nét 7");
+});
+
+test("hai nét khác nhau cũng là hai đích khác nhau", () => {
+  const mc = createMultiClick(300);
+  assert.equal(mc.click(0, 7), 1);
+  assert.equal(mc.click(50, 9), 1, "nét 9 không nối tiếp chuỗi của nét 7");
+  assert.equal(mc.click(100, 9), 2, "nhưng nét 9 tự đếm tiếp được");
+});
+
+test("cùng một đích thì đếm dồn như thường", () => {
+  const mc = createMultiClick(300);
+  assert.equal(mc.click(0, 7), 1);
+  assert.equal(mc.click(100, 7), 2);
+  assert.equal(mc.click(200, 7), 3);
+});
+
+// Không truyền đích = nền trống. Toàn bộ đường undo/redo cũ gọi kiểu này.
+test("không truyền đích thì mặc định là nền trống, đếm dồn bình thường", () => {
+  const mc = createMultiClick(300);
+  assert.equal(mc.click(0), 1);
+  assert.equal(mc.click(100), 2);
+  assert.equal(mc.click(200, null), 3, "null và bỏ trống là CÙNG một đích");
+});
+
+// Đúng đích nhưng quá cửa sổ vẫn phải đứt — chốt thời gian không được biến mất
+// khi thêm chốt đích.
+test("cùng đích mà quá cửa sổ thì vẫn bắt đầu lại", () => {
+  const mc = createMultiClick(300);
+  assert.equal(mc.click(0, 7), 1);
+  assert.equal(mc.click(301, 7), 1);
+});
+
+test("cancel() xoá cả đích, không chỉ xoá bộ đếm", () => {
+  const mc = createMultiClick(300);
+  assert.equal(mc.click(0, 7), 1);
+  mc.cancel();
+  assert.equal(mc.click(50, 7), 1, "cùng đích cũ nhưng chuỗi đã bị cắt");
+});
