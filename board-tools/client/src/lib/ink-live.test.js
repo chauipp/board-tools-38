@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  INK_LIVE_TTL_MS, INK_SETTLE_TTL_MS, inkKey, mergeInkPacket, reconcileInkOverlay
+  INK_LIVE_TTL_MS, INK_SETTLE_TTL_MS, inkKey, mergeInkPacket, reconcileInkOverlay, applyInkMoves
 } from "./ink-live.js";
 
 const NOW = 1000;
@@ -275,4 +275,106 @@ test("reconcileInkOverlay: overlay chữ bị dọn khi board đã có id vừa 
   assert.equal(m.size, 1);
   const after = reconcileInkOverlay(m, { drawings: [{ id: 42, kind: "text" }] });
   assert.equal(after.size, 0);
+});
+
+// ── NÉT ĐANG BỊ DỜI / CO GIÃN / SỬA HÌNH ────────────────────────────────────
+
+const BOARD = [
+  { id: 1, kind: "pen", color: "pen-red", w: 4, pts: [0, 0, 10, 10] },
+  { id: 2, kind: "rect", color: "pen-blue", w: 8, pts: [0, 0, 50, 30] },
+  { id: 3, kind: "text", color: "pen-red", size: 20, w: 60, h: 24, pts: [5, 5], text: "chữ" }
+];
+
+test("applyInkMoves: không có gói nào thì trả về ĐÚNG mảng cũ", () => {
+  assert.equal(applyInkMoves(BOARD, new Map()), BOARD);
+});
+
+// Trả nguyên tham chiếu là điều kiện để useMemo và memo của InkLayer ăn: dựng
+// mảng mới ở mỗi gói live của người khác là render lại toàn bộ nét đã lưu.
+test("applyInkMoves: có gói nhưng không phải loại `moving` thì vẫn trả mảng cũ", () => {
+  const m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, pts: [0, 0] }), NOW);
+  assert.equal(applyInkMoves(BOARD, m), BOARD);
+});
+
+test("applyInkMoves: chỉ nét trong gói bị đổi, phần còn lại giữ nguyên tham chiếu", () => {
+  const m = mergeInkPacket(new Map(), pkt({ seq: 1, moving: [{ id: 2, pts: [100, 100, 150, 130] }] }), NOW);
+  const out = applyInkMoves(BOARD, m);
+  assert.deepEqual(out[1].pts, [100, 100, 150, 130]);
+  assert.equal(out[0], BOARD[0]);
+  assert.equal(out[2], BOARD[2]);
+});
+
+// Kiểu dáng KHÔNG đi trong gói — người nhận đã có sẵn trong board của họ.
+test("applyInkMoves: màu, độ dày, nét đứt lấy từ board của người nhận", () => {
+  const m = mergeInkPacket(new Map(), pkt({ seq: 1, moving: [{ id: 2, pts: [1, 2, 3, 4] }] }), NOW);
+  const out = applyInkMoves(BOARD, m);
+  assert.equal(out[1].color, "pen-blue");
+  assert.equal(out[1].w, 8);
+});
+
+// Kéo tay cầm một góc chữ nhật thì nó THÀNH tứ giác. Thiếu kind trong gói là
+// người nhận vẽ "rect" với pts 8 số.
+test("applyInkMoves: kind đi kèm thì đổi cả kind", () => {
+  const m = mergeInkPacket(
+    new Map(),
+    pkt({ seq: 1, moving: [{ id: 2, kind: "quad", pts: [0, 0, 50, 0, 60, 30, 10, 30] }] }),
+    NOW
+  );
+  assert.equal(applyInkMoves(BOARD, m)[1].kind, "quad");
+});
+
+test("applyInkMoves: co giãn một đoạn chữ đổi cả cỡ chữ và hộp chữ", () => {
+  const m = mergeInkPacket(
+    new Map(),
+    pkt({ seq: 1, moving: [{ id: 3, pts: [10, 10], size: 40, w: 120, h: 48 }] }),
+    NOW
+  );
+  const out = applyInkMoves(BOARD, m)[2];
+  assert.equal(out.size, 40);
+  assert.equal(out.w, 120);
+  assert.equal(out.h, 48);
+  assert.equal(out.text, "chữ", "nội dung chữ không nằm trong gói dời, phải giữ nguyên");
+});
+
+// Gói mang trạng thái TUYỆT ĐỐI nên gói sau THAY hẳn gói trước. Gộp lại thì độ
+// dời bị cộng dồn và cụm bay đi.
+test("mergeInkPacket: gói `moving` sau thay hẳn gói trước, không gộp", () => {
+  let m = mergeInkPacket(new Map(), pkt({ seq: 1, moving: [{ id: 1, pts: [1, 1] }, { id: 2, pts: [2, 2] }] }), NOW);
+  m = mergeInkPacket(m, pkt({ seq: 2, moving: [{ id: 1, pts: [9, 9] }] }), NOW);
+  assert.equal(m.get("s1:1").moving.length, 1);
+  assert.deepEqual(m.get("s1:1").moving[0].pts, [9, 9]);
+});
+
+test("mergeInkPacket: gói `moving` rác bị bỏ, không dựng entry rỗng", () => {
+  const m = mergeInkPacket(new Map(), pkt({ seq: 1, moving: [{ id: "x", pts: [1, 1] }] }), NOW);
+  assert.equal(m.size, 0);
+});
+
+// ĐÂY là lý do gói mang trạng thái tuyệt đối thay vì độ dời: đắp lên một board
+// đã cập nhật phải là phép RỖNG, không phải dời lần thứ hai.
+test("applyInkMoves: đắp lên board ĐÃ cập nhật là phép rỗng", () => {
+  const moved = [{ id: 1, kind: "pen", color: "pen-red", w: 4, pts: [100, 100, 110, 110] }];
+  const m = mergeInkPacket(new Map(), pkt({ seq: 1, moving: [{ id: 1, pts: [100, 100, 110, 110] }] }), NOW);
+  assert.deepEqual(applyInkMoves(moved, m)[0].pts, [100, 100, 110, 110]);
+});
+
+test("reconcileInkOverlay: overlay dời bị dọn khi bản lưu về và khớp", () => {
+  const m = mergeInkPacket(new Map(), pkt({ seq: 1, moving: [{ id: 1, pts: [100, 100] }], done: true }), NOW);
+  assert.equal(m.size, 1);
+  assert.equal(reconcileInkOverlay(m, { drawings: [{ id: 1, pts: [100, 100] }] }).size, 0);
+});
+
+test("reconcileInkOverlay: bản lưu CHƯA khớp thì overlay ở lại", () => {
+  const m = mergeInkPacket(new Map(), pkt({ seq: 1, moving: [{ id: 1, pts: [100, 100] }], done: true }), NOW);
+  assert.equal(reconcileInkOverlay(m, { drawings: [{ id: 1, pts: [0, 0] }] }).size, 1);
+});
+
+test("reconcileInkOverlay: chỉ một nét trong cụm khớp thì overlay vẫn ở lại", () => {
+  const m = mergeInkPacket(
+    new Map(),
+    pkt({ seq: 1, moving: [{ id: 1, pts: [7, 7] }, { id: 2, pts: [8, 8] }], done: true }),
+    NOW
+  );
+  const after = reconcileInkOverlay(m, { drawings: [{ id: 1, pts: [7, 7] }, { id: 2, pts: [0, 0] }] });
+  assert.equal(after.size, 1);
 });

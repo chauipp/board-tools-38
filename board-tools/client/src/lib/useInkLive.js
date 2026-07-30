@@ -94,11 +94,24 @@ export function useInkLive(socket) {
     }, INK_SEND_MS);
   }
 
+  // NÉT ĐANG BỊ DỜI / CO GIÃN / SỬA HÌNH. Cùng lý do với hộp và chữ, không cần
+  // bộ tích luỹ: gói mang trạng thái tuyệt đối nên gói sau thay được gói trước.
+  const flushMoveRef = useRef(null);
+  if (!flushMoveRef.current) {
+    flushMoveRef.current = trailingThrottle((moving) => {
+      seqRef.current += 1;
+      socketRef.current?.emit("live:ink", {
+        strokeId: strokeIdRef.current, seq: seqRef.current, moving
+      });
+    }, INK_SEND_MS);
+  }
+
   useEffect(() => () => {
     flushPtsRef.current?.cancel();
     flushEraseRef.current?.cancel();
     flushBoxRef.current?.cancel();
     flushTextRef.current?.cancel();
+    flushMoveRef.current?.cancel();
   }, []);
 
   useEffect(() => {
@@ -207,6 +220,62 @@ export function useInkLive(socket) {
     emitNow({ strokeId: strokeIdRef.current, cancel: true });
   }, [emitNow]);
 
+  // Bao nhiêu nét, và tổng bao nhiêu con số, thì còn phát live cho một cú kéo.
+  //
+  // Kéo cả cụm thì gói mang pts của MỌI nét trong cụm, ở nhịp 25 gói/giây. Một
+  // nét bút đã rút gọn cỡ 60 điểm là 120 số; vài nét thì không sao, nhưng bôi
+  // chọn cả bảng rồi kéo có thể là hàng vạn số mỗi gói. Quá trần thì THÔI phát,
+  // và cú kéo đó quay về hành vi cũ: người khác thấy cụm nhảy tới chỗ mới ở lần
+  // lưu. Cố ý chọn "im lặng bỏ" thay vì "cắt bớt danh sách" — kéo 100 nét mà
+  // người kia chỉ thấy 40 nét nhúc nhích còn 60 nét đứng yên thì khó hiểu hơn
+  // hẳn việc cả cụm cùng đứng yên rồi nhảy một phát.
+  const MOVE_MAX_ITEMS = 60;
+  const MOVE_MAX_NUMBERS = 4000;
+
+  // `list` là [{ id, pts, size?, w?, h? }] — trạng thái HIỆN TẠI của các nét
+  // đang bị thao tác. Xem ghi chú ở applyInkMoves về việc vì sao là tuyệt đối.
+  const moveTooBig = useCallback((list) => {
+    if (!list || !list.length || list.length > MOVE_MAX_ITEMS) return true;
+    let n = 0;
+    for (const m of list) {
+      n += (m.pts || []).length;
+      if (n > MOVE_MAX_NUMBERS) return true;
+    }
+    return false;
+  }, []);
+
+  const beginMove = useCallback(() => {
+    flushMoveRef.current.cancel();
+    strokeIdRef.current += 1;
+    seqRef.current = 0;
+  }, []);
+
+  const pushMove = useCallback((list) => {
+    if (moveTooBig(list)) return;
+    flushMoveRef.current(list);
+  }, [moveTooBig]);
+
+  // Gói chốt mang trạng thái CUỐI CÙNG: nó phải sống qua khoảng trống giữa lúc
+  // nhả chuột và lúc board:update về, không thì cụm nhảy về chỗ cũ rồi lại nhảy
+  // tới chỗ mới. reconcileInkOverlay dọn nó đúng lúc bản lưu khớp.
+  const endMove = useCallback((list) => {
+    flushMoveRef.current.cancel();
+    if (moveTooBig(list)) {
+      // Không phát gì suốt cú kéo thì cũng đừng phát gói chốt: một gói duy nhất
+      // mang cả vạn số vẫn là cả vạn số.
+      emitNow({ strokeId: strokeIdRef.current, cancel: true });
+      return;
+    }
+    emitNow({ strokeId: strokeIdRef.current, seq: seqRef.current + 1, moving: list, done: true });
+  }, [emitNow, moveTooBig]);
+
+  // Bỏ dở một cú kéo (mất focus giữa chừng): overlay phải biến ngay, không thì
+  // cụm treo ở vị trí dở dang trên màn hình người khác tới hết TTL.
+  const cancelMove = useCallback(() => {
+    flushMoveRef.current.cancel();
+    emitNow({ strokeId: strokeIdRef.current, cancel: true });
+  }, [emitNow]);
+
   // Gọi từ onBlur trong useInk.js để bỏ dở BẤT KỲ thứ gì đang dở — bút hay cục
   // gôm — nên phải huỷ cả hai bộ tích luỹ, không chỉ của bút. Chỉ một trong
   // hai (pendingPtsRef/pendingEraseRef) thật sự có gì để huỷ tại một thời
@@ -258,12 +327,14 @@ export function useInkLive(socket) {
       liveStrokes, beginStroke, pushPoints, endStroke, cancelStroke,
       beginShape, pushShape, endShape,
       beginText, pushText, endText, cancelText,
+      beginMove, pushMove, endMove, cancelMove,
       beginErase, pushErase, endErase, reconcile
     }),
     [
       liveStrokes, beginStroke, pushPoints, endStroke, cancelStroke,
       beginShape, pushShape, endShape,
       beginText, pushText, endText, cancelText,
+      beginMove, pushMove, endMove, cancelMove,
       beginErase, pushErase, endErase, reconcile
     ]
   );

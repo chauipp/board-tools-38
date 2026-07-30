@@ -58,6 +58,7 @@ import { CARD_LEVEL_W, cardLevel, levelPatch, loadCardLevel, saveCardLevel } fro
 import InkLayer from "../components/InkLayer.jsx";
 import { useInk } from "../lib/useInk.js";
 import { useInkLive } from "../lib/useInkLive.js";
+import { applyInkMoves } from "../lib/ink-live.js";
 import LaserLayer from "../components/LaserLayer.jsx";
 import { useLaser } from "../lib/useLaser.js";
 import { loadLaserPrefs, saveLaserPrefs } from "../lib/laser.js";
@@ -606,9 +607,36 @@ export default function IdeaMap() {
 
   const inkDrawings = useMemo(() => {
     const list = board?.drawings ?? EMPTY_ARRAY;
-    if (!textDrag) return list;
-    return list.map((d) => (d.id === textDrag.id ? { ...d, pts: [textDrag.x, textDrag.y] } : d));
-  }, [board?.drawings, textDrag]);
+    const dragged = !textDrag
+      ? list
+      : list.map((d) => (d.id === textDrag.id ? { ...d, pts: [textDrag.x, textDrag.y] } : d));
+    // Nét người KHÁC đang dời / co giãn / sửa hình. Đắp ở đây chứ không trong
+    // InkLayer, để đối xứng với liveNodes/liveGroups: mọi thứ hiển thị đọc từ
+    // bản đã đắp overlay, còn handler tương tác vẫn đọc `board` gốc.
+    return applyInkMoves(dragged, inkLive.liveStrokes);
+  }, [board?.drawings, textDrag, inkLive.liveStrokes]);
+
+  // Trạng thái HIỆN TẠI của các nét đang bị thao tác, dạng gói live. Chỉ mang
+  // phần hình học — kiểu dáng thì người nhận đã có trong board của họ.
+  function movingPayload(b, ids) {
+    const out = [];
+    for (const d of b?.drawings || []) {
+      if (!ids.has(d.id)) continue;
+      const m = { id: d.id, pts: d.pts };
+      // kind chỉ đổi khi kéo tay cầm một góc; gửi luôn cho mọi nét thì gói to ra
+      // vô ích, nên chỉ gửi khi nó thật sự khác bản người nhận đang có... mà
+      // "bản người nhận đang có" thì mình không biết. Gửi cho hình khối là đủ:
+      // nét bút và chữ không bao giờ đổi kind.
+      if (d.kind && d.kind !== "pen" && d.kind !== "text") m.kind = d.kind;
+      if (d.kind === "text") {
+        if (Number.isFinite(d.size)) m.size = d.size;
+        if (Number.isFinite(d.w)) m.w = d.w;
+        if (Number.isFinite(d.h)) m.h = d.h;
+      }
+      out.push(m);
+    }
+    return out;
+  }
 
   // Vùng chọn gói lại thành MỘT object để truyền xuống lib/selection-box.js —
   // ba Set rời nhau là ba tham số phải bê theo qua từng hàm.
@@ -2650,6 +2678,7 @@ export default function IdeaMap() {
     );
     let moved = false;
     let latest = base;
+    inkLive.beginMove();
 
     const onMove = rafThrottle((ev) => {
       const p = eventToCanvas(ev);
@@ -2675,6 +2704,16 @@ export default function IdeaMap() {
         latest = next;
         return next;
       });
+      // Nét đi qua kênh ink, còn thẻ/khung bị kéo theo thì đi qua kênh geom —
+      // hai loại vật thể, hai kênh, cùng một cú kéo. Trước đây cú kéo này không
+      // phát gì cả, kể cả thẻ.
+      inkLive.pushMove(movingPayload(latest, ids));
+      if (startNodes.size || startGroups.size) {
+        publishGeom({
+          nodes: latest.nodes.filter((n) => startNodes.has(n.id)),
+          groups: latest.groups.filter((g) => startGroups.has(g.id))
+        });
+      }
     });
 
     function cleanup() {
@@ -2690,7 +2729,14 @@ export default function IdeaMap() {
       // là "bấm" khi thật sự có cú NHẢ CHUỘT — hàm này còn là handler của `blur`,
       // mà mất focus giữa lúc đang giữ chuột thì người dùng không hề bấm xong,
       // và bỏ mất vùng chọn của họ ở đó là vô cớ.
-      if (!moved) { if (ev?.type === "mouseup") onClickNoDrag?.(); return; }
+      if (!moved) { inkLive.cancelMove(); if (ev?.type === "mouseup") onClickNoDrag?.(); return; }
+      inkLive.endMove(movingPayload(latest, ids));
+      if (startNodes.size || startGroups.size) {
+        finishGeom({
+          nodes: latest.nodes.filter((n) => startNodes.has(n.id)),
+          groups: latest.groups.filter((g) => startGroups.has(g.id))
+        });
+      }
       recordHistory(base);
       saveNow(latest);
     }
@@ -2754,6 +2800,8 @@ export default function IdeaMap() {
     if (!start) return;
     let latest = base;
     let moved = false;
+    const oneId = new Set([id]);
+    inkLive.beginMove();
 
     const onMove = rafThrottle((ev) => {
       const p = eventToCanvas(ev);
@@ -2770,6 +2818,7 @@ export default function IdeaMap() {
         latest = next;
         return next;
       });
+      inkLive.pushMove(movingPayload(latest, oneId));
     });
 
     function onUp() {
@@ -2777,7 +2826,8 @@ export default function IdeaMap() {
       window.removeEventListener("mouseup", onUp);
       window.removeEventListener("blur", onUp);
       onMove.flush();
-      if (!moved) return;
+      if (!moved) { inkLive.cancelMove(); return; }
+      inkLive.endMove(movingPayload(latest, oneId));
       recordHistory(base);
       saveNow(latest);
     }
@@ -2804,6 +2854,7 @@ export default function IdeaMap() {
     const sel = selectionSet;
     let latest = base;
     let moved = false;
+    inkLive.beginMove();
 
     const onMove = rafThrottle((ev) => {
       const k = scaleFactorFor(bounds, corner, eventToCanvas(ev));
@@ -2845,6 +2896,15 @@ export default function IdeaMap() {
         latest = next;
         return next;
       });
+      // Co giãn đổi cả pts lẫn cỡ chữ, và thẻ/khung trong cụm cũng co theo —
+      // nên cú này phải phát trên CẢ HAI kênh.
+      inkLive.pushMove(movingPayload(latest, sel.drawingIds));
+      if (sel.nodeIds.size || sel.groupIds.size) {
+        publishGeom({
+          nodes: latest.nodes.filter((n) => sel.nodeIds.has(n.id)),
+          groups: latest.groups.filter((g) => sel.groupIds.has(g.id))
+        });
+      }
     });
 
     function onUp() {
@@ -2852,7 +2912,14 @@ export default function IdeaMap() {
       window.removeEventListener("mouseup", onUp);
       window.removeEventListener("blur", onUp);
       onMove.flush();
-      if (!moved) return;
+      if (!moved) { inkLive.cancelMove(); return; }
+      inkLive.endMove(movingPayload(latest, sel.drawingIds));
+      if (sel.nodeIds.size || sel.groupIds.size) {
+        finishGeom({
+          nodes: latest.nodes.filter((n) => sel.nodeIds.has(n.id)),
+          groups: latest.groups.filter((g) => sel.groupIds.has(g.id))
+        });
+      }
       recordHistory(base);
       saveNow(latest);
     }
@@ -3025,6 +3092,7 @@ export default function IdeaMap() {
     const offY = start.y - el.pts[1];
     let moved = false;
     let last = { x: el.pts[0], y: el.pts[1] };
+    inkLive.beginMove();
 
     function onMove(ev) {
       const p = eventToCanvas(ev);
@@ -3034,6 +3102,9 @@ export default function IdeaMap() {
       // Chỉ đẩy vào state NHÁP, không ghi vào board: một lần kéo phải là một
       // lần lưu, không phải một lần cho mỗi nhịp chuột.
       setTextDrag({ id: el.id, x: last.x, y: last.y });
+      // Vì board KHÔNG đổi trong lúc kéo, gói live phải dựng từ vị trí nháp chứ
+      // không dựng qua movingPayload — hàm đó đọc board.
+      inkLive.pushMove([{ id: el.id, pts: [last.x, last.y] }]);
     }
 
     function cleanup() {
@@ -3046,18 +3117,20 @@ export default function IdeaMap() {
     // Cửa sổ mất focus giữa lượt kéo: mouseup sẽ không bao giờ tới. Cùng cái bẫy
     // useInk.js đã có ghi chú dài — không dọn thì text treo ở vị trí nháp và cú
     // mouseup sau đó (ở một ngữ cảnh khác) vẫn commit.
-    function cancel() { cleanup(); }
+    function cancel() { cleanup(); inkLive.cancelMove(); }
 
     function finish() {
       cleanup();
       if (!moved) {
+        inkLive.cancelMove();
         const reopen = { id: el.id, x: el.pts[0], y: el.pts[1], value: el.text, size: el.size, color: el.color };
         setTextEdit(reopen);
         beginLiveText(reopen);
         return;
       }
       const current = boardRef.current;
-      if (!current) return;
+      if (!current) { inkLive.cancelMove(); return; }
+      inkLive.endMove([{ id: el.id, pts: [last.x, last.y] }]);
       const next = {
         ...current,
         drawings: current.drawings.map((d) => (d.id === el.id ? { ...d, pts: [last.x, last.y] } : d))
@@ -3549,6 +3622,9 @@ export default function IdeaMap() {
     if (selectedIds.size === 0 && selectedGroupIds.size === 0 && selectedDrawingIds.size === 0) return;
     if (nudgeBaseRef.current == null) {
       nudgeBaseRef.current = board;   // history recorded once per burst, at burst end
+      // Mỗi loạt nhích là MỘT lượt live riêng. Thiếu dòng này thì gói dùng lại
+      // strokeId của lượt kéo trước và đè lên entry của nó.
+      inkLive.beginMove();
     }
     // Cùng tập với cú kéo bằng chuột: khung đang chọn đi kèm ruột của nó.
     const { groupIds, nodeIds } = selectionDragSet(board, selectedGroupIds, selectedIds);
@@ -3570,6 +3646,8 @@ export default function IdeaMap() {
       nodes: next.nodes.filter((n) => moveNodes.has(n.id)),
       groups: next.groups.filter((g) => moveGroups.has(g.id))
     });
+    // Nét vẽ / hình / chữ trong cụm cũng nhích, và chúng đi kênh riêng.
+    if (selectedDrawingIds.size) inkLive.pushMove(movingPayload(next, selectedDrawingIds));
     saveDebounced(next);
     if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
     nudgeTimerRef.current = setTimeout(() => {
@@ -3577,6 +3655,7 @@ export default function IdeaMap() {
         nodes: boardRef.current.nodes.filter((n) => moveNodes.has(n.id)),
         groups: boardRef.current.groups.filter((g) => moveGroups.has(g.id))
       });
+      if (selectedDrawingIds.size) inkLive.endMove(movingPayload(boardRef.current, selectedDrawingIds));
       flushNudgeBurst();
     }, 600);
   }
