@@ -429,3 +429,20 @@ test("snapLine bỏ qua nét KÍN — đoạn nối hai đầu chập nhau thì 
   assert.equal(snapLine(ring), null);
   assert.equal(snapShape(ring)?.kind, "rect", "cùng nét đó qua snapShape thì vẫn phải ra hình");
 });
+
+// NÉT NGẮN VẼ NHANH. Số điểm của một nét là hệ quả của việc vẽ LÂU HAY MAU chứ
+// không phải của hình vẽ ra (cùng bài học với pathLength và resample), nên đòi
+// đủ sáu điểm cho cả phép nắn-về-đoạn-thẳng là loại đúng những nét ngắn: chúng
+// chỉ kịp ba bốn nhịp mousemove, và con chuột đặt yên trên bàn lúc giữ tay thì
+// không sinh thêm nhịp nào.
+test("snapLine nắn được nét chỉ có bốn điểm", () => {
+  const few = [0, 0, 30, -1, 61, 1, 90, 0];
+  assert.equal(recognizeShape(few), null, "bốn điểm thì đúng là không đủ để ĐOÁN ra hình");
+  assert.equal(snapLine(few)?.kind, "line", "nhưng hai đầu thì vẫn đọc được");
+  assert.equal(snapShape(few)?.kind, "line");
+});
+
+test("nới số điểm KHÔNG nới luôn ngưỡng độ dài", () => {
+  assert.equal(snapLine([0, 0, 5, 0]), null, "một vệt 5 đơn vị vẫn không đáng nắn");
+  assert.equal(snapLine([0, 0]), null, "một điểm thì không có hai đầu nào cả");
+});

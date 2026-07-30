@@ -2257,6 +2257,38 @@ export async function run(log) {
   const xs = qv.map((v) => v[0]).sort((a, b) => a - b);
   if (xs[1] - xs[0] < 20) throw new Error("bốn đỉnh thẳng trục — hình bình hành bị nắn thành chữ nhật: " + JSON.stringify(qv));
 
+  // NÉT NGẮN, VẼ NHANH, RỒI GIỮ TAY THẬT YÊN.
+  //
+  // Chỉ BA nhịp mousemove, và KHÔNG nhịp nào trong lúc giữ. Cả hai vế đều là
+  // chuyện thường ngày chứ không phải ca dựng lên: nét ngắn vẽ nhanh thì trình
+  // duyệt chỉ kịp bắn vài nhịp (mousemove đi theo khung hình), còn con chuột đặt
+  // trên bàn mà tay không đẩy thì KHÔNG sinh nhịp nào cả — khác hẳn touchpad,
+  // nơi ngón tay đặt yên vẫn rung ra hàng chục nhịp.
+  //
+  // Hệ quả: cả nét chỉ có bốn điểm. Nét dài thì riêng phần vẽ đã dư điểm nên
+  // không bao giờ chạm tới chốt này — đúng triệu chứng "nét dài thì được, nét
+  // ngắn thì giữ mãi cũng không ra đường thẳng".
+  const shortA = [700, 1560], shortB = [790, 1500];
+  const putsBeforeShort = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", shortA[0], shortA[1], snapCapture());
+    for (let k = 1; k <= 3; k++) {
+      mouse("mousemove", shortA[0] + ((shortB[0] - shortA[0]) * k) / 3, shortA[1] + ((shortB[1] - shortA[1]) * k) / 3);
+    }
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, SNAP_HOLD_MS + 250)); });
+  await act(async () => { mouse("mouseup", shortB[0], shortB[1]); await new Promise((r) => setTimeout(r, 60)); });
+
+  const shortPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const shortLine = shortPut.drawings[shortPut.drawings.length - 1];
+  log(`nét ngắn 3 nhịp chuột, giữ tay không rung → kind="${shortLine.kind}" ${shortLine.pts.length} số`);
+  if (globalThis.__puts.length - putsBeforeShort !== 1) throw new Error("phải đúng 1 lần lưu");
+  if (shortLine.kind !== "line") {
+    throw new Error(`nét ngắn giữ tay mà không thành đường thẳng: kind="${shortLine.kind}"`
+      + ` ${shortLine.pts.length} số — cả nét chỉ có 4 điểm, đang bị chốt "đủ điểm để đo" loại từ vòng gác đầu`);
+  }
+
   // ── Nét GẤP KHÚC: giữ tay nhiều lần, rồi khép về điểm xuất phát ──────────
   //
   // Phần hình học đã phủ ở lib/polygon-snap.test.js. Ở đây kiểm đúng cái không

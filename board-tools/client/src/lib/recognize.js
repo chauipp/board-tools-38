@@ -44,8 +44,25 @@ export const SNAP_MOVE_TOL = 6;
 // một vệt 10 đơn vị thì hình gì cũng khớp, và đoán sai ở đó chỉ gây phiền.
 const MIN_DIAG = 14;
 
-// Số điểm tối thiểu. Ít hơn thì phép đo trung bình sai số không nói được gì.
+// Số điểm tối thiểu để ĐOÁN XEM NÉT NÀY GIỐNG HÌNH GÌ. Ít hơn thì phép đo trung
+// bình sai số không nói được gì: bốn điểm thì hình nào cũng khớp.
 const MIN_POINTS = 6;
+
+// Nhưng NẮN VỀ ĐOẠN THẲNG thì không cần con số đó, và đây không phải một chỗ nới
+// lỏng cho tiện — hai việc hỏi hai câu khác hẳn nhau. "Nét này giống hình gì" là
+// một phép thống kê, cần mẫu. "Tay đi từ đây tới kia" thì hai đầu là đủ, và điểm
+// thứ ba không làm câu trả lời chắc hơn tí nào.
+//
+// Đòi cả sáu điểm cho cả hai việc là cái đã làm hỏng ĐÚNG những nét ngắn: một
+// nét ngắn vẽ nhanh chỉ kịp ba bốn nhịp mousemove (nhịp đi theo khung hình, nên
+// số nhịp là hệ quả của việc vẽ LÂU HAY MAU chứ không phải của hình vẽ ra), và
+// con chuột đặt trên bàn lúc giữ tay thì không sinh thêm nhịp nào. Nét dài thì
+// riêng phần vẽ đã dư điểm nên không bao giờ chạm chốt — thành ra nét dài giữ là
+// thẳng, nét ngắn giữ mãi không ra gì, mà chẳng có gì giải thích sự khác nhau đó.
+//
+// Cùng một bài học "đừng đo bằng số điểm" đã ghi ở pathLength và resample bên
+// dưới, chỗ này là lần thứ ba nó xuất hiện trong cùng một file.
+const LINE_MIN_POINTS = 2;
 
 // Đường thẳng đo bằng HAI ngưỡng, và cần cả hai vì mỗi cái bắt một kiểu hỏng
 // khác nhau (tỉ lệ với đường chéo):
@@ -333,13 +350,13 @@ function trimHold(pts, diag) {
 // chúng. Tách ra vì snapShape cũng cần ĐÚNG những con số này — nhất là hai đầu
 // phải lấy từ nét ĐÃ CẮT, không thì điểm B là một điểm rung tay trong chùm
 // đứng yên chứ không phải chỗ người ta thật sự dừng bút.
-function prepare(raw) {
+function prepare(raw, need = MIN_POINTS) {
   if (!raw || typeof raw.length !== "number") return null;
-  if (Math.floor(raw.length / 2) < MIN_POINTS) return null;
+  if (Math.floor(raw.length / 2) < need) return null;
 
   const rawBox = bbox(raw);
   const pts = trimHold(raw, Math.hypot(rawBox.w, rawBox.h));
-  if (Math.floor(pts.length / 2) < MIN_POINTS) return null;
+  if (Math.floor(pts.length / 2) < need) return null;
 
   const box = bbox(pts);
   const diag = Math.hypot(box.w, box.h);
@@ -472,7 +489,7 @@ export function snapShape(raw) {
 // vứt đi. Việc đoán hình để dành cho lúc khép vòng (polygon-snap.js), khi đã có
 // đủ các đỉnh để nói chắc chắn.
 export function snapLine(raw) {
-  const prep = prepare(raw);
+  const prep = prepare(raw, LINE_MIN_POINTS);
   if (!prep || !isOpenStroke(prep) || prep.gap < MIN_DIAG) return null;
   return { kind: "line", pts: roundBox(prep.x0, prep.y0, prep.x1, prep.y1) };
 }
