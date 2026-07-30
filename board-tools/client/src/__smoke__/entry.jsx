@@ -3360,5 +3360,90 @@ export async function run(log) {
     + ` (mốc cứng 6px của bản cũ đã chết ở đây)`);
   if (drifted.kind !== "line") throw new Error(`phải bắt ra "line", ra "${drifted.kind}"`);
 
+  // ——— GÕ CHỮ CŨNG PHẢI REALTIME ———
+  //
+  // Trước đây chữ chỉ đi qua PUT lúc chốt, nên người khác không thấy gì suốt cả
+  // lúc mình đang gõ — khác hẳn nét bút và hình khối, vốn hiện ngay từng nhịp.
+  // Kiểm CẢ HAI CHIỀU vì chúng hỏng độc lập nhau.
+  await act(async () => { railBtn("Text").click(); await new Promise((r) => setTimeout(r, 30)); });
+
+  // CHIỀU PHÁT: mở ô nhập rồi gõ → phải có gói seq 0 mang màu/cỡ chữ, rồi gói
+  // giữa chừng mang chữ, rồi gói done mang id vừa lưu.
+  const liveTextBefore = globalThis.__emitted.length;
+  await act(async () => {
+    mouse("mousedown", 420, 300, document.querySelector(".ink-capture"));
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  const liveTa = document.querySelector("textarea.text-input");
+  if (!liveTa) throw new Error("bấm bằng tool text phải mở ô nhập");
+  for (const chunk of ["đang", "đang gõ", "đang gõ dở"]) {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set.call(liveTa, chunk);
+      liveTa.dispatchEvent(new window.Event("input", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 60));
+    });
+  }
+  const midPkts = globalThis.__emitted.slice(liveTextBefore)
+    .filter((e) => e[0] === "live:ink").map((e) => e[1]);
+  const openPkt = midPkts.find((p) => p.seq === 0);
+  const typedPkts = midPkts.filter((p) => p.kind === "text" && p.seq > 0);
+  log(`gõ chữ: phát ${midPkts.length} gói live:ink · gói mở kind="${openPkt?.kind}" size=${openPkt?.size}`
+    + ` · gói giữa chừng mang chữ: ${typedPkts.map((p) => JSON.stringify(p.text)).join(" → ")}`);
+  if (!openPkt || openPkt.kind !== "text") throw new Error("gõ chữ phải phát gói live:ink kind=\"text\"");
+  if (!Number.isFinite(openPkt.size)) throw new Error("gói mở phải mang cỡ chữ — người nhận không đoán được");
+  if (openPkt.pts.length !== 2) throw new Error("chữ neo bằng ĐÚNG một điểm, gói mang " + openPkt.pts.length + " số");
+  if (!typedPkts.length) throw new Error("gõ mà không phát gói nào — chữ vẫn không realtime");
+  if (typedPkts[typedPkts.length - 1].text !== "đang gõ dở") {
+    throw new Error(`gói cuối phải mang trọn đoạn đang gõ, mang "${typedPkts[typedPkts.length - 1].text}"`);
+  }
+  await act(async () => {
+    liveTa.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    document.querySelector("textarea.text-input")?.blur();
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  const donePkt = globalThis.__emitted.slice(liveTextBefore)
+    .filter((e) => e[0] === "live:ink").map((e) => e[1]).filter((p) => p.done === true).pop();
+  log(`chốt lượt gõ: gói done drawingId=${donePkt?.drawingId}`);
+  if (!donePkt || !Number.isFinite(donePkt.drawingId)) {
+    throw new Error("chốt lượt gõ phải phát gói done kèm id vừa lưu, không thì overlay của người khác treo lại 6 giây");
+  }
+
+  // CHIỀU NHẬN: gói của người khác phải hiện ra chữ, và phải GIẤU bản đã lưu của
+  // đoạn họ đang sửa — để cả hai cùng hiện thì mỗi ký tự xoá đi lại lòi ra một
+  // mẩu chữ cũ nằm dưới.
+  const savedTextEl = (globalThis.__puts[globalThis.__puts.length - 1].drawings || [])
+    .filter((d) => d.kind === "text").pop();
+  if (!savedTextEl) throw new Error("không tìm thấy đoạn text vừa lưu để thử chiều nhận");
+  const textElsBefore = document.querySelectorAll(".ink-layer text").length;
+  await act(async () => {
+    globalThis.__deliver("live:ink", {
+      socketId: "peer9", strokeId: 1, seq: 0, kind: "text",
+      color: "pen-blue", size: 24, text: "người khác gõ", editId: savedTextEl.id,
+      pts: [savedTextEl.pts[0], savedTextEl.pts[1] + 200]
+    });
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  const textElsAfter = document.querySelectorAll(".ink-layer text").length;
+  const shown = Array.from(document.querySelectorAll(".ink-layer text"))
+    .some((el) => el.textContent === "người khác gõ");
+  log(`nhận gói chữ của người khác: <text> ${textElsBefore} → ${textElsAfter}`
+    + ` · hiện đúng chữ = ${shown} · bản đã lưu (id ${savedTextEl.id}) bị giấu = ${textElsAfter === textElsBefore}`);
+  if (!shown) throw new Error("gói chữ của người khác không hiện ra");
+  if (textElsAfter !== textElsBefore) {
+    throw new Error("đoạn text người kia đang sửa phải bị GIẤU đi, đang chồng hai lớp chữ lên nhau");
+  }
+  // Gõ tiếp: gói giữa chừng phải THAY cả đoạn, không nối thêm.
+  await act(async () => {
+    globalThis.__deliver("live:ink", {
+      socketId: "peer9", strokeId: 1, seq: 1, kind: "text", text: "người khác gõ xong",
+      pts: [savedTextEl.pts[0], savedTextEl.pts[1] + 200]
+    });
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  const liveGrown = Array.from(document.querySelectorAll(".ink-layer text"))
+    .some((el) => el.textContent === "người khác gõ xong");
+  log(`gói giữa chừng của người khác: thay được cả đoạn = ${liveGrown}`);
+  if (!liveGrown) throw new Error("gói chữ giữa chừng không cập nhật được đoạn văn");
+
   return true;
 }
