@@ -3012,7 +3012,9 @@ export default function IdeaMap() {
       .map((id) => current.drawings.find((d) => d.id === id))
       .find((d) => d && d.kind === "text");
     if (hit) { startTextDrag(hit, p); return; }
-    setTextEdit({ id: null, x: Math.round(p.x), y: Math.round(p.y), value: "", size: penPrefs.size, color: penPrefs.color });
+    const fresh = { id: null, x: Math.round(p.x), y: Math.round(p.y), value: "", size: penPrefs.size, color: penPrefs.color };
+    setTextEdit(fresh);
+    beginLiveText(fresh);
   }
 
   // Bấm trúng một text: MỘT cú bấm phục vụ hai việc. Di dưới ngưỡng thì coi như
@@ -3049,7 +3051,9 @@ export default function IdeaMap() {
     function finish() {
       cleanup();
       if (!moved) {
-        setTextEdit({ id: el.id, x: el.pts[0], y: el.pts[1], value: el.text, size: el.size, color: el.color });
+        const reopen = { id: el.id, x: el.pts[0], y: el.pts[1], value: el.text, size: el.size, color: el.color };
+        setTextEdit(reopen);
+        beginLiveText(reopen);
         return;
       }
       const current = boardRef.current;
@@ -3073,17 +3077,31 @@ export default function IdeaMap() {
   // chú thích mất vài chục giây, board:update của người khác về giữa chừng mà
   // mình dựng `next` từ `board` đóng gói lúc mở ô nhập thì cú PUT sau đó đè mất
   // thay đổi của họ.
+  // Mở kênh live cho một lượt gõ. Tách ra vì có HAI chỗ mở ô nhập — bấm chỗ
+  // trống để tạo mới, và bấm lên một đoạn có sẵn để sửa — mà cả hai phải phát
+  // gói đầu giống hệt nhau, không thì một trong hai đường lặng lẽ không realtime.
+  function beginLiveText(edit) {
+    inkLive.beginText(
+      [Math.round(edit.x), Math.round(edit.y)],
+      edit.value, edit.color, edit.size, edit.id
+    );
+  }
+
   function commitText() {
     const edit = textEditRef.current;
     textEditRef.current = null;
     setTextEdit(null);
     if (!edit) return;
     const current = boardRef.current;
-    if (!current) return;
+    if (!current) { inkLive.cancelText(); return; }
     const value = edit.value.trim();
 
     // Rỗng: tạo mới thì không đẻ ra phần tử vô hình; sửa thì coi như xoá.
     if (!value) {
+      // Cả hai nhánh dưới đây đều KHÔNG để lại đoạn text nào, nên overlay phải
+      // bị huỷ chứ không phải chốt: gói done không có drawingId sẽ treo trên
+      // màn hình người khác tới hết INK_SETTLE_TTL_MS.
+      inkLive.cancelText();
       if (edit.id == null) return;
       const next = { ...current, drawings: current.drawings.filter((d) => d.id !== edit.id) };
       recordHistory(current);
@@ -3101,6 +3119,9 @@ export default function IdeaMap() {
       if (before && before.text === value && before.size === edit.size
           && before.color === edit.color
           && before.pts[0] === Math.round(edit.x) && before.pts[1] === Math.round(edit.y)) {
+        // Không lưu gì ⇒ sẽ KHÔNG có board:update nào để reconcileInkOverlay
+        // dọn overlay theo, nên phải huỷ tay.
+        inkLive.cancelText();
         return;
       }
     }
@@ -3112,12 +3133,19 @@ export default function IdeaMap() {
       text: value, color: edit.color, size: edit.size, w: box.w, h: box.h
     };
     let next;
+    let savedId;
     if (edit.id == null) {
       const id = current.nextDrawingId;
+      savedId = id;
       next = { ...current, drawings: [...current.drawings, { id, ...el }], nextDrawingId: id + 1 };
     } else {
+      savedId = edit.id;
       next = { ...current, drawings: current.drawings.map((d) => (d.id === edit.id ? { ...d, ...el } : d)) };
     }
+    // Chốt kèm id vừa lưu: người nhận giữ overlay cho tới đúng lúc board:update
+    // mang id đó về, không sớm hơn (chữ biến mất rồi hiện lại) cũng không muộn
+    // hơn (hai lớp chữ chồng nhau).
+    inkLive.endText(savedId);
     recordHistory(current);
     setBoard(next);
     boardRef.current = next;
@@ -4373,7 +4401,10 @@ export default function IdeaMap() {
               width: (textBox(textLines(textEdit.value), textEdit.size, measureTextWidth).w + 12) * board.view.scale,
               height: textLines(textEdit.value).length * textEdit.size * TEXT_LINE_H * board.view.scale
             }}
-            onChange={(e) => setTextEdit((prev) => ({ ...prev, value: e.target.value }))}
+            onChange={(e) => {
+              setTextEdit((prev) => ({ ...prev, value: e.target.value }));
+              inkLive.pushText(e.target.value);
+            }}
             onBlur={commitText}
             // Escape kết thúc — blur() rồi để onBlur lo phần lưu, nên chỉ có MỘT
             // đường commit. Enter thì XUỐNG DÒNG chứ không kết thúc: chú thích

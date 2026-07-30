@@ -18,6 +18,7 @@ test("mergeInkPacket: gói đầu tạo entry đủ màu, độ dày, điểm", 
   assert.deepEqual(m.get("s1:1"), {
     kind: "pen", fill: false, dashed: false,
     color: "pen-red", w: 4, pts: [0, 0, 10, 10],
+    text: null, size: null, editId: null,
     drawingId: null, erase: null, expiresAt: NOW + INK_LIVE_TTL_MS
   });
 });
@@ -113,6 +114,7 @@ test("mergeInkPacket: gói đầu của hình khối giữ kind và fill", () =>
   assert.deepEqual(m.get("s1:1"), {
     kind: "rect", fill: true, dashed: false,
     color: "pen-blue", w: 8, pts: [0, 0, 100, 60],
+    text: null, size: null, editId: null,
     drawingId: null, erase: null, expiresAt: NOW + INK_LIVE_TTL_MS
   });
 });
@@ -186,4 +188,91 @@ test("mergeInkPacket: dashed sống qua các gói giữa chừng của hình kh�
 test("mergeInkPacket: dashed sai kiểu thì coi như nét liền", () => {
   const m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, dashed: "yes", pts: [0, 0] }), NOW);
   assert.equal(m.get("s1:1").dashed, false);
+});
+
+// ── CHỮ ĐANG GÕ ─────────────────────────────────────────────────────────────
+
+test("mergeInkPacket: gói chữ đầu mang chữ, cỡ chữ và id đang sửa", () => {
+  const m = mergeInkPacket(
+    new Map(),
+    pkt({ seq: 0, kind: "text", color: "pen-red", size: 20, text: "xin", editId: 7, pts: [30, 40] }),
+    NOW
+  );
+  const e = m.get("s1:1");
+  assert.equal(e.kind, "text");
+  assert.equal(e.text, "xin");
+  assert.equal(e.size, 20);
+  assert.equal(e.editId, 7);
+  assert.deepEqual(e.pts, [30, 40]);
+});
+
+// Chữ là thứ ĐANG thay đổi, nên nó phải đi ở mọi gói và phải THAY chứ không nối
+// — nối thì gõ "abc" ra "aababc".
+test("mergeInkPacket: gói chữ giữa chừng THAY cả đoạn, không nối", () => {
+  let m = mergeInkPacket(
+    new Map(),
+    pkt({ seq: 0, kind: "text", color: "pen-red", size: 20, text: "a", pts: [30, 40] }),
+    NOW
+  );
+  m = mergeInkPacket(m, pkt({ seq: 1, kind: "text", text: "abc", pts: [30, 40] }), NOW);
+  assert.equal(m.get("s1:1").text, "abc");
+});
+
+test("mergeInkPacket: màu, cỡ chữ và editId sống qua các gói giữa chừng", () => {
+  let m = mergeInkPacket(
+    new Map(),
+    pkt({ seq: 0, kind: "text", color: "pen-blue", size: 32, text: "", editId: 5, pts: [0, 0] }),
+    NOW
+  );
+  m = mergeInkPacket(m, pkt({ seq: 1, kind: "text", text: "xong", pts: [0, 0] }), NOW);
+  const e = m.get("s1:1");
+  assert.equal(e.color, "pen-blue");
+  assert.equal(e.size, 32);
+  assert.equal(e.editId, 5);
+});
+
+// Gói rơi mất field `text` phải giữ lại chữ cũ. Đặt nó thành rỗng là đoạn văn
+// của người kia chớp tắt một nhịp rồi hiện lại.
+test("mergeInkPacket: gói giữa chừng THIẾU text thì giữ nguyên chữ cũ", () => {
+  let m = mergeInkPacket(
+    new Map(),
+    pkt({ seq: 0, kind: "text", color: "pen-red", size: 20, text: "giữ", pts: [0, 0] }),
+    NOW
+  );
+  m = mergeInkPacket(m, pkt({ seq: 1, kind: "text", pts: [9, 9] }), NOW);
+  assert.equal(m.get("s1:1").text, "giữ");
+  assert.deepEqual(m.get("s1:1").pts, [9, 9]);
+});
+
+test("mergeInkPacket: tạo text MỚI thì editId là null, không phải undefined", () => {
+  const m = mergeInkPacket(
+    new Map(),
+    pkt({ seq: 0, kind: "text", color: "pen-red", size: 20, text: "", pts: [0, 0] }),
+    NOW
+  );
+  assert.equal(m.get("s1:1").editId, null);
+});
+
+// Nét bút và hình khối không được mang text/size/editId — chúng dùng chung một
+// Map với gói chữ, nên một field lạc sang là InkLayer vẽ nhầm nhánh.
+test("mergeInkPacket: nét bút không mang text, size hay editId", () => {
+  const m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, pts: [0, 0] }), NOW);
+  const e = m.get("s1:1");
+  assert.equal(e.text, null);
+  assert.equal(e.size, null);
+  assert.equal(e.editId, null);
+});
+
+// Chốt lượt gõ đi đúng đường done sẵn có, nên reconcile dọn overlay khi
+// board:update mang id đó về — không cần nhánh riêng nào cho chữ.
+test("reconcileInkOverlay: overlay chữ bị dọn khi board đã có id vừa lưu", () => {
+  let m = mergeInkPacket(
+    new Map(),
+    pkt({ seq: 0, kind: "text", color: "pen-red", size: 20, text: "xong", pts: [0, 0] }),
+    NOW
+  );
+  m = mergeInkPacket(m, pkt({ done: true, drawingId: 42 }), NOW);
+  assert.equal(m.size, 1);
+  const after = reconcileInkOverlay(m, { drawings: [{ id: 42, kind: "text" }] });
+  assert.equal(after.size, 0);
 });

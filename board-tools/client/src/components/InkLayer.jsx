@@ -82,8 +82,14 @@ const Stroke = memo(function Stroke({ id, kind, color, w, pts, fill, dashed, era
 function InkLayer({ drawings, draft, eraseIds, cut, liveStrokes, sketch, editingTextId, selectedIds }) {
   // Nét bị đánh dấu xoá: của mình đang quét, hoặc của người khác đang quét.
   const dimmed = new Set(eraseIds);
+  // Đoạn text mà NGƯỜI KHÁC đang mở ra sửa. Phải giấu bản đã lưu đi trong lúc
+  // đó, đúng vai trò `editingTextId` làm cho bản thân mình: để cả hai cùng hiện
+  // thì thấy chữ cũ và chữ đang gõ chồng lệch lên nhau, mà chữ cũ lại nằm dưới
+  // nên mỗi ký tự xoá đi lại lòi ra một mẩu chữ cũ.
+  const liveEdit = new Set();
   for (const e of liveStrokes.values()) {
     if (e.erase) for (const id of e.erase) dimmed.add(id);
+    if (e.editId != null) liveEdit.add(e.editId);
   }
   const picked = selectedIds || EMPTY_SET;
   // Nét đang bị cục tẩy THEO ĐỘ RỘNG cắt dở. Khác `dimmed` ở chỗ chúng biến mất
@@ -97,7 +103,7 @@ function InkLayer({ drawings, draft, eraseIds, cut, liveStrokes, sketch, editing
       {drawings.map((d) => {
         // Phần tử đang được sửa phải BIẾN MẤT khỏi lớp này: ô nhập nằm chồng
         // lên đúng chỗ đó, để cả hai cùng hiện thì thấy hai lớp chữ lệch nhau.
-        if (d.id === editingTextId || cutIds.has(d.id)) return null;
+        if (d.id === editingTextId || cutIds.has(d.id) || liveEdit.has(d.id)) return null;
         if (d.kind === "text") {
           return <TextEl key={d.id} text={d.text} color={d.color} size={d.size} pts={d.pts} erasing={dimmed.has(d.id)} />;
         }
@@ -106,9 +112,16 @@ function InkLayer({ drawings, draft, eraseIds, cut, liveStrokes, sketch, editing
       {/* Nét người khác đang vẽ và nét mình đang kéo chưa có id — dùng chung một
           seed cố định. Chúng chỉ sống vài giây rồi được thay bằng nét đã lưu (có
           id thật), nên không đáng để bịa ra một định danh tạm. */}
-      {Array.from(liveStrokes.entries()).map(([key, e]) => (
-        e.pts ? <Stroke key={"live-" + key} id={0} kind={e.kind} color={e.color} w={e.w} pts={e.pts} fill={e.fill} dashed={e.dashed} sketch={sketch} /> : null
-      ))}
+      {Array.from(liveStrokes.entries()).map(([key, e]) => {
+        if (!e.pts) return null;
+        // Chữ người khác đang gõ đi qua ĐÚNG component mà chữ đã lưu dùng, nên
+        // font, cách xuống dòng và cách neo theo đường chân không thể lệch nhau
+        // giữa lúc đang gõ và lúc đã lưu.
+        if (e.kind === "text") {
+          return <TextEl key={"live-" + key} text={e.text} color={e.color} size={e.size} pts={e.pts} />;
+        }
+        return <Stroke key={"live-" + key} id={0} kind={e.kind} color={e.color} w={e.w} pts={e.pts} fill={e.fill} dashed={e.dashed} sketch={sketch} />;
+      })}
       {draft && <Stroke id={0} kind={draft.kind} color={draft.color} w={draft.w} pts={draft.pts} fill={draft.fill} dashed={draft.dashed} sketch={sketch} />}
       {/* Mảnh còn sống của những nét đang bị cắt dở. Chưa có id thật (chúng chỉ
           thành nét riêng lúc nhả chuột), nên `key` là "id nét gốc : thứ tự

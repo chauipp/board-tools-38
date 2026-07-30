@@ -20,6 +20,9 @@ export function useInkLive(socket) {
   const strokeIdRef = useRef(0);       // số đếm cục bộ; server đính socketId
   const seqRef = useRef(0);
   const kindRef = useRef("pen");       // kind của hình đang kéo, để gói giữa chừng tự mang theo
+  // Chỗ đặt của ô chữ đang gõ. Nằm trong ref vì gói giữa chừng chỉ mang chữ,
+  // còn vị trí thì không đổi trong suốt một lượt gõ.
+  const textPosRef = useRef([0, 0]);
 
   useEffect(() => {
     socketRef.current = socket;
@@ -76,10 +79,26 @@ export function useInkLive(socket) {
     }, INK_SEND_MS);
   }
 
+  // CHỮ ĐANG GÕ. Cùng lý do với hộp, không cần bộ tích luỹ: mỗi gói mang TRỌN
+  // đoạn văn bản hiện tại, nên gói sau thay được gói trước và việc
+  // trailingThrottle bỏ gói đang chờ đúng là điều mong muốn — gõ nhanh mười
+  // phím trong 40ms thì chỉ có trạng thái cuối cùng là đáng gửi.
+  const flushTextRef = useRef(null);
+  if (!flushTextRef.current) {
+    flushTextRef.current = trailingThrottle((text) => {
+      seqRef.current += 1;
+      socketRef.current?.emit("live:ink", {
+        strokeId: strokeIdRef.current, seq: seqRef.current, kind: "text",
+        pts: textPosRef.current, text
+      });
+    }, INK_SEND_MS);
+  }
+
   useEffect(() => () => {
     flushPtsRef.current?.cancel();
     flushEraseRef.current?.cancel();
     flushBoxRef.current?.cancel();
+    flushTextRef.current?.cancel();
   }, []);
 
   useEffect(() => {
@@ -150,6 +169,44 @@ export function useInkLive(socket) {
     emitNow({ strokeId: strokeIdRef.current, done: true, drawingId: drawingId ?? null });
   }, [emitNow]);
 
+  // Mở ô nhập chữ. Gói đầu phải đi NGAY vì nó mang màu, cỡ chữ và `editId`;
+  // thiếu nó thì mọi gói sau bị người nhận bỏ (xem mergeInkPacket).
+  //
+  // `editId` là id đoạn text đang sửa, null nếu đang tạo mới. Người nhận dùng nó
+  // để GIẤU bản đã lưu đi trong lúc mình còn đang gõ — không giấu thì họ thấy
+  // chồng hai lớp chữ lệch nhau, đúng như bản thân mình thấy nếu thiếu
+  // editingTextId ở phía local.
+  const beginText = useCallback((pts, text, color, size, editId) => {
+    flushTextRef.current.cancel();
+    strokeIdRef.current += 1;
+    seqRef.current = 0;
+    textPosRef.current = pts;
+    emitNow({
+      strokeId: strokeIdRef.current, seq: 0, kind: "text",
+      pts, text, color, size, editId: editId ?? null
+    });
+  }, [emitNow]);
+
+  const pushText = useCallback((text) => {
+    flushTextRef.current(text);
+  }, []);
+
+  // Xả nốt chữ còn treo TRƯỚC gói done, không thì mấy ký tự cuối không bao giờ
+  // tới màn hình người khác — họ thấy đoạn văn cụt cho tới khi board:update về.
+  const endText = useCallback((drawingId) => {
+    flushTextRef.current.flush();
+    emitNow({ strokeId: strokeIdRef.current, done: true, drawingId: drawingId ?? null });
+  }, [emitNow]);
+
+  // Đóng ô nhập mà KHÔNG lưu gì (gõ rỗng, hoặc xoá sạch một đoạn đang sửa). Phải
+  // là `cancel` chứ không phải `done`: gói done không có drawingId thì overlay
+  // sống tới hết INK_SETTLE_TTL_MS — sáu giây một đoạn chữ ma nằm trên bảng
+  // người khác sau khi mình đã xoá nó.
+  const cancelText = useCallback(() => {
+    flushTextRef.current.cancel();
+    emitNow({ strokeId: strokeIdRef.current, cancel: true });
+  }, [emitNow]);
+
   // Gọi từ onBlur trong useInk.js để bỏ dở BẤT KỲ thứ gì đang dở — bút hay cục
   // gôm — nên phải huỷ cả hai bộ tích luỹ, không chỉ của bút. Chỉ một trong
   // hai (pendingPtsRef/pendingEraseRef) thật sự có gì để huỷ tại một thời
@@ -200,11 +257,13 @@ export function useInkLive(socket) {
     () => ({
       liveStrokes, beginStroke, pushPoints, endStroke, cancelStroke,
       beginShape, pushShape, endShape,
+      beginText, pushText, endText, cancelText,
       beginErase, pushErase, endErase, reconcile
     }),
     [
       liveStrokes, beginStroke, pushPoints, endStroke, cancelStroke,
       beginShape, pushShape, endShape,
+      beginText, pushText, endText, cancelText,
       beginErase, pushErase, endErase, reconcile
     ]
   );

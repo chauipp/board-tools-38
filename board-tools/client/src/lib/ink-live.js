@@ -35,7 +35,8 @@ export function mergeInkPacket(prev, packet, now) {
     const next = new Map(prev);
     next.set(key, {
       kind: null, fill: false, dashed: false,
-      color: null, w: null, pts: null, drawingId: null, erase: merged,
+      color: null, w: null, pts: null, text: null, size: null, editId: null,
+      drawingId: null, erase: merged,
       expiresAt: now + (packet.done === true ? INK_SETTLE_TTL_MS : INK_LIVE_TTL_MS)
     });
     return next;
@@ -77,13 +78,30 @@ export function mergeInkPacket(prev, packet, now) {
       // dưới tự giữ lại nó.
       kind, fill: packet.fill === true, dashed: packet.dashed === true,
       color: packet.color, w: packet.w, pts: pts.slice(),
+      // CHỮ ĐANG GÕ. `size` đi cùng chỗ với color/w vì nó không đổi giữa chừng,
+      // còn `text` thì đi ở MỌI gói — nó chính là thứ đang thay đổi.
+      //
+      // `editId` là id của đoạn text ĐANG ĐƯỢC SỬA (null nếu đang tạo mới), và
+      // nó cố ý KHÔNG dùng chung ô với `drawingId`. Hai thứ nghe giống nhau
+      // nhưng ngược nghĩa với reconcileInkOverlay: `drawingId` nghĩa là "lượt
+      // này đã chốt thành id đó", nên hễ id có trong board là bỏ overlay. Nếu
+      // nhét id đang sửa vào đó thì id ấy CÓ SẴN trong board ngay từ đầu, và
+      // overlay bị dọn ngay gói đầu tiên — người khác không thấy gì cả.
+      text: kind === "text" ? String(packet.text ?? "") : null,
+      size: kind === "text" && Number.isFinite(packet.size) ? packet.size : null,
+      editId: kind === "text" && Number.isFinite(packet.editId) ? packet.editId : null,
       drawingId: null, erase: null, expiresAt: now + INK_LIVE_TTL_MS
     });
   } else if ((typeof packet.kind === "string" ? packet.kind : cur.kind) !== "pen") {
     // Hộp mang trọn thông tin: THAY, không nối. Nối thì hộp dài ra và shapePath
     // đọc sai hình. Điều kiện trên tự chấp nhận packet THIẾU kind bằng cách
     // rơi về cur.kind — xem ghi chú "Fix round 1" ngay trên.
-    next.set(key, { ...cur, pts: pts.slice(), expiresAt: now + INK_LIVE_TTL_MS });
+    const e = { ...cur, pts: pts.slice(), expiresAt: now + INK_LIVE_TTL_MS };
+    // Gói chữ giữa chừng mang trọn cả đoạn văn bản, nên cũng THAY như hộp. Chỉ
+    // ghi khi gói thật sự có field: gói thiếu `text` phải giữ lại chữ cũ của
+    // entry chứ không xoá nó thành rỗng.
+    if (cur.kind === "text" && packet.text !== undefined) e.text = String(packet.text);
+    next.set(key, e);
   } else {
     next.set(key, { ...cur, pts: cur.pts.concat(pts), expiresAt: now + INK_LIVE_TTL_MS });
   }
