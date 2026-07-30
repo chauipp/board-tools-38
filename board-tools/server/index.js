@@ -19,6 +19,7 @@ import {
 import { Board, upsertUser } from "./models.js";
 import boardsRouter from "./boards.js";
 import { sanitizeView, resolveFollow, countWatchers, releaseFollowersOf } from "./follow.js";
+import { sanitizeLiveText } from "./live-text.js";
 
 dotenv.config();
 
@@ -259,7 +260,7 @@ const MAX_LIVE_LASER_FADE = 10000;
 // Bản sao TAY của SHAPE_KINDS trong game-tools/client/src/lib/shape.js, cộng
 // "pen". Server không import được lib của client. Thêm một kind mới thì phải
 // sửa cả hai chỗ — client sẽ vẽ được nhưng server sẽ chặn gói nếu quên.
-const LIVE_INK_KINDS = new Set(["pen", "rect", "ellipse", "line", "arrow", "triangle", "diamond", "quad"]);
+const LIVE_INK_KINDS = new Set(["pen", "rect", "ellipse", "line", "arrow", "triangle", "diamond", "quad", "text"]);
 // Bản sao TAY của SHAPE_CLOSED trong game-tools/client/src/lib/shape.js — cũng
 // vì server không import được lib client, cũng phải sửa hai chỗ nếu đổi.
 // Chỉ bốn hình ĐÓNG mới có vùng trong để tô. Client không bao giờ gắn `fill`
@@ -313,7 +314,11 @@ function sanitizeInk(payload) {
   // nhận thêm đúng số toạ độ của dạng đó (tam giác 6, tứ giác 8). Kiểm ĐỘ DÀI GỐC trước khi slice — nếu kiểm sau thì một mảng
   // 4000 số bị cắt còn MAX_LIVE_INK_NUMBERS rồi vẫn không phải 4, nhưng một mảng
   // gửi kèm kind sai vẫn có thể lọt qua nhờ bị cắt.
-  if (kind !== "pen") {
+  // Chữ neo bằng ĐÚNG một điểm (góc trên trái), không phải hộp hai góc: bề rộng
+  // và chiều cao của nó do nội dung và cỡ chữ quyết định, không do người kéo.
+  if (kind === "text") {
+    if (payload.pts.length !== 2) return null;
+  } else if (kind !== "pen") {
     const okLen = payload.pts.length === LIVE_INK_BOX_NUMBERS
       || payload.pts.length === LIVE_INK_VERTEX_NUMBERS[kind];
     if (!okLen) return null;
@@ -327,11 +332,23 @@ function sanitizeInk(payload) {
   // Nét bút không mang kind, đúng như client phát — giữ gói nhẹ và giữ
   // mergeInkPacket mặc định về "pen".
   if (kind !== "pen") clean.kind = kind;
+
+  // Phần riêng của chữ nằm ở server/live-text.js — xem ghi chú đầu file đó về
+  // việc vì sao đúng nhánh này phải tách ra để test được.
+  if (kind === "text") {
+    const t = sanitizeLiveText(payload, clean.seq === 0);
+    if (!t) return null;
+    Object.assign(clean, t);
+  }
+
   if (clean.seq === 0) {
     if (typeof payload.color !== "string" || payload.color.length > MAX_LIVE_INK_COLOR_LEN) return null;
-    if (!Number.isFinite(payload.w) || payload.w < MIN_LIVE_INK_W || payload.w > MAX_LIVE_INK_W) return null;
+    // Chữ không có `w` — cỡ chữ của nó đã được sanitizeLiveText kiểm ở trên.
+    if (kind !== "text") {
+      if (!Number.isFinite(payload.w) || payload.w < MIN_LIVE_INK_W || payload.w > MAX_LIVE_INK_W) return null;
+      clean.w = payload.w;
+    }
     clean.color = payload.color;
-    clean.w = payload.w;
     // Không tin kiểu client gửi: chỉ đúng `true` mới là tô đặc. Và chỉ hình
     // ĐÓNG mới được mang `fill` — nét bút, line, arrow thì không có field này.
     if (LIVE_INK_FILLABLE_KINDS.has(kind)) clean.fill = payload.fill === true;
