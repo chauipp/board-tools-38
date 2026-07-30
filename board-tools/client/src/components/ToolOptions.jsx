@@ -41,6 +41,21 @@ function IconScratch() {
   );
 }
 
+// Nút "đọc chữ viết tay": một chữ A viết tay và một chữ A in, có mũi tên giữa.
+// Hai dáng của cùng một chữ nói ngay việc nó làm, không cần chữ nghĩa gì thêm.
+function IconHandwrite() {
+  return (
+    <svg viewBox="0 0 20 20" width="18" height="18">
+      <path d="M1.5 14 C2.5 9 4 5.5 5 5.5 C6 5.5 6.2 10 6.5 14 M2.6 11 L6 11"
+        fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" opacity="0.55" />
+      <path d="M9 11 L11.5 11 M10.25 10 L11.5 11 L10.25 12"
+        fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M13.5 14 L16 5.5 L18.5 14 M14.4 11.4 L17.6 11.4"
+        fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // Số giây, một chữ số thập phân, bỏ phần ",0" cho số tròn: "0,9s" và "2s" chứ
 // không phải "0.9s" và "2.0s". Dấu phẩy vì đây là nhãn tiếng Việt.
 function secondsLabel(ms) {
@@ -347,6 +362,15 @@ export default function ToolOptions({ tool, prefs, onPrefs, level, onLevel }) {
             title={t`Gạch ngoằn ngoèo đè lên một nét (qua lại vài lần) là xoá nét đó`}
             onClick={() => onPrefs({ ...prefs, scratch: prefs.scratch === false })}
           ><IconScratch /></button>
+          {/* Nút này TẮT sẵn, khác hai nút trên — xem ghi chú ở PEN_DEFAULT bên
+              pen.js. Tóm tắt: với máy thì tam giác giống chữ A, nên bật sẵn sẽ
+              biến hình của người đang vẽ sơ đồ thành chữ cái. */}
+          <button
+            type="button"
+            className={"tool-btn" + (prefs.hw === true ? " on" : "")}
+            title={t`Viết chữ số hoặc chữ không dấu rồi giữ tay để đổi thành chữ máy (tắt sẵn: đang bật thì hình vẽ cũng có thể bị đọc thành chữ)`}
+            onClick={() => onPrefs({ ...prefs, hw: prefs.hw !== true })}
+          ><IconHandwrite /></button>
         </>
       )}
 
