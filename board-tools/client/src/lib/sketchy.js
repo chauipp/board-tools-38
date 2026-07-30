@@ -129,8 +129,16 @@ function sketchyEllipse(l, t, r, b, rand, amp, passes) {
 export function sketchyPath(kind, pts, seed) {
   if (!SHAPE_KINDS.includes(kind) || !Array.isArray(pts) || pts.length < 4) return "";
   const [x0, y0, x1, y1] = pts;
-  const l = Math.min(x0, x1), t = Math.min(y0, y1);
-  const r = Math.max(x0, x1), b = Math.max(y0, y1);
+  // Quét MỌI cặp số, không chỉ hai góc đầu: tam giác có thể mang ba đỉnh (6 số,
+  // xem ghi chú đầu shape.js) và lấy hộp của riêng hai đỉnh đầu sẽ ra một đường
+  // chéo cụt — tức biên độ rung tính sai, hình to mà nét rung như hình bé.
+  let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+  for (let i = 0; i + 1 < pts.length; i += 2) {
+    if (pts[i] < l) l = pts[i];
+    if (pts[i] > r) r = pts[i];
+    if (pts[i + 1] < t) t = pts[i + 1];
+    if (pts[i + 1] > b) b = pts[i + 1];
+  }
   // Biên độ tính theo ĐƯỜNG CHÉO của cả hình, không theo từng cạnh: đo theo
   // cạnh thì một hình chữ nhật 300x20 có cạnh ngắn rung ít, cạnh dài rung nhiều
   // — nhìn ra ngay là hai nét của hai người khác nhau.
@@ -157,7 +165,7 @@ export function sketchyPath(kind, pts, seed) {
 
   if (kind === "ellipse") return sketchyEllipse(l, t, r, b, rand, amp, passes);
 
-  // rect / triangle / diamond — đường bao đã khép sẵn (shapeOutline lặp lại
+  // rect / triangle / diamond / quad — đường bao đã khép sẵn (shapeOutline lặp lại
   // điểm đầu ở cuối), nên chỉ cần rung từng cạnh rồi đóng Z.
   const outline = shapeOutline(kind, pts);
   if (!outline.length) return "";

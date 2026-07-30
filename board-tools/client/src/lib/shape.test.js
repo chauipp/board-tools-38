@@ -4,15 +4,16 @@ import assert from "node:assert/strict";
 import {
   SHAPE_KINDS, SHAPE_CLOSED, SHAPE_MIN_DIAGONAL,
   normalizeBox, shapePath, shapeOutline, drawingsHitBy,
-  drawingBox, drawingsInRect, moveDrawing
+  drawingBox, drawingsInRect, moveDrawing, shapeVertices, VERTEX_NUMBERS,
+  SHAPE_TOOL_KINDS, ptsFromBox, shapeKindOf, shapeHandles, moveShapeHandle, HANDLE_VERTEX, HANDLE_EDGE
 } from "./shape.js";
 
-test("SHAPE_KINDS: sáu hình, đúng thứ tự hiện ở khu 4", () => {
-  assert.deepEqual(SHAPE_KINDS, ["rect", "ellipse", "line", "arrow", "triangle", "diamond"]);
+test("SHAPE_KINDS: mọi kind hợp lệ, kể cả kind không vẽ trực tiếp được", () => {
+  assert.deepEqual(SHAPE_KINDS, ["rect", "ellipse", "line", "arrow", "triangle", "diamond", "quad"]);
 });
 
-test("SHAPE_CLOSED: đúng bốn hình có vùng trong", () => {
-  assert.deepEqual([...SHAPE_CLOSED].sort(), ["diamond", "ellipse", "rect", "triangle"]);
+test("SHAPE_CLOSED: hình có vùng trong — hai hình mở đứng ngoài", () => {
+  assert.deepEqual([...SHAPE_CLOSED].sort(), ["diamond", "ellipse", "quad", "rect", "triangle"]);
   assert.equal(SHAPE_CLOSED.has("line"), false);
   assert.equal(SHAPE_CLOSED.has("arrow"), false);
 });
@@ -297,4 +298,258 @@ test("moveDrawing: giữ nguyên mọi thuộc tính khác, không đụng nét 
   assert.equal(out.color, "pen-red");
   assert.equal(out.w, 120);
   assert.deepEqual(el.pts, [40, 50], "nét gốc không bị sửa tại chỗ");
+});
+
+// ── Tam giác BA ĐỈNH ────────────────────────────────────────────────────────
+// Hộp bao chỉ tả được tam giác cân (đỉnh luôn ở giữa cạnh trên). Tam giác nhận
+// ra từ nét vẽ tay mang 6 số — ba đỉnh thật — nên giữ nguyên dáng đã vẽ: vuông,
+// tù, bè, nghiêng. Hai dạng cùng một kind, mọi hàm phải đọc được cả hai.
+
+test("shapeVertices: đủ số thì là đỉnh thật, thiếu thì là hộp bao", () => {
+  assert.deepEqual(shapeVertices("triangle", [0, 0, 100, 0, 50, 80]), [0, 0, 100, 0, 50, 80]);
+  assert.equal(shapeVertices("triangle", [0, 0, 100, 80]), null);
+  assert.equal(shapeVertices("triangle", [0, 0, 100, 0, 50, NaN]), null);
+  assert.deepEqual(VERTEX_NUMBERS, { triangle: 6, quad: 8 });
+});
+
+test("shapeVertices: kind KHÔNG có dạng đỉnh thật thì luôn null, dù pts dài", () => {
+  // Chữ nhật, ê-líp, hình thoi định nghĩa bằng hộp — "bốn đỉnh tự do" không có
+  // nghĩa với chúng (một ê-líp bốn đỉnh là cái gì?).
+  assert.equal(shapeVertices("rect", [0, 0, 100, 0, 50, 80, 10, 10]), null);
+  assert.equal(shapeVertices("ellipse", [0, 0, 100, 0, 50, 80, 10, 10]), null);
+});
+
+test("bảng chọn ở khu 4: tám nút, và mỗi nút phải quy về một kind hợp lệ", () => {
+  assert.deepEqual(SHAPE_TOOL_KINDS,
+    ["rect", "ellipse", "line", "arrow", "triangle", "diamond", "parallelogram", "trapezoid"]);
+  for (const tool of SHAPE_TOOL_KINDS) {
+    assert.ok(SHAPE_KINDS.includes(shapeKindOf(tool)), `${tool} → ${shapeKindOf(tool)}`);
+  }
+});
+
+test("hình bình hành và hình thang cùng lưu ra kind quad", () => {
+  // Kéo một cái góc là hình hết còn là hình thang; một kind tên "trapezoid" sẽ
+  // thành cái tên nói dối ngay ở thao tác đầu tiên. "quad" thì đúng mãi mãi.
+  assert.equal(shapeKindOf("parallelogram"), "quad");
+  assert.equal(shapeKindOf("trapezoid"), "quad");
+  assert.ok(!SHAPE_KINDS.includes("parallelogram"));
+  assert.ok(!SHAPE_KINDS.includes("trapezoid"));
+  // Nút nào không phải hai cái đó thì tên nút CHÍNH LÀ kind.
+  for (const k of ["rect", "ellipse", "line", "arrow", "triangle", "diamond"]) {
+    assert.equal(shapeKindOf(k), k);
+  }
+  // Và cả hai đều tô được — hỏi SHAPE_CLOSED bằng tên nút thì chúng rơi ra ngoài.
+  assert.ok(SHAPE_CLOSED.has(shapeKindOf("parallelogram")));
+  assert.ok(SHAPE_CLOSED.has(shapeKindOf("trapezoid")));
+});
+
+test("ptsFromBox: hộp kéo được → BỐN ĐỈNH, xiên sẵn", () => {
+  const para = ptsFromBox("parallelogram", [0, 0, 200, 100]);
+  assert.equal(para.length, 8, "phải là bốn đỉnh, không phải cái hộp");
+  assert.deepEqual(para, [50, 0, 200, 0, 150, 100, 0, 100]);
+
+  const trap = ptsFromBox("trapezoid", [0, 0, 200, 100]);
+  assert.deepEqual(trap, [44, 0, 156, 0, 200, 100, 0, 100]);
+
+  // Hình bình hành: cạnh trên NGẮN BẰNG cạnh dưới, chỉ lệch đi. Hình thang:
+  // cạnh trên NGẮN HƠN. Đó là toàn bộ khác biệt giữa hai nút.
+  const width = (p) => [p[2] - p[0], p[4] - p[6]];
+  const [paraTop, paraBottom] = width(para);
+  assert.equal(paraTop, paraBottom);
+  const [trapTop, trapBottom] = width(trap);
+  assert.ok(trapTop < trapBottom, `${trapTop} phải nhỏ hơn ${trapBottom}`);
+});
+
+test("ptsFromBox: kéo ngược từ dưới-phải lên vẫn ra đúng hình đó", () => {
+  for (const tool of ["parallelogram", "trapezoid"]) {
+    assert.deepEqual(ptsFromBox(tool, [200, 100, 0, 0]), ptsFromBox(tool, [0, 0, 200, 100]), tool);
+  }
+});
+
+test("ptsFromBox: mọi nút khác trả nguyên cái hộp, không đụng vào", () => {
+  // Tam giác ở dạng hộp bao ĐÃ là một hình đúng — tam giác cân — nên nó không
+  // được đi qua đây, dù nó cũng có dạng đỉnh thật.
+  for (const kind of ["rect", "ellipse", "line", "arrow", "triangle", "diamond", "quad"]) {
+    assert.deepEqual(ptsFromBox(kind, [0, 0, 200, 100]), [0, 0, 200, 100], kind);
+  }
+});
+
+// ── Tứ giác bốn đỉnh ────────────────────────────────────────────────────────
+
+test("shapePath: tứ giác vẽ đúng bốn đỉnh (hình bình hành giữ nguyên độ xiên)", () => {
+  assert.equal(shapePath("quad", [40, 0, 140, 0, 100, 80, 0, 80]), "M 40 0 L 140 0 L 100 80 L 0 80 Z");
+});
+
+test("drawingBox / hit-test của tứ giác chạy trên ĐÚNG bốn đỉnh", () => {
+  const q = { id: 5, kind: "quad", w: 2, pts: [40, 0, 140, 0, 100, 80, 0, 80] };
+  assert.deepEqual(drawingBox(q), { x: -1, y: -1, w: 142, h: 82 });
+  // Trung điểm cạnh xiên trái: (40,0)–(0,80).
+  assert.deepEqual(drawingsHitBy([q], { x: 20, y: 40 }, 3), [5]);
+  // Góc trên trái của HỘP BAO — nằm ngoài hình bình hành.
+  assert.deepEqual(drawingsHitBy([q], { x: 2, y: 2 }, 3), []);
+});
+
+// ── Tay cầm sửa hình ────────────────────────────────────────────────────────
+
+const handlesOf = (d, t) => shapeHandles(d).filter((h) => h.t === t);
+
+test("hình đỉnh thật: mỗi đỉnh một tay cầm góc, mỗi cạnh một tay cầm cạnh", () => {
+  const q = { id: 1, kind: "quad", w: 2, pts: [40, 0, 140, 0, 100, 80, 0, 80] };
+  assert.equal(handlesOf(q, HANDLE_VERTEX).length, 4);
+  assert.equal(handlesOf(q, HANDLE_EDGE).length, 4);
+  // Tay cầm cạnh ở trung điểm — kể cả CẠNH KHÉP KÍN (đỉnh cuối → đỉnh đầu), bỏ
+  // sót nó thì đúng một cạnh của hình không dời được.
+  const mids = handlesOf(q, HANDLE_EDGE).map((h) => [h.x, h.y]);
+  assert.deepEqual(mids[3], [20, 40]);
+});
+
+test("kéo tay cầm góc của tứ giác chỉ dời ĐÚNG đỉnh đó", () => {
+  const q = { id: 1, kind: "quad", w: 2, pts: [40, 0, 140, 0, 100, 80, 0, 80] };
+  const h = handlesOf(q, HANDLE_VERTEX)[1];
+  assert.deepEqual(moveShapeHandle(q, h, 200, -30), {
+    kind: "quad", pts: [40, 0, 200, -30, 100, 80, 0, 80]
+  });
+});
+
+test("kéo tay cầm cạnh dời CẢ HAI đỉnh của cạnh đó, đúng lượng tay đi", () => {
+  const q = { id: 1, kind: "quad", w: 2, pts: [40, 0, 140, 0, 100, 80, 0, 80] };
+  const h = handlesOf(q, HANDLE_EDGE)[0];        // cạnh trên, trung điểm (90, 0)
+  assert.deepEqual(moveShapeHandle(q, h, h.x + 10, h.y - 25), {
+    kind: "quad", pts: [50, -25, 150, -25, 100, 80, 0, 80]
+  });
+});
+
+test("chữ nhật: kéo một góc chỉ dời ĐÚNG góc đó — hình thành tứ giác", () => {
+  const r = { id: 2, kind: "rect", w: 2, pts: [0, 0, 100, 60] };
+  assert.equal(handlesOf(r, HANDLE_VERTEX).length, 4);
+  assert.equal(handlesOf(r, HANDLE_EDGE).length, 4);
+  const nw = handlesOf(r, HANDLE_VERTEX)[0];
+  assert.deepEqual([nw.x, nw.y], [0, 0]);
+  // Ba góc kia đứng NGUYÊN CHỖ. Muốn vậy thì phải bỏ dạng hộp: một hộp hai góc
+  // đối không tả nổi "một góc đi lệch còn ba góc ở yên".
+  assert.deepEqual(moveShapeHandle(r, nw, -20, 10), {
+    kind: "quad", pts: [-20, 10, 100, 0, 100, 60, 0, 60]
+  });
+});
+
+test("tam giác cân: kéo một đỉnh ra thành tam giác thường, vẫn là kind triangle", () => {
+  const tri = { id: 6, kind: "triangle", w: 2, pts: [0, 0, 100, 60] };
+  // Ba tay cầm góc, không phải bốn: đặt ở góc hộp thì hai cái treo ngoài hình.
+  const vs = handlesOf(tri, HANDLE_VERTEX);
+  assert.equal(vs.length, 3);
+  assert.deepEqual(vs.map((h) => [h.x, h.y]), [[50, 0], [100, 60], [0, 60]]);
+  assert.deepEqual(moveShapeHandle(tri, vs[0], 10, -30), {
+    kind: "triangle", pts: [10, -30, 100, 60, 0, 60]
+  });
+});
+
+test("hình thoi: bốn tay cầm nằm ở bốn ĐỈNH của nó, không ở góc hộp", () => {
+  const dia = { id: 7, kind: "diamond", w: 2, pts: [0, 0, 100, 60] };
+  assert.deepEqual(handlesOf(dia, HANDLE_VERTEX).map((h) => [h.x, h.y]),
+    [[50, 0], [100, 30], [50, 60], [0, 30]]);
+  assert.equal(moveShapeHandle(dia, handlesOf(dia, HANDLE_VERTEX)[2], 70, 90).kind, "quad");
+});
+
+test("hình thoi / tam giác cân: tay cầm cạnh KHÔNG được chồng lên tay cầm góc", () => {
+  // Trung điểm mép hộp của hai hình này rơi đúng vào đỉnh của chúng — mép trên
+  // của tam giác cân trùng chóp, cả bốn mép hộp của hình thoi trùng cả bốn đỉnh.
+  // Nên tay cầm cạnh phải bám cạnh THẬT, không bám mép hộp.
+  for (const kind of ["diamond", "triangle"]) {
+    const d = { id: 10, kind, w: 2, pts: [0, 0, 100, 60] };
+    const vs = handlesOf(d, HANDLE_VERTEX);
+    const es = handlesOf(d, HANDLE_EDGE);
+    assert.equal(es.length, vs.length, kind);
+    for (const e of es) {
+      for (const v of vs) {
+        assert.ok(Math.hypot(e.x - v.x, e.y - v.y) > 1, `${kind}: tay cầm cạnh đè lên đỉnh ${v.x},${v.y}`);
+      }
+    }
+  }
+});
+
+test("hình thoi: kéo tay cầm cạnh dời hai đỉnh của cạnh đó, hình thành tứ giác", () => {
+  const dia = { id: 11, kind: "diamond", w: 2, pts: [0, 0, 100, 60] };
+  const e0 = handlesOf(dia, HANDLE_EDGE)[0];      // cạnh chóp → phải, trung điểm (75, 15)
+  assert.deepEqual([e0.x, e0.y], [75, 15]);
+  assert.deepEqual(moveShapeHandle(dia, e0, e0.x + 20, e0.y), {
+    kind: "quad", pts: [70, 0, 120, 30, 50, 60, 0, 30]
+  });
+});
+
+test("ê-líp là ngoại lệ: không có góc nào, nên góc hộp giữ nghĩa co giãn", () => {
+  const el = { id: 8, kind: "ellipse", w: 2, pts: [0, 0, 100, 60] };
+  const nw = handlesOf(el, HANDLE_VERTEX)[0];
+  assert.deepEqual([nw.x, nw.y], [0, 0]);
+  assert.deepEqual(moveShapeHandle(el, nw, -20, 10), { kind: "ellipse", pts: [-20, 10, 100, 60] });
+});
+
+test("hình hộp bao: kéo tay cầm mép chỉ đổi ĐÚNG một mép, hình giữ nguyên kind", () => {
+  const r = { id: 2, kind: "rect", w: 2, pts: [0, 0, 100, 60] };
+  const east = handlesOf(r, HANDLE_EDGE)[1];
+  assert.deepEqual([east.x, east.y], [100, 30]);
+  // Đây là đường CO GIÃN còn lại của hình hộp sau khi góc đã thành góc tự do.
+  assert.deepEqual(moveShapeHandle(r, east, 160, 999), { kind: "rect", pts: [0, 0, 160, 60] });
+});
+
+test("đường thẳng / mũi tên: hai tay cầm là hai ĐẦU, không có tay cầm cạnh", () => {
+  const line = { id: 3, kind: "arrow", w: 2, pts: [10, 10, 90, 50] };
+  assert.equal(handlesOf(line, HANDLE_EDGE).length, 0);
+  const tip = handlesOf(line, HANDLE_VERTEX)[1];
+  assert.deepEqual([tip.x, tip.y], [90, 50]);
+  // Ngọn mũi tên phải dời tự do, KHÔNG bị quy về một góc hộp — hướng của mũi tên
+  // chính là thứ nó nói.
+  assert.deepEqual(moveShapeHandle(line, tip, 5, 200), { kind: "arrow", pts: [10, 10, 5, 200] });
+});
+
+test("nét bút và chữ không có tay cầm sửa hình", () => {
+  assert.deepEqual(shapeHandles({ id: 4, kind: "pen", w: 4, pts: [0, 0, 10, 10, 20, 5] }), []);
+  assert.deepEqual(shapeHandles({ id: 5, kind: "text", pts: [0, 0], w: 80, h: 20 }), []);
+  assert.deepEqual(shapeHandles(null), []);
+});
+
+test("moveShapeHandle: dữ liệu rác trả lại hình cũ, không nổ và không sinh NaN", () => {
+  const r = { id: 2, kind: "rect", w: 2, pts: [0, 0, 100, 60] };
+  assert.deepEqual(moveShapeHandle(r, null, 10, 10), { kind: "rect", pts: r.pts });
+  assert.deepEqual(moveShapeHandle({ kind: "pen", pts: [0, 0] }, { t: "v", i: 0, x: 0, y: 0 }, 5, 5),
+    { kind: "pen", pts: [0, 0] });
+  // Tay cầm cũ còn sót lại từ hình trước (chỉ số vượt số đỉnh) không được đẻ ra
+  // toạ độ thứ năm cho một tứ giác.
+  const q = { id: 9, kind: "quad", w: 2, pts: [0, 0, 10, 0, 10, 10, 0, 10] };
+  assert.deepEqual(moveShapeHandle(q, { t: "v", i: 7, x: 0, y: 0 }, 5, 5), { kind: "quad", pts: q.pts });
+});
+
+test("shapePath: tam giác ba đỉnh vẽ ĐÚNG ba đỉnh đó, không nắn về cân", () => {
+  // Tam giác vuông: đỉnh trên nằm sát mép trái (x = 0), không ở giữa hộp (x = 50).
+  const d = shapePath("triangle", [0, 0, 100, 80, 0, 80]);
+  assert.equal(d, "M 0 0 L 100 80 L 0 80 Z");
+});
+
+test("shapePath: tam giác hộp bao (tool Hình khối) vẫn là tam giác CÂN như cũ", () => {
+  assert.equal(shapePath("triangle", [0, 0, 100, 80]), "M 50 0 L 100 80 L 0 80 Z");
+});
+
+test("shapeOutline: tam giác ba đỉnh khép kín đúng ba đỉnh", () => {
+  const out = shapeOutline("triangle", [0, 0, 100, 80, 0, 80]);
+  // Ba đỉnh + lặp lại điểm đầu ở cuối để cạnh khép kín cũng bắt được chuột.
+  assert.deepEqual(out, [0, 0, 100, 80, 0, 80, 0, 0]);
+});
+
+test("drawingBox: hộp bao của tam giác ba đỉnh ôm cả ĐỈNH THỨ BA", () => {
+  // Đỉnh thứ ba ở (50, 200) nằm ngoài hộp của hai đỉnh đầu — quét min/max chỉ
+  // trên hai số đầu sẽ cắt cụt mất nó.
+  const box = drawingBox({ id: 1, kind: "triangle", w: 0, pts: [0, 0, 100, 0, 50, 200] });
+  assert.deepEqual(box, { x: 0, y: 0, w: 100, h: 200 });
+});
+
+test("cục gôm bắt được tam giác ba đỉnh trên đúng cạnh nghiêng của nó", () => {
+  const tri = { id: 7, kind: "triangle", w: 2, pts: [0, 0, 100, 80, 0, 80] };
+  // Trung điểm cạnh huyền (0,0)–(100,80).
+  assert.deepEqual(drawingsHitBy([tri], { x: 50, y: 40 }, 4), [7]);
+  // Chỗ mà tam giác CÂN cùng hộp bao sẽ có cạnh, còn tam giác này thì không.
+  assert.deepEqual(drawingsHitBy([tri], { x: 75, y: 20 }, 4), []);
+});
+
+test("moveDrawing: tam giác ba đỉnh dời đủ cả ba đỉnh", () => {
+  const tri = { id: 1, kind: "triangle", w: 2, pts: [0, 0, 100, 80, 0, 80] };
+  assert.deepEqual(moveDrawing(tri, 10, -5).pts, [10, -5, 110, 75, 10, 75]);
 });
