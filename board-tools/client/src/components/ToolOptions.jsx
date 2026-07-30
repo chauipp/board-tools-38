@@ -31,6 +31,16 @@ function IconSnap() {
   );
 }
 
+// Nút "gạch xoá": một nét ngoằn ngoèo đè lên một đường. Chính là cử chỉ, vẽ ra.
+function IconScratch() {
+  return (
+    <svg viewBox="0 0 20 20" width="18" height="18">
+      <path d="M2 15 L18 5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" opacity="0.45" />
+      <path d="M5 15 L8 7 L10 14 L13 6 L15 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 // Số giây, một chữ số thập phân, bỏ phần ",0" cho số tròn: "0,9s" và "2s" chứ
 // không phải "0.9s" và "2.0s". Dấu phẩy vì đây là nhãn tiếng Việt.
 function secondsLabel(ms) {
@@ -331,6 +341,12 @@ export default function ToolOptions({ tool, prefs, onPrefs, level, onLevel }) {
             title={t`Giữ tay tại chỗ khi vẽ xong để nét tự về hình chuẩn (thẳng, tròn, vuông, tam giác cân…)`}
             onClick={() => onPrefs({ ...prefs, snap: prefs.snap === false })}
           ><IconSnap /></button>
+          <button
+            type="button"
+            className={"tool-btn" + (prefs.scratch !== false ? " on" : "")}
+            title={t`Gạch ngoằn ngoèo đè lên một nét (qua lại vài lần) là xoá nét đó`}
+            onClick={() => onPrefs({ ...prefs, scratch: prefs.scratch === false })}
+          ><IconScratch /></button>
         </>
       )}
 

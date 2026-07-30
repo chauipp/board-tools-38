@@ -3225,6 +3225,165 @@ export async function run(log) {
   log(`bút + bấm chỗ trống: còn ${document.querySelectorAll(".ink-layer .ink-selected").length} nét được chọn · ${document.querySelectorAll(".shape-handle").length} tay cầm`);
   if (document.querySelectorAll(".ink-layer .ink-selected").length !== 0) throw new Error("bấm chỗ trống khi đang cầm bút mà không bỏ chọn");
 
+  // CÚ BẤM CÓ RUNG TAY. Bài ngay trên bấm-nhả đúng một toạ độ, không nhích một
+  // pixel nào — chuột thật thì gần như không bao giờ như vậy: bấm một cái là
+  // con trỏ trôi vài pixel. Chỉ vài pixel đó thôi cũng đủ ghi ra hai điểm, và
+  // "hai điểm" từng bị tính là một NÉT VẼ thay vì một cú bấm: người dùng bấm để
+  // chọn thì chẳng chọn được gì, lại còn đẻ ra một chấm mực bằng hạt bụi lên
+  // bảng. Ngưỡng phải đo bằng PIXEL MÀN HÌNH (tay rung bao nhiêu là chuyện của
+  // bàn tay, không phải của mức zoom) — cùng một lỗi đo nhầm đại lượng đã gặp ở
+  // recognize.js.
+  const jitApex = toScreenPen(penTriTarget.pts[0], penTriTarget.pts[1]);
+  const jitPuts = globalThis.__puts.length;
+  const jitPaths = document.querySelectorAll(".ink-layer path").length;
+  await act(async () => {
+    mouse("mousedown", jitApex.x, jitApex.y, penCapture());
+    mouse("mousemove", jitApex.x + 3, jitApex.y + 1);
+    mouse("mousemove", jitApex.x + 5, jitApex.y + 2);
+    mouse("mouseup", jitApex.x + 5, jitApex.y + 2);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  const jitMarks = document.querySelectorAll(".ink-layer .ink-selected").length;
+  log(`bút + bấm rung tay 5px lên hình: ${jitMarks} nét được chọn`
+    + ` · PUT thêm ${globalThis.__puts.length - jitPuts} lần (phải là 0)`
+    + ` · ${jitPaths} → ${document.querySelectorAll(".ink-layer path").length} path`);
+  if (jitMarks !== 1) throw new Error(`bấm rung tay lên một nét phải chọn nó, được ${jitMarks} nét đang chọn`);
+  if (globalThis.__puts.length !== jitPuts) throw new Error("cú bấm rung tay lại ghi thêm một bản lưu — nó đã thành một nét vẽ");
+  if (document.querySelectorAll(".ink-layer path").length !== jitPaths) {
+    throw new Error("cú bấm rung tay đẻ ra thêm một path — chấm mực rác trên bảng");
+  }
+  // Dọn lại lựa chọn cho các bài dưới, đúng như bài bấm-chỗ-trống ở trên để lại.
+  await act(async () => {
+    mouse("mousedown", emptyBg.x, emptyBg.y, penCapture());
+    mouse("mouseup", emptyBg.x, emptyBg.y);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+
+  // ── Gạch ngoằn ngoèo đè lên một nét = xoá nét đó ─────────────────────────
+  //
+  // Cử chỉ này XOÁ mà không hỏi, nên bài test phải canh cả hai chiều: gạch trúng
+  // thì mất đúng cái bị gạch, mà gạch vào chỗ trống thì nét ngoằn ngoèo đó vẫn
+  // phải nằm lại trên bảng như một hình vẽ bình thường.
+  const scratchBtn = () => Array.from(document.querySelectorAll(".tool-options .tool-btn"))
+    .find((b) => (b.title || "").startsWith("Gạch"));
+  if (!scratchBtn()) throw new Error("khu 4 của bút phải có nút bật/tắt gạch xoá");
+  if (!scratchBtn().classList.contains("on")) throw new Error("gạch xoá phải bật sẵn");
+
+  // Một khoảng trống đủ rộng để đặt cả cái nét lẫn cú gạch đè lên nó. Dò bằng
+  // đúng hit-test của ứng dụng, cùng lý do đã ghi ở emptyBg.
+  const scrArea = (() => {
+    const cam = camera();
+    const put = globalThis.__puts[globalThis.__puts.length - 1];
+    const list = put.drawings || [];
+    const clear = (sx, sy) => {
+      for (let dx = -140; dx <= 140; dx += 35) {
+        for (let dy = -90; dy <= 90; dy += 30) {
+          const p = { x: (sx + dx - cam.panX) / cam.scale, y: (sy + dy - cam.panY) / cam.scale };
+          if (drawingsHitBy(list, p, 20).length) return false;
+        }
+      }
+      return true;
+    };
+    for (let sx = 300; sx <= 1200; sx += 60) {
+      for (let sy = 200; sy <= 1000; sy += 60) if (clear(sx, sy)) return { x: sx, y: sy };
+    }
+    throw new Error("không tìm được khoảng trống nào để thử cử chỉ gạch xoá");
+  })();
+  log(`khoảng trống để thử gạch xoá: ${scrArea.x},${scrArea.y}`);
+
+  // Nét ngoằn ngoèo: chạy ngang `legs` nhát, mỗi nhát vọt lên/xuống `amp`. Nhả
+  // tay ngay, không dừng lại — nếu dừng thì bộ đếm bắt hình sẽ chen vào trước.
+  const scrawl = async (cx, cy, legs, amp) => {
+    const step = 30;
+    const x0 = cx - (legs * step) / 2;
+    await act(async () => {
+      mouse("mousedown", x0, cy, penCapture());
+      for (let k = 1; k <= legs; k++) {
+        mouse("mousemove", x0 + k * step, cy + (k % 2 ? amp : -amp));
+        await new Promise((r) => setTimeout(r, 12));
+      }
+    });
+    const endX = x0 + legs * step, endY = cy + (legs % 2 ? amp : -amp);
+    await act(async () => { mouse("mouseup", endX, endY); await new Promise((r) => setTimeout(r, 80)); });
+  };
+  const drawingIds = () => {
+    const put = globalThis.__puts[globalThis.__puts.length - 1];
+    return (put.drawings || []).map((d) => d.id);
+  };
+
+  // Một nét thẳng nằm ngang để mà gạch.
+  await act(async () => {
+    mouse("mousedown", scrArea.x - 130, scrArea.y, penCapture());
+    mouse("mousemove", scrArea.x - 40, scrArea.y);
+    mouse("mousemove", scrArea.x + 50, scrArea.y);
+    mouse("mousemove", scrArea.x + 130, scrArea.y);
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  await act(async () => { mouse("mouseup", scrArea.x + 130, scrArea.y); await new Promise((r) => setTimeout(r, 60)); });
+  const scrIdsBefore = drawingIds();
+  const scrVictimId = scrIdsBefore[scrIdsBefore.length - 1];
+
+  // Gạch đè lên nó. Giữa chừng, nét sắp mất phải MỜ ĐI — cử chỉ xoá mà không báo
+  // trước thì người dùng không kịp nhấc tay ra khi nhắm sai.
+  let dimmedMid = 0;
+  const scrPutsBefore = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", scrArea.x - 120, scrArea.y, penCapture());
+    for (let k = 1; k <= 8; k++) {
+      mouse("mousemove", scrArea.x - 120 + k * 30, scrArea.y + (k % 2 ? 45 : -45));
+      await new Promise((r) => setTimeout(r, 12));
+    }
+  });
+  // Đọc DOM ở một lượt act RIÊNG: setEraseIds vừa gọi trong nhịp chuột cuối chỉ
+  // được flush khi lượt act đang chạy kết thúc, nên đọc ngay trong đó thì bao giờ
+  // cũng thấy trạng thái của nhịp trước.
+  await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+  dimmedMid = document.querySelectorAll(".ink-layer .erasing").length;
+  await act(async () => { mouse("mouseup", scrArea.x + 120, scrArea.y - 45); await new Promise((r) => setTimeout(r, 80)); });
+  const scrIdsAfter = drawingIds();
+  log(`gạch xoá: giữa chừng ${dimmedMid} nét mờ đi · ${scrIdsBefore.length} → ${scrIdsAfter.length} nét`
+    + ` · PUT thêm ${globalThis.__puts.length - scrPutsBefore} lần`);
+  if (dimmedMid < 1) throw new Error("đang gạch mà nét sắp bị xoá không hề mờ đi — cử chỉ xoá không báo trước");
+  if (scrIdsAfter.includes(scrVictimId)) throw new Error("gạch ngoằn ngoèo đè lên một nét mà nét đó vẫn còn");
+  // Nét gạch là một CỬ CHỈ, không phải hình vẽ: nó không được nằm lại trên bảng.
+  if (scrIdsAfter.length !== scrIdsBefore.length - 1) {
+    throw new Error(`gạch xoá phải làm mất đúng 1 nét, số nét đi từ ${scrIdsBefore.length} xuống ${scrIdsAfter.length}`);
+  }
+  // Xoá được thì hoàn tác lại được — nó đi đúng đường của cục gôm.
+  await act(async () => {
+    window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }));
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  if (!drawingIds().includes(scrVictimId)) throw new Error("Ctrl+Z sau khi gạch xoá không trả lại nét đã mất");
+  await act(async () => {
+    window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "z", ctrlKey: true, shiftKey: true, bubbles: true }));
+    await new Promise((r) => setTimeout(r, 60));
+  });
+
+  // VAN AN TOÀN: gạch y hệt thế nhưng ở chỗ trống thì không xoá gì, và cái ngoằn
+  // ngoèo đó được giữ lại làm một nét vẽ. Không có vế này thì không ai vẽ nổi
+  // một cái răng cưa nữa.
+  const freeIdsBefore = drawingIds();
+  await scrawl(scrArea.x, scrArea.y + 160, 8, 45);
+  const freeIdsAfter = drawingIds();
+  log(`gạch ở chỗ trống: ${freeIdsBefore.length} → ${freeIdsAfter.length} nét (phải +1, nét ngoằn ngoèo được giữ)`);
+  if (freeIdsAfter.length !== freeIdsBefore.length + 1) {
+    throw new Error(`gạch ở chỗ trống phải để lại đúng nét đó, số nét đi từ ${freeIdsBefore.length} thành ${freeIdsAfter.length}`);
+  }
+
+  // TẮT đi thì nét gạch quay về làm một nét vẽ bình thường, kể cả khi đè lên nét khác.
+  await act(async () => { scratchBtn().click(); await new Promise((r) => setTimeout(r, 30)); });
+  if (scratchBtn().classList.contains("on")) throw new Error("không tắt được gạch xoá");
+  const offIdsBefore = drawingIds();
+  const offVictim = offIdsBefore[offIdsBefore.length - 1];
+  await scrawl(scrArea.x, scrArea.y + 160, 8, 45);
+  const offIdsAfter = drawingIds();
+  log(`tắt gạch xoá rồi gạch đè lên nét: ${offIdsBefore.length} → ${offIdsAfter.length} nét (phải +1)`);
+  if (!offIdsAfter.includes(offVictim)) throw new Error("đã tắt gạch xoá mà nét bị gạch vẫn mất");
+  if (offIdsAfter.length !== offIdsBefore.length + 1) throw new Error("đã tắt gạch xoá mà nét gạch không được lưu lại");
+  await act(async () => { scratchBtn().click(); await new Promise((r) => setTimeout(r, 30)); });
+  if (!scratchBtn().classList.contains("on")) throw new Error("không bật lại được gạch xoá");
+
   // CỤC GÔM không được dính cử chỉ đổi nét đứt: ở đó cú bấm ĐÃ CÓ VIỆC (xoá nét
   // ngay từ cú bấm đầu), chồng thêm là vừa xoá vừa đổi. Bài này sinh ra từ một
   // lỗi thật: chốt loại trừ viết `mode === "ink"` trong khi giá trị thật là
