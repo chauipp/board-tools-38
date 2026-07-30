@@ -5,6 +5,17 @@
    Xem docs/superpowers/specs/2026-07-28-idea-map-hud-islands-design.md */
 .shell { position: relative; height: 100vh; overflow: hidden; }
 
+/* KHÔNG bôi đen được, trừ ô nhập liệu. Đây là lớp thứ hai của cùng một luật đã
+   khai bằng JS (xem blockNativeDefault trong IdeaMap.jsx) — giữ cả hai vì chúng
+   chặn hai đường khác nhau: JS bắt cú BẮT ĐẦU bôi đen bằng chuột, còn CSS bắt
+   cả những đường không đi qua chuột, Ctrl+A là cái rõ nhất. Thiếu dòng CSS thì
+   Ctrl+A bôi đen sạch mọi chữ trên bảng và trình duyệt bật thanh công cụ
+   chọn-chữ của nó đè lên. */
+.shell { user-select: none; -webkit-user-select: none; }
+.shell input, .shell textarea, .shell [contenteditable="true"] {
+  user-select: text; -webkit-user-select: text;
+}
+
 /* Mặt kính của đảo cố ý TRÙNG với .tool-group (nền, viền, bo góc, đổ bóng): rail
    trái và các đảo phải đọc ra là cùng một họ vật thể nổi trên bàn vẽ, không phải
    hai thứ khác nhau tình cờ đứng cạnh nhau.
@@ -1197,8 +1208,18 @@
    .tool-btn đè mất, track của .tool-grid bị min-content đội lên 34px, và cột
    phải của bảng chọn hình bị cắt khỏi panel — lỗi này smoke test không thấy
    được vì jsdom không tính cascade lẫn layout. */
-.shape-pick, .fill-pick { width: 22px; height: 22px; }
-.shape-pick svg, .fill-pick svg { display: block; }
+.shape-pick, .fill-pick, .dash-pick, .erase-pick { width: 22px; height: 22px; }
+.shape-pick svg, .fill-pick svg, .dash-pick svg, .erase-pick svg { display: block; }
+
+/* Ba nút cỡ cục tẩy: một vòng tròn rỗng to dần, đúng thứ nó tạo ra — cùng luật
+   với .pen-width (một vạch dày dần) ngay trên. Vòng RỖNG chứ không phải chấm
+   đặc, vì cục tẩy là một cái vùng chứ không phải một cục mực. Xếp một cột như
+   .pen-width, không vào .tool-grid: lưới 2 cột thì ba nút thành hàng 2 + hàng 1
+   lệch hẳn sang trái. */
+.erase-width .dot {
+  display: block; border-radius: 50%;
+  border: 1.5px solid currentColor;
+}
 
 /* Nút chọn bậc thẻ xếp MỘT cột (không dùng .tool-grid): icon của nó rộng 30px,
    nhét hai cột vào 48px vùng nội dung thì hình thẻ bé tới mức không phân biệt
@@ -1217,6 +1238,19 @@
 .pen-swatch.on { border-color: var(--ink); }
 .pen-width { display: flex; align-items: center; justify-content: center; height: 22px; }
 .pen-width .bar { width: 22px; border-radius: 99px; background: currentColor; }
+
+/* Thanh trượt của khu 4 (thời gian tan của vệt laser). Vùng nội dung chỉ rộng
+   48px — xem phép tính ở .tool-options — nên thanh phải khai đúng bề rộng đó và
+   KHÔNG được có margin ngang, không thì trục x mọc thanh cuộn.
+   accent-color lo cả tay cầm lẫn phần đã tô của rãnh ở mọi trình duyệt hiện đại;
+   viết tay ::-webkit-slider-thumb chỉ để đổi màu là ba khối CSS cho một việc mà
+   một dòng làm được. */
+.tool-range-wrap { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.tool-range {
+  width: 48px; height: 14px; margin: 0; padding: 0;
+  accent-color: var(--accent); cursor: pointer;
+}
+.tool-range-val { font-size: 10px; color: var(--ink-dim); line-height: 1; }
 
 /* Nút cỡ chữ: chữ "A" ba kích thước. Cố ý KHÔNG dùng var(--canvas-font) — nút
    công cụ là vỏ giao diện, phải đứng yên khi bật skin vẽ tay, cùng lý do icon
@@ -1273,6 +1307,93 @@
    ngang qua trên một thẻ vẫn ra nét chứ không bị thẻ ăn mất chuột. z-index 8
    nằm dưới .tool-rail (30) nên thanh công cụ vẫn bấm được. */
 .ink-capture { position: absolute; inset: 0; z-index: 8; cursor: crosshair; }
+
+/* HỘP BAO VÙNG CHỌN — nằm trong .canvas nên bám theo bảng khi lia/phóng.
+   pointer-events: none là điều kiện sống của cả thiết kế này: hộp trùm lên cả
+   cụm, mà cụm thì đầy thẻ bấm được, chip bấm được, ô sửa tiêu đề. Bắt chuột ở
+   đây là chôn hết chúng. Cú kéo trong lòng hộp do handleViewportMouseDown bắt
+   (nó chỉ chạy khi cú bấm rơi xuống nền canvas, tức đúng chỗ TRỐNG).
+   z-index 12 và đó là con số PHẢI có: bốn tay cầm là con của khối này, mà khối
+   có z-index thì nó thành một stacking context — con không leo ra ngoài được
+   nữa. Thẻ khi rê chuột lên nhảy lên z-index 10 (.idea-card:hover), nên nếu để
+   khối ở 6 thì đúng cái thẻ nằm ở góc sẽ che mất tay cầm ngay lúc tay đưa tới
+   đó, và tay cầm không bao giờ bấm được.
+   Cái giá: nền tô của khối phủ lên mặt thẻ. Nên nó chỉ 6% — đủ đọc ra một vùng,
+   không đủ làm mờ chữ trên thẻ. */
+.selection-box {
+  position: absolute; z-index: 12; pointer-events: none;
+  border: 1px dashed var(--accent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+/* Sắp thả màu vào cả cụm: tô rõ hơn hẳn, cùng ngôn ngữ với viền "sắp thả vào
+   đây" của thẻ. */
+.selection-box.drop {
+  border-style: solid;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+/* Bốn tay cầm co giãn. Bật lại pointer-events — chúng là thứ DUY NHẤT trong hộp
+   cướp chuột, và chỉ ở đúng bốn ô nhỏ ngoài rìa.
+   Cỡ và vị trí do JS bù trừ zoom (transform: scale(1/view.scale)), nên ở đây chỉ
+   khai cỡ danh nghĩa. */
+.selection-handle {
+  position: absolute; pointer-events: auto;
+  width: 12px; height: 12px; margin: 0;
+  background: var(--surface); border: 2px solid var(--accent); border-radius: 3px;
+  box-shadow: var(--shadow);
+}
+.selection-handle.nw, .selection-handle.se { cursor: nwse-resize; }
+.selection-handle.ne, .selection-handle.sw { cursor: nesw-resize; }
+
+/* TAY CẦM SỬA HÌNH — hiện khi chọn đúng một hình khối. Khác tay cầm của hộp bao
+   vùng chọn ở chỗ nó KHÔNG nằm trong một khối bao nào, nên phải tự khai z-index:
+   13 để nổi trên cả hộp bao (12) và trên thẻ khi rê chuột (10) — hình vẽ hoàn
+   toàn có thể nằm đè lên một cái thẻ.
+   VUÔNG = góc (kéo đặt lại một đỉnh), TRÒN = cạnh (kéo dời trọn một cạnh). Hai
+   việc khác nhau thì phải khác hình, không thể chỉ khác chỗ đứng — người dùng
+   không đếm được đâu là góc đâu là trung điểm trên một tam giác nghiêng. */
+.shape-handle {
+  position: absolute; z-index: 13; pointer-events: auto; cursor: grab;
+  width: 11px; height: 11px;
+  background: var(--surface); border: 2px solid var(--accent); border-radius: 2px;
+  box-shadow: var(--shadow);
+}
+.shape-handle.edge {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent); border-color: var(--surface);
+}
+.shape-handle:active { cursor: grabbing; }
+
+/* Vòng báo "đang giữ tay, sắp bắt hình" (lib/recognize.js). position: fixed nên
+   toạ độ là toạ độ MÀN HÌNH: nó bám ngón tay, không bám bảng — bảng có bị lia
+   giữa lúc đó thì vòng vẫn đứng đúng dưới con trỏ.
+   pointer-events: none là bắt buộc: nó nằm ĐÚNG dưới con trỏ trong lúc đang vẽ,
+   ăn mất chuột là nét vẽ đứt ngay giữa.
+   Thời gian chạy do JS truyền vào qua --snap-hold, lấy từ cùng hằng số mà useInk
+   đang đếm — xem ghi chú ở chỗ render trong IdeaMap.jsx. */
+.snap-hint {
+  position: fixed; z-index: 60; pointer-events: none;
+  width: 26px; height: 26px; margin: -13px 0 0 -13px;
+  border: 2px solid var(--accent); border-radius: 50%;
+  animation: snap-hint-fill var(--snap-hold, 1000ms) linear forwards;
+}
+/* Vòng nhỏ mờ nở dần ra thành vòng rõ: đọc ra được "đang đếm, sắp xong" mà không
+   cần đến conic-gradient hay hai lớp SVG. */
+@keyframes snap-hint-fill {
+  from { opacity: 0.2; transform: scale(0.45); }
+  to { opacity: 0.95; transform: scale(1); }
+}
+/* Cùng vòng đó nhưng là cử chỉ TẨY (giữ tay trên một nét có sẵn). Màu nguy hiểm
+   chứ không phải màu accent: hai việc kết thúc rất khác nhau — một cái tạo ra
+   hình, một cái xoá mất một nét — nên chúng không được trông giống nhau. Nét
+   sắp mất đồng thời mờ đi (.ink-layer .erasing), nên có hai tín hiệu cùng lúc. */
+.snap-hint.erase { border-color: var(--danger); }
+
+/* Cùng vòng đó nhưng là cử chỉ ĐỔI BÚT ↔ CỤC GÔM (giữ tay ở chỗ trống). Nét đứt
+   chứ không phải màu thứ ba: hai màu kia đã mang nghĩa rõ ("sắp tạo ra" và "sắp
+   xoá mất"), còn việc này không tạo cũng không xoá gì cả — nó chỉ đổi thứ đang
+   cầm trên tay, nên nó phải khác Ở DẠNG chứ không chỉ khác ở sắc độ. */
+.snap-hint.swap { border-color: var(--ink-dim); border-style: dashed; }
 
 /* Mode Đặt: cùng vai trò và cùng z-index với .ink-capture — bấm trúng một thẻ
    có sẵn vẫn phải ra thẻ mới ở đúng chỗ đó, chứ không phải chọn thẻ cũ.
