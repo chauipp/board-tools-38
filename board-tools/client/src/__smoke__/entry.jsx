@@ -2080,9 +2080,13 @@ export async function run(log) {
   if (!hintShown) throw new Error("tay đứng yên giữa nét mà không có vòng báo nào");
   if (!hintGone) throw new Error("đã bắt hình rồi mà vòng báo còn treo trên màn hình");
 
-  // Đã bắt hình thì lượt vẽ CHỐT: di chuột thêm không được sửa gì nữa.
-  await act(async () => { mouse("mousemove", 900, 900); await new Promise((r) => setTimeout(r, 30)); });
-  await act(async () => { mouse("mouseup", 900, 900); await new Promise((r) => setTimeout(r, 60)); });
+  // Thả chuột NGAY sau khi bắt được hình: đoạn thẳng vừa nắn là thứ được lưu.
+  //
+  // Cố ý không di chuột thêm rồi mới thả, khác bản trước của phép kiểm này: một
+  // đoạn thẳng đã nắn xong giờ CHO VẼ TIẾP từ đầu mút của nó (xem phần nét gấp
+  // khúc bên dưới), nên "di chuột sau khi bắt hình" không còn là chuyện vô nghĩa
+  // để mà chặn — nó là chính tính năng.
+  await act(async () => { mouse("mouseup", 705, 500); await new Promise((r) => setTimeout(r, 60)); });
 
   if (globalThis.__puts.length - putsBeforeSnap !== 1) throw new Error("một nét được bắt thành hình phải đúng 1 lần lưu");
   const snapPut = globalThis.__puts[globalThis.__puts.length - 1];
@@ -2096,8 +2100,7 @@ export async function run(log) {
   const camAtSnap = camera();
   const canvasX = (screenX) => (screenX - camAtSnap.panX) / camAtSnap.scale;
   if (Math.abs(snapped.pts[2] - canvasX(705)) > 20) {
-    throw new Error(`nét phải kết ở điểm vẽ cuối (canvas x≈${canvasX(705).toFixed(0)}), đang ở ${snapped.pts[2]}`
-      + ` — cú di chuột tới x=900 (canvas ${canvasX(900).toFixed(0)}) sau khi đã bắt hình vẫn sửa được nét`);
+    throw new Error(`nét phải kết ở điểm vẽ cuối (canvas x≈${canvasX(705).toFixed(0)}), đang ở ${snapped.pts[2]}`);
   }
 
   // GIỮ TAY MÀ KHÔNG NHẬN RA HÌNH NÀO → đoạn thẳng nối hai đầu.
@@ -2253,6 +2256,118 @@ export async function run(log) {
   for (let i = 0; i + 1 < quadShape.pts.length; i += 2) qv.push([quadShape.pts[i], quadShape.pts[i + 1]]);
   const xs = qv.map((v) => v[0]).sort((a, b) => a - b);
   if (xs[1] - xs[0] < 20) throw new Error("bốn đỉnh thẳng trục — hình bình hành bị nắn thành chữ nhật: " + JSON.stringify(qv));
+
+  // ── Nét GẤP KHÚC: giữ tay nhiều lần, rồi khép về điểm xuất phát ──────────
+  //
+  // Phần hình học đã phủ ở lib/polygon-snap.test.js. Ở đây kiểm đúng cái không
+  // test thuần nào với tới, và cũng là cái dễ sai nhất: BỐN lượt giữ tay nối
+  // tiếp nhau trong MỘT phiên mousedown, cộng cú dính vào điểm xuất phát.
+  //
+  // Ba chỗ chỉ chạy hết đường mới lộ ra:
+  //  1. Sau mỗi lần chốt, đoạn kế tiếp phải mở lại được. Cửa chặn "đợi tay đi
+  //     thật" mà đóng nhầm thì cạnh thứ hai không bao giờ ghi được điểm nào.
+  //  2. Cú dính phải giữ được bộ đếm khép hình: tay nhích trong vùng dính không
+  //     được đặt lại đồng hồ, không thì giữ mãi cũng không khép.
+  //  3. Cả chuỗi là ĐÚNG MỘT lần lưu — bốn lần chốt không được thành bốn nét.
+  const chainAt = [[1400, 300], [1700, 302], [1698, 500], [1401, 498]];
+  const chainDraw = async (from, to, steps) => {
+    await act(async () => {
+      for (let k = 1; k <= steps; k++) {
+        mouse("mousemove", from[0] + ((to[0] - from[0]) * k) / steps, from[1] + ((to[1] - from[1]) * k) / steps);
+      }
+      await new Promise((r) => setTimeout(r, 40));
+    });
+    await act(async () => { await new Promise((r) => setTimeout(r, SNAP_HOLD_MS + 250)); });
+  };
+
+  const putsBeforeChain = globalThis.__puts.length;
+  await act(async () => { mouse("mousedown", chainAt[0][0], chainAt[0][1], snapCapture()); });
+  for (let i = 0; i < 3; i++) await chainDraw(chainAt[i], chainAt[i + 1], 14);
+
+  // Cạnh cuối về ĐIỂM XUẤT PHÁT — rồi RUNG TAY trong vùng dính suốt lúc chờ.
+  //
+  // Cái rung mới là phần đáng giá của phép kiểm này. Đứng im tuyệt đối thì mọi
+  // cách viết đều khép được hình; tay người thì không đứng im bao giờ, và nếu
+  // mỗi nhịp rung đặt lại đồng hồ thì giữ tay bao lâu cũng không khép — đúng
+  // triệu chứng "giữ mãi cũng không ra hình". Ba lần rung cách nhau 150ms rồi
+  // chờ thêm 500ms: tổng 1100ms, nên bản đúng khép ở mốc 900ms, còn bản đặt lại
+  // đồng hồ thì mãi tới 1500ms mới khép — mà lúc đó chuột đã nhả.
+  await act(async () => {
+    for (let k = 1; k <= 14; k++) {
+      mouse("mousemove", chainAt[3][0] + ((chainAt[0][0] - chainAt[3][0]) * k) / 14,
+        chainAt[3][1] + ((chainAt[0][1] - chainAt[3][1]) * k) / 14);
+    }
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  await act(async () => {
+    // Lệch dưới 8px, tức nằm gọn trong bán kính dính (16px).
+    for (const [jx, jy] of [[6, -4], [-5, 5], [4, 6], [-6, -3]]) {
+      mouse("mousemove", chainAt[0][0] + jx, chainAt[0][1] + jy);
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  });
+  // Vòng chờ khép hình phải đã tắt: nó tắt đúng lúc hình được khép, nên còn treo
+  // nghĩa là cú dính không dẫn tới đâu cả.
+  const chainHintGone = !document.querySelector(".snap-hint");
+  await act(async () => { mouse("mouseup", chainAt[0][0], chainAt[0][1]); await new Promise((r) => setTimeout(r, 60)); });
+
+  const chainPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const chainShape = chainPut.drawings[chainPut.drawings.length - 1];
+  log(`nét gấp khúc 4 cạnh khép về điểm đầu → kind="${chainShape.kind}" pts=${JSON.stringify(chainShape.pts)}`
+    + ` · ${globalThis.__puts.length - putsBeforeChain} lần lưu · vòng chờ đã tắt = ${chainHintGone}`);
+  if (globalThis.__puts.length - putsBeforeChain !== 1) {
+    throw new Error(`cả chuỗi bốn cạnh phải là ĐÚNG 1 lần lưu, có ${globalThis.__puts.length - putsBeforeChain}`
+      + " — mỗi lần chốt một cạnh đang tự lưu ra một nét riêng");
+  }
+  if (!chainHintGone) throw new Error("đã khép hình rồi mà vòng chờ còn treo trên màn hình");
+  if (chainShape.kind !== "rect") {
+    throw new Error(`bốn cạnh thẳng trục khép lại phải ra kind "rect", ra "${chainShape.kind}"`
+      + ` pts=${JSON.stringify(chainShape.pts)} — cú khép vòng không tới được polygon-snap,`
+      + " hoặc một cạnh nào đó không chốt được thành đỉnh");
+  }
+  if (chainShape.pts.length !== 4) throw new Error("chữ nhật phải là ĐÚNG 4 số (hai góc đối), có " + chainShape.pts.length);
+  // Hai góc đối phải trùng hai chỗ đã vẽ. Đây là phép kiểm của cú DÍNH: cạnh cuối
+  // dừng ở chỗ nào cũng được, nhưng nó phải bị kéo về đúng điểm xuất phát, không
+  // thì hình lệch đi đúng bằng chỗ tay dừng hụt.
+  const camChain = camera();
+  const chainToCanvas = (sx, sy) => [(sx - camChain.panX) / camChain.scale, (sy - camChain.panY) / camChain.scale];
+  for (const [tag, want, got] of [
+    ["góc trên trái", chainToCanvas(chainAt[0][0], chainAt[0][1]), chainShape.pts.slice(0, 2)],
+    ["góc dưới phải", chainToCanvas(chainAt[2][0], chainAt[2][1]), chainShape.pts.slice(2, 4)]
+  ]) {
+    if (Math.hypot(want[0] - got[0], want[1] - got[1]) > 14) {
+      throw new Error(`${tag} phải ở đúng chỗ đã vẽ (${want.map(Math.round)}), đang ở ${got}`);
+    }
+  }
+
+  // CHỐT VÀI CẠNH RỒI THẢ CHUỘT, không khép vòng: lưu ra nét gấp khúc HỞ, giữ
+  // đúng những cái đỉnh đã chốt. Đây là đường thoát của cả cử chỉ — không có nó
+  // thì lỡ tay dựng dở một hình là mất trắng.
+  // Đặt xa hẳn khu 1450–1740 × 580–720: phần test quét chọn nét ở dưới quét đúng
+  // vùng đó và đếm số nét bắt được.
+  const openAt = [[300, 1200], [600, 1203], [597, 1400]];
+  const putsBeforeOpen = globalThis.__puts.length;
+  await act(async () => { mouse("mousedown", openAt[0][0], openAt[0][1], snapCapture()); });
+  await chainDraw(openAt[0], openAt[1], 14);
+  await chainDraw(openAt[1], openAt[2], 14);
+  await act(async () => { mouse("mouseup", openAt[2][0], openAt[2][1]); await new Promise((r) => setTimeout(r, 60)); });
+
+  const openPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const openChain = openPut.drawings[openPut.drawings.length - 1];
+  log(`nét gấp khúc 2 cạnh, thả không khép → kind="${openChain.kind}" ${openChain.pts.length} số`);
+  if (globalThis.__puts.length - putsBeforeOpen !== 1) throw new Error("nét gấp khúc hở phải đúng 1 lần lưu");
+  if (openChain.kind !== "pen") throw new Error(`nét gấp khúc hở phải lưu ra kind "pen", lưu ra "${openChain.kind}"`);
+  if (openChain.pts.length !== 6) {
+    throw new Error(`hai cạnh đã chốt phải cho ĐÚNG ba đỉnh (6 số), có ${openChain.pts.length}`
+      + ` pts=${JSON.stringify(openChain.pts)} — cạnh thứ hai không mở được, hoặc đuôi tay vẽ bị lưu kèm`);
+  }
+  // Đỉnh giữa là chỗ chốt cạnh đầu: nó phải nằm đúng góc, không xê dịch. Sai chỗ
+  // này thì hai cạnh hở một mẩu ở khớp nối.
+  const openMid = chainToCanvas(openAt[1][0], openAt[1][1]);
+  if (Math.hypot(openMid[0] - openChain.pts[2], openMid[1] - openChain.pts[3]) > 14) {
+    throw new Error(`đỉnh giữa phải ở đúng chỗ chốt (${openMid.map(Math.round)}), đang ở ${openChain.pts.slice(2, 4)}`);
+  }
 
   // ── Kéo tay cầm để đặt lại góc / cạnh ────────────────────────────────────
   // Chọn ĐÚNG MỘT hình ở mode Chuột thì hiện tay cầm: ô vuông ở mỗi đỉnh, ô tròn
