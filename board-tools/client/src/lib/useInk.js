@@ -5,7 +5,9 @@ import {
 } from "./shape.js";
 import { rafThrottle } from "./raf-throttle.js";
 import { snapShape, snapLine, SNAP_HOLD_MS, SNAP_HINT_MS, SNAP_MOVE_TOL } from "./recognize.js";
-import { snapPolygon, CLOSE_STICK_PX, CLOSE_UNSTICK_PX } from "./polygon-snap.js";
+import {
+  snapPolygon, CLOSE_STICK_PX, CLOSE_UNSTICK_PX, CHAIN_MIN_PX, CHAIN_MIN_MS
+} from "./polygon-snap.js";
 import { ERASE_PART, eraseRadius, eraseBounds, cuttableOutline, cutPartsAlong } from "./erase.js";
 import { createStillWatch, STILL_TOL } from "./pointer-input.js";
 
@@ -354,6 +356,13 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
     // theo sát con trỏ. doSnap chạy từ một timer nên nó không có sự kiện chuột
     // nào để hỏi — đây là đường duy nhất để nó biết tay đang ở đâu.
     let lastScreen = { x: e.clientX, y: e.clientY };
+    // Đoạn đang vẽ dở SAU một cú chốt: đi xa nhất được bao nhiêu (pixel màn hình,
+    // đo từ chỗ đã chốt), bắt đầu lúc nào, và mốc thời gian của nhịp chuột gần
+    // nhất. Ba con số này quyết định cái đuôi ấy là một cạnh thật hay chỉ là cú
+    // giật lúc nhả chuột — xem CHAIN_MIN_PX / CHAIN_MIN_MS.
+    let tailFar = 0;
+    let tailAt = 0;
+    let lastTs = 0;
     // Đầu nét đang DÍNH vào điểm xuất phát (và bộ đếm khép hình đang chạy).
     let stuck = false;
     // Bộ đếm đang chạy là loại nào: "erase" / "swap" (đo từ CHỖ ẤN XUỐNG) hay
@@ -461,6 +470,8 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       ptsRef.current = verts.slice(-2);
       waiting = true;
       waitFrom = lastScreen;
+      tailFar = 0;
+      tailAt = 0;
       // Cửa sổ đo vận tốc phải thay mới, cùng lý do với lúc bắt đầu lượt vẽ: giữ
       // lại thì nó còn nhớ mấy nhịp của đoạn vừa chốt và đọc ra "tay đang đi".
       still = createStillWatch();
@@ -520,7 +531,15 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       // ĐOẠN THẲNG: chốt nó thành một cạnh rồi VẼ TIẾP — lượt vẽ chưa kết thúc.
       // Xem ghi chú "Hai cử chỉ GIỮ TAY" ở trên về việc vì sao đoạn thẳng được đi
       // tiếp còn hình kín thì không.
-      if (rec.kind === "line") { pushVertex(rec); return; }
+      // Cạnh NỐI TIẾP còn phải đủ dài mới được chốt: bàn tay tì trên chuột trôi
+      // đều vài chục pixel mỗi giây, nên sau một cú chốt mà cứ để yên đó thì cái
+      // trôi ấy tự nó thành một đoạn thẳng tí hon và được chốt thành đỉnh. Cạnh
+      // ĐẦU TIÊN không phải qua cửa này — nó đã có cả nét vẽ đứng sau.
+      if (rec.kind === "line") {
+        if (verts.length && tailFar < CHAIN_MIN_PX) return;
+        pushVertex(rec);
+        return;
+      }
       snapped = rec;
       // Nét đứt theo NGUYÊN cây bút vừa vẽ: vẽ bằng bút nét đứt rồi giữ tay cho
       // nó về hình chuẩn thì cái hình đó vẫn phải là nét đứt — nếu không, cử chỉ
@@ -652,6 +671,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       // dồn tới lúc vượt 6px và đặt lại đồng hồ, nên bàn tay nào trượt đều vài
       // chục pixel mỗi giây sẽ không bao giờ bắt được hình. Xem createStillWatch.
       lastScreen = { x: ev.clientX, y: ev.clientY };
+      lastTs = ev.timeStamp;
       const going = still.moving(ev.timeStamp, ev.clientX, ev.clientY);
       const left = Math.hypot(ev.clientX - anchor.x, ev.clientY - anchor.y) > SNAP_MOVE_TOL;
       // Tay đã rời khỏi chỗ ấn xuống: đây là một nét vẽ thật, không còn là cú
@@ -692,6 +712,13 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
         const gone = waitFrom && Math.hypot(ev.clientX - waitFrom.x, ev.clientY - waitFrom.y) > STILL_TOL;
         if (!going && !gone) return;
         waiting = false;
+        tailAt = ev.timeStamp;
+      }
+      // Đoạn sau một cú chốt đã đi được bao xa. Lấy XA NHẤT chứ không lấy chỗ
+      // đang đứng: một cú giật đi ra rồi giật về sẽ có chỗ đang đứng gần bằng 0,
+      // mà cái nét nó vẽ ra thì đã nằm đó rồi.
+      if (verts.length && waitFrom) {
+        tailFar = Math.max(tailFar, Math.hypot(ev.clientX - waitFrom.x, ev.clientY - waitFrom.y));
       }
 
       // DÍNH VÀO ĐIỂM XUẤT PHÁT, để khép nét gấp khúc thành hình. Chỉ mở từ đỉnh
@@ -855,21 +882,12 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       if (verts.length) {
         pushDraft.current.cancel();
         setDraft(null);
-        // Đuôi chưa chốt chỉ được tính là một cạnh nữa nếu tay đã thật sự đi khỏi
-        // đỉnh. Ngay sau một cú chốt thì ptsRef chỉ có đúng cái đỉnh (xem cửa
-        // chặn `waiting` trong onMove), nên phép này thường trả về 0 và nét dừng
-        // gọn ở đỉnh cuối.
-        //
-        // Đo bằng KHOẢNG CÁCH XA NHẤT, không hỏi snapLine như thoạt nghĩ: hàm đó
-        // đòi tối thiểu sáu điểm, mà một cú vẩy tay nhanh 200 đơn vị có khi chỉ
-        // bắn ra bốn nhịp chuột. Hỏi nó thì đúng những cú vẽ dứt khoát nhất lại
-        // bị vứt, còn cú vẽ chậm rề thì được giữ — ngược hẳn.
-        const raw = ptsRef.current;
-        let far = 0;
-        for (let i = 2; i + 1 < raw.length; i += 2) {
-          far = Math.max(far, Math.hypot(raw[i] - raw[0], raw[i + 1] - raw[1]));
-        }
-        const tail = far > SHAPE_MIN_DIAGONAL ? simplifyStroke(raw) : verts.slice(-2);
+        // ĐUÔI CHƯA CHỐT chỉ được giữ nếu nó đi đủ XA và kéo dài đủ LÂU. Đây là
+        // chỗ chặn cái móc — xem CHAIN_MIN_PX / CHAIN_MIN_MS bên polygon-snap.js
+        // về việc vì sao phải cả hai điều kiện, và vì sao đây là cảnh thường gặp
+        // nhất chứ không phải một ca hiếm.
+        const real = tailFar >= CHAIN_MIN_PX && lastTs - tailAt >= CHAIN_MIN_MS;
+        const tail = real ? simplifyStroke(ptsRef.current) : verts.slice(-2);
         const chain = verts.slice(0, -2).concat(tail);
         ptsRef.current = [];
         unsentRef.current = [];

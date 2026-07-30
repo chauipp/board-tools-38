@@ -40,6 +40,28 @@
 export const CLOSE_STICK_PX = 16;
 export const CLOSE_UNSTICK_PX = 22;
 
+// CHỐT XONG MỘT CẠNH RỒI, PHẢI ĐI BAO XA VÀ BAO LÂU THÌ MỚI TÍNH LÀ CẠNH TIẾP.
+//
+// Cảnh thường gặp NHẤT của cả cử chỉ này không phải "vẽ cạnh tiếp theo" mà là
+// "giữ tay cho nét thành đường thẳng rồi buông". Mà buông chuột thì tay giật —
+// vài chục pixel trên chuột, nhiều hơn trên touchpad. Không chặn thì cái giật ấy
+// thành một cạnh nữa, và người dùng nhận được một đường thẳng có cái MÓC ở đầu.
+// Với họ đó đúng là "lúc được lúc không": cùng một thao tác, khi ra đường thẳng
+// sạch, khi ra đường thẳng có đuôi, mà chẳng có gì trên màn hình giải thích.
+//
+// HAI điều kiện, và mỗi cái chặn một thứ mà cái kia để lọt:
+//   QUÃNG — chặn TRÔI TAY. Bàn tay tì trên chuột trượt đều 8–25 px/giây, nên nó
+//     đi được lâu tuỳ ý nhưng không bao giờ đi được xa. 36px = 2×STILL_TOL, tức
+//     gấp đôi cái ngưỡng vốn đã dựng lên để phân biệt "đi" với "đứng".
+//   THỜI GIAN — chặn CÚ GIẬT. Cái giật lúc nhả chuột đi xa hơn 36px dễ dàng,
+//     nhưng nó là một xung lực gọn trong một hai khung hình rồi nút chuột nhả
+//     ngay. Vẽ một cạnh thật thì không ai làm xong dưới 250ms.
+//
+// Cạnh chốt bằng cách GIỮ TAY chỉ phải qua điều kiện quãng: chín trăm mili giây
+// đứng yên đã là bằng chứng cố ý rồi, đòi thêm thời gian nữa là đòi hai lần.
+export const CHAIN_MIN_PX = 36;
+export const CHAIN_MIN_MS = 250;
+
 const DEG = Math.PI / 180;
 
 // Hai cạnh đối lệch nhau dưới chừng này thì coi như người ta ĐỊNH cho chúng song

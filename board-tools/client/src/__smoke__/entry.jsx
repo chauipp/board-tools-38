@@ -2369,6 +2369,75 @@ export async function run(log) {
     throw new Error(`đỉnh giữa phải ở đúng chỗ chốt (${openMid.map(Math.round)}), đang ở ${openChain.pts.slice(2, 4)}`);
   }
 
+  // CHỐT XONG MỘT ĐOẠN RỒI NHẢ CHUỘT — TAY GIẬT MỘT CÁI TRONG LÚC NHẢ.
+  //
+  // Đây là cảnh thường gặp NHẤT của cả cử chỉ: giữ tay cho nét thành đường
+  // thẳng, rồi buông. Mà buông chuột (nhất là trên touchpad) thì tay giật vài
+  // chục pixel — và cái giật đó không được biến thành một cạnh nữa. Nếu nó
+  // thành, người dùng thấy một đường thẳng có cái MÓC ở đầu, và với họ thì đó
+  // đúng là "lúc được lúc không": cùng một thao tác, khi ra đường thẳng sạch,
+  // khi ra đường thẳng có đuôi.
+  const jerkFrom = [900, 1200], jerkTo = [1200, 1200];
+  const putsBeforeJerk = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", jerkFrom[0], jerkFrom[1], snapCapture());
+    for (let k = 1; k <= 12; k++) mouse("mousemove", jerkFrom[0] + ((jerkTo[0] - jerkFrom[0]) * k) / 12, jerkFrom[1]);
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, SNAP_HOLD_MS + 250)); });
+  // Cái giật đi hẳn 60px — vượt xa ngưỡng quãng đường, nên phép kiểm này chốt
+  // đúng vế THỜI GIAN: nó gọn trong một hai khung hình rồi nút chuột nhả ngay.
+  await act(async () => {
+    for (const [jx, jy] of [[20, 12], [42, 26], [52, 32]]) mouse("mousemove", jerkTo[0] + jx, jerkTo[1] + jy);
+    mouse("mouseup", jerkTo[0] + 52, jerkTo[1] + 32);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+
+  const jerkPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const jerked = jerkPut.drawings[jerkPut.drawings.length - 1];
+  log(`chốt xong rồi giật tay 60px lúc nhả → kind="${jerked.kind}" ${jerked.pts.length} số`);
+  if (globalThis.__puts.length - putsBeforeJerk !== 1) throw new Error("phải đúng 1 lần lưu");
+  if (jerked.kind !== "line" || jerked.pts.length !== 4) {
+    throw new Error(`cái giật lúc nhả chuột bị biến thành một cạnh nữa: kind="${jerked.kind}"`
+      + ` ${jerked.pts.length} số ${JSON.stringify(jerked.pts)} — phải là "line" 4 số`);
+  }
+
+  // MẶT KIA CỦA CÙNG PHÉP CHẶN: vẽ tiếp THẬT rồi mới nhả thì đuôi phải được GIỮ.
+  // Không có phép này thì cách chặn cái móc dễ nhất là vứt mọi cái đuôi, và tính
+  // năng "vẽ tiếp từ đầu mút" chết mà không ai biết.
+  const contFrom = [900, 1400], contMid = [1200, 1400], contEnd = [1200, 1250];
+  const putsBeforeCont = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", contFrom[0], contFrom[1], snapCapture());
+    for (let k = 1; k <= 12; k++) mouse("mousemove", contFrom[0] + ((contMid[0] - contFrom[0]) * k) / 12, contFrom[1]);
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, SNAP_HOLD_MS + 250)); });
+  // Cạnh thứ hai vẽ thật: 150px trải trong ~480ms, rồi nhả (không giữ tay).
+  await act(async () => {
+    for (let k = 1; k <= 6; k++) {
+      mouse("mousemove", contMid[0], contMid[1] + ((contEnd[1] - contMid[1]) * k) / 6);
+      await new Promise((r) => setTimeout(r, 80));
+    }
+    mouse("mouseup", contEnd[0], contEnd[1]);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+
+  const contPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const cont = contPut.drawings[contPut.drawings.length - 1];
+  log(`chốt xong rồi vẽ tiếp thật 150px/480ms → kind="${cont.kind}" ${cont.pts.length} số`);
+  if (globalThis.__puts.length - putsBeforeCont !== 1) throw new Error("phải đúng 1 lần lưu");
+  if (cont.kind !== "pen" || cont.pts.length < 6) {
+    throw new Error(`vẽ tiếp thật mà đuôi bị vứt: kind="${cont.kind}" ${cont.pts.length} số`
+      + ` ${JSON.stringify(cont.pts)} — phép chặn cái móc đang chặn cả cú vẽ thật`);
+  }
+  const camCont = camera();
+  const contWant = [(contEnd[0] - camCont.panX) / camCont.scale, (contEnd[1] - camCont.panY) / camCont.scale];
+  const contGot = cont.pts.slice(-2);
+  if (Math.hypot(contWant[0] - contGot[0], contWant[1] - contGot[1]) > 14) {
+    throw new Error(`nét phải kết ở chỗ tay dừng (${contWant.map(Math.round)}), đang ở ${contGot}`);
+  }
+
   // ── Kéo tay cầm để đặt lại góc / cạnh ────────────────────────────────────
   // Chọn ĐÚNG MỘT hình ở mode Chuột thì hiện tay cầm: ô vuông ở mỗi đỉnh, ô tròn
   // ở mỗi trung điểm cạnh.

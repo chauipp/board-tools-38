@@ -123,7 +123,13 @@ globalThis.fetch = async (url, opts = {}) => {
 };
 function json(body) { return { ok: true, status: 200, json: async () => body }; }
 
-setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process.exit(2); }, 60000).unref();
+// Chốt chặn "có gì đó treo", không phải hạn mức hiệu năng. Cả bộ hiện chạy chừng
+// 62 giây, và phần lớn con số đó là CHỜ THẬT chứ không phải tính toán: mấy cử chỉ
+// giữ tay (bắt hình, khép nét gấp khúc) mỗi lần chốt là 900ms đồng hồ treo, mà
+// một nét gấp khúc bốn cạnh thì chốt bốn lần. Để gấp đôi thời gian thật: rộng để
+// máy chậm không báo động giả, mà vẫn đủ chặt để một vòng lặp vô hạn lộ ra trong
+// vòng hai phút thay vì treo mãi.
+setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process.exit(2); }, 120000).unref();
 
 // Bẫy CSS-vs-attribute của hình khối (Task 5): nếu rule `.ink-layer path`
 // khai lại `fill` thì trong SVG, CSS thắng presentation attribute, nên mọi
