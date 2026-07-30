@@ -5,10 +5,13 @@ import { I18nProvider } from "@lingui/react";
 import { i18n } from "../lib/i18n.js";
 import IdeaMap from "../pages/IdeaMap.jsx";
 import { AuthProvider } from "../context/AuthContext.jsx";
-import { LASER_FADE_MS, LASER_WIDTHS } from "../lib/laser.js";
+import { LASER_FADE_DEFAULT, LASER_WIDTHS } from "../lib/laser.js";
 import { PEN_COLORS } from "../lib/pen.js";
+import { SNAP_HOLD_MS } from "../lib/recognize.js";
+import { HOLD_ERASE_MS, HOLD_SWAP_MS } from "../lib/useInk.js";
 import { BOARD_BGS, BOARD_GRIDS, COLOR_PACKS } from "../lib/board-theme.js";
 import { MULTI_CLICK_MS } from "../lib/multi-click.js";
+import { drawingsHitBy } from "../lib/shape.js";
 
 export async function run(log) {
   const root = createRoot(document.getElementById("root"));
@@ -33,6 +36,15 @@ export async function run(log) {
   const before = card.style.left;
   const mouse = (type, x, y, target) => {
     (target || window).dispatchEvent(new window.MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 }));
+  };
+  // Kéo một <input type="range">. Phải đi qua setter GỐC của prototype: React
+  // thay setter `value` của phần tử bằng bản của nó để theo dõi giá trị, nên gán
+  // el.value = … rồi bắn "input" sẽ bị React coi là "không có gì đổi" và bỏ qua
+  // hẳn onChange. Đây là cái bẫy tiêu chuẩn khi test input có kiểm soát.
+  const setRangeValue = (el, v) => {
+    const desc = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value");
+    desc.set.call(el, String(v));
+    el.dispatchEvent(new window.Event("input", { bubbles: true }));
   };
   await act(async () => {
     mouse("mousedown", 100, 100, card);
@@ -322,7 +334,7 @@ export async function run(log) {
   const picks = document.querySelectorAll(".tool-options .shape-pick").length;
   const fills = document.querySelectorAll(".tool-options .fill-pick").length;
   log(`khu 4 của hình khối: ${picks} hình · ${document.querySelectorAll(".tool-options .pen-swatch").length} màu · ${document.querySelectorAll(".tool-options .pen-width").length} độ dày · ${fills} chế độ tô`);
-  if (picks !== 6) throw new Error("khu 4 phải có 6 nút chọn hình, có " + picks);
+  if (picks !== 8) throw new Error("khu 4 phải có 8 nút chọn hình, có " + picks);
   if (fills !== 2) throw new Error("khu 4 phải có 2 nút chế độ tô, có " + fills);
   if (document.querySelectorAll(".tool-options .pen-swatch").length !== 7) throw new Error("khu 4 của hình khối vẫn phải có 7 ô màu");
   if (document.querySelectorAll(".tool-options .pen-width").length !== 3) throw new Error("khu 4 của hình khối vẫn phải có 3 nút độ dày");
@@ -409,6 +421,41 @@ export async function run(log) {
   const ci = lastShape().pts;
   log(`Shift + ê-líp: ${Math.abs(ci[2] - ci[0])}×${Math.abs(ci[3] - ci[1])}`);
   if (Math.abs(ci[2] - ci[0]) !== Math.abs(ci[3] - ci[1])) throw new Error("giữ Shift mà ê-líp không ra hình tròn");
+
+  // HÌNH BÌNH HÀNH và HÌNH THANG kéo bằng hộp: phải lưu ra BỐN ĐỈNH THẬT, không
+  // phải cái hộp. Cái hộp không nói ra được bốn đỉnh muốn đặt ở đâu, nên hai
+  // hình này chỉ có nghĩa khi ra thẳng dạng đỉnh — rồi kéo tay cầm góc mà đặt
+  // lại. Cả hai lưu ra CÙNG kind "quad": chúng chỉ khác dáng khởi đầu.
+  const boxShape = async (pickIndex, x0, y0) => {
+    await act(async () => { shapePicks()[pickIndex].click(); await new Promise((r) => setTimeout(r, 20)); });
+    await act(async () => {
+      mouse("mousedown", x0, y0, capture);
+      mouse("mousemove", x0 + 100, y0 + 50);
+      await new Promise((r) => setTimeout(r, 60));
+      mouse("mousemove", x0 + 200, y0 + 100);
+      await new Promise((r) => setTimeout(r, 60));
+    });
+    await act(async () => { mouse("mouseup", x0 + 200, y0 + 100); await new Promise((r) => setTimeout(r, 40)); });
+    return lastShape();
+  };
+  const edgeWidths = (d) => [d.pts[2] - d.pts[0], d.pts[4] - d.pts[6]];
+
+  const para = await boxShape(6, 2600, 300);
+  const trap = await boxShape(7, 2600, 700);
+  log(`kéo hình bình hành / hình thang: kind="${para.kind}"/"${trap.kind}"`
+    + ` · ${para.pts.length}/${trap.pts.length} số`
+    + ` · cạnh trên–dưới ${JSON.stringify(edgeWidths(para))} và ${JSON.stringify(edgeWidths(trap))}`);
+  for (const [tag, d] of [["hình bình hành", para], ["hình thang", trap]]) {
+    if (d.kind !== "quad") throw new Error(`${tag} phải lưu kind "quad", lưu ra "${d.kind}"`);
+    if (d.pts.length !== 8) throw new Error(`${tag} phải lưu BỐN ĐỈNH (8 số), lưu ra ${d.pts.length} số`);
+    if (d.pts[0] === d.pts[6]) throw new Error(`${tag} có bốn đỉnh thẳng trục — đây là chữ nhật`);
+  }
+  // Khác biệt DUY NHẤT giữa hai nút: hình bình hành có cạnh trên bằng cạnh dưới
+  // (chỉ lệch đi), hình thang có cạnh trên ngắn hơn.
+  const [paraTop, paraBottom] = edgeWidths(para);
+  if (paraTop !== paraBottom) throw new Error(`hình bình hành phải có hai cạnh ngang bằng nhau, có ${paraTop} và ${paraBottom}`);
+  const [trapTop, trapBottom] = edgeWidths(trap);
+  if (!(trapTop < trapBottom)) throw new Error(`hình thang phải có cạnh trên ngắn hơn, có ${trapTop} và ${trapBottom}`);
 
   // Đường thẳng + Shift ở hướng gần ngang → ép về ĐÚNG ngang.
   await act(async () => { shapePicks()[2].click(); await new Promise((r) => setTimeout(r, 20)); });
@@ -1235,9 +1282,12 @@ export async function run(log) {
   // tô — laser không tạo ra hình nào.
   const laserSwatches = document.querySelectorAll(".tool-options .pen-swatch").length;
   const laserWidths = document.querySelectorAll(".tool-options .pen-width").length;
-  log(`khu 4 của laser: ${laserSwatches} màu · ${laserWidths} độ đậm · ${document.querySelectorAll(".tool-options .shape-pick").length} hình (phải là 0)`);
+  const fadeRange = document.querySelector(".tool-options .tool-range");
+  log(`khu 4 của laser: ${laserSwatches} màu · ${laserWidths} độ đậm · thanh thời gian ${fadeRange ? fadeRange.value + "ms" : "KHÔNG CÓ"} · ${document.querySelectorAll(".tool-options .shape-pick").length} hình (phải là 0)`);
   if (laserSwatches !== 7) throw new Error("khu 4 của laser phải có 7 màu, có " + laserSwatches);
   if (laserWidths !== 3) throw new Error("khu 4 của laser phải có 3 độ đậm, có " + laserWidths);
+  if (!fadeRange) throw new Error("khu 4 của laser phải có thanh trượt thời gian tan");
+  if (Number(fadeRange.value) !== LASER_FADE_DEFAULT) throw new Error(`thanh thời gian mở ra ở ${fadeRange.value}, phải là mặc định ${LASER_FADE_DEFAULT}`);
   if (document.querySelector(".tool-options .shape-pick")) throw new Error("khu 4 của laser không được có bảng chọn hình");
 
   // DI CHUỘT KHÔNG GIỮ NÚT: không được ra vệt nào. Đây là bất biến chính của
@@ -1259,6 +1309,19 @@ export async function run(log) {
   // hai cú bấm luôn có một lượt render.
   await act(async () => { document.querySelectorAll(".tool-options .pen-swatch")[4].click(); await new Promise((r) => setTimeout(r, 20)); });
   await act(async () => { document.querySelectorAll(".tool-options .pen-width")[2].click(); await new Promise((r) => setTimeout(r, 20)); });
+  // Thanh thời gian: đặt NGẮN hơn mặc định. Cố ý ngắn — vệt của chính mình phải
+  // tan xong trước mốc kiểm "đứng yên một nhịp là hết vệt" ở dưới, không thì
+  // test đó bắt được vệt của chính nó và tưởng laser không tan.
+  await act(async () => {
+    setRangeValue(document.querySelector(".tool-options .tool-range"), 400);
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  const fadeLabel = document.querySelector(".tool-options .tool-range-val").textContent;
+  log(`laser: kéo thanh thời gian về 400ms → nhãn "${fadeLabel}"`);
+  if (Number(document.querySelector(".tool-options .tool-range").value) !== 400) {
+    throw new Error("kéo thanh thời gian mà giá trị không đổi — onChange không nối vào prefs");
+  }
+  if (!fadeLabel.includes("0,4")) throw new Error(`nhãn phải đọc ra số giây, đang là "${fadeLabel}"`);
   const pickedColorOn = document.querySelectorAll(".tool-options .pen-swatch")[4].classList.contains("on");
   const pickedWidthOn = document.querySelectorAll(".tool-options .pen-width")[2].classList.contains("on");
   if (!pickedColorOn || !pickedWidthOn) throw new Error("chọn màu/độ đậm laser mà nút không sáng lên");
@@ -1291,6 +1354,12 @@ export async function run(log) {
   // LASER_WIDTHS[2] chứ không viết cứng token: đổi bảng màu là test đổi theo.
   if (emittedLaser[0][1].color !== PEN_COLORS[4]) throw new Error(`chọn màu ${PEN_COLORS[4]} nhưng gói mang ${emittedLaser[0][1].color}`);
   if (emittedLaser[0][1].w !== LASER_WIDTHS[2]) throw new Error(`chọn độ đậm ${LASER_WIDTHS[2]} nhưng gói mang ${emittedLaser[0][1].w}`);
+  // Thời gian tan cũng phải đi theo MỌI gói, cùng lý do với màu và độ đậm: nó là
+  // lựa chọn của NGƯỜI CHỈ, nên vệt của họ phải tan đúng nhịp đó trên màn hình
+  // mọi người, không phải nhịp mặc định của từng máy.
+  if (emittedLaser.some((e) => e[1].fade !== 400)) {
+    throw new Error("có gói live:laser không mang đúng thời gian tan vừa đặt: " + JSON.stringify(emittedLaser.map((e) => e[1].fade)));
+  }
   const selfColor = document.querySelector(".laser-layer g").style.color;
   if (!selfColor.includes(PEN_COLORS[4])) throw new Error(`vệt của mình vẽ màu ${selfColor}, không phải màu vừa chọn`);
 
@@ -1318,10 +1387,27 @@ export async function run(log) {
 
   // Đứng yên một nhịp là vệt phải tan HẾT. Đây là thứ tách laser khỏi bút, và
   // là thứ duy nhất ở đây cần thời gian thật trôi qua.
-  await act(async () => { await new Promise((r) => setTimeout(r, LASER_FADE_MS + 300)); });
+  await act(async () => { await new Promise((r) => setTimeout(r, LASER_FADE_DEFAULT + 300)); });
   const leftover = document.querySelectorAll(".laser-layer g").length;
-  log(`laser: đứng yên ${LASER_FADE_MS + 300}ms → còn ${leftover} vệt`);
+  log(`laser: đứng yên ${LASER_FADE_DEFAULT + 300}ms → còn ${leftover} vệt`);
   if (leftover !== 0) throw new Error("vệt laser không tự tan — nó đang là nét vẽ chứ không phải cây laser");
+
+  // Thời gian tan là của TỪNG VỆT: gói mang fade dài thì vệt đó phải còn sống ở
+  // đúng cái mốc mà vệt mặc định đã tan hết. Không có chốt này thì một hằng số
+  // dùng chung nằm lại đâu đó trong đường đi vẫn làm mọi test trên xanh.
+  globalThis.__deliver("live:laser", {
+    socketId: "peer-3", reset: true, color: "pen-blue", w: 8, fade: 3500, pts: [200, 900, 260, 900, 320, 900]
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, LASER_FADE_DEFAULT + 300)); });
+  const longLived = document.querySelectorAll(".laser-layer g").length;
+  log(`laser: vệt đặt 3500ms sau ${LASER_FADE_DEFAULT + 300}ms → còn ${longLived} vệt (phải là 1)`);
+  if (longLived !== 1) throw new Error("vệt mang fade dài vẫn tan theo nhịp mặc định — fade không đi theo từng vệt");
+  // Dọn ngay, không để một cái đuôi của người đã đi treo sang các phần test sau.
+  await act(async () => {
+    globalThis.__deliver("presence:leave", { socketId: "peer-3" });
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  if (document.querySelector(".laser-layer g")) throw new Error("người rời board mà vệt của họ vẫn treo lại");
 
   // Và không để lại dấu vết nào trong dữ liệu.
   const drawingsAfterLaser = document.querySelectorAll(".ink-layer path").length;
@@ -1424,69 +1510,6 @@ export async function run(log) {
   if (posAfterOpen() === openedLayout) throw new Error("Ctrl+Z sau khi xếp cây không lùi được");
   log(`Ctrl+Z sau khi đóng bảng: ${posAfterOpen()}`);
 
-  // ── Bấm nhiều lần trên NỀN TRỐNG: 2 lần hoàn tác, 3 lần làm lại ──────────
-  // Cử chỉ này thay chỗ "bấm đúp nền trống để tạo thẻ", nên phần đầu canh luôn
-  // rằng bấm đúp KHÔNG còn đẻ ra thẻ nữa.
-  const mcCard = () => document.querySelector('.idea-card[data-id="1"]');
-  const viewportEl = document.querySelector(".viewport");
-  const bgClick = (x, y, upX, upY) => {
-    mouse("mousedown", x, y, viewportEl);
-    mouse("mouseup", upX ?? x, upY ?? y, viewportEl);
-    viewportEl.dispatchEvent(new window.MouseEvent("click", {
-      bubbles: true, clientX: upX ?? x, clientY: upY ?? y, button: 0
-    }));
-  };
-  const settle = () => new Promise((r) => setTimeout(r, MULTI_CLICK_MS + 150));
-
-  // Một bước để mà lùi: kéo thẻ 1 đi một đoạn.
-  const mcStart = mcCard().style.left;
-  await act(async () => {
-    mouse("mousedown", 300, 300, mcCard());
-    mouse("mousemove", 460, 300);
-    await new Promise((r) => setTimeout(r, 60));
-  });
-  await act(async () => { mouse("mouseup", 460, 300); await new Promise((r) => setTimeout(r, 60)); });
-  const mcMoved = mcCard().style.left;
-  if (mcMoved === mcStart) throw new Error("không kéo được thẻ thì không có bước hoàn tác để thử");
-
-  const mcCardsBefore = document.querySelectorAll(".idea-card").length;
-  await act(async () => { bgClick(900, 400); bgClick(900, 400); await settle(); });
-  const mcUndone = mcCard().style.left;
-  log(`bấm 2 lần nền trống: thẻ ${mcMoved} → ${mcUndone} (phải về ${mcStart})`
-    + ` · số thẻ ${mcCardsBefore} → ${document.querySelectorAll(".idea-card").length}`);
-  if (document.querySelectorAll(".idea-card").length !== mcCardsBefore) {
-    throw new Error("bấm đúp nền trống vẫn đẻ ra thẻ mới — cử chỉ cũ chưa được gỡ");
-  }
-  if (mcUndone !== mcStart) throw new Error(`bấm 2 lần phải hoàn tác về ${mcStart}, đang ở ${mcUndone}`);
-
-  await act(async () => { bgClick(900, 400); bgClick(900, 400); bgClick(900, 400); await settle(); });
-  log(`bấm 3 lần nền trống: thẻ ${mcUndone} → ${mcCard().style.left} (phải về ${mcMoved})`);
-  if (mcCard().style.left !== mcMoved) {
-    throw new Error(`bấm 3 lần phải làm lại về ${mcMoved}, đang ở ${mcCard().style.left}`);
-  }
-
-  // Bấm 1 lần: không được động vào dữ liệu. Đây là cú bấm hay dùng nhất trên
-  // bảng (bỏ chọn), nên nó mà lùi được một bước thì hỏng hẳn.
-  const mcOnePos = mcCard().style.left;
-  await act(async () => { bgClick(900, 400); await settle(); });
-  if (mcCard().style.left !== mcOnePos) throw new Error("bấm MỘT lần trên nền mà bảng đổi trạng thái");
-
-  // KÉO không phải BẤM: quét chọn hai lượt liền nhau không được thành hoàn tác.
-  // Không có chốt này thì mỗi lần quét hụt là một bước lùi không ai gọi.
-  await act(async () => {
-    bgClick(700, 300, 860, 420);
-    bgClick(700, 300, 860, 420);
-    await settle();
-  });
-  log(`kéo 2 lượt trên nền: thẻ vẫn ở ${mcCard().style.left} (phải là ${mcOnePos})`);
-  if (mcCard().style.left !== mcOnePos) throw new Error("hai cú KÉO bị đếm thành hai cú bấm → hoàn tác oan");
-
-  // Bấm 4 lần: bấm loạn tay không được biến thành một chuỗi thao tác.
-  await act(async () => {
-    for (let i = 0; i < 4; i++) bgClick(900, 400);
-    await settle();
-  });
-  if (mcCard().style.left !== mcOnePos) throw new Error("bấm 4 lần mà bảng vẫn đổi trạng thái");
 
   // ── Chọn nét vẽ / hình / chữ ở mode Chuột ───────────────────────────────
   // Lớp vẽ là một <svg> pointer-events: none, nên MỌI thao tác ở đây đi qua
@@ -1969,6 +1992,1746 @@ export async function run(log) {
     throw new Error("ghép xong mà thẻ của người kia không hiện trên màn hình — board cục bộ chưa được cập nhật");
   }
   log(`va chạm lưu: thẻ người kia (id ${peerCardInPut.id}) đã hiện trên bảng, thẻ mình vẫn ở chỗ vừa kéo`);
+
+  // ── Cuộn hai ngón trên touchpad: LIA bảng, không phóng ───────────────────
+  // Đây là toàn bộ lý do lib/pointer-input.js tồn tại. Test thuần ở đó đã phủ
+  // từng dấu hiệu nhận thiết bị; cái CHƯA ai chạy là đoạn nối trong IdeaMap:
+  // sự kiện wheel thật → bộ đọc → camera.
+  const camBeforePad = camera();
+  await act(async () => {
+    // Số LẺ là dấu hiệu chắc nhất của touchpad chính xác — nút lăn chuột không
+    // bao giờ cho ra 12,5px.
+    for (let i = 0; i < 3; i++) {
+      canvasEl.dispatchEvent(new window.WheelEvent("wheel", {
+        bubbles: true, cancelable: true, deltaX: 6.5, deltaY: 12.5, deltaMode: 0, clientX: 500, clientY: 400
+      }));
+    }
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  const camAfterPad = camera();
+  log(`touchpad: cuộn hai ngón → camera ${camBeforePad.panX.toFixed(0)},${camBeforePad.panY.toFixed(0)}@${camBeforePad.scale.toFixed(2)} → ${camAfterPad.panX.toFixed(0)},${camAfterPad.panY.toFixed(0)}@${camAfterPad.scale.toFixed(2)}`);
+  if (camAfterPad.scale !== camBeforePad.scale) {
+    throw new Error(`trượt hai ngón mà bảng PHÓNG (${camBeforePad.scale} → ${camAfterPad.scale}) — đúng cái lỗi cần chữa`);
+  }
+  if (camAfterPad.panX >= camBeforePad.panX || camAfterPad.panY >= camBeforePad.panY) {
+    throw new Error("trượt hai ngón mà bảng không lia theo cả hai trục");
+  }
+
+  // Cắm chuột rời vào: vài nấc lăn là bộ đọc lật lại, và lăn phải THU PHÓNG.
+  for (let i = 0; i < 3; i++) {
+    await act(async () => {
+      canvasEl.dispatchEvent(new window.WheelEvent("wheel", {
+        bubbles: true, cancelable: true, deltaY: -100, deltaMode: 0, clientX: 500, clientY: 400
+      }));
+      await new Promise((r) => setTimeout(r, 20));
+    });
+  }
+  const scaleBeforeNotch = camera().scale;
+  await act(async () => {
+    canvasEl.dispatchEvent(new window.WheelEvent("wheel", {
+      bubbles: true, cancelable: true, deltaY: -100, deltaMode: 0, clientX: 500, clientY: 400
+    }));
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  log(`chuột rời: lăn một nấc → zoom ${scaleBeforeNotch.toFixed(3)} → ${camera().scale.toFixed(3)}`);
+  if (camera().scale === scaleBeforeNotch) {
+    throw new Error("lăn nút chuột mà bảng không thu phóng — bộ đọc không lật lại được khi đổi thiết bị");
+  }
+
+  // ── Giữ tay để nét về hình chuẩn ─────────────────────────────────────────
+  // Phép nhận hình đã được phủ kỹ ở lib/recognize.test.js. Ở đây chỉ kiểm đúng
+  // cái không test thuần nào với tới: bộ đếm đứng-yên, vòng báo trên màn hình,
+  // và việc nét được LƯU RA HÌNH chứ không phải nét tay.
+  await act(async () => { railBtn("Sửa").click(); await new Promise((r) => setTimeout(r, 20)); });
+  await act(async () => { railBtn("Bút").click(); await new Promise((r) => setTimeout(r, 20)); });
+  // Tra lại MỖI LẦN DÙNG, không giữ một tham chiếu: nhóm test này có đoạn đổi
+  // sang mode Chuột rồi quay về, mà đổi mode là .ink-capture bị tháo ra dựng lại.
+  // Bắn chuột vào một nút đã lìa khỏi cây thì sự kiện không nổi bọt tới React
+  // nữa — không có gì xảy ra, và phép kiểm ngay sau đó lại tưởng là app hỏng.
+  const snapCapture = () => document.querySelector(".ink-capture");
+  if (!snapCapture()) throw new Error("mode Sửa phải có lớp bắt chuột .ink-capture");
+  const snapToggle = Array.from(document.querySelectorAll(".tool-options .tool-btn"))
+    .find((b) => (b.title || "").startsWith("Giữ tay"));
+  if (!snapToggle) {
+    throw new Error("khu 4 của bút phải có nút bật/tắt giữ-tay-để-bắt-hình. khu 4 hiện có: "
+      + JSON.stringify(Array.from(document.querySelectorAll(".tool-options .tool-btn")).map((b) => b.title))
+      + " · có .ink-capture = " + !!snapCapture()
+      + " · nút rail đang sáng: " + JSON.stringify(Array.from(document.querySelectorAll(".tool-rail .tool-btn.on")).map((b) => b.title)));
+  }
+  if (!snapToggle.classList.contains("on")) throw new Error("giữ-tay-để-bắt-hình phải BẬT sẵn, không thì gần như không ai biết nó có ở đó");
+
+  // Vẽ một đường "thẳng" đúng kiểu tay người: đích đến đúng nhưng đường đi rung.
+  const wobble = [0, 3, -2, 4, -3, 2, -1, 3, 0];
+  const drawWobblyLine = () => {
+    mouse("mousedown", 300, 500, snapCapture());
+    wobble.forEach((dy, i) => mouse("mousemove", 300 + (i + 1) * 45, 500 + dy));
+  };
+
+  const putsBeforeSnap = globalThis.__puts.length;
+  await act(async () => { drawWobblyLine(); await new Promise((r) => setTimeout(r, 60)); });
+  // Giữa lúc chờ: vòng báo phải hiện ra. Không có nó thì tính năng vô hình —
+  // người dùng chỉ tình cờ gặp một lần rồi không hiểu vừa xảy ra chuyện gì.
+  await act(async () => { await new Promise((r) => setTimeout(r, 500)); });
+  const hintShown = !!document.querySelector(".snap-hint");
+  // Rồi đủ giờ: nét nhảy thành hình và vòng báo tắt.
+  await act(async () => { await new Promise((r) => setTimeout(r, SNAP_HOLD_MS)); });
+  const hintGone = !document.querySelector(".snap-hint");
+  log(`giữ tay: vòng báo hiện = ${hintShown} · sau ${SNAP_HOLD_MS}ms vòng tắt = ${hintGone}`);
+  if (!hintShown) throw new Error("tay đứng yên giữa nét mà không có vòng báo nào");
+  if (!hintGone) throw new Error("đã bắt hình rồi mà vòng báo còn treo trên màn hình");
+
+  // Thả chuột NGAY sau khi bắt được hình: đoạn thẳng vừa nắn là thứ được lưu.
+  //
+  // Cố ý không di chuột thêm rồi mới thả, khác bản trước của phép kiểm này: một
+  // đoạn thẳng đã nắn xong giờ CHO VẼ TIẾP từ đầu mút của nó (xem phần nét gấp
+  // khúc bên dưới), nên "di chuột sau khi bắt hình" không còn là chuyện vô nghĩa
+  // để mà chặn — nó là chính tính năng.
+  await act(async () => { mouse("mouseup", 705, 500); await new Promise((r) => setTimeout(r, 60)); });
+
+  if (globalThis.__puts.length - putsBeforeSnap !== 1) throw new Error("một nét được bắt thành hình phải đúng 1 lần lưu");
+  const snapPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const snapped = snapPut.drawings[snapPut.drawings.length - 1];
+  log(`giữ tay: nét lưu ra kind="${snapped.kind}" pts=${JSON.stringify(snapped.pts)}`);
+  if (snapped.kind !== "line") throw new Error(`đường thẳng vẽ tay phải lưu ra kind "line", lưu ra "${snapped.kind}"`);
+  if (snapped.pts.length !== 4) throw new Error("hình khối phải là ĐÚNG 4 số (hai đầu), có " + snapped.pts.length);
+  // Cú di chuột SAU khi đã bắt hình không được kéo nét đi theo. So bằng toạ độ
+  // CANVAS, không phải toạ độ màn hình: bảng đang ở zoom 0.98 và pan khác 0 sau
+  // các phần test trên, nên hai hệ lệch nhau cả nghìn đơn vị.
+  const camAtSnap = camera();
+  const canvasX = (screenX) => (screenX - camAtSnap.panX) / camAtSnap.scale;
+  if (Math.abs(snapped.pts[2] - canvasX(705)) > 20) {
+    throw new Error(`nét phải kết ở điểm vẽ cuối (canvas x≈${canvasX(705).toFixed(0)}), đang ở ${snapped.pts[2]}`);
+  }
+
+  // GIỮ TAY MÀ KHÔNG NHẬN RA HÌNH NÀO → đoạn thẳng nối hai đầu.
+  //
+  // Nét gãy ở giữa là trường hợp hay gặp nhất: nó trượt phép đo đường thẳng (chỗ
+  // gãy vọt quá ngưỡng đỉnh) rồi trượt luôn mọi hình kín (hai đầu cách xa nhau),
+  // nên trước đây giữ tay hơn một giây mà KHÔNG có gì xảy ra — người dùng chỉ
+  // thấy tính năng hỏng. Đo trên DOM chứ không chỉ ở hàm thuần, vì phần dễ sai
+  // là cái nối dây: cử chỉ phải gọi snapShape, không phải recognizeShape.
+  const putsBeforeKink = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", 300, 980, snapCapture());
+    // Đủ điểm để qua MIN_POINTS của recognize.js — dưới ngưỡng đó thì phép đo
+    // trung bình sai số không nói lên gì và nét bị bỏ qua từ trước khi xét.
+    for (let i = 1; i <= 10; i++) {
+      const x = 300 + i * 40;
+      mouse("mousemove", x, 980 + (x <= 500 ? (x - 300) * 0.2 : (700 - x) * 0.2));
+    }
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, SNAP_HOLD_MS + 400)); });
+  await act(async () => { mouse("mouseup", 700, 980); await new Promise((r) => setTimeout(r, 60)); });
+  if (globalThis.__puts.length - putsBeforeKink !== 1) throw new Error("nét gãy được nắn thành hình phải đúng 1 lần lưu");
+  const kinkPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const kinked = kinkPut.drawings[kinkPut.drawings.length - 1];
+  const camAtKink = camera();
+  const kinkCanvasX = (sx) => (sx - camAtKink.panX) / camAtKink.scale;
+  log(`giữ tay trên nét GÃY: kind="${kinked.kind}" ${kinked.pts.length} số`
+    + ` · hai đầu x ${kinked.pts[0]},${kinked.pts[2]} (phải ≈ ${kinkCanvasX(300).toFixed(0)},${kinkCanvasX(700).toFixed(0)})`);
+  if (kinked.kind !== "line") throw new Error(`nét không ra hình nào phải được nắn thành "line", lưu ra "${kinked.kind}"`);
+  if (kinked.pts.length !== 4) throw new Error("đoạn thẳng phải là ĐÚNG 4 số (hai đầu), có " + kinked.pts.length);
+  // Hai đầu phải là hai đầu ĐÃ VẼ — đó là toàn bộ ý nghĩa của "đoạn thẳng nối
+  // điểm đầu với điểm cuối". Sai chỗ này thì nét nhảy đi đâu đó và tệ hơn hẳn
+  // việc không làm gì.
+  if (Math.abs(kinked.pts[0] - kinkCanvasX(300)) > 20) throw new Error(`điểm A phải giữ nguyên, đang ở ${kinked.pts[0]}`);
+  if (Math.abs(kinked.pts[2] - kinkCanvasX(700)) > 20) throw new Error(`điểm B phải giữ nguyên, đang ở ${kinked.pts[2]}`);
+
+  // VẼ CHẬM một đường xiên gần 45°. Hai thứ được canh cùng lúc ở đây:
+  //
+  //  1. Vẽ chậm thì mousemove bắn DÀY — hai điểm liên tiếp cách nhau vài pixel,
+  //     đúng cỡ biên độ rung tay. Cộng chiều dài đường đi từng đoạn một thì tổng
+  //     phình lên theo SỐ ĐIỂM chứ không theo hình vẽ ra, và nét bị loại khỏi
+  //     nhánh đường thẳng trước khi kịp đo xem nó có thẳng không. Cùng một nét,
+  //     chỉ khác chỗ vẽ nhanh hay chậm, mà ra hai kết quả.
+  //  2. Gần 45° nhưng KHÔNG đúng 45°: hai đầu phải ở đúng chỗ đã vẽ. Nét không
+  //     được xoay về mốc — đặt điểm B ở đâu là quyền của người vẽ.
+  let slowSeed = 20260730;
+  const slowJit = () => {
+    slowSeed = (slowSeed * 1103515245 + 12345) & 0x7fffffff;
+    return ((slowSeed / 0x7fffffff) * 2 - 1) * 2;
+  };
+  const slowA = [250, 700], slowB = [700, 270];      // 450 ngang, 430 dọc → 43,7°
+  const putsBeforeSlow = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", slowA[0], slowA[1], snapCapture());
+    for (let i = 1; i <= 260; i++) {
+      const u = i / 260;
+      mouse("mousemove",
+        slowA[0] + (slowB[0] - slowA[0]) * u + slowJit(),
+        slowA[1] + (slowB[1] - slowA[1]) * u + slowJit());
+    }
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, SNAP_HOLD_MS + 300)); });
+  await act(async () => { mouse("mouseup", slowB[0], slowB[1]); await new Promise((r) => setTimeout(r, 60)); });
+
+  const slowPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const slowLine = slowPut.drawings[slowPut.drawings.length - 1];
+  log(`vẽ chậm 260 điểm: kind="${slowLine.kind}" pts=${JSON.stringify(slowLine.pts)}`);
+  if (globalThis.__puts.length - putsBeforeSlow !== 1) throw new Error("một nét được bắt thành hình phải đúng 1 lần lưu");
+  if (slowLine.kind !== "line") {
+    throw new Error(`vẽ chậm một đường thẳng vẫn phải ra kind "line", ra "${slowLine.kind}"`
+      + " — chiều dài đường đi đang bị đo theo số điểm chứ không theo hình vẽ");
+  }
+  const camSlow = camera();
+  const toCanvasS = (sx, sy) => [(sx - camSlow.panX) / camSlow.scale, (sy - camSlow.panY) / camSlow.scale];
+  for (const [tag, want, got] of [
+    ["đầu A", toCanvasS(...slowA), slowLine.pts.slice(0, 2)],
+    ["đầu B", toCanvasS(...slowB), slowLine.pts.slice(2, 4)]
+  ]) {
+    if (Math.hypot(want[0] - got[0], want[1] - got[1]) > 12) {
+      throw new Error(`${tag} phải ở đúng chỗ đã vẽ (${want.map(Math.round)}), đang ở ${got}`
+        + " — nét đang bị xoay về mốc 45° thay vì giữ đúng hai điểm A, B");
+    }
+  }
+
+  // TAM GIÁC VUÔNG vẽ tay: phải lưu ra BA ĐỈNH và giữ nguyên góc vuông, không bị
+  // nắn về tam giác cân. Đây là thứ chỉ chạy hết đường mới thấy: ba đỉnh phải đi
+  // trọn từ recognize.js qua useInk, qua commitStroke, tới payload lưu — mà giữa
+  // đường có mấy chỗ vốn chỉ biết hình khối là "hai góc đối, đúng 4 số".
+  const triCorners = [[900, 300], [1100, 500], [900, 500]];
+  const putsBeforeTri = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", triCorners[0][0], triCorners[0][1], snapCapture());
+    const path = triCorners.concat([triCorners[0]]);
+    for (let i = 0; i + 1 < path.length; i++) {
+      const [ax, ay] = path[i];
+      const [bx, by] = path[i + 1];
+      for (let k = 1; k <= 8; k++) mouse("mousemove", ax + ((bx - ax) * k) / 8, ay + ((by - ay) * k) / 8);
+    }
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, SNAP_HOLD_MS + 300)); });
+  await act(async () => { mouse("mouseup", triCorners[0][0], triCorners[0][1]); await new Promise((r) => setTimeout(r, 60)); });
+
+  const triPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const triShape = triPut.drawings[triPut.drawings.length - 1];
+  log(`giữ tay: tam giác vuông → kind="${triShape.kind}" ${triShape.pts.length} số ${JSON.stringify(triShape.pts)}`);
+  if (globalThis.__puts.length - putsBeforeTri !== 1) throw new Error("một tam giác được bắt phải đúng 1 lần lưu");
+  if (triShape.kind !== "triangle") throw new Error(`tam giác vẽ tay phải lưu ra kind "triangle", lưu ra "${triShape.kind}"`);
+  if (triShape.pts.length !== 6) throw new Error(`tam giác phải lưu ra BA ĐỈNH (6 số), lưu ra ${triShape.pts.length} số — nó đang bị hạ về hộp bao`);
+  // Hai đỉnh cùng nằm trên cạnh đứng x = 900 (màn hình): đó chính là góc vuông.
+  // Nếu bị nắn về cân thì đỉnh trên nhảy ra giữa và phép này gãy.
+  const camTri = camera();
+  const canvasXTri = (sx) => (sx - camTri.panX) / camTri.scale;
+  const triVerts = [];
+  for (let i = 0; i + 1 < triShape.pts.length; i += 2) triVerts.push([triShape.pts[i], triShape.pts[i + 1]]);
+  const onLeftEdge = triVerts.filter(([vx]) => Math.abs(vx - canvasXTri(900)) <= 12).length;
+  log(`giữ tay: ${onLeftEdge}/3 đỉnh nằm trên cạnh đứng — góc vuông ${onLeftEdge === 2 ? "được giữ" : "BỊ NẮN MẤT"}`);
+  if (onLeftEdge !== 2) {
+    throw new Error("tam giác vuông bị nắn về tam giác cân — dáng người dùng vẽ ra không được giữ");
+  }
+  // Và nó phải VẼ RA được: chuỗi `d` của ba đỉnh, không phải chuỗi rỗng.
+  if (document.querySelectorAll(".ink-layer path").length < 2) throw new Error("tam giác lưu rồi mà không vẽ ra path nào");
+
+  // HÌNH BÌNH HÀNH vẽ tay: bốn đỉnh, giữ nguyên độ xiên. Cái đáng canh nhất
+  // không phải "nó ra quad" mà là nó KHÔNG bị hạ về chữ nhật — tứ giác bốn đỉnh
+  // phải thắng được chữ nhật ở đúng những hình mà chữ nhật tả sai.
+  const quadCorners = [[1000, 300], [1200, 300], [1140, 440], [940, 440]];
+  const putsBeforeQuad = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", quadCorners[0][0], quadCorners[0][1], snapCapture());
+    const path = quadCorners.concat([quadCorners[0]]);
+    for (let i = 0; i + 1 < path.length; i++) {
+      const [ax, ay] = path[i];
+      const [bx, by] = path[i + 1];
+      for (let k = 1; k <= 10; k++) mouse("mousemove", ax + ((bx - ax) * k) / 10, ay + ((by - ay) * k) / 10);
+    }
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, SNAP_HOLD_MS + 300)); });
+  await act(async () => { mouse("mouseup", quadCorners[0][0], quadCorners[0][1]); await new Promise((r) => setTimeout(r, 60)); });
+
+  const quadPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const quadShape = quadPut.drawings[quadPut.drawings.length - 1];
+  log(`giữ tay: hình bình hành → kind="${quadShape.kind}" ${quadShape.pts.length} số`);
+  if (globalThis.__puts.length - putsBeforeQuad !== 1) throw new Error("một tứ giác được bắt phải đúng 1 lần lưu");
+  if (quadShape.kind !== "quad") throw new Error(`hình bình hành phải lưu ra kind "quad", lưu ra "${quadShape.kind}" — nó đang bị hạ về hình chuẩn gần nhất`);
+  if (quadShape.pts.length !== 8) throw new Error(`tứ giác phải lưu ra BỐN ĐỈNH (8 số), lưu ra ${quadShape.pts.length} số`);
+  // Hai cạnh đứng phải còn XIÊN: hai đỉnh trên lệch khỏi hai đỉnh dưới. Nếu bị
+  // hạ về chữ nhật thì bốn đỉnh sẽ thẳng trục và phép này gãy.
+  const qv = [];
+  for (let i = 0; i + 1 < quadShape.pts.length; i += 2) qv.push([quadShape.pts[i], quadShape.pts[i + 1]]);
+  const xs = qv.map((v) => v[0]).sort((a, b) => a - b);
+  if (xs[1] - xs[0] < 20) throw new Error("bốn đỉnh thẳng trục — hình bình hành bị nắn thành chữ nhật: " + JSON.stringify(qv));
+
+  // NÉT NGẮN, VẼ NHANH, RỒI GIỮ TAY THẬT YÊN.
+  //
+  // Chỉ BA nhịp mousemove, và KHÔNG nhịp nào trong lúc giữ. Cả hai vế đều là
+  // chuyện thường ngày chứ không phải ca dựng lên: nét ngắn vẽ nhanh thì trình
+  // duyệt chỉ kịp bắn vài nhịp (mousemove đi theo khung hình), còn con chuột đặt
+  // trên bàn mà tay không đẩy thì KHÔNG sinh nhịp nào cả — khác hẳn touchpad,
+  // nơi ngón tay đặt yên vẫn rung ra hàng chục nhịp.
+  //
+  // Hệ quả: cả nét chỉ có bốn điểm. Nét dài thì riêng phần vẽ đã dư điểm nên
+  // không bao giờ chạm tới chốt này — đúng triệu chứng "nét dài thì được, nét
+  // ngắn thì giữ mãi cũng không ra đường thẳng".
+  const shortA = [700, 1560], shortB = [790, 1500];
+  const putsBeforeShort = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", shortA[0], shortA[1], snapCapture());
+    for (let k = 1; k <= 3; k++) {
+      mouse("mousemove", shortA[0] + ((shortB[0] - shortA[0]) * k) / 3, shortA[1] + ((shortB[1] - shortA[1]) * k) / 3);
+    }
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, SNAP_HOLD_MS + 250)); });
+  await act(async () => { mouse("mouseup", shortB[0], shortB[1]); await new Promise((r) => setTimeout(r, 60)); });
+
+  const shortPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const shortLine = shortPut.drawings[shortPut.drawings.length - 1];
+  log(`nét ngắn 3 nhịp chuột, giữ tay không rung → kind="${shortLine.kind}" ${shortLine.pts.length} số`);
+  if (globalThis.__puts.length - putsBeforeShort !== 1) throw new Error("phải đúng 1 lần lưu");
+  if (shortLine.kind !== "line") {
+    throw new Error(`nét ngắn giữ tay mà không thành đường thẳng: kind="${shortLine.kind}"`
+      + ` ${shortLine.pts.length} số — cả nét chỉ có 4 điểm, đang bị chốt "đủ điểm để đo" loại từ vòng gác đầu`);
+  }
+
+  // ── Nét GẤP KHÚC: giữ tay nhiều lần, rồi khép về điểm xuất phát ──────────
+  //
+  // Phần hình học đã phủ ở lib/polygon-snap.test.js. Ở đây kiểm đúng cái không
+  // test thuần nào với tới, và cũng là cái dễ sai nhất: BỐN lượt giữ tay nối
+  // tiếp nhau trong MỘT phiên mousedown, cộng cú dính vào điểm xuất phát.
+  //
+  // Ba chỗ chỉ chạy hết đường mới lộ ra:
+  //  1. Sau mỗi lần chốt, đoạn kế tiếp phải mở lại được. Cửa chặn "đợi tay đi
+  //     thật" mà đóng nhầm thì cạnh thứ hai không bao giờ ghi được điểm nào.
+  //  2. Cú dính phải giữ được bộ đếm khép hình: tay nhích trong vùng dính không
+  //     được đặt lại đồng hồ, không thì giữ mãi cũng không khép.
+  //  3. Cả chuỗi là ĐÚNG MỘT lần lưu — bốn lần chốt không được thành bốn nét.
+  const chainAt = [[1400, 300], [1700, 302], [1698, 500], [1401, 498]];
+  const chainDraw = async (from, to, steps) => {
+    await act(async () => {
+      for (let k = 1; k <= steps; k++) {
+        mouse("mousemove", from[0] + ((to[0] - from[0]) * k) / steps, from[1] + ((to[1] - from[1]) * k) / steps);
+      }
+      await new Promise((r) => setTimeout(r, 40));
+    });
+    await act(async () => { await new Promise((r) => setTimeout(r, SNAP_HOLD_MS + 250)); });
+  };
+
+  const putsBeforeChain = globalThis.__puts.length;
+  await act(async () => { mouse("mousedown", chainAt[0][0], chainAt[0][1], snapCapture()); });
+  for (let i = 0; i < 3; i++) await chainDraw(chainAt[i], chainAt[i + 1], 14);
+
+  // Cạnh cuối về ĐIỂM XUẤT PHÁT — rồi RUNG TAY trong vùng dính suốt lúc chờ.
+  //
+  // Cái rung mới là phần đáng giá của phép kiểm này. Đứng im tuyệt đối thì mọi
+  // cách viết đều khép được hình; tay người thì không đứng im bao giờ, và nếu
+  // mỗi nhịp rung đặt lại đồng hồ thì giữ tay bao lâu cũng không khép — đúng
+  // triệu chứng "giữ mãi cũng không ra hình". Ba lần rung cách nhau 150ms rồi
+  // chờ thêm 500ms: tổng 1100ms, nên bản đúng khép ở mốc 900ms, còn bản đặt lại
+  // đồng hồ thì mãi tới 1500ms mới khép — mà lúc đó chuột đã nhả.
+  await act(async () => {
+    for (let k = 1; k <= 14; k++) {
+      mouse("mousemove", chainAt[3][0] + ((chainAt[0][0] - chainAt[3][0]) * k) / 14,
+        chainAt[3][1] + ((chainAt[0][1] - chainAt[3][1]) * k) / 14);
+    }
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  await act(async () => {
+    // Lệch dưới 8px, tức nằm gọn trong bán kính dính (16px).
+    for (const [jx, jy] of [[6, -4], [-5, 5], [4, 6], [-6, -3]]) {
+      mouse("mousemove", chainAt[0][0] + jx, chainAt[0][1] + jy);
+      await new Promise((r) => setTimeout(r, 150));
+    }
+    await new Promise((r) => setTimeout(r, 500));
+  });
+  // Vòng chờ khép hình phải đã tắt: nó tắt đúng lúc hình được khép, nên còn treo
+  // nghĩa là cú dính không dẫn tới đâu cả.
+  const chainHintGone = !document.querySelector(".snap-hint");
+  await act(async () => { mouse("mouseup", chainAt[0][0], chainAt[0][1]); await new Promise((r) => setTimeout(r, 60)); });
+
+  const chainPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const chainShape = chainPut.drawings[chainPut.drawings.length - 1];
+  log(`nét gấp khúc 4 cạnh khép về điểm đầu → kind="${chainShape.kind}" pts=${JSON.stringify(chainShape.pts)}`
+    + ` · ${globalThis.__puts.length - putsBeforeChain} lần lưu · vòng chờ đã tắt = ${chainHintGone}`);
+  if (globalThis.__puts.length - putsBeforeChain !== 1) {
+    throw new Error(`cả chuỗi bốn cạnh phải là ĐÚNG 1 lần lưu, có ${globalThis.__puts.length - putsBeforeChain}`
+      + " — mỗi lần chốt một cạnh đang tự lưu ra một nét riêng");
+  }
+  if (!chainHintGone) throw new Error("đã khép hình rồi mà vòng chờ còn treo trên màn hình");
+  if (chainShape.kind !== "rect") {
+    throw new Error(`bốn cạnh thẳng trục khép lại phải ra kind "rect", ra "${chainShape.kind}"`
+      + ` pts=${JSON.stringify(chainShape.pts)} — cú khép vòng không tới được polygon-snap,`
+      + " hoặc một cạnh nào đó không chốt được thành đỉnh");
+  }
+  if (chainShape.pts.length !== 4) throw new Error("chữ nhật phải là ĐÚNG 4 số (hai góc đối), có " + chainShape.pts.length);
+  // Hai góc đối phải trùng hai chỗ đã vẽ. Đây là phép kiểm của cú DÍNH: cạnh cuối
+  // dừng ở chỗ nào cũng được, nhưng nó phải bị kéo về đúng điểm xuất phát, không
+  // thì hình lệch đi đúng bằng chỗ tay dừng hụt.
+  const camChain = camera();
+  const chainToCanvas = (sx, sy) => [(sx - camChain.panX) / camChain.scale, (sy - camChain.panY) / camChain.scale];
+  for (const [tag, want, got] of [
+    ["góc trên trái", chainToCanvas(chainAt[0][0], chainAt[0][1]), chainShape.pts.slice(0, 2)],
+    ["góc dưới phải", chainToCanvas(chainAt[2][0], chainAt[2][1]), chainShape.pts.slice(2, 4)]
+  ]) {
+    if (Math.hypot(want[0] - got[0], want[1] - got[1]) > 14) {
+      throw new Error(`${tag} phải ở đúng chỗ đã vẽ (${want.map(Math.round)}), đang ở ${got}`);
+    }
+  }
+
+  // CHỐT VÀI CẠNH RỒI THẢ CHUỘT, không khép vòng: lưu ra nét gấp khúc HỞ, giữ
+  // đúng những cái đỉnh đã chốt. Đây là đường thoát của cả cử chỉ — không có nó
+  // thì lỡ tay dựng dở một hình là mất trắng.
+  // Đặt xa hẳn khu 1450–1740 × 580–720: phần test quét chọn nét ở dưới quét đúng
+  // vùng đó và đếm số nét bắt được.
+  const openAt = [[300, 1200], [600, 1203], [597, 1400]];
+  const putsBeforeOpen = globalThis.__puts.length;
+  await act(async () => { mouse("mousedown", openAt[0][0], openAt[0][1], snapCapture()); });
+  await chainDraw(openAt[0], openAt[1], 14);
+  await chainDraw(openAt[1], openAt[2], 14);
+  await act(async () => { mouse("mouseup", openAt[2][0], openAt[2][1]); await new Promise((r) => setTimeout(r, 60)); });
+
+  const openPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const openChain = openPut.drawings[openPut.drawings.length - 1];
+  log(`nét gấp khúc 2 cạnh, thả không khép → kind="${openChain.kind}" ${openChain.pts.length} số`);
+  if (globalThis.__puts.length - putsBeforeOpen !== 1) throw new Error("nét gấp khúc hở phải đúng 1 lần lưu");
+  if (openChain.kind !== "pen") throw new Error(`nét gấp khúc hở phải lưu ra kind "pen", lưu ra "${openChain.kind}"`);
+  if (openChain.pts.length !== 6) {
+    throw new Error(`hai cạnh đã chốt phải cho ĐÚNG ba đỉnh (6 số), có ${openChain.pts.length}`
+      + ` pts=${JSON.stringify(openChain.pts)} — cạnh thứ hai không mở được, hoặc đuôi tay vẽ bị lưu kèm`);
+  }
+  // Đỉnh giữa là chỗ chốt cạnh đầu: nó phải nằm đúng góc, không xê dịch. Sai chỗ
+  // này thì hai cạnh hở một mẩu ở khớp nối.
+  const openMid = chainToCanvas(openAt[1][0], openAt[1][1]);
+  if (Math.hypot(openMid[0] - openChain.pts[2], openMid[1] - openChain.pts[3]) > 14) {
+    throw new Error(`đỉnh giữa phải ở đúng chỗ chốt (${openMid.map(Math.round)}), đang ở ${openChain.pts.slice(2, 4)}`);
+  }
+
+  // CHỐT XONG MỘT ĐOẠN RỒI NHẢ CHUỘT — TAY GIẬT MỘT CÁI TRONG LÚC NHẢ.
+  //
+  // Đây là cảnh thường gặp NHẤT của cả cử chỉ: giữ tay cho nét thành đường
+  // thẳng, rồi buông. Mà buông chuột (nhất là trên touchpad) thì tay giật vài
+  // chục pixel — và cái giật đó không được biến thành một cạnh nữa. Nếu nó
+  // thành, người dùng thấy một đường thẳng có cái MÓC ở đầu, và với họ thì đó
+  // đúng là "lúc được lúc không": cùng một thao tác, khi ra đường thẳng sạch,
+  // khi ra đường thẳng có đuôi.
+  const jerkFrom = [900, 1200], jerkTo = [1200, 1200];
+  const putsBeforeJerk = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", jerkFrom[0], jerkFrom[1], snapCapture());
+    for (let k = 1; k <= 12; k++) mouse("mousemove", jerkFrom[0] + ((jerkTo[0] - jerkFrom[0]) * k) / 12, jerkFrom[1]);
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, SNAP_HOLD_MS + 250)); });
+  // Cái giật đi hẳn 60px — vượt xa ngưỡng quãng đường, nên phép kiểm này chốt
+  // đúng vế THỜI GIAN: nó gọn trong một hai khung hình rồi nút chuột nhả ngay.
+  await act(async () => {
+    for (const [jx, jy] of [[20, 12], [42, 26], [52, 32]]) mouse("mousemove", jerkTo[0] + jx, jerkTo[1] + jy);
+    mouse("mouseup", jerkTo[0] + 52, jerkTo[1] + 32);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+
+  const jerkPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const jerked = jerkPut.drawings[jerkPut.drawings.length - 1];
+  log(`chốt xong rồi giật tay 60px lúc nhả → kind="${jerked.kind}" ${jerked.pts.length} số`);
+  if (globalThis.__puts.length - putsBeforeJerk !== 1) throw new Error("phải đúng 1 lần lưu");
+  if (jerked.kind !== "line" || jerked.pts.length !== 4) {
+    throw new Error(`cái giật lúc nhả chuột bị biến thành một cạnh nữa: kind="${jerked.kind}"`
+      + ` ${jerked.pts.length} số ${JSON.stringify(jerked.pts)} — phải là "line" 4 số`);
+  }
+
+  // MẶT KIA CỦA CÙNG PHÉP CHẶN: vẽ tiếp THẬT rồi mới nhả thì đuôi phải được GIỮ.
+  // Không có phép này thì cách chặn cái móc dễ nhất là vứt mọi cái đuôi, và tính
+  // năng "vẽ tiếp từ đầu mút" chết mà không ai biết.
+  const contFrom = [900, 1400], contMid = [1200, 1400], contEnd = [1200, 1250];
+  const putsBeforeCont = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", contFrom[0], contFrom[1], snapCapture());
+    for (let k = 1; k <= 12; k++) mouse("mousemove", contFrom[0] + ((contMid[0] - contFrom[0]) * k) / 12, contFrom[1]);
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, SNAP_HOLD_MS + 250)); });
+  // Cạnh thứ hai vẽ thật: 150px trải trong ~480ms, rồi nhả (không giữ tay).
+  await act(async () => {
+    for (let k = 1; k <= 6; k++) {
+      mouse("mousemove", contMid[0], contMid[1] + ((contEnd[1] - contMid[1]) * k) / 6);
+      await new Promise((r) => setTimeout(r, 80));
+    }
+    mouse("mouseup", contEnd[0], contEnd[1]);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+
+  const contPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const cont = contPut.drawings[contPut.drawings.length - 1];
+  log(`chốt xong rồi vẽ tiếp thật 150px/480ms → kind="${cont.kind}" ${cont.pts.length} số`);
+  if (globalThis.__puts.length - putsBeforeCont !== 1) throw new Error("phải đúng 1 lần lưu");
+  if (cont.kind !== "pen" || cont.pts.length < 6) {
+    throw new Error(`vẽ tiếp thật mà đuôi bị vứt: kind="${cont.kind}" ${cont.pts.length} số`
+      + ` ${JSON.stringify(cont.pts)} — phép chặn cái móc đang chặn cả cú vẽ thật`);
+  }
+  const camCont = camera();
+  const contWant = [(contEnd[0] - camCont.panX) / camCont.scale, (contEnd[1] - camCont.panY) / camCont.scale];
+  const contGot = cont.pts.slice(-2);
+  if (Math.hypot(contWant[0] - contGot[0], contWant[1] - contGot[1]) > 14) {
+    throw new Error(`nét phải kết ở chỗ tay dừng (${contWant.map(Math.round)}), đang ở ${contGot}`);
+  }
+
+  // ── Kéo tay cầm để đặt lại góc / cạnh ────────────────────────────────────
+  // Chọn ĐÚNG MỘT hình ở mode Chuột thì hiện tay cầm: ô vuông ở mỗi đỉnh, ô tròn
+  // ở mỗi trung điểm cạnh.
+  await act(async () => { railBtn("Chuột").click(); await new Promise((r) => setTimeout(r, 20)); });
+  const camQuad = camera();
+  const toScreenQ = (cx, cy) => ({ x: cx * camQuad.scale + camQuad.panX, y: cy * camQuad.scale + camQuad.panY });
+  const pickAt = toScreenQ((qv[0][0] + qv[1][0]) / 2, (qv[0][1] + qv[1][1]) / 2);
+  await act(async () => {
+    canvasEl.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: pickAt.x, clientY: pickAt.y, button: 0 }));
+    mouse("mouseup", pickAt.x, pickAt.y);
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  const vHandles = document.querySelectorAll(".shape-handle:not(.edge)").length;
+  const eHandles = document.querySelectorAll(".shape-handle.edge").length;
+  log(`chọn một tứ giác: ${vHandles} tay cầm góc · ${eHandles} tay cầm cạnh`);
+  if (vHandles !== 4 || eHandles !== 4) {
+    throw new Error(`tứ giác phải có 4 tay cầm góc + 4 tay cầm cạnh, có ${vHandles} + ${eHandles}`);
+  }
+
+  // Kéo MỘT tay cầm góc: đúng một đỉnh đi, ba đỉnh kia đứng yên tuyệt đối.
+  const beforeEdit = quadShape.pts.slice();
+  const handleEl = document.querySelectorAll(".shape-handle:not(.edge)")[0];
+  const hPos = toScreenQ(Number.parseFloat(handleEl.style.left), Number.parseFloat(handleEl.style.top));
+  const putsBeforeEdit = globalThis.__puts.length;
+  await act(async () => {
+    handleEl.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: hPos.x, clientY: hPos.y, button: 0 }));
+    mouse("mousemove", hPos.x + 60, hPos.y - 40);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", hPos.x + 60, hPos.y - 40); await new Promise((r) => setTimeout(r, 80)); });
+  const editPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const edited = editPut.drawings.find((d) => d.id === quadShape.id) || editPut.drawings[editPut.drawings.length - 1];
+  const movedVerts = [];
+  for (let i = 0; i + 1 < edited.pts.length; i += 2) {
+    if (edited.pts[i] !== beforeEdit[i] || edited.pts[i + 1] !== beforeEdit[i + 1]) movedVerts.push(i / 2);
+  }
+  log(`kéo tay cầm góc: ${movedVerts.length}/4 đỉnh đổi chỗ · PUT thêm ${globalThis.__puts.length - putsBeforeEdit} lần`);
+  if (globalThis.__puts.length - putsBeforeEdit !== 1) throw new Error("một cú kéo tay cầm phải đúng 1 lần lưu");
+  if (movedVerts.length !== 1) {
+    throw new Error(`kéo một góc phải dời ĐÚNG một đỉnh, đã dời ${movedVerts.length}: ${JSON.stringify(edited.pts)} vs ${JSON.stringify(beforeEdit)}`);
+  }
+
+  // Kéo tay cầm CẠNH: hai đỉnh của cạnh đó đi cùng nhau.
+  const beforeEdge = edited.pts.slice();
+  const edgeEl = document.querySelectorAll(".shape-handle.edge")[0];
+  const ePos = toScreenQ(Number.parseFloat(edgeEl.style.left), Number.parseFloat(edgeEl.style.top));
+  await act(async () => {
+    edgeEl.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: ePos.x, clientY: ePos.y, button: 0 }));
+    mouse("mousemove", ePos.x, ePos.y - 50);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", ePos.x, ePos.y - 50); await new Promise((r) => setTimeout(r, 80)); });
+  const edgePut = globalThis.__puts[globalThis.__puts.length - 1];
+  const edgeEdited = edgePut.drawings.find((d) => d.id === quadShape.id) || edgePut.drawings[edgePut.drawings.length - 1];
+  let movedByEdge = 0;
+  for (let i = 0; i + 1 < edgeEdited.pts.length; i += 2) {
+    if (edgeEdited.pts[i] !== beforeEdge[i] || edgeEdited.pts[i + 1] !== beforeEdge[i + 1]) movedByEdge++;
+  }
+  log(`kéo tay cầm cạnh: ${movedByEdge}/4 đỉnh đi theo (phải là 2)`);
+  if (movedByEdge !== 2) {
+    throw new Error(`kéo một cạnh phải dời ĐÚNG hai đỉnh của nó, đã dời ${movedByEdge}: ${JSON.stringify(edgeEdited.pts)}`);
+  }
+
+  // Kéo góc một CHỮ NHẬT: nó lưu bằng hộp bao hai góc đối, nên "ba góc kia đứng
+  // yên" chỉ có được khi hình bỏ hộp mà chuyển sang bốn đỉnh thật. Đây là chỗ
+  // canh điều đó — kind phải đổi, và đúng MỘT góc được dời.
+  await act(async () => { railBtn("Sửa").click(); await new Promise((r) => setTimeout(r, 20)); });
+  await act(async () => { railBtn("Hình khối").click(); await new Promise((r) => setTimeout(r, 20)); });
+  await act(async () => { document.querySelectorAll(".tool-options .shape-pick")[0].click(); await new Promise((r) => setTimeout(r, 20)); });
+  await act(async () => {
+    mouse("mousedown", 1250, 620, snapCapture());
+    mouse("mousemove", 1330, 670);
+    await new Promise((r) => setTimeout(r, 40));
+    mouse("mousemove", 1410, 720);
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  await act(async () => { mouse("mouseup", 1410, 720); await new Promise((r) => setTimeout(r, 60)); });
+  const rcPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const rcRect = rcPut.drawings[rcPut.drawings.length - 1];
+  if (rcRect.kind !== "rect" || rcRect.pts.length !== 4) {
+    throw new Error(`cần một chữ nhật hộp bao để thử, nhận được kind="${rcRect.kind}" ${rcRect.pts.length} số`);
+  }
+
+  await act(async () => { railBtn("Chuột").click(); await new Promise((r) => setTimeout(r, 20)); });
+  const camRect = camera();
+  const toScreenR = (cx, cy) => ({ x: cx * camRect.scale + camRect.panX, y: cy * camRect.scale + camRect.panY });
+  const rcTopMid = toScreenR((rcRect.pts[0] + rcRect.pts[2]) / 2, rcRect.pts[1]);
+  await act(async () => {
+    canvasEl.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: rcTopMid.x, clientY: rcTopMid.y, button: 0 }));
+    mouse("mouseup", rcTopMid.x, rcTopMid.y);
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  const rcHandles = document.querySelectorAll(".shape-handle:not(.edge)");
+  log(`chọn một chữ nhật: ${rcHandles.length} tay cầm góc · ${document.querySelectorAll(".shape-handle.edge").length} tay cầm cạnh`);
+  if (rcHandles.length !== 4) throw new Error(`chữ nhật phải có 4 tay cầm góc, có ${rcHandles.length} — có thể đã chọn nhầm hình khác`);
+
+  const rcPutsBefore = globalThis.__puts.length;
+  const rcPos = toScreenR(Number.parseFloat(rcHandles[0].style.left), Number.parseFloat(rcHandles[0].style.top));
+  await act(async () => {
+    rcHandles[0].dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: rcPos.x, clientY: rcPos.y, button: 0 }));
+    mouse("mousemove", rcPos.x - 70, rcPos.y - 45);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", rcPos.x - 70, rcPos.y - 45); await new Promise((r) => setTimeout(r, 80)); });
+  const rcAfterPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const rcAfter = rcAfterPut.drawings.find((d) => d.id === rcRect.id);
+  // Bốn góc TRƯỚC khi kéo, dựng lại từ hộp bao theo đúng thứ tự shapeHandles trả.
+  const [rl, rt, rr, rb] = rcRect.pts;
+  const rcBefore = [rl, rt, rr, rt, rr, rb, rl, rb];
+  let rcMoved = 0;
+  for (let i = 0; i + 1 < rcBefore.length; i += 2) {
+    if (rcAfter.pts[i] !== rcBefore[i] || rcAfter.pts[i + 1] !== rcBefore[i + 1]) rcMoved++;
+  }
+  log(`kéo góc chữ nhật: kind="${rcRect.kind}" → "${rcAfter.kind}" · ${rcMoved}/4 góc đổi chỗ · PUT thêm ${globalThis.__puts.length - rcPutsBefore} lần`);
+  if (rcAfter.kind !== "quad" || rcAfter.pts.length !== 8) {
+    throw new Error(`kéo góc chữ nhật phải cho tứ giác 4 đỉnh, cho kind="${rcAfter.kind}" ${rcAfter.pts.length} số`);
+  }
+  if (rcMoved !== 1) {
+    throw new Error(`kéo một góc phải dời ĐÚNG một góc, đã dời ${rcMoved}: ${JSON.stringify(rcAfter.pts)} vs ${JSON.stringify(rcBefore)}`);
+  }
+
+  // Về lại mode Sửa + bút cho phần test còn lại.
+  await act(async () => { railBtn("Sửa").click(); await new Promise((r) => setTimeout(r, 20)); });
+  await act(async () => { railBtn("Bút").click(); await new Promise((r) => setTimeout(r, 20)); });
+
+  // Tắt nút: nét phải ở lại là nét tay, dù có giữ tay bao lâu.
+  // Tra LẠI nút, không dùng tham chiếu bắt từ trước: khu 4 đã bị tháo ra dựng lại
+  // khi đổi qua mode Chuột rồi quay về, nên nút cũ là một nút đã lìa khỏi cây —
+  // bấm nó không có chuyện gì xảy ra và phép kiểm ngay dưới sẽ nói dối.
+  const snapToggleNow = Array.from(document.querySelectorAll(".tool-options .tool-btn"))
+    .find((b) => (b.title || "").startsWith("Giữ tay"));
+  if (!snapToggleNow) throw new Error("quay lại tool Bút mà khu 4 không còn nút giữ-tay-để-bắt-hình");
+  await act(async () => { snapToggleNow.click(); await new Promise((r) => setTimeout(r, 20)); });
+  if (document.querySelector(".tool-options .tool-btn.on[title^='Giữ tay']")) throw new Error("bấm tắt mà nút vẫn sáng");
+  const putsBeforeOff = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", 300, 800, snapCapture());
+    wobble.forEach((dy, i) => mouse("mousemove", 300 + (i + 1) * 45, 800 + dy));
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, SNAP_HOLD_MS + 400)); });
+  const hintWhenOff = !!document.querySelector(".snap-hint");
+  await act(async () => { mouse("mouseup", 705, 800); await new Promise((r) => setTimeout(r, 60)); });
+  const offPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const notSnapped = offPut.drawings[offPut.drawings.length - 1];
+  log(`tắt giữ-tay: vòng báo hiện = ${hintWhenOff} (phải là false) · nét lưu ra kind="${notSnapped.kind}"`);
+  if (globalThis.__puts.length - putsBeforeOff !== 1) throw new Error("nét tay vẫn phải đúng 1 lần lưu");
+  if (hintWhenOff) throw new Error("đã tắt mà vẫn hiện vòng báo");
+  if (notSnapped.kind !== "pen") throw new Error(`đã tắt thì nét phải ở lại là nét tay, lưu ra "${notSnapped.kind}"`);
+
+  // ── Đang cầm bút, giữ lâu trên một nét = tẩy nét đó ──────────────────────
+  // Cái đáng kiểm ở đây là nó KHÔNG cướp cú vẽ bình thường: chỉ ăn khi tay ấn
+  // xuống đúng một nét có sẵn rồi đứng yên, và nhích tay ra là huỷ.
+  const drawingsBeforeHold = document.querySelectorAll(".ink-layer path").length;
+  const putsBeforeHoldErase = globalThis.__puts.length;
+  // Nét vừa lưu ở trên nằm ngang qua màn hình y = 800, từ x = 300 tới x = 705.
+  await act(async () => {
+    mouse("mousedown", 500, 800, snapCapture());
+    await new Promise((r) => setTimeout(r, 400));
+  });
+  const eraseHint = document.querySelector(".snap-hint.erase");
+  const dimmedTarget = document.querySelectorAll(".ink-layer path.erasing").length;
+  log(`giữ trên nét: vòng báo tẩy = ${!!eraseHint} · nét mờ đi = ${dimmedTarget}`);
+  if (!eraseHint) throw new Error("giữ tay trên một nét mà không có vòng báo tẩy — người dùng không biết mình đang nhắm vào cái gì");
+  if (dimmedTarget !== 1) throw new Error(`nét sắp bị tẩy phải mờ đi để thấy trước khi mất, đang mờ ${dimmedTarget} nét`);
+  await act(async () => { await new Promise((r) => setTimeout(r, HOLD_ERASE_MS)); });
+  await act(async () => { mouse("mouseup", 500, 800); await new Promise((r) => setTimeout(r, 60)); });
+
+  const drawingsAfterHold = document.querySelectorAll(".ink-layer path").length;
+  log(`giữ trên nét: ${drawingsBeforeHold} → ${drawingsAfterHold} nét · PUT thêm ${globalThis.__puts.length - putsBeforeHoldErase} lần`);
+  if (drawingsAfterHold !== drawingsBeforeHold - 1) throw new Error("giữ lâu trên một nét mà nét không bị tẩy");
+  if (globalThis.__puts.length - putsBeforeHoldErase !== 1) throw new Error("một lần tẩy phải đúng 1 lần lưu — không được lưu kèm một nét bút rác");
+  if (document.querySelector(".snap-hint")) throw new Error("tẩy xong mà vòng báo còn treo");
+
+  // Nhích tay ra là HUỶ cử chỉ tẩy: đây mới là cú vẽ bình thường bắt đầu từ trên
+  // một nét có sẵn, và nó không được làm mất nét đó.
+  const drawingsBeforeMoveAway = document.querySelectorAll(".ink-layer path").length;
+  await act(async () => {
+    mouse("mousedown", 400, 500, snapCapture());
+    await new Promise((r) => setTimeout(r, 150));
+    for (const x of [430, 470, 510]) mouse("mousemove", x, 560);
+    await new Promise((r) => setTimeout(r, HOLD_ERASE_MS + 200));
+  });
+  await act(async () => { mouse("mouseup", 510, 560); await new Promise((r) => setTimeout(r, 60)); });
+  const drawingsAfterMoveAway = document.querySelectorAll(".ink-layer path").length;
+  log(`ấn lên nét rồi vẽ tiếp: ${drawingsBeforeMoveAway} → ${drawingsAfterMoveAway} nét (phải +1, không mất nét cũ)`);
+  if (drawingsAfterMoveAway !== drawingsBeforeMoveAway + 1) {
+    throw new Error("bắt đầu vẽ từ trên một nét có sẵn mà nét đó bị tẩy mất — cử chỉ tẩy cướp cú vẽ bình thường");
+  }
+
+  // ── Vùng chọn nhiều: hộp bao, kéo từ chỗ trống, thả màu, kéo góc ─────────
+  await act(async () => { railBtn("Chuột").click(); await new Promise((r) => setTimeout(r, 20)); });
+  const cardEls = Array.from(document.querySelectorAll(".idea-card"));
+  await act(async () => {
+    mouse("mousedown", 20, 20, cardEls[0]);
+    mouse("mouseup", 20, 20);
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  await act(async () => {
+    cardEls[1].dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: 30, clientY: 30, button: 0, ctrlKey: true }));
+    mouse("mouseup", 30, 30);
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  const selBox = document.querySelector(".selection-box");
+  const handles = document.querySelectorAll(".selection-handle").length;
+  log(`chọn 2 thẻ: hộp bao = ${!!selBox} · ${handles} tay cầm ở góc`);
+  if (!selBox) throw new Error("chọn nhiều mà không có hộp bao — không ai biết cầm chỗ nào thì kéo được cả cụm");
+  if (handles !== 4) throw new Error("hộp bao phải có đúng 4 tay cầm ở bốn góc, có " + handles);
+
+  // Toạ độ hộp bao là toạ độ CANVAS (nó nằm trong .canvas đã transform), đổi về
+  // toạ độ màn hình mới bắn chuột vào giữa nó được.
+  const selCam = camera();
+  const boxRect = () => {
+    const st = document.querySelector(".selection-box").style;
+    const x = Number.parseFloat(st.left), y = Number.parseFloat(st.top);
+    const w = Number.parseFloat(st.width), h = Number.parseFloat(st.height);
+    return { x, y, w, h };
+  };
+  const toScreen = (cx, cy) => ({ x: cx * selCam.scale + selCam.panX, y: cy * selCam.scale + selCam.panY });
+  const box0 = boxRect();
+  const selMid = toScreen(box0.x + box0.w / 2, box0.y + box0.h / 2);
+
+  // KÉO TỪ CHỖ TRỐNG trong vùng chọn: cả cụm phải đi, không phải bắt đầu một cú
+  // quét mới. Bắn thẳng vào .viewport — đúng phần tử mà cú bấm rơi xuống nền
+  // canvas sẽ tới, và là điều kiện handleViewportMouseDown đòi hỏi.
+  const cardLeftBefore = cardEls[0].style.left;
+  const putsBeforeClusterDrag = globalThis.__puts.length;
+  await act(async () => {
+    canvasEl.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: selMid.x, clientY: selMid.y, button: 0 }));
+    mouse("mousemove", selMid.x + 60, selMid.y + 40);
+    await new Promise((r) => setTimeout(r, 60));
+    mouse("mousemove", selMid.x + 120, selMid.y + 80);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", selMid.x + 120, selMid.y + 80); await new Promise((r) => setTimeout(r, 80)); });
+  const cardLeftAfter = document.querySelectorAll(".idea-card")[0].style.left;
+  const stillSelected = document.querySelectorAll(".idea-card.selected").length;
+  log(`kéo từ chỗ trống trong vùng chọn: thẻ left ${cardLeftBefore} → ${cardLeftAfter} · còn ${stillSelected} thẻ được chọn · PUT thêm ${globalThis.__puts.length - putsBeforeClusterDrag} lần`);
+  if (cardLeftBefore === cardLeftAfter) throw new Error("kéo từ chỗ trống trong vùng chọn mà cụm không đi — vẫn đang quét vùng như cũ");
+  if (stillSelected !== 2) throw new Error("kéo cụm xong mà mất vùng chọn, còn " + stillSelected);
+  if (globalThis.__puts.length - putsBeforeClusterDrag !== 1) throw new Error("một cú kéo cụm phải đúng 1 lần lưu");
+
+  // THẢ MÀU vào chỗ trống trong vùng chọn: cả cụm đổi màu, không phải nhắm vào
+  // từng cái một.
+  const selMid2 = (() => { const b = boxRect(); return toScreen(b.x + b.w / 2, b.y + b.h / 2); })();
+  const palSwatch2 = document.querySelector(".filter-panel .pal-swatch");
+  if (!palSwatch2) throw new Error("panel Bảng màu không còn ô màu nào để kéo");
+  const putsBeforeClusterColor = globalThis.__puts.length;
+  await act(async () => {
+    palSwatch2.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: 300, clientY: 900, button: 0 }));
+    mouse("mousemove", selMid2.x, selMid2.y);
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  const boxLit = !!document.querySelector(".selection-box.drop");
+  await act(async () => { mouse("mouseup", selMid2.x, selMid2.y); await new Promise((r) => setTimeout(r, 60)); });
+  const colorPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const selIds = Array.from(document.querySelectorAll(".idea-card.selected")).map((el) => Number(el.dataset.id));
+  const colored = colorPut.nodes.filter((n) => selIds.includes(n.id));
+  log(`thả màu vào chỗ trống trong vùng chọn: hộp sáng lên = ${boxLit} · ${colored.length} thẻ nhận màu ${JSON.stringify(colored.map((n) => n.color))}`);
+  if (!boxLit) throw new Error("kéo màu vào vùng chọn mà hộp không sáng lên — không có gì nói là nó sẽ ăn");
+  if (globalThis.__puts.length - putsBeforeClusterColor !== 1) throw new Error("một cú thả màu phải đúng 1 lần lưu");
+  if (colored.length !== 2 || colored.some((n) => !n.color)) {
+    throw new Error("thả màu vào chỗ trống trong vùng chọn mà không phải cả cụm nhận màu: " + JSON.stringify(colored.map((n) => n.color)));
+  }
+
+  // KÉO GÓC: cả cụm phóng to — thẻ dãn ra xa nhau VÀ bề rộng thẻ nhân lên, còn
+  // góc đối diện thì đứng yên tuyệt đối.
+  const box1 = boxRect();
+  const seScreen = toScreen(box1.x + box1.w, box1.y + box1.h);
+  const nwBefore = { x: box1.x, y: box1.y };
+  const seHandle = document.querySelector(".selection-handle.se");
+  const nodesBefore = new Map(colorPut.nodes.filter((n) => selIds.includes(n.id)).map((n) => [n.id, { ...n }]));
+  const putsBeforeResize = globalThis.__puts.length;
+  await act(async () => {
+    seHandle.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: seScreen.x, clientY: seScreen.y, button: 0 }));
+    mouse("mousemove", seScreen.x + box1.w * selCam.scale, seScreen.y + box1.h * selCam.scale);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => {
+    mouse("mouseup", seScreen.x + box1.w * selCam.scale, seScreen.y + box1.h * selCam.scale);
+    await new Promise((r) => setTimeout(r, 80));
+  });
+  const box2 = boxRect();
+  const resizePut = globalThis.__puts[globalThis.__puts.length - 1];
+  const grownCards = resizePut.nodes.filter((n) => selIds.includes(n.id));
+  log(`kéo góc: hộp ${box1.w.toFixed(0)}×${box1.h.toFixed(0)} → ${box2.w.toFixed(0)}×${box2.h.toFixed(0)} · bề rộng thẻ ${grownCards.map((n) => n.w)} · PUT thêm ${globalThis.__puts.length - putsBeforeResize} lần`);
+  if (box2.w <= box1.w * 1.2) throw new Error(`kéo góc ra mà cụm không phóng to: ${box1.w} → ${box2.w}`);
+  if (Math.abs(box2.x - nwBefore.x) > 2 || Math.abs(box2.y - nwBefore.y) > 2) {
+    throw new Error(`kéo góc se thì góc nw phải đứng yên: ${nwBefore.x},${nwBefore.y} → ${box2.x},${box2.y}`);
+  }
+  if (grownCards.some((n) => !(n.w > 0))) throw new Error("thẻ trong cụm không nhận bề rộng mới — cụm chỉ dãn ra chứ không to lên");
+  if (globalThis.__puts.length - putsBeforeResize !== 1) throw new Error("một cú kéo góc phải đúng 1 lần lưu");
+  // Thứ KHÔNG được chọn phải đứng im tuyệt đối.
+  const selOutsider = resizePut.nodes.find((n) => !selIds.includes(n.id));
+  const selOutsiderBefore0 = colorPut.nodes.find((n) => n.id === selOutsider.id);
+  if (selOutsider.x !== selOutsiderBefore0.x || selOutsider.y !== selOutsiderBefore0.y) {
+    throw new Error("kéo góc mà thẻ ngoài vùng chọn cũng bị dời");
+  }
+  // Hoàn tác phải trả cả cụm về đúng cỡ cũ, trong MỘT bước.
+  await act(async () => {
+    window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }));
+    await new Promise((r) => setTimeout(r, 80));
+  });
+  const box3 = boxRect();
+  log(`Ctrl+Z sau khi kéo góc: hộp ${box2.w.toFixed(0)} → ${box3.w.toFixed(0)} (phải về ${box1.w.toFixed(0)})`);
+  if (Math.abs(box3.w - box1.w) > 2) throw new Error("một cú kéo góc phải hoàn tác được trong đúng một bước");
+
+  // ── Bấm nhiều lần trên NỀN TRỐNG: 2 lần hoàn tác, 3 lần làm lại ──────────
+  // Cử chỉ này thay chỗ "bấm đúp nền trống để tạo thẻ", nên phần đầu canh luôn
+  // rằng bấm đúp KHÔNG còn đẻ ra thẻ nữa.
+  const mcCard = () => document.querySelector('.idea-card[data-id="1"]');
+  const viewportEl = document.querySelector(".viewport");
+  const bgClick = (x, y, upX, upY) => {
+    mouse("mousedown", x, y, viewportEl);
+    mouse("mouseup", upX ?? x, upY ?? y, viewportEl);
+    viewportEl.dispatchEvent(new window.MouseEvent("click", {
+      bubbles: true, clientX: upX ?? x, clientY: upY ?? y, button: 0
+    }));
+  };
+  const settle = () => new Promise((r) => setTimeout(r, MULTI_CLICK_MS + 150));
+
+  // Chỗ NỀN THẬT SỰ TRỐNG để thử cử chỉ hoàn tác. Không viết cứng một toạ độ
+  // được: tới đoạn này bảng đã có 20 nét vẽ rải khắp nơi, camera đã lia và zoom
+  // vài lần, mà bấm trúng một cái nét thì cử chỉ chạy là "đổi nét liền/đứt" chứ
+  // không phải hoàn tác — test sẽ đỏ ở một chỗ chẳng liên quan gì tới nguyên
+  // nhân. Dò bằng ĐÚNG hàm hit-test mà ứng dụng dùng, nên nó tự đúng lại mỗi khi
+  // có ai thêm một nét vẽ mới vào các khối phía trên.
+  const emptyBg = (() => {
+    const cam = camera();
+    const put = globalThis.__puts[globalThis.__puts.length - 1];
+    const list = put.drawings || [];
+    for (let sx = 700; sx <= 1500; sx += 40) {
+      for (let sy = 150; sy <= 700; sy += 40) {
+        const p = { x: (sx - cam.panX) / cam.scale, y: (sy - cam.panY) / cam.scale };
+        // Nới rộng hơn PICK_RADIUS của ứng dụng: chỉ cần một chỗ trống thoáng,
+        // không cần chỗ trống sát sao.
+        if (!drawingsHitBy(list, p, 24).length) return { x: sx, y: sy };
+      }
+    }
+    throw new Error("không tìm được chỗ nền trống nào để thử cử chỉ bấm nhiều lần");
+  })();
+  log(`chỗ nền trống để thử cử chỉ: ${emptyBg.x},${emptyBg.y}`);
+
+  // Một bước để mà lùi: kéo thẻ 1 đi một đoạn.
+  const mcStart = mcCard().style.left;
+  await act(async () => {
+    mouse("mousedown", 300, 300, mcCard());
+    mouse("mousemove", 460, 300);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", 460, 300); await new Promise((r) => setTimeout(r, 60)); });
+  const mcMoved = mcCard().style.left;
+  if (mcMoved === mcStart) throw new Error("không kéo được thẻ thì không có bước hoàn tác để thử");
+
+  const mcCardsBefore = document.querySelectorAll(".idea-card").length;
+  await act(async () => { bgClick(emptyBg.x, emptyBg.y); bgClick(emptyBg.x, emptyBg.y); await settle(); });
+  const mcUndone = mcCard().style.left;
+  log(`bấm 2 lần nền trống: thẻ ${mcMoved} → ${mcUndone} (phải về ${mcStart})`
+    + ` · số thẻ ${mcCardsBefore} → ${document.querySelectorAll(".idea-card").length}`);
+  if (document.querySelectorAll(".idea-card").length !== mcCardsBefore) {
+    throw new Error("bấm đúp nền trống vẫn đẻ ra thẻ mới — cử chỉ cũ chưa được gỡ");
+  }
+  if (mcUndone !== mcStart) throw new Error(`bấm 2 lần phải hoàn tác về ${mcStart}, đang ở ${mcUndone}`);
+
+  await act(async () => { bgClick(emptyBg.x, emptyBg.y); bgClick(emptyBg.x, emptyBg.y); bgClick(emptyBg.x, emptyBg.y); await settle(); });
+  log(`bấm 3 lần nền trống: thẻ ${mcUndone} → ${mcCard().style.left} (phải về ${mcMoved})`);
+  if (mcCard().style.left !== mcMoved) {
+    throw new Error(`bấm 3 lần phải làm lại về ${mcMoved}, đang ở ${mcCard().style.left}`);
+  }
+
+  // Bấm 1 lần: không được động vào dữ liệu. Đây là cú bấm hay dùng nhất trên
+  // bảng (bỏ chọn), nên nó mà lùi được một bước thì hỏng hẳn.
+  const mcOnePos = mcCard().style.left;
+  await act(async () => { bgClick(emptyBg.x, emptyBg.y); await settle(); });
+  if (mcCard().style.left !== mcOnePos) throw new Error("bấm MỘT lần trên nền mà bảng đổi trạng thái");
+
+  // KÉO không phải BẤM: quét chọn hai lượt liền nhau không được thành hoàn tác.
+  // Không có chốt này thì mỗi lần quét hụt là một bước lùi không ai gọi.
+  await act(async () => {
+    bgClick(700, 300, 860, 420);
+    bgClick(700, 300, 860, 420);
+    await settle();
+  });
+  log(`kéo 2 lượt trên nền: thẻ vẫn ở ${mcCard().style.left} (phải là ${mcOnePos})`);
+  if (mcCard().style.left !== mcOnePos) throw new Error("hai cú KÉO bị đếm thành hai cú bấm → hoàn tác oan");
+
+  // Bấm 4 lần: bấm loạn tay không được biến thành một chuỗi thao tác.
+  await act(async () => {
+    for (let i = 0; i < 4; i++) bgClick(emptyBg.x, emptyBg.y);
+    await settle();
+  });
+  if (mcCard().style.left !== mcOnePos) throw new Error("bấm 4 lần mà bảng vẫn đổi trạng thái");
+
+  // Bấm 3 lần là thao tác "chọn cả đoạn văn" của trình duyệt: nó bôi đen nguyên
+  // vùng rồi bật thanh công cụ chọn-chữ đè lên bảng. Phải chặn từ gốc — nhưng
+  // ĐÚNG MỘT ngoại lệ: trong ô nhập thì bôi đen là thao tác cần thiết, bấm 3 lần
+  // ở đó phải chọn được cả dòng như mọi ô nhập khác.
+  const selStart = (target) => {
+    const ev = new window.Event("selectstart", { bubbles: true, cancelable: true });
+    target.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  };
+  const dragStart = (target) => {
+    const ev = new window.Event("dragstart", { bubbles: true, cancelable: true });
+    target.dispatchEvent(ev);
+    return ev.defaultPrevented;
+  };
+  const onCanvas = selStart(viewportEl);
+  const onCard = selStart(mcCard());
+  // Ô nhập dựng tạm: lúc này trên bảng không có ô nào đang mở, mà thứ cần canh
+  // là LUẬT ngoại lệ (thẻ INPUT/TEXTAREA đi qua nguyên vẹn) chứ không phải một ô
+  // cụ thể nào. Đặt trong .shell để nó nằm đúng trong tầm của cả handler lẫn CSS.
+  const boardInput = document.createElement("textarea");
+  document.querySelector(".shell").appendChild(boardInput);
+  const inInput = selStart(boardInput);
+  log(`chặn bôi đen: nền ${onCanvas} · thẻ ${onCard} · ô nhập ${inInput} (ô nhập phải là false)`);
+  if (!onCanvas || !onCard) throw new Error("bôi đen trên bảng chưa bị chặn — bấm 3 lần sẽ dính thanh công cụ chọn-chữ của trình duyệt");
+  if (inInput !== false) throw new Error("ô nhập cũng bị chặn bôi đen — không sửa chữ trong đó được nữa");
+  if (!dragStart(mcCard())) throw new Error("kéo-thả gốc của trình duyệt chưa bị chặn trên thẻ");
+  if (dragStart(boardInput)) throw new Error("ô nhập không được chặn kéo-thả");
+  boardInput.remove();
+
+  // ── Bấm hai lần lên MỘT NÉT: đổi nét liền ↔ nét đứt ─────────────────────
+  //
+  // Khối này nằm CUỐI cùng và tự vẽ lấy nét của nó thay vì mượn một nét có sẵn:
+  // cử chỉ cần biết chính xác một điểm NẰM TRÊN nét để nhắm vào, mà một nét vẽ
+  // từ đầu file thì vị trí của nó còn phụ thuộc mọi cú kéo, lia bảng và hoàn tác
+  // xảy ra ở giữa. Vẽ ngay tại chỗ thì toạ độ màn hình để bấm chính là toạ độ đã
+  // dùng để vẽ, không phải quy đổi gì cả.
+  await act(async () => { railBtn("Sửa").click(); await new Promise((r) => setTimeout(r, 30)); });
+  const dashCapture = document.querySelector(".ink-capture");
+  if (!dashCapture) throw new Error("mode Sửa phải có lớp bắt chuột .ink-capture");
+  await act(async () => { railBtn("Bút").click(); await new Promise((r) => setTimeout(r, 30)); });
+
+  // Hai nút nét liền / nét đứt phải có ở CẢ tool bút, không riêng hình khối.
+  const dashBtns = () => document.querySelectorAll(".tool-options .dash-pick");
+  log(`khu 4 của bút: ${dashBtns().length} nút nét liền/đứt`);
+  if (dashBtns().length !== 2) throw new Error("khu 4 của bút phải có 2 nút nét liền/nét đứt, có " + dashBtns().length);
+  if (!dashBtns()[0].className.includes("on")) throw new Error("mặc định phải là nét LIỀN");
+
+  // Vẽ một đoạn ngang bằng bút NÉT ĐỨT: nét lưu ra phải mang dashed = true, và
+  // path trên màn hình phải có stroke-dasharray.
+  await act(async () => { dashBtns()[1].click(); await new Promise((r) => setTimeout(r, 30)); });
+  const dashY = 620;
+  const putsBeforeDashed = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", 1500, dashY, dashCapture);
+    for (const x of [1560, 1620, 1680]) mouse("mousemove", x, dashY);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", 1680, dashY); await new Promise((r) => setTimeout(r, 60)); });
+  if (globalThis.__puts.length - putsBeforeDashed !== 1) throw new Error("một nét phải đúng 1 lần lưu");
+  const dashPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const dashDrawing = dashPut.drawings[dashPut.drawings.length - 1];
+  const dashPath = () => {
+    const paths = document.querySelectorAll(".ink-layer path");
+    return paths[paths.length - 1];
+  };
+  log(`vẽ bằng bút nét đứt: dashed=${dashDrawing.dashed} · stroke-dasharray="${dashPath().getAttribute("stroke-dasharray")}"`);
+  if (dashDrawing.dashed !== true) throw new Error("vẽ bằng bút nét đứt mà nét lưu ra không mang dashed = true");
+  if (!dashPath().getAttribute("stroke-dasharray")) throw new Error("nét đứt mà path không có stroke-dasharray — trên màn hình vẫn là nét liền");
+  // Nhịp đứt phải tỉ lệ với độ dày nét, không phải một chuỗi cố định.
+  const dashW = Number(dashPath().getAttribute("stroke-width"));
+  const dashParts = dashPath().getAttribute("stroke-dasharray").split(" ").map(Number);
+  if (!dashParts.every((v) => v > 0)) throw new Error("stroke-dasharray có số 0 — nét sẽ biến mất chứ không thành nét đứt");
+  if (dashParts[0] < dashW) throw new Error("nhịp đứt phải tính theo độ dày nét, đang nhỏ hơn cả bề dày");
+
+  // Trả bút về nét liền để phần dưới đo đúng cái CỬ CHỈ, không phải đo lựa chọn
+  // đang cầm trên tay.
+  await act(async () => { dashBtns()[0].click(); await new Promise((r) => setTimeout(r, 30)); });
+  await act(async () => { railBtn("Chuột").click(); await new Promise((r) => setTimeout(r, 30)); });
+
+  // Bấm hai lần lên chính cái nét vừa vẽ. Nó là nét MỚI NHẤT nên nằm trên cùng —
+  // trúng nhiều nét thì cử chỉ lấy cái trên, nên đích là xác định.
+  const dashId = dashDrawing.id;
+  const drawingById = (put, id) => put.drawings.find((d) => d.id === id);
+  const dashHit = { x: 1590, y: dashY };
+  const putsBeforeToggle = globalThis.__puts.length;
+  await act(async () => { bgClick(dashHit.x, dashHit.y); bgClick(dashHit.x, dashHit.y); await settle(); });
+  const togglePut = globalThis.__puts[globalThis.__puts.length - 1];
+  log(`bấm 2 lần lên nét đứt: dashed ${dashDrawing.dashed} → ${drawingById(togglePut, dashId).dashed}`
+    + ` · PUT thêm ${globalThis.__puts.length - putsBeforeToggle} lần`);
+  if (globalThis.__puts.length - putsBeforeToggle !== 1) throw new Error("một cú đổi nét phải đúng 1 lần lưu");
+  if (drawingById(togglePut, dashId).dashed !== false) throw new Error("bấm 2 lần lên nét đứt phải đổi nó thành nét liền");
+  if (dashPath().getAttribute("stroke-dasharray")) throw new Error("đã đổi sang nét liền mà path vẫn còn stroke-dasharray");
+
+  // Chỉ ĐÚNG cái nét được nhắm đổi, mọi nét khác y nguyên. Đây là chốt quan
+  // trọng nhất: cử chỉ này chạy trên một hit-test, nhắm trượt là sửa nhầm nét.
+  const otherChanged = togglePut.drawings.filter((d) => {
+    if (d.id === dashId) return false;
+    const before = drawingById(dashPut, d.id);
+    return !before || JSON.stringify(before) !== JSON.stringify(d);
+  });
+  if (otherChanged.length) throw new Error(`bấm 2 lần lên một nét mà ${otherChanged.length} nét khác cũng đổi theo`);
+
+  // Bấm hai lần nữa: đổi ngược lại. Tức lần thứ 3 KHÔNG lật thêm một phát —
+  // chuỗi đóng lại ngay sau khi làm, hai lần bấm mới là một cử chỉ mới.
+  await act(async () => { bgClick(dashHit.x, dashHit.y); bgClick(dashHit.x, dashHit.y); await settle(); });
+  const backPut = globalThis.__puts[globalThis.__puts.length - 1];
+  log(`bấm 2 lần nữa: dashed → ${drawingById(backPut, dashId).dashed} (phải quay lại true)`);
+  if (drawingById(backPut, dashId).dashed !== true) throw new Error("bấm 2 lần nữa phải đổi ngược về nét đứt");
+
+  // MỘT lần bấm lên nét thì không được đổi gì — đây là cú bấm để CHỌN nét, cú
+  // hay dùng nhất trên một nét vẽ.
+  const putsBeforeSingle = globalThis.__puts.length;
+  await act(async () => { bgClick(dashHit.x, dashHit.y); await settle(); });
+  log(`bấm 1 lần lên nét: PUT thêm ${globalThis.__puts.length - putsBeforeSingle} lần (phải là 0)`);
+  if (globalThis.__puts.length !== putsBeforeSingle) throw new Error("bấm MỘT lần lên một nét mà bảng đã đổi trạng thái");
+
+  // Bấm một cái lên NÉT rồi một cái lên NỀN trong cùng cửa sổ thời gian: hai đích
+  // khác nhau nên KHÔNG được cộng thành "bấm đúp" của cái nào — không đổi nét, và
+  // cũng không hoàn tác.
+  const putsBeforeMixed = globalThis.__puts.length;
+  const mixedDashed = drawingById(backPut, dashId).dashed;
+  await act(async () => { bgClick(dashHit.x, dashHit.y); bgClick(emptyBg.x, emptyBg.y); await settle(); });
+  log(`bấm nét rồi bấm nền: PUT thêm ${globalThis.__puts.length - putsBeforeMixed} lần (phải là 0)`);
+  if (globalThis.__puts.length !== putsBeforeMixed) {
+    const mixedPut = globalThis.__puts[globalThis.__puts.length - 1];
+    throw new Error(`bấm lên nét rồi lên nền bị đếm chung thành một cử chỉ — dashed đang là ${drawingById(mixedPut, dashId)?.dashed}, trước đó ${mixedDashed}`);
+  }
+
+  // ── Nét liền / nét đứt cho CẢ VÙNG CHỌN ─────────────────────────────────
+  //
+  // Vẽ thêm một nét thứ hai ngay cạnh nét cũ, quét chọn cả hai, rồi kiểm hai
+  // đường: nút trên thanh vùng chọn, và cử chỉ bấm hai lần lên một nét TRONG
+  // cụm — cái sau phải kéo theo cả cụm chứ không chỉ cái nét bị nhắm.
+  await act(async () => { railBtn("Sửa").click(); await new Promise((r) => setTimeout(r, 30)); });
+  const selDashCapture = document.querySelector(".ink-capture");
+  const selDashY = dashY + 60;
+  await act(async () => {
+    mouse("mousedown", 1500, selDashY, selDashCapture);
+    for (const x of [1560, 1620, 1680]) mouse("mousemove", x, selDashY);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", 1680, selDashY); await new Promise((r) => setTimeout(r, 60)); });
+  const twoPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const dashId2 = twoPut.drawings[twoPut.drawings.length - 1].id;
+  // Nét thứ hai vẽ bằng bút đã trả về NÉT LIỀN ở khối trên, nét thứ nhất đang là
+  // nét đứt: cụm lẫn lộn — đúng trường hợp cần canh.
+  if (drawingById(twoPut, dashId).dashed !== true) throw new Error("nét 1 phải đang là nét đứt");
+  if (drawingById(twoPut, dashId2).dashed === true) throw new Error("nét 2 phải đang là nét liền");
+
+  await act(async () => { railBtn("Chuột").click(); await new Promise((r) => setTimeout(r, 30)); });
+  // Quét một vùng trùm cả hai nét. Bắn thẳng vào .viewport — đúng phần tử mà cú
+  // bấm rơi xuống nền canvas sẽ tới.
+  await act(async () => {
+    viewportEl.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: 1450, clientY: dashY - 40, button: 0 }));
+    mouse("mousemove", 1600, selDashY + 20);
+    await new Promise((r) => setTimeout(r, 40));
+    mouse("mousemove", 1740, selDashY + 40);
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  await act(async () => { mouse("mouseup", 1740, selDashY + 40); await new Promise((r) => setTimeout(r, 60)); });
+  const selMarks = document.querySelectorAll(".ink-layer .ink-selected").length;
+  const bulkBar = document.querySelector(".bulk-bar");
+  log(`quét chọn 2 nét: ${selMarks} nét được chọn · thanh vùng chọn = ${!!bulkBar}`);
+  if (selMarks !== 2) throw new Error(`quét phải chọn đúng 2 nét, được ${selMarks}`);
+  if (!bulkBar) throw new Error("chọn nét vẽ mà không hiện thanh vùng chọn");
+
+  // Hai nút phải CÓ MẶT trên thanh — quét xong mà không thấy chỗ bấm thì tính
+  // năng coi như không tồn tại với người dùng.
+  const dashBulkBtns = () => Array.from(document.querySelectorAll(".bulk-bar .bb-clear"))
+    .filter((b) => b.textContent === "Nét liền" || b.textContent === "Nét đứt");
+  log(`thanh vùng chọn: ${dashBulkBtns().length} nút nét liền/đứt`);
+  if (dashBulkBtns().length !== 2) throw new Error("thanh vùng chọn phải có 2 nút nét liền/nét đứt, có " + dashBulkBtns().length);
+
+  // Bấm "Nét đứt": CẢ CỤM về nét đứt, kể cả cái đang liền, trong ĐÚNG một lần lưu.
+  const putsBeforeBulk = globalThis.__puts.length;
+  await act(async () => {
+    dashBulkBtns().find((b) => b.textContent === "Nét đứt").click();
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  const bulkPut = globalThis.__puts[globalThis.__puts.length - 1];
+  log(`nút "Nét đứt" cho vùng chọn: nét 1 → ${drawingById(bulkPut, dashId).dashed}`
+    + ` · nét 2 → ${drawingById(bulkPut, dashId2).dashed} · PUT thêm ${globalThis.__puts.length - putsBeforeBulk} lần`);
+  if (globalThis.__puts.length - putsBeforeBulk !== 1) throw new Error("đổi nét cho cả cụm phải đúng 1 lần lưu");
+  if (drawingById(bulkPut, dashId).dashed !== true || drawingById(bulkPut, dashId2).dashed !== true) {
+    throw new Error("bấm Nét đứt mà không phải cả vùng chọn thành nét đứt");
+  }
+
+  // Bấm hai lần lên MỘT nét trong cụm: cả cụm đổi theo, không chỉ cái bị nhắm.
+  // Cú bấm đầu rơi vào một nét ĐANG NẰM TRONG vùng chọn nên vùng chọn được giữ
+  // nguyên (không thu về một nét) — đó là điều kiện để cử chỉ thấy được cả cụm.
+  const putsBeforeClusterDash = globalThis.__puts.length;
+  await act(async () => { bgClick(dashHit.x, dashHit.y); bgClick(dashHit.x, dashHit.y); await settle(); });
+  const clusterPut = globalThis.__puts[globalThis.__puts.length - 1];
+  log(`bấm 2 lần lên 1 nét trong cụm: nét 1 → ${drawingById(clusterPut, dashId).dashed}`
+    + ` · nét 2 → ${drawingById(clusterPut, dashId2).dashed} (cả hai phải là false)`
+    + ` · còn ${document.querySelectorAll(".ink-layer .ink-selected").length} nét được chọn`);
+  if (globalThis.__puts.length - putsBeforeClusterDash !== 1) throw new Error("đổi nét cả cụm bằng cử chỉ phải đúng 1 lần lưu");
+  if (drawingById(clusterPut, dashId).dashed !== false || drawingById(clusterPut, dashId2).dashed !== false) {
+    throw new Error("bấm 2 lần lên một nét TRONG vùng chọn phải đổi cả cụm, không chỉ cái bị nhắm");
+  }
+
+  // ── Ctrl+Z / Ctrl+Shift+Z KHÔNG được kéo màn hình về chỗ cũ ─────────────
+  //
+  // `view` (pan + zoom) nằm chung trong board và board là thứ được chụp lại vào
+  // lịch sử, nên nếu khôi phục cả cục thì lùi một bước là màn hình nhảy về chỗ
+  // đứng lúc làm việc đó. Cách đo: sau một thao tác, LIA BẢNG đi chỗ khác rồi
+  // mới hoàn tác — camera phải đứng nguyên chỗ vừa lia, còn nội dung thì lùi.
+  const camBeforePan = camera();
+  await act(async () => {
+    // Chuột PHẢI trên nền là lia bảng (xem handleViewportMouseDown).
+    viewportEl.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: 1000, clientY: 400, button: 2 }));
+    mouse("mousemove", 1180, 520);
+    await new Promise((r) => setTimeout(r, 40));
+    mouse("mousemove", 1300, 600);
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  await act(async () => { mouse("mouseup", 1300, 600); await new Promise((r) => setTimeout(r, 60)); });
+  const camPanned = camera();
+  if (Math.abs(camPanned.panX - camBeforePan.panX) < 50) {
+    throw new Error(`không lia được bảng thì không thử được chuyện Ctrl+Z nhảy màn hình: ${camBeforePan.panX} → ${camPanned.panX}`);
+  }
+
+  await act(async () => {
+    window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true }));
+    await new Promise((r) => setTimeout(r, 100));
+  });
+  const camAfterUndo = camera();
+  const undonePut = globalThis.__puts[globalThis.__puts.length - 1];
+  log(`Ctrl+Z sau khi lia bảng: camera ${camPanned.panX.toFixed(0)},${camPanned.panY.toFixed(0)}`
+    + ` → ${camAfterUndo.panX.toFixed(0)},${camAfterUndo.panY.toFixed(0)} (phải đứng yên)`
+    + ` · nét 1 dashed → ${drawingById(undonePut, dashId).dashed} (phải lùi về true)`);
+  if (Math.abs(camAfterUndo.panX - camPanned.panX) > 1 || Math.abs(camAfterUndo.panY - camPanned.panY) > 1) {
+    throw new Error(`Ctrl+Z kéo màn hình về chỗ cũ: ${camPanned.panX},${camPanned.panY} → ${camAfterUndo.panX},${camAfterUndo.panY}`);
+  }
+  if (Math.abs(camAfterUndo.scale - camPanned.scale) > 0.001) throw new Error("Ctrl+Z đổi cả mức zoom");
+  // Vẫn phải lùi THẬT: giữ nguyên camera không được biến hoàn tác thành vô tác dụng.
+  if (drawingById(undonePut, dashId).dashed !== true) throw new Error("Ctrl+Z giữ được camera nhưng không lùi được nội dung");
+
+  await act(async () => {
+    window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "z", ctrlKey: true, shiftKey: true, bubbles: true }));
+    await new Promise((r) => setTimeout(r, 100));
+  });
+  const camAfterRedo = camera();
+  const redonePut = globalThis.__puts[globalThis.__puts.length - 1];
+  log(`Ctrl+Shift+Z: camera đứng yên = ${Math.abs(camAfterRedo.panX - camPanned.panX) <= 1}`
+    + ` · nét 1 dashed → ${drawingById(redonePut, dashId).dashed} (phải về lại false)`);
+  if (Math.abs(camAfterRedo.panX - camPanned.panX) > 1 || Math.abs(camAfterRedo.panY - camPanned.panY) > 1) {
+    throw new Error("Ctrl+Shift+Z cũng kéo màn hình đi chỗ khác");
+  }
+  if (drawingById(redonePut, dashId).dashed !== false) throw new Error("Ctrl+Shift+Z không làm lại được nội dung");
+
+  // Nét NGOÀI vùng chọn vẫn phải y nguyên — cử chỉ áp cho cụm, không phải cho bảng.
+  const clusterOutsiders = clusterPut.drawings.filter((d) => {
+    if (d.id === dashId || d.id === dashId2) return false;
+    const before = drawingById(bulkPut, d.id);
+    return !before || JSON.stringify(before) !== JSON.stringify(d);
+  });
+  if (clusterOutsiders.length) throw new Error(`đổi nét cho vùng chọn mà ${clusterOutsiders.length} nét ngoài vùng chọn cũng đổi theo`);
+
+  // ── Đang cầm BÚT: bấm một cái là chọn nét, rồi sửa ngay tại chỗ ──────────
+  //
+  // Trọn vòng người dùng đi: giữ tay cho nét về hình chuẩn → bấm một cái lên nó
+  // để chọn → kéo góc. Không rời cây bút lần nào. Trước đây cú bấm không di rơi
+  // vào hư không và muốn sửa thì phải sang mode Chuột.
+  await act(async () => { railBtn("Sửa").click(); await new Promise((r) => setTimeout(r, 30)); });
+  await act(async () => { railBtn("Bút").click(); await new Promise((r) => setTimeout(r, 30)); });
+  const penCapture = () => document.querySelector(".ink-capture");
+  if (!penCapture()) throw new Error("mode Sửa phải có lớp bắt chuột .ink-capture");
+  // Khối "tắt giữ-tay" ở trên tắt nút này và không bật lại — bật lại ở đây chứ
+  // không sửa khối kia, để bài test ở đó vẫn kết thúc ở đúng trạng thái nó đang
+  // canh. Đọc trạng thái rồi mới bấm, không bấm mù.
+  const penSnapToggle = () => Array.from(document.querySelectorAll(".tool-options .tool-btn"))
+    .find((b) => (b.title || "").startsWith("Giữ tay"));
+  if (!penSnapToggle()) throw new Error("khu 4 của bút phải có nút giữ-tay-để-bắt-hình");
+  if (!penSnapToggle().classList.contains("on")) {
+    await act(async () => { penSnapToggle().click(); await new Promise((r) => setTimeout(r, 30)); });
+  }
+  if (!penSnapToggle().classList.contains("on")) throw new Error("không bật lại được giữ-tay-để-bắt-hình");
+
+  // Vẽ một tam giác rồi GIỮ TAY cho nó về hình chuẩn.
+  const penTriPath = [[1500, 760], [1560, 880], [1440, 880]];
+  await act(async () => {
+    mouse("mousedown", penTriPath[0][0], penTriPath[0][1], penCapture());
+    const loop = penTriPath.concat([penTriPath[0]]);
+    for (let i = 0; i + 1 < loop.length; i++) {
+      const [ax, ay] = loop[i], [bx, by] = loop[i + 1];
+      for (let k = 1; k <= 8; k++) mouse("mousemove", ax + (bx - ax) * (k / 8), ay + (by - ay) * (k / 8));
+    }
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, SNAP_HOLD_MS + 400)); });
+  await act(async () => { mouse("mouseup", penTriPath[0][0], penTriPath[0][1]); await new Promise((r) => setTimeout(r, 60)); });
+  const penTriPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const penTriDrawing = penTriPut.drawings[penTriPut.drawings.length - 1];
+  log(`bút + giữ tay: tam giác → kind="${penTriDrawing.kind}" ${penTriDrawing.pts.length} số`);
+  if (penTriDrawing.kind !== "triangle") throw new Error(`giữ tay trên tam giác phải ra "triangle", ra "${penTriDrawing.kind}"`);
+
+  // Chưa chọn gì thì chưa có tay cầm nào.
+  if (document.querySelectorAll(".shape-handle").length) throw new Error("chưa chọn hình nào mà đã có tay cầm");
+
+  // BẤM MỘT CÁI lên hình vừa ra — vẫn đang cầm bút. Bấm vào một ĐỈNH của tam
+  // giác: chắc chắn nằm trên đường bao, nên hit-test không thể trượt.
+  const camPen = camera();
+  const toScreenPen = (cx, cy) => ({ x: cx * camPen.scale + camPen.panX, y: cy * camPen.scale + camPen.panY });
+  const penApex = toScreenPen(penTriDrawing.pts[0], penTriDrawing.pts[1]);
+  const putsBeforePick = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", penApex.x, penApex.y, penCapture());
+    mouse("mouseup", penApex.x, penApex.y);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  const pickedMarks = document.querySelectorAll(".ink-layer .ink-selected").length;
+  const penHandles = document.querySelectorAll(".shape-handle").length;
+  log(`bút + bấm 1 cái lên hình: ${pickedMarks} nét được chọn · ${penHandles} tay cầm hiện ra`
+    + ` · PUT thêm ${globalThis.__puts.length - putsBeforePick} lần (phải là 0)`);
+  if (pickedMarks !== 1) throw new Error(`bấm một cái khi đang cầm bút phải chọn đúng 1 nét, được ${pickedMarks}`);
+  // Tam giác ở dạng đỉnh thật: 3 tay cầm góc + 3 tay cầm cạnh.
+  if (penHandles !== 6) throw new Error(`chọn tam giác phải hiện 6 tay cầm, có ${penHandles}`);
+  // Cú bấm để CHỌN không được là một thao tác sửa dữ liệu.
+  if (globalThis.__puts.length !== putsBeforePick) throw new Error("cú bấm để chọn lại ghi thêm một bản lưu");
+
+  // KÉO MỘT TAY CẦM — vẫn đang cầm bút. Đây là chỗ dễ hỏng nhất: tay cầm nằm
+  // trong .canvas (có transform → ngữ cảnh xếp lớp riêng) nên z-index của nó
+  // không bao giờ thắng .ink-capture; nếu handleInkCaptureMouseDown không tự dò
+  // thì cú kéo này biến thành một nét vẽ mới đè lên hình.
+  const penGrab = toScreenPen(penTriDrawing.pts[0], penTriDrawing.pts[1]);
+  const pathsBeforeGrab = document.querySelectorAll(".ink-layer path").length;
+  const putsBeforeGrab = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", penGrab.x, penGrab.y, penCapture());
+    mouse("mousemove", penGrab.x + 70, penGrab.y - 50);
+    await new Promise((r) => setTimeout(r, 50));
+    mouse("mousemove", penGrab.x + 140, penGrab.y - 100);
+    await new Promise((r) => setTimeout(r, 50));
+  });
+  await act(async () => { mouse("mouseup", penGrab.x + 140, penGrab.y - 100); await new Promise((r) => setTimeout(r, 80)); });
+  const grabPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const penMoved = grabPut.drawings.find((d) => d.id === penTriDrawing.id);
+  const penMovedVerts = [];
+  for (let i = 0; i + 1 < penMoved.pts.length; i += 2) {
+    const same = Math.abs(penMoved.pts[i] - penTriDrawing.pts[i]) < 2 && Math.abs(penMoved.pts[i + 1] - penTriDrawing.pts[i + 1]) < 2;
+    if (!same) penMovedVerts.push(i / 2);
+  }
+  log(`bút + kéo tay cầm góc: ${penMovedVerts.length}/3 đỉnh đổi chỗ · ${pathsBeforeGrab} → ${document.querySelectorAll(".ink-layer path").length} path`
+    + ` · PUT thêm ${globalThis.__puts.length - putsBeforeGrab} lần`);
+  if (document.querySelectorAll(".ink-layer path").length !== pathsBeforeGrab) {
+    throw new Error("kéo tay cầm khi đang cầm bút lại đẻ ra một nét vẽ mới — cú bấm rơi xuống lớp vẽ chứ không vào tay cầm");
+  }
+  if (globalThis.__puts.length - putsBeforeGrab !== 1) throw new Error("một cú kéo tay cầm phải đúng 1 lần lưu");
+  if (penMovedVerts.length !== 1) throw new Error(`kéo MỘT góc thì chỉ một đỉnh được đi, có ${penMovedVerts.length} đỉnh đổi chỗ`);
+  // Hình sau khi kéo — dùng lại ở bài cục gôm bên dưới.
+  const penTriTarget = penMoved;
+
+  // Bấm vào CHỖ TRỐNG khi đang cầm bút thì bỏ chọn — cùng phản xạ với mode Chuột.
+  await act(async () => {
+    mouse("mousedown", emptyBg.x, emptyBg.y, penCapture());
+    mouse("mouseup", emptyBg.x, emptyBg.y);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  log(`bút + bấm chỗ trống: còn ${document.querySelectorAll(".ink-layer .ink-selected").length} nét được chọn · ${document.querySelectorAll(".shape-handle").length} tay cầm`);
+  if (document.querySelectorAll(".ink-layer .ink-selected").length !== 0) throw new Error("bấm chỗ trống khi đang cầm bút mà không bỏ chọn");
+
+  // CỤC GÔM không được dính cử chỉ đổi nét đứt: ở đó cú bấm ĐÃ CÓ VIỆC (xoá nét
+  // ngay từ cú bấm đầu), chồng thêm là vừa xoá vừa đổi. Bài này sinh ra từ một
+  // lỗi thật: chốt loại trừ viết `mode === "ink"` trong khi giá trị thật là
+  // "draw", nên nó chưa bao giờ đúng và cử chỉ vẫn ăn ở cục gôm.
+  await act(async () => { railBtn("Cục gôm").click(); await new Promise((r) => setTimeout(r, 30)); });
+  const eraserCapture = document.querySelector(".ink-capture");
+  const putsBeforeEraserDbl = globalThis.__puts.length;
+  const eraserHit = toScreenPen(penTriTarget.pts[0], penTriTarget.pts[1]);
+  await act(async () => {
+    for (let i = 0; i < 2; i++) {
+      mouse("mousedown", eraserHit.x, eraserHit.y, eraserCapture);
+      mouse("mouseup", eraserHit.x, eraserHit.y);
+      eraserCapture.dispatchEvent(new window.MouseEvent("click", {
+        bubbles: true, clientX: eraserHit.x, clientY: eraserHit.y, button: 0
+      }));
+    }
+    await settle();
+  });
+  const eraserPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const survivor = eraserPut.drawings.find((d) => d.id === penTriTarget.id);
+  log(`cục gôm + bấm 2 lần: PUT thêm ${globalThis.__puts.length - putsBeforeEraserDbl} lần`
+    + ` · hình còn lại = ${!!survivor}${survivor ? ` dashed=${survivor.dashed}` : ""}`);
+  if (survivor && survivor.dashed) throw new Error("bấm 2 lần khi đang cầm CỤC GÔM lại đổi nét đứt — chốt loại trừ không ăn");
+  await act(async () => { railBtn("Bút").click(); await new Promise((r) => setTimeout(r, 30)); });
+
+  // VẼ vẫn phải bình thường: cú bấm CÓ DI vẫn ra nét, không bị cử chỉ chọn nuốt.
+  const pathsBeforeStillDraw = document.querySelectorAll(".ink-layer path").length;
+  await act(async () => {
+    mouse("mousedown", 1450, 1100, penCapture());
+    for (const x of [1500, 1550, 1600]) mouse("mousemove", x, 1100 + (x % 7));
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", 1600, 1100); await new Promise((r) => setTimeout(r, 60)); });
+  log(`bút vẫn vẽ được: ${pathsBeforeStillDraw} → ${document.querySelectorAll(".ink-layer path").length} path`);
+  if (document.querySelectorAll(".ink-layer path").length !== pathsBeforeStillDraw + 1) {
+    throw new Error("cử chỉ bấm-để-chọn đã nuốt mất cú vẽ bình thường");
+  }
+
+  // ═══ CỤC GÔM: HAI KIỂU TẨY, VÀ CỬ CHỈ ĐỔI BÚT ↔ CỤC GÔM ═════════════════════
+
+  await act(async () => { railBtn("Cục gôm").click(); await new Promise((r) => setTimeout(r, 30)); });
+  const erasePicks = () => document.querySelectorAll(".tool-options .erase-pick");
+  const eraseWidths = () => document.querySelectorAll(".tool-options .erase-width");
+  log(`khu 4 của cục gôm: ${erasePicks().length} kiểu tẩy · ${eraseWidths().length} nút cỡ (đang ở kiểu "cả nét" nên phải là 0)`);
+  if (erasePicks().length !== 2) throw new Error(`cục gôm phải có 2 kiểu tẩy, có ${erasePicks().length}`);
+  // Ở kiểu "cả nét" thì bề rộng KHÔNG có tác dụng gì — để ba nút cỡ nằm đó là
+  // mời người dùng chỉnh một thứ không đổi được gì.
+  if (eraseWidths().length !== 0) throw new Error("kiểu \"cả nét\" không dùng tới bề rộng — ba nút cỡ không được hiện");
+
+  await act(async () => { erasePicks()[1].click(); await new Promise((r) => setTimeout(r, 30)); });
+  log(`chọn "tẩy theo độ rộng": ${eraseWidths().length} nút cỡ hiện ra`);
+  if (eraseWidths().length !== 3) throw new Error(`kiểu theo độ rộng phải hiện 3 nút cỡ, có ${eraseWidths().length}`);
+  await act(async () => { eraseWidths()[1].click(); await new Promise((r) => setTimeout(r, 30)); });
+
+  // Một DẢI NGANG trống để vẽ nét thí nghiệm rồi cắt nó. Dò bằng đúng hàm
+  // hit-test của ứng dụng, cùng lý do với emptyBg ở khối trên: tới đây bảng đã
+  // đầy nét, viết cứng toạ độ thì nhát cắt sẽ ăn nhầm nét của bài khác và test
+  // đỏ ở chỗ chẳng liên quan.
+  const bandX0 = 700, bandX1 = 1400;
+  const clearAt = (list, cam, sx, sy, pad) => {
+    const p = { x: (sx - cam.panX) / cam.scale, y: (sy - cam.panY) / cam.scale };
+    return !drawingsHitBy(list, p, pad).length;
+  };
+  const cutRow = (() => {
+    const cam = camera();
+    const list = (globalThis.__puts[globalThis.__puts.length - 1].drawings) || [];
+    for (let sy = 200; sy <= 1000; sy += 25) {
+      let ok = true;
+      // Trống cả theo chiều NGANG (chỗ đặt nét) lẫn chiều DỌC ±80 (chỗ rê cục
+      // tẩy cắt ngang qua nó).
+      for (let sx = bandX0 - 40; sx <= bandX1 + 40 && ok; sx += 20) {
+        for (const dy of [-80, -40, 0, 40, 80]) if (!clearAt(list, cam, sx, sy + dy, 30)) { ok = false; break; }
+      }
+      if (ok) return sy;
+    }
+    throw new Error("không tìm được dải ngang trống nào để thử cục tẩy theo độ rộng");
+  })();
+  log(`dải trống để thử cắt nét: y=${cutRow}`);
+
+  // Vẽ một nét NGANG DÀI bằng bút.
+  await act(async () => { railBtn("Bút").click(); await new Promise((r) => setTimeout(r, 30)); });
+  await act(async () => {
+    mouse("mousedown", bandX0, cutRow, penCapture());
+    for (let x = bandX0 + 50; x <= bandX1; x += 50) mouse("mousemove", x, cutRow);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", bandX1, cutRow); await new Promise((r) => setTimeout(r, 60)); });
+  const longPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const longStroke = longPut.drawings[longPut.drawings.length - 1];
+  if (longStroke.kind !== "pen") throw new Error(`nét thí nghiệm phải là nét bút, ra "${longStroke.kind}"`);
+  const beforeCutIds = new Set(longPut.drawings.map((d) => d.id));
+  const longX0 = Math.min(longStroke.pts[0], longStroke.pts[longStroke.pts.length - 2]);
+  const longX1 = Math.max(longStroke.pts[0], longStroke.pts[longStroke.pts.length - 2]);
+
+  // RÊ CỤC TẨY cắt ngang qua giữa nét đó.
+  await act(async () => { railBtn("Cục gôm").click(); await new Promise((r) => setTimeout(r, 30)); });
+  const cutMidX = Math.round((bandX0 + bandX1) / 2);
+  await act(async () => {
+    mouse("mousedown", cutMidX, cutRow - 60, document.querySelector(".ink-capture"));
+    for (const dy of [-40, -20, 0, 20, 40, 60]) mouse("mousemove", cutMidX, cutRow + dy);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", cutMidX, cutRow + 60); await new Promise((r) => setTimeout(r, 80)); });
+  const cutPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const fragments = cutPut.drawings.filter((d) => !beforeCutIds.has(d.id) && d.kind === "pen");
+  const originalGone = !cutPut.drawings.some((d) => d.id === longStroke.id);
+  log(`tẩy theo độ rộng: nét gốc còn = ${!originalGone} · cắt ra ${fragments.length} mảnh`);
+  if (!originalGone) throw new Error("nét bị cắt vẫn còn nguyên bản cũ trong bảng — mảnh mới và nét cũ đang cùng tồn tại");
+  if (fragments.length !== 2) throw new Error(`cắt ngang giữa một nét thẳng phải ra đúng 2 mảnh, ra ${fragments.length}`);
+
+  // Hai mảnh phải nằm HAI BÊN nhát cắt và chừa ra một khoảng hở ở giữa — nếu
+  // không thì nó chỉ xoá nét rồi vẽ lại y hệt, chứ không cắt gì cả.
+  const spanOf = (d) => {
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i + 1 < d.pts.length; i += 2) { lo = Math.min(lo, d.pts[i]); hi = Math.max(hi, d.pts[i]); }
+    return { lo, hi };
+  };
+  const spans = fragments.map(spanOf).sort((a, b) => a.lo - b.lo);
+  const gap = spans[1].lo - spans[0].hi;
+  log(`  hai mảnh: [${Math.round(spans[0].lo)}…${Math.round(spans[0].hi)}] và [${Math.round(spans[1].lo)}…${Math.round(spans[1].hi)}] · hở ${Math.round(gap)}`);
+  if (!(gap > 0)) throw new Error(`hai mảnh phải chừa ra một khoảng hở, đo được ${gap}`);
+  // Hai đầu NGOÀI của nét gốc phải còn nguyên: cục tẩy chỉ đi qua giữa.
+  if (Math.abs(spans[0].lo - longX0) > 3 || Math.abs(spans[1].hi - longX1) > 3) {
+    throw new Error("hai đầu ngoài của nét bị xê dịch — nhát cắt ăn cả phần cục tẩy chưa đi qua");
+  }
+  // Mảnh vẫn là chính cái nét đó, chỉ ngắn đi.
+  for (const f of fragments) {
+    if (f.color !== longStroke.color || f.w !== longStroke.w) {
+      throw new Error("mảnh cắt ra không giữ màu / độ dày của nét gốc");
+    }
+    // `from` là dữ liệu NỘI BỘ của lượt tẩy (nét gốc nào đẻ ra mảnh này, để đặt
+    // nó đúng tầng trên/dưới). Nó phải bị bóc ra ở chỗ commit, không được lưu.
+    if ("from" in f) throw new Error("mảnh cắt ra vẫn mang field `from` — dữ liệu nội bộ của lượt tẩy lọt vào bảng");
+  }
+
+  // ——— Cắt được cả HÌNH KHỐI, không riêng nét bút ———
+  //
+  // Đây là bài quan trọng nhất của khối này, và nó sinh ra từ một lỗi thật: bản
+  // đầu chỉ cắt kind "pen". Mà cử chỉ giữ-tay-để-bắt-hình biến nét bút THÀNH
+  // HÌNH, nên trên một cái bảng dùng thật thì phần lớn thứ trông như nét vẽ lại
+  // có kind là triangle/rect/ellipse — và cục tẩy theo độ rộng gặp gì cũng xoá
+  // cả cục, đúng ngược với thứ nó hứa.
+  await act(async () => { railBtn("Bút").click(); await new Promise((r) => setTimeout(r, 30)); });
+  const boxTop = cutRow + 150;
+  const boxPath = [[bandX0 + 80, boxTop], [bandX0 + 320, boxTop], [bandX0 + 320, boxTop + 160], [bandX0 + 80, boxTop + 160]];
+  await act(async () => {
+    mouse("mousedown", boxPath[0][0], boxPath[0][1], penCapture());
+    const loop = boxPath.concat([boxPath[0]]);
+    for (let i = 0; i + 1 < loop.length; i++) {
+      const [ax, ay] = loop[i], [bx, by] = loop[i + 1];
+      for (let k = 1; k <= 8; k++) mouse("mousemove", ax + (bx - ax) * (k / 8), ay + (by - ay) * (k / 8));
+    }
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { await new Promise((r) => setTimeout(r, SNAP_HOLD_MS + 400)); });
+  await act(async () => { mouse("mouseup", boxPath[0][0], boxPath[0][1]); await new Promise((r) => setTimeout(r, 80)); });
+  const shapePut = globalThis.__puts[globalThis.__puts.length - 1];
+  const cutTarget = shapePut.drawings[shapePut.drawings.length - 1];
+  log(`vẽ + giữ tay ra một HÌNH: kind="${cutTarget.kind}"`);
+  if (cutTarget.kind === "pen") throw new Error("bài này cần một HÌNH để cắt, giữ tay không bắt được hình nào");
+
+  // Rê cục tẩy theo độ rộng ngang qua CẠNH TRÁI của cái hình đó.
+  await act(async () => { railBtn("Cục gôm").click(); await new Promise((r) => setTimeout(r, 30)); });
+  await act(async () => { erasePicks()[1].click(); await new Promise((r) => setTimeout(r, 30)); });
+  const beforeShapeCut = new Set(shapePut.drawings.map((d) => d.id));
+  const shapeEdgeX = bandX0 + 80;
+  const shapeEdgeY = boxTop + 80;
+  await act(async () => {
+    mouse("mousedown", shapeEdgeX - 45, shapeEdgeY, document.querySelector(".ink-capture"));
+    for (const dx of [-30, -15, 0, 15, 30, 45]) mouse("mousemove", shapeEdgeX + dx, shapeEdgeY);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", shapeEdgeX + 45, shapeEdgeY); await new Promise((r) => setTimeout(r, 80)); });
+  const shapeCutPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const shapeGone = !shapeCutPut.drawings.some((d) => d.id === cutTarget.id);
+  const shapeParts = shapeCutPut.drawings.filter((d) => !beforeShapeCut.has(d.id));
+  log(`tẩy theo độ rộng lên HÌNH "${cutTarget.kind}": hình cũ mất = ${shapeGone} · cắt ra ${shapeParts.length} mảnh kind="${shapeParts.map((p) => p.kind).join(",")}"`);
+  if (!shapeGone) throw new Error("cục tẩy không đụng được vào hình");
+  // Đây là chốt của cả bài: PHẢI còn mảnh. Không mảnh nào = đã xoá cả cục, tức
+  // là lỗi cũ quay lại.
+  if (!shapeParts.length) {
+    throw new Error(`cục tẩy theo độ rộng XOÁ CẢ cái hình "${cutTarget.kind}" thay vì cắt nó — nhánh cắt lại chỉ nhận kind "pen"`);
+  }
+  for (const p of shapeParts) {
+    if (p.kind !== "pen") throw new Error(`mảnh cắt từ hình phải thành nét bút, ra "${p.kind}"`);
+  }
+  // Cắt một chỗ trên một đường bao KÍN thì ra đúng MỘT mảnh: chỗ mối nối (điểm
+  // đầu trùng điểm cuối) phải được nối lại, không thì mỗi lần chạm vào một hình
+  // là bảng đẻ thêm một bản ghi vô cớ.
+  if (shapeParts.length !== 1) throw new Error(`cắt một nhát vào hình kín phải ra 1 mảnh, ra ${shapeParts.length}`);
+
+  // KIỂU "CẢ NÉT" vẫn phải nguyên như cũ: quét trúng là mất trọn mảnh, không
+  // cắt thêm mảnh con nào nữa.
+  await act(async () => { erasePicks()[0].click(); await new Promise((r) => setTimeout(r, 30)); });
+  const cutVictim = fragments.sort((a, b) => spanOf(a).lo - spanOf(b).lo)[0];
+  const camCut = camera();
+  const cutVictimMid = {
+    x: ((cutVictim.pts[0] + cutVictim.pts[cutVictim.pts.length - 2]) / 2) * camCut.scale + camCut.panX,
+    y: cutVictim.pts[1] * camCut.scale + camCut.panY
+  };
+  // Mốc so sánh phải lấy NGAY TRƯỚC cú quét này, không mượn lại mốc của bài
+  // trên: giữa hai bài còn một bài khác đã thêm nét vào bảng.
+  const beforeWholeIds = new Set(globalThis.__puts[globalThis.__puts.length - 1].drawings.map((d) => d.id));
+  await act(async () => {
+    mouse("mousedown", cutVictimMid.x, cutVictimMid.y, document.querySelector(".ink-capture"));
+    mouse("mousemove", cutVictimMid.x + 12, cutVictimMid.y);
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  await act(async () => { mouse("mouseup", cutVictimMid.x + 12, cutVictimMid.y); await new Promise((r) => setTimeout(r, 80)); });
+  const wholePut = globalThis.__puts[globalThis.__puts.length - 1];
+  const wholeAdded = wholePut.drawings.filter((d) => !beforeWholeIds.has(d.id));
+  const cutVictimGone = !wholePut.drawings.some((d) => d.id === cutVictim.id);
+  log(`tẩy cả nét: mảnh bị chạm mất hẳn = ${cutVictimGone} · sinh thêm ${wholeAdded.length} nét (phải là 0)`);
+  if (!cutVictimGone) throw new Error("kiểu \"cả nét\" chạm vào mà nét không mất");
+  if (wholeAdded.length !== 0) throw new Error(`kiểu "cả nét" không được đẻ ra mảnh nào, đẻ ra ${wholeAdded.length}`);
+
+  // ——— Giữ tay ở CHỖ TRỐNG = đổi bút ↔ cục gôm ———
+  const freeSpot = (() => {
+    const cam = camera();
+    const list = (globalThis.__puts[globalThis.__puts.length - 1].drawings) || [];
+    for (let sx = 660; sx <= 1500; sx += 40) {
+      for (let sy = 160; sy <= 1000; sy += 40) if (clearAt(list, cam, sx, sy, 40)) return { x: sx, y: sy };
+    }
+    throw new Error("không tìm được chỗ trống nào để thử cử chỉ đổi tool");
+  })();
+  const toolOn = () => (railBtn("Bút").classList.contains("on") ? "Bút" : (railBtn("Cục gôm").classList.contains("on") ? "Cục gôm" : "?"));
+  const holdAt = async (p, moveAway) => {
+    await act(async () => {
+      mouse("mousedown", p.x, p.y, document.querySelector(".ink-capture"));
+      if (moveAway) { mouse("mousemove", p.x + 120, p.y + 90); }
+      await new Promise((r) => setTimeout(r, HOLD_SWAP_MS + 250));
+    });
+    await act(async () => { mouse("mouseup", p.x, p.y); await new Promise((r) => setTimeout(r, 60)); });
+  };
+
+  const putsBeforeSwap = globalThis.__puts.length;
+  const toolBeforeSwap = toolOn();
+  await holdAt(freeSpot, false);
+  log(`giữ tay ở chỗ trống (đang cầm ${toolBeforeSwap}): giờ đang cầm ${toolOn()} · PUT thêm ${globalThis.__puts.length - putsBeforeSwap} lần (phải là 0)`);
+  if (toolBeforeSwap !== "Cục gôm") throw new Error(`bài này phải bắt đầu từ cục gôm, đang cầm ${toolBeforeSwap}`);
+  if (toolOn() !== "Bút") throw new Error(`giữ tay ở chỗ trống khi đang cầm cục gôm phải đổi sang bút, vẫn là ${toolOn()}`);
+  // Cử chỉ này KHÔNG được là một thao tác sửa dữ liệu: nó chỉ đổi thứ đang cầm.
+  if (globalThis.__puts.length !== putsBeforeSwap) throw new Error("cử chỉ đổi tool lại ghi thêm một bản lưu");
+
+  // Chiều ngược lại.
+  await holdAt(freeSpot, false);
+  log(`giữ tay lần nữa: giờ đang cầm ${toolOn()}`);
+  if (toolOn() !== "Cục gôm") throw new Error(`giữ tay ở chỗ trống khi đang cầm bút phải đổi sang cục gôm, vẫn là ${toolOn()}`);
+
+  // GIỮ RỒI DI TAY thì KHÔNG đổi: cú đó là một cú quét/vẽ thật. Thiếu chốt này
+  // thì dừng tay giữa một cú quét dài là mất trắng đoạn vừa quét.
+  await holdAt(freeSpot, true);
+  log(`giữ rồi DI tay: vẫn đang cầm ${toolOn()} (phải là Cục gôm)`);
+  if (toolOn() !== "Cục gôm") throw new Error("rê tay đi rồi mà cử chỉ đổi tool vẫn ăn — bộ đếm không bị huỷ khi tay rời chỗ ấn");
+
+  // Ấn TRÚNG MỘT NÉT thì cử chỉ đổi tool không được ăn — ở đó cú ấn đã có việc.
+  const survivorFrag = wholePut.drawings.find((d) => d.kind === "pen" && d.id !== cutVictim.id && !beforeCutIds.has(d.id));
+  if (survivorFrag) {
+    await act(async () => { railBtn("Bút").click(); await new Promise((r) => setTimeout(r, 30)); });
+    const onStroke = {
+      x: ((survivorFrag.pts[0] + survivorFrag.pts[survivorFrag.pts.length - 2]) / 2) * camera().scale + camera().panX,
+      y: survivorFrag.pts[1] * camera().scale + camera().panY
+    };
+    await holdAt(onStroke, false);
+    log(`bút + giữ tay TRÊN một nét: đang cầm ${toolOn()} (phải là Bút — đó là cử chỉ tẩy, không phải đổi tool)`);
+    if (toolOn() !== "Bút") throw new Error("giữ tay trên một nét lại đổi tool — cử chỉ tẩy và cử chỉ đổi tool đang giẫm chân nhau");
+  }
+
+  // ——— VẼ CHẬM KHÔNG ĐƯỢC BỊ CƯỚP MẤT TOOL ———
+  //
+  // Bộ đếm "giữ ở chỗ trống để đổi bút ↔ cục gôm" lên nòng ngay từ mousedown.
+  // Thứ giết nó phải là "tay đã rời chỗ ấn xuống" — một phép đo riêng, không
+  // dính gì tới bắt hình. Trước đây nó chết nhờ ăn may: lời gọi lên nòng bắt
+  // hình tình cờ dọn hộ. Khi cửa chặn của bắt hình chuyển sang đo VẬN TỐC thì
+  // cái ăn may đó mất, và nét nào vẽ chậm hơn 36 px/giây sẽ bị đổi tool giữa
+  // chừng rồi mất trắng. Ở đây vẽ 20 px/giây, tức tổng 1 giây — dài hơn hẳn
+  // 650ms của bộ đếm đổi tool.
+  await act(async () => { railBtn("Bút").click(); await new Promise((r) => setTimeout(r, 30)); });
+  await act(async () => { mouse("mousedown", freeSpot.x, freeSpot.y, document.querySelector(".ink-capture")); });
+  for (let i = 1; i <= 10; i++) {
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 100));
+      mouse("mousemove", freeSpot.x + i * 2, freeSpot.y);
+    });
+  }
+  await act(async () => { mouse("mouseup", freeSpot.x + 20, freeSpot.y); await new Promise((r) => setTimeout(r, 60)); });
+  log(`vẽ CHẬM 20px/giây ở chỗ trống: vẫn đang cầm ${toolOn()} (phải là Bút)`);
+  if (toolOn() !== "Bút") {
+    throw new Error("vẽ chậm mà bị đổi sang cục gôm — bộ đếm đổi tool không chết khi tay rời chỗ ấn,"
+      + " nên nó nổ giữa nét và nuốt mất nét đang vẽ");
+  }
+
+  // ——— BẮT ĐOẠN THẲNG VỚI BÀN TAY TRÔI ———
+  //
+  // ĐÂY LÀ LỖI NGƯỜI DÙNG BÁO: "bắt đoạn thẳng lúc được lúc không". Không phải
+  // phép nhận hình sai — bắn 3200 nét thẳng mô phỏng qua snapShape thì 3200 nét
+  // đều ra "line". Cái sai là ở CỬA CHẶN của cử chỉ: bản trước chốt một mốc rồi
+  // đòi tay ở lì trong bán kính 6px của mốc đó suốt thời gian chờ, mà bàn tay tì
+  // trên chuột thì trôi đều 8–25 px/giây, nên cứ chừng 400ms là đồng hồ về 0 và
+  // cử chỉ KHÔNG BAO GIỜ nổ. Ai tay chắc thì chạy, ai tay hơi trượt thì chịu.
+  //
+  // Test này giữ tay nhưng KHÔNG đứng im: trôi đều chừng 15 px/giây, tổng cộng
+  // đi hơn 20px — gấp mấy lần cái ngưỡng 6px cũ. Chạy trên code cũ thì nó treo ở
+  // đây, không có PUT nào cả.
+  await act(async () => { railBtn("Bút").click(); await new Promise((r) => setTimeout(r, 30)); });
+  const driftRow = (() => {
+    const cam = camera();
+    const list = (globalThis.__puts[globalThis.__puts.length - 1].drawings) || [];
+    for (let sy = 220; sy <= 1000; sy += 25) {
+      let ok = true;
+      for (let sx = 700; sx <= 1300 && ok; sx += 25) {
+        for (const dy of [-60, 0, 60]) if (!clearAt(list, cam, sx, sy + dy, 30)) { ok = false; break; }
+      }
+      if (ok) return sy;
+    }
+    throw new Error("không tìm được dải trống nào để thử bắt đoạn thẳng");
+  })();
+  const putsBeforeDrift = globalThis.__puts.length;
+  await act(async () => {
+    mouse("mousedown", 700, driftRow, document.querySelector(".ink-capture"));
+    // Nét thẳng, đủ điểm để qua MIN_POINTS của recognize.js.
+    for (let i = 1; i <= 12; i++) mouse("mousemove", 700 + i * 50, driftRow);
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  // Giữ tay: mỗi 45ms nhích 0,7px ⇒ ~15 px/giây, đúng kiểu bàn tay trượt trên
+  // chuột. Phải rải ra theo THỜI GIAN THẬT, không dồn một cục — cả phép đo mới
+  // nằm ở chỗ nó đọc vận tốc qua một cửa sổ thời gian.
+  let driftX = 1300, driftY = driftRow;
+  for (let i = 0; i < 34; i++) {
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 45));
+      driftX += 0.7;
+      driftY += 0.25;
+      mouse("mousemove", Math.round(driftX), Math.round(driftY));
+    });
+  }
+  await act(async () => {
+    mouse("mouseup", Math.round(driftX), Math.round(driftY));
+    await new Promise((r) => setTimeout(r, 80));
+  });
+  const driftPuts = globalThis.__puts.length - putsBeforeDrift;
+  if (driftPuts !== 1) {
+    throw new Error(`giữ tay với bàn tay TRÔI phải bắt được hình và lưu đúng 1 lần, lưu ${driftPuts} lần`
+      + " — cửa chặn của cử chỉ lại đang cộng dồn cái trôi tay thay vì đo vận tốc");
+  }
+  const driftPut = globalThis.__puts[globalThis.__puts.length - 1];
+  const drifted = driftPut.drawings[driftPut.drawings.length - 1];
+  log(`giữ tay TRÔI ${Math.round(driftX - 1300)}px trong lúc chờ: kind="${drifted.kind}"`
+    + ` (mốc cứng 6px của bản cũ đã chết ở đây)`);
+  if (drifted.kind !== "line") throw new Error(`phải bắt ra "line", ra "${drifted.kind}"`);
+
+  // ——— GÕ CHỮ CŨNG PHẢI REALTIME ———
+  //
+  // Trước đây chữ chỉ đi qua PUT lúc chốt, nên người khác không thấy gì suốt cả
+  // lúc mình đang gõ — khác hẳn nét bút và hình khối, vốn hiện ngay từng nhịp.
+  // Kiểm CẢ HAI CHIỀU vì chúng hỏng độc lập nhau.
+  await act(async () => { railBtn("Text").click(); await new Promise((r) => setTimeout(r, 30)); });
+
+  // CHIỀU PHÁT: mở ô nhập rồi gõ → phải có gói seq 0 mang màu/cỡ chữ, rồi gói
+  // giữa chừng mang chữ, rồi gói done mang id vừa lưu.
+  const liveTextBefore = globalThis.__emitted.length;
+  await act(async () => {
+    mouse("mousedown", 420, 300, document.querySelector(".ink-capture"));
+    await new Promise((r) => setTimeout(r, 30));
+  });
+  const liveTa = document.querySelector("textarea.text-input");
+  if (!liveTa) throw new Error("bấm bằng tool text phải mở ô nhập");
+  for (const chunk of ["đang", "đang gõ", "đang gõ dở"]) {
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype, "value").set.call(liveTa, chunk);
+      liveTa.dispatchEvent(new window.Event("input", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 60));
+    });
+  }
+  const midPkts = globalThis.__emitted.slice(liveTextBefore)
+    .filter((e) => e[0] === "live:ink").map((e) => e[1]);
+  const openPkt = midPkts.find((p) => p.seq === 0);
+  const typedPkts = midPkts.filter((p) => p.kind === "text" && p.seq > 0);
+  log(`gõ chữ: phát ${midPkts.length} gói live:ink · gói mở kind="${openPkt?.kind}" size=${openPkt?.size}`
+    + ` · gói giữa chừng mang chữ: ${typedPkts.map((p) => JSON.stringify(p.text)).join(" → ")}`);
+  if (!openPkt || openPkt.kind !== "text") throw new Error("gõ chữ phải phát gói live:ink kind=\"text\"");
+  if (!Number.isFinite(openPkt.size)) throw new Error("gói mở phải mang cỡ chữ — người nhận không đoán được");
+  if (openPkt.pts.length !== 2) throw new Error("chữ neo bằng ĐÚNG một điểm, gói mang " + openPkt.pts.length + " số");
+  if (!typedPkts.length) throw new Error("gõ mà không phát gói nào — chữ vẫn không realtime");
+  if (typedPkts[typedPkts.length - 1].text !== "đang gõ dở") {
+    throw new Error(`gói cuối phải mang trọn đoạn đang gõ, mang "${typedPkts[typedPkts.length - 1].text}"`);
+  }
+  await act(async () => {
+    liveTa.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    document.querySelector("textarea.text-input")?.blur();
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  const donePkt = globalThis.__emitted.slice(liveTextBefore)
+    .filter((e) => e[0] === "live:ink").map((e) => e[1]).filter((p) => p.done === true).pop();
+  log(`chốt lượt gõ: gói done drawingId=${donePkt?.drawingId}`);
+  if (!donePkt || !Number.isFinite(donePkt.drawingId)) {
+    throw new Error("chốt lượt gõ phải phát gói done kèm id vừa lưu, không thì overlay của người khác treo lại 6 giây");
+  }
+
+  // CHIỀU NHẬN: gói của người khác phải hiện ra chữ, và phải GIẤU bản đã lưu của
+  // đoạn họ đang sửa — để cả hai cùng hiện thì mỗi ký tự xoá đi lại lòi ra một
+  // mẩu chữ cũ nằm dưới.
+  const savedTextEl = (globalThis.__puts[globalThis.__puts.length - 1].drawings || [])
+    .filter((d) => d.kind === "text").pop();
+  if (!savedTextEl) throw new Error("không tìm thấy đoạn text vừa lưu để thử chiều nhận");
+  const textElsBefore = document.querySelectorAll(".ink-layer text").length;
+  await act(async () => {
+    globalThis.__deliver("live:ink", {
+      socketId: "peer9", strokeId: 1, seq: 0, kind: "text",
+      color: "pen-blue", size: 24, text: "người khác gõ", editId: savedTextEl.id,
+      pts: [savedTextEl.pts[0], savedTextEl.pts[1] + 200]
+    });
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  const textElsAfter = document.querySelectorAll(".ink-layer text").length;
+  const shown = Array.from(document.querySelectorAll(".ink-layer text"))
+    .some((el) => el.textContent === "người khác gõ");
+  log(`nhận gói chữ của người khác: <text> ${textElsBefore} → ${textElsAfter}`
+    + ` · hiện đúng chữ = ${shown} · bản đã lưu (id ${savedTextEl.id}) bị giấu = ${textElsAfter === textElsBefore}`);
+  if (!shown) throw new Error("gói chữ của người khác không hiện ra");
+  if (textElsAfter !== textElsBefore) {
+    throw new Error("đoạn text người kia đang sửa phải bị GIẤU đi, đang chồng hai lớp chữ lên nhau");
+  }
+  // Gõ tiếp: gói giữa chừng phải THAY cả đoạn, không nối thêm.
+  await act(async () => {
+    globalThis.__deliver("live:ink", {
+      socketId: "peer9", strokeId: 1, seq: 1, kind: "text", text: "người khác gõ xong",
+      pts: [savedTextEl.pts[0], savedTextEl.pts[1] + 200]
+    });
+    await new Promise((r) => setTimeout(r, 40));
+  });
+  const liveGrown = Array.from(document.querySelectorAll(".ink-layer text"))
+    .some((el) => el.textContent === "người khác gõ xong");
+  log(`gói giữa chừng của người khác: thay được cả đoạn = ${liveGrown}`);
+  if (!liveGrown) throw new Error("gói chữ giữa chừng không cập nhật được đoạn văn");
+
+  // ——— KÉO NÉT CŨNG PHẢI REALTIME ———
+  //
+  // Trước đây IdeaMap còn ghi chú thừa nhận chỗ này: gói geom chỉ chở thẻ và
+  // khung, nên nét vẽ / hình / chữ bị kéo thì người khác chỉ thấy nó nhảy tới
+  // chỗ mới ở lần lưu.
+  await act(async () => { railBtn("Chuột").click(); await new Promise((r) => setTimeout(r, 30)); });
+  const moveViewport = document.querySelector(".viewport");
+  const moveBoard0 = globalThis.__puts[globalThis.__puts.length - 1];
+  const moveTarget = (moveBoard0.drawings || []).find((d) => d.kind === "pen" && (d.pts || []).length >= 4);
+  if (!moveTarget) throw new Error("không tìm thấy nét bút nào để thử kéo");
+  const moveCam = camera();
+  const grabX = Math.round(moveTarget.pts[0] * moveCam.scale + moveCam.panX);
+  const grabY = Math.round(moveTarget.pts[1] * moveCam.scale + moveCam.panY);
+  const moveEmitBefore = globalThis.__emitted.length;
+  await act(async () => {
+    mouse("mousedown", grabX, grabY, moveViewport);
+    await new Promise((r) => setTimeout(r, 20));
+  });
+  for (let i = 1; i <= 5; i++) {
+    await act(async () => {
+      mouse("mousemove", grabX + i * 14, grabY + i * 9);
+      await new Promise((r) => setTimeout(r, 55));
+    });
+  }
+  const movePkts = globalThis.__emitted.slice(moveEmitBefore)
+    .filter((e) => e[0] === "live:ink").map((e) => e[1]).filter((p) => Array.isArray(p.moving));
+  if (!movePkts.length) throw new Error("kéo nét mà không phát gói `moving` nào — vẫn chưa realtime");
+  const lastMoving = movePkts[movePkts.length - 1].moving[0];
+  // Tra lại nét theo ĐÚNG id mà gói báo, thay vì đòi nó phải là nét mình nhắm:
+  // cuối phiên smoke bảng đã dày nét, cú bấm có thể trúng nét khác — mà điều cần
+  // kiểm là "gói mang trạng thái tuyệt đối của một nét ĐÃ DỜI", không phải là
+  // "cú bấm trúng đúng nét nào".
+  const movedOrig = (moveBoard0.drawings || []).find((d) => d.id === lastMoving.id);
+  log(`kéo nét: phát ${movePkts.length} gói \`moving\` · gói cuối mang ${movePkts[movePkts.length - 1].moving.length} nét`
+    + ` · id ${lastMoving.id} kind="${movedOrig?.kind}"`);
+  if (!movedOrig) throw new Error("gói dời mang id không có trong board");
+  // Trạng thái TUYỆT ĐỐI, không phải độ dời: đây là thứ giữ cho việc đắp overlay
+  // lên một board đã cập nhật là phép rỗng thay vì dời lần thứ hai.
+  if (lastMoving.pts.length !== movedOrig.pts.length) {
+    throw new Error(`gói dời phải mang trọn pts hiện tại (${movedOrig.pts.length} số), mang ${lastMoving.pts.length}`);
+  }
+  if (lastMoving.pts[0] === movedOrig.pts[0] && lastMoving.pts[1] === movedOrig.pts[1]) {
+    throw new Error("gói dời mang pts CŨ — nó đang phát vị trí gốc chứ không phát vị trí hiện tại");
+  }
+  await act(async () => {
+    mouse("mouseup", grabX + 70, grabY + 45);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  const moveDone = globalThis.__emitted.slice(moveEmitBefore)
+    .filter((e) => e[0] === "live:ink").map((e) => e[1]).filter((p) => p.done && Array.isArray(p.moving)).pop();
+  log(`chốt cú kéo: gói done mang ${moveDone?.moving.length} nét (phải cầm cự tới lúc board:update về)`);
+  if (!moveDone) throw new Error("chốt cú kéo phải phát gói done kèm trạng thái CUỐI, không thì cụm nhảy về chỗ cũ rồi nhảy lại");
+
+  // CHIỀU NHẬN: gói của người khác phải DỜI nét sẵn có, không vẽ thêm bản thứ hai.
+  const recvBoard = globalThis.__puts[globalThis.__puts.length - 1];
+  const recvTarget = (recvBoard.drawings || []).find((d) => d.kind === "pen" && (d.pts || []).length >= 4);
+  if (recvTarget) {
+    const pathsBefore = document.querySelectorAll(".ink-layer path").length;
+    await act(async () => {
+      globalThis.__deliver("live:ink", {
+        socketId: "peer8", strokeId: 77, seq: 1,
+        moving: [{ id: recvTarget.id, pts: recvTarget.pts.map((v, i) => v + (i % 2 === 0 ? 400 : 250)) }]
+      });
+      await new Promise((r) => setTimeout(r, 40));
+    });
+    const pathsAfter = document.querySelectorAll(".ink-layer path").length;
+    log(`nhận gói dời của người khác: số path ${pathsBefore} → ${pathsAfter} (phải bằng nhau — DỜI chứ không nhân bản)`);
+    if (pathsAfter !== pathsBefore) {
+      throw new Error("gói dời phải THAY vị trí nét sẵn có, không được vẽ thêm một bản thứ hai");
+    }
+  }
 
   return true;
 }

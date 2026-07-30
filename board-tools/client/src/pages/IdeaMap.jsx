@@ -4,7 +4,10 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { getBoard, saveBoard } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import { useSkin } from "../lib/useSkin.js";
-import { drawingsHitBy, drawingsInRect, moveDrawing, drawingBox } from "../lib/shape.js";
+import {
+  drawingsHitBy, drawingsInRect, moveDrawing, drawingBox,
+  shapeHandles, moveShapeHandle, HANDLE_EDGE
+} from "../lib/shape.js";
 import { textLines, textBox, TEXT_LINE_H } from "../lib/text-el.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
 import { paletteCss, applyColorTo, applyColorToMany, removePaletteColor } from "../lib/palette.js";
@@ -50,13 +53,20 @@ import { canAddImage, formatMB } from "../lib/image-budget.js";
 import { usePopoverPosition } from "../lib/usePopoverPosition.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
 import { loadPenPrefs, savePenPrefs, penVar } from "../lib/pen.js";
+import { ERASE_PART } from "../lib/erase.js";
 import { CARD_LEVEL_W, cardLevel, levelPatch, loadCardLevel, saveCardLevel } from "../lib/card-levels.js";
 import InkLayer from "../components/InkLayer.jsx";
 import { useInk } from "../lib/useInk.js";
 import { useInkLive } from "../lib/useInkLive.js";
+import { applyInkMoves } from "../lib/ink-live.js";
 import LaserLayer from "../components/LaserLayer.jsx";
 import { useLaser } from "../lib/useLaser.js";
 import { loadLaserPrefs, saveLaserPrefs } from "../lib/laser.js";
+import { createWheelReader, loadWheelMode, saveWheelMode } from "../lib/pointer-input.js";
+import {
+  selectionBounds, pointInBounds, cornerPoint, anchorFor, scaleFactorFor, scaleSelection,
+  SELECTION_CORNERS
+} from "../lib/selection-box.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -68,6 +78,13 @@ const CARD_W = 210;
 // "mở ra sửa" chứ không phải "kéo đi". Đủ rộng để tay run không thành cú kéo,
 // đủ hẹp để một cú kéo thật không bị nuốt thành cú bấm.
 const TEXT_DRAG_THRESHOLD = 3;
+// Nới vùng cầm của hộp bao vùng chọn ra ngoài mép, tính bằng pixel MÀN HÌNH
+// (chia cho scale trước khi so). Nhắm cho trúng một đường viền 1px là việc không
+// ai làm nổi, và mép chính là chỗ tay hay đặt vào nhất.
+const SEL_GRAB_PAD = 6;
+// Đích thả màu "cả vùng chọn". Object hằng dùng chung: dựng mới ở mỗi nhịp chuột
+// thì mọi thẻ trên bảng render lại theo (dropTargetId là prop của IdeaCard).
+const SELECTION_DROP = { kind: "selection", id: null };
 // Ngưỡng chạm khi bấm chọn nét vẽ / hình / chữ, tính bằng đơn vị canvas. Rộng
 // hơn cục gôm một chút: gôm là việc quét cả một vùng nên bắt hụt còn quét lại
 // được, còn bấm chọn mà trượt thì mất cả vùng chọn, phải gom lại từ đầu.
@@ -307,6 +324,10 @@ export default function IdeaMap() {
   // pixel MÀN HÌNH còn `w` của bút là đơn vị canvas — dùng chung một ô là đổi
   // độ đậm laser sẽ đổi luôn độ dày nét bút.
   const [laserPrefs, setLaserPrefs] = useState(() => loadLaserPrefs(window.localStorage));
+  // Cuộn hai ngón / lăn chuột nghĩa là gì: "auto" | "pan" | "zoom". Riêng từng
+  // máy (localStorage) chứ không theo board — nó là chuyện thiết bị đang cầm,
+  // không phải chuyện bảng đang mở.
+  const [wheelMode, setWheelMode] = useState(() => loadWheelMode(window.localStorage));
   const [cardLevelPref, setCardLevelPref] = useState(() => loadCardLevel(window.localStorage));
   const [paletteUI, setPaletteUI] = useState(null); // { mode: "create"|"edit", id?, hex, x, y } | null
   const [colorDrag, setColorDrag] = useState(null); // { token, x, y } | null
@@ -393,11 +414,20 @@ export default function IdeaMap() {
   // Ngữ cảnh 2d dùng để đo bề rộng chữ, dựng một lần rồi dùng lại.
   // undefined = chưa dò; null = đã dò và môi trường không có canvas 2d.
   const measureCtxRef = useRef(undefined);
+  // Bộ đọc sự kiện wheel có NHỚ: điểm tin cậy "đây là touchpad hay nút lăn"
+  // sống qua các sự kiện, nên nó không lật qua lật lại giữa một dòng cuộn. Phải
+  // là ref, không phải biến trong effect: effect gắn lại khi board tải xong và
+  // khi stopFollow đổi, mà mất trí nhớ giữa dòng cuộn là bảng nhảy giữa lia và
+  // phóng ngay dưới ngón tay.
+  const wheelReaderRef = useRef(null);
+  if (!wheelReaderRef.current) wheelReaderRef.current = createWheelReader();
 
   const ink = useInk({
     tool, penPrefs, boardRef, viewportRef,
     onStrokeDone: commitStroke,
     onEraseDone: commitErase,
+    onPick: pickDrawingWhileDrawing,
+    onSwapTool: swapPenEraser,
     live: inkLive
   });
 
@@ -441,6 +471,7 @@ export default function IdeaMap() {
 
   useEffect(() => { savePenPrefs(window.localStorage, penPrefs); }, [penPrefs]);
   useEffect(() => { saveLaserPrefs(window.localStorage, laserPrefs); }, [laserPrefs]);
+  useEffect(() => { saveWheelMode(window.localStorage, wheelMode); }, [wheelMode]);
   useEffect(() => { saveCardLevel(window.localStorage, cardLevelPref); }, [cardLevelPref]);
 
   // Kích thước khung nhìn, để minimap biết vẽ ô "đang xem ở đây" to bằng nào.
@@ -576,9 +607,68 @@ export default function IdeaMap() {
 
   const inkDrawings = useMemo(() => {
     const list = board?.drawings ?? EMPTY_ARRAY;
-    if (!textDrag) return list;
-    return list.map((d) => (d.id === textDrag.id ? { ...d, pts: [textDrag.x, textDrag.y] } : d));
-  }, [board?.drawings, textDrag]);
+    const dragged = !textDrag
+      ? list
+      : list.map((d) => (d.id === textDrag.id ? { ...d, pts: [textDrag.x, textDrag.y] } : d));
+    // Nét người KHÁC đang dời / co giãn / sửa hình. Đắp ở đây chứ không trong
+    // InkLayer, để đối xứng với liveNodes/liveGroups: mọi thứ hiển thị đọc từ
+    // bản đã đắp overlay, còn handler tương tác vẫn đọc `board` gốc.
+    return applyInkMoves(dragged, inkLive.liveStrokes);
+  }, [board?.drawings, textDrag, inkLive.liveStrokes]);
+
+  // Trạng thái HIỆN TẠI của các nét đang bị thao tác, dạng gói live. Chỉ mang
+  // phần hình học — kiểu dáng thì người nhận đã có trong board của họ.
+  function movingPayload(b, ids) {
+    const out = [];
+    for (const d of b?.drawings || []) {
+      if (!ids.has(d.id)) continue;
+      const m = { id: d.id, pts: d.pts };
+      // kind chỉ đổi khi kéo tay cầm một góc; gửi luôn cho mọi nét thì gói to ra
+      // vô ích, nên chỉ gửi khi nó thật sự khác bản người nhận đang có... mà
+      // "bản người nhận đang có" thì mình không biết. Gửi cho hình khối là đủ:
+      // nét bút và chữ không bao giờ đổi kind.
+      if (d.kind && d.kind !== "pen" && d.kind !== "text") m.kind = d.kind;
+      if (d.kind === "text") {
+        if (Number.isFinite(d.size)) m.size = d.size;
+        if (Number.isFinite(d.w)) m.w = d.w;
+        if (Number.isFinite(d.h)) m.h = d.h;
+      }
+      out.push(m);
+    }
+    return out;
+  }
+
+  // Vùng chọn gói lại thành MỘT object để truyền xuống lib/selection-box.js —
+  // ba Set rời nhau là ba tham số phải bê theo qua từng hàm.
+  const selectionSet = useMemo(
+    () => ({ nodeIds: selectedIds, groupIds: selectedGroupIds, drawingIds: selectedDrawingIds }),
+    [selectedIds, selectedGroupIds, selectedDrawingIds]
+  );
+
+  // Hộp bao của cả vùng chọn. Có nó thì: cầm chỗ nào TRONG vùng cũng kéo được cả
+  // cụm (không phải nhắm đúng vào một cái thẻ hay một cái nét), thả màu vào chỗ
+  // trống trong vùng là cả cụm đổi màu, và bốn góc trở thành tay cầm co giãn.
+  //
+  // Phụ thuộc cả `frameCardSize`: chiều cao thẻ do ResizeObserver đo, thẻ vừa
+  // được đo lại (ảnh tải xong, chữ xuống dòng) thì hộp phải ôm lại theo.
+  const selBounds = useMemo(
+    () => selectionBounds(board, selectionSet, frameCardSize),
+    [board?.nodes, board?.groups, board?.drawings, selectionSet, frameCardSize]
+  );
+
+  // Hình đang được sửa từng góc/cạnh: chọn ĐÚNG MỘT hình khối, không kèm thẻ hay
+  // khung nào. Chỉ một hình mới có tay cầm — chọn hai hình thì tay cầm của chúng
+  // chen vào nhau và không ai biết cái nào của cái nào; ở đó việc cần làm là kéo
+  // cả cụm, mà hộp bao vùng chọn đã lo (xem selBounds).
+  const editShape = useMemo(() => {
+    if (!board || selectedDrawingIds.size !== 1) return null;
+    if (selectedIds.size || selectedGroupIds.size) return null;
+    const id = Array.from(selectedDrawingIds)[0];
+    const d = (board.drawings || []).find((x) => x.id === id);
+    if (!d) return null;
+    const handles = shapeHandles(d);
+    return handles.length ? { d, handles } : null;
+  }, [board?.drawings, selectedDrawingIds, selectedIds, selectedGroupIds]);
 
   // Hình khối cho minimap. Tính lại khi NỘI DUNG đổi, không phải khi camera đổi:
   // lia bảng là chuyện xảy ra liên tục, mà lia thì mấy cái hộp này không hề khác.
@@ -755,16 +845,20 @@ export default function IdeaMap() {
       if (!current) return;
       // Cuộn/zoom là người dùng tự lái camera → thôi bám theo người khác.
       stopFollow();
-      // Lăn chuột = thu phóng tại vị trí con trỏ. Giữ Shift để lia ngang/dọc
-      // (hữu ích cho trackpad hoặc khi muốn cuộn thay vì zoom).
-      if (e.shiftKey) {
-        const next = { ...current, view: { ...current.view, panX: current.view.panX - e.deltaX, panY: current.view.panY - e.deltaY } };
+      // MỘT chỗ duy nhất quyết định "cú này là lia hay là phóng": lib/pointer-input.js.
+      // Trước đây chỗ này tự xử, và nó xử cùng một kiểu cho nút lăn với touchpad —
+      // nên trên laptop chỉ trượt nhẹ hai ngón là bảng phóng to vọt lên. Xem ghi
+      // chú đầu file đó về từng dấu hiệu nhận thiết bị.
+      const cmd = wheelReaderRef.current.read(e, wheelMode);
+      if (cmd.intent === "pan") {
+        const next = {
+          ...current,
+          view: { ...current.view, panX: current.view.panX - cmd.dx, panY: current.view.panY - cmd.dy }
+        };
         setBoard(next);
-      } else {
-        const factor = Math.pow(1.0015, -e.deltaY);
-        const next = computeZoom(current, el.getBoundingClientRect(), e.clientX, e.clientY, factor);
-        setBoard(next);
+        return;
       }
+      setBoard(computeZoom(current, el.getBoundingClientRect(), e.clientX, e.clientY, cmd.factor));
     }
     el.addEventListener("wheel", wheelHandler, { passive: false });
     return () => el.removeEventListener("wheel", wheelHandler);
@@ -773,7 +867,9 @@ export default function IdeaMap() {
     // Re-chạy khi board tải xong: lúc mount đầu board còn null nên viewport
     // chưa render (return "Đang tải…"), viewportRef.current == null và listener
     // sẽ không được gắn nếu chỉ phụ thuộc [].
-  }, [board != null, stopFollow]);
+    // wheelMode chỉ đổi khi người dùng bấm trong panel Giao diện — gắn lại
+    // listener khi đó thì rẻ, và rẻ hơn hẳn một ref nữa phải đồng bộ tay.
+  }, [board != null, stopFollow, wheelMode]);
 
   // Đọc roleRef chứ không đọc `role`: saveNow là chốt chặn cuối, nó phải đúng kể
   // cả khi được gọi từ một closure cũ. Handler nào gắn với deps [] (listener
@@ -866,9 +962,23 @@ export default function IdeaMap() {
     saveNow(next);
   }
 
+  // Hoàn tác / làm lại chỉ trả lại NỘI DUNG bảng, KHÔNG trả lại chỗ đang xem.
+  //
+  // `view` (pan + zoom) nằm chung trong board vì nó cũng được lưu lên server,
+  // nhưng nó không phải thứ vừa được sửa — nó là chỗ mình đang đứng nhìn. Trả
+  // lại nó cùng với nội dung thì lùi một bước là màn hình nhảy về chỗ đứng lúc
+  // làm việc đó, và người dùng mất phương hướng đúng vào lúc cần nhìn rõ nhất
+  // cái vừa bị lùi. Lùi vài bước liên tiếp thì mỗi bước nhảy một chỗ.
+  //
+  // Áp cho cả `undo` lẫn `redo`, và cả nhánh gộp phím mũi tên — ba đường vào
+  // cùng một chỗ ra, không để đường nào sót lại hành vi cũ.
+  function keepView(snapshot) {
+    return board?.view ? { ...snapshot, view: board.view } : snapshot;
+  }
+
   function undo() {
     if (nudgeBaseRef.current != null) {
-      const base = nudgeBaseRef.current;
+      const base = keepView(nudgeBaseRef.current);
       nudgeBaseRef.current = null;
       if (nudgeTimerRef.current) { clearTimeout(nudgeTimerRef.current); nudgeTimerRef.current = null; }
       setFuture((f) => [board, ...f]);
@@ -878,7 +988,7 @@ export default function IdeaMap() {
       return;
     }
     if (past.length === 0) return;
-    const prev = past[past.length - 1];
+    const prev = keepView(past[past.length - 1]);
     setPast((p) => p.slice(0, -1));
     setFuture((f) => [board, ...f]);
     setEditingId(null);
@@ -889,7 +999,7 @@ export default function IdeaMap() {
   function redo() {
     if (nudgeBaseRef.current != null) { flushNudgeBurst(); return; }
     if (future.length === 0) return;
-    const nextState = future[0];
+    const nextState = keepView(future[0]);
     setFuture((f) => f.slice(1));
     setPast((p) => [...p, board]);
     setEditingId(null);
@@ -1088,6 +1198,38 @@ export default function IdeaMap() {
     return () => window.removeEventListener("paste", onPaste);
   }, []);
 
+  // ── Chặn thao tác mặc định của trình duyệt trên cả trang bảng ──────────────
+  //
+  // BÔI ĐEN và KÉO-THẢ GỐC là thao tác dành cho một trang TÀI LIỆU. Đây là một
+  // cái bàn vẽ: mỗi cú bấm, cú kéo trên nền đều đã có nghĩa riêng, nên hai thứ
+  // đó chỉ chen vào. Cụ thể chúng làm hỏng những việc này:
+  //
+  //   Bấm 3 lần để làm lại — trình duyệt hiểu là "chọn cả đoạn văn", bôi đen
+  //     nguyên vùng rồi bật thanh công cụ chọn-chữ của nó đè lên bảng.
+  //   Kéo một cái thẻ, một cái chip — trình duyệt dựng bóng kéo-thả gốc của nó
+  //     đi kèm, trong khi cú kéo thật đã được xử lý bằng sự kiện chuột.
+  //   Quét chọn một vùng — vệt bôi đen xanh chạy theo dưới khung quét.
+  //
+  // Nghe ở `document` chứ không rắc user-select: none vào từng khối CSS: chặn ở
+  // một chỗ thì không có góc nào sót, và cái cần giữ lại chỉ là MỘT ngoại lệ —
+  // ô nhập liệu. Trong ô nhập thì bôi đen là thao tác đúng và cần thiết (chọn
+  // một từ để sửa, bấm 3 lần để chọn cả dòng), nên chúng đi qua nguyên vẹn.
+  // Cùng ngoại lệ mà handlePageContextMenu đang dùng cho menu chuột phải.
+  useEffect(() => {
+    function blockNativeDefault(e) {
+      const el = e.target;
+      const tag = (el?.tagName || "").toUpperCase();
+      if (tag === "INPUT" || tag === "TEXTAREA" || el?.isContentEditable === true) return;
+      e.preventDefault();
+    }
+    document.addEventListener("selectstart", blockNativeDefault);
+    document.addEventListener("dragstart", blockNativeDefault);
+    return () => {
+      document.removeEventListener("selectstart", blockNativeDefault);
+      document.removeEventListener("dragstart", blockNativeDefault);
+    };
+  }, []);
+
   if (loadError) {
     return <LoadError code={loadError} />;
   }
@@ -1253,11 +1395,36 @@ export default function IdeaMap() {
     return id;
   }
 
-  function commitErase(ids) {
+  // `adds` là các MẢNH còn lại sau khi cục tẩy theo độ rộng cắt ngang một nét:
+  // nét cũ nằm trong `ids` (bỏ đi), mỗi mảnh vào làm một nét mới. Cục tẩy kiểu
+  // "cả nét" không bao giờ truyền tham số này, nên nó đi đúng đường cũ.
+  //
+  // Xoá và thêm phải nằm trong CÙNG MỘT bản ghi: tách làm hai lượt commit thì
+  // có một khoảnh khắc nét đã mất mà mảnh chưa có, và quan trọng hơn là hoàn tác
+  // sẽ phải bấm hai lần mới về được chỗ cũ — trong khi người dùng chỉ làm đúng
+  // một việc.
+  function commitErase(ids, adds) {
     const current = boardRef.current;
     if (!current) return;
     const kill = new Set(ids);
-    const next = { ...current, drawings: current.drawings.filter((d) => !kill.has(d.id)) };
+    let nextId = current.nextDrawingId;
+    // Gom mảnh theo nét gốc, rồi đặt chúng ĐÚNG CHỖ nét đó đang đứng trong mảng
+    // thay vì nối vào cuối. Thứ tự trong `drawings` chính là thứ tự trên/dưới
+    // khi vẽ: nối vào cuối thì một nét nằm dưới hình tô đặc, cắt xong lại nhảy
+    // lên nằm trên nó — người dùng vừa tẩy một tí mà cả bức đổi tầng.
+    const byFrom = new Map();
+    for (const { from, ...part } of adds || []) {
+      const list = byFrom.get(from) || [];
+      list.push({ id: nextId++, ...part });
+      byFrom.set(from, list);
+    }
+    const drawings = [];
+    for (const d of current.drawings) {
+      if (!kill.has(d.id)) { drawings.push(d); continue; }
+      const parts = byFrom.get(d.id);
+      if (parts) drawings.push(...parts);
+    }
+    const next = { ...current, drawings, nextDrawingId: nextId };
     recordHistory(current);
     setBoard(next);
     boardRef.current = next;
@@ -1553,6 +1720,125 @@ export default function IdeaMap() {
     setColorMenu(null);
   }
 
+  // Chỗ nào thì tay cầm sửa hình có hiệu lực. MỘT nguồn sự thật cho cả phần vẽ
+  // ra (JSX) lẫn phần bắt chuột (shapeHandleAt): hai chỗ lệch nhau thì hoặc là
+  // tay cầm hiện ra mà bấm không được, hoặc là có một vùng vô hình cướp chuột.
+  const canGrabShapeHandles = mode === "select" || (mode === "draw" && tool === "pen");
+
+  // Giữ tay ở CHỖ TRỐNG: đổi qua lại giữa bút và cục gôm. useInk lo toàn bộ
+  // phần cử chỉ (đo thời gian, vòng báo, bỏ lượt vẽ dở); ở đây chỉ còn đúng
+  // việc lật một ô state.
+  //
+  // Vẽ rồi xoá rồi vẽ tiếp là nhịp làm việc thường xuyên nhất trên một cái bảng,
+  // mà cho tới giờ mỗi lần đổi đều phải với tay lên thanh công cụ bên trái hoặc
+  // nhớ phím tắt — cả hai đều bắt rời mắt khỏi chỗ đang vẽ.
+  // Con trỏ của CỤC TẨY THEO ĐỘ RỘNG: một vòng tròn đúng bằng cục tẩy thật, vẽ
+  // thẳng vào con trỏ bằng data-URI. Không có nó thì bề rộng là một con số vô
+  // hình — người dùng chọn cỡ "to" rồi phải quét thử vài lần mới đoán ra nó với
+  // tới đâu, mà mỗi lần thử là một lần cắt nhầm phải hoàn tác.
+  //
+  // Chỉ ở kiểu "theo độ rộng". Kiểu "cả nét" giữ crosshair vì ở đó cục tẩy là
+  // một cái que chỉ, vẽ một vòng tròn to quanh nó là nói dối về tầm với.
+  const eraseCursor = (() => {
+    if (mode !== "draw" || tool !== "eraser" || penPrefs.erase !== ERASE_PART) return undefined;
+    // Trình duyệt bỏ qua HẲN con trỏ tuỳ biến quá lớn (Chrome: 128px) — không
+    // phải thu nhỏ mà là mất luôn cả con trỏ. Kẹp lại: ở mức phóng cao thì vòng
+    // tròn nhỏ hơn cục tẩy thật, vẫn hơn là không có con trỏ nào.
+    const d = Math.max(6, Math.min(120, Math.round(penPrefs.ew * board.view.scale)));
+    const box = d + 4;
+    const c = box / 2;
+    const r = d / 2;
+    // Hai vòng chồng nhau, trắng dày dưới đen mảnh trên: con trỏ phải đọc được
+    // trên cả nền sáng lẫn nền tối, mà con trỏ thì không nghe được prefers-color.
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${box}" height="${box}">`
+      + `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="white" stroke-width="3" opacity="0.9"/>`
+      + `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="black" stroke-width="1.2"/></svg>`;
+    return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${Math.round(c)} ${Math.round(c)}, crosshair`;
+  })();
+
+  function swapPenEraser() {
+    if (role === "viewer") return;
+    setTool(tool === "eraser" ? "pen" : "eraser");
+  }
+
+  // Bấm-mà-không-di khi đang cầm BÚT: chọn cái nét dưới tay, hoặc bỏ chọn nếu
+  // bấm vào chỗ trống. useInk gọi hàm này từ nhánh "cú bấm không tạo ra nét nào"
+  // — xem ghi chú dài ở đó về việc vì sao cú bấm này rảnh.
+  //
+  // Chọn xong thì mọi thứ vốn chỉ có ở mode Chuột đều dùng được ngay mà không
+  // phải rời cây bút: tay cầm sửa hình, hai nút nét liền/đứt trên thanh vùng
+  // chọn, phím Delete, phím mũi tên để nhích.
+  function pickDrawingWhileDrawing(id, additive) {
+    if (role === "viewer") return;
+    if (id == null) { if (!additive) clearSelection(); return; }
+    setSelectedDrawingIds(additive ? toggleId(selectedDrawingIds, id) : new Set([id]));
+    // Cú bấm này chọn MỘT nét vẽ, nên vùng chọn cũ của thẻ/khung/dây phải nhường
+    // chỗ — không thì thanh vùng chọn báo "3 thẻ · 1 nét vẽ" sau một cú bấm mà
+    // người dùng chỉ định chỉ vào đúng một cái nét.
+    if (!additive) {
+      setSelectedIds(EMPTY_SET);
+      setSelectedEdgeIds(EMPTY_SET);
+      setSelectedGroupIds(EMPTY_SET);
+    }
+  }
+
+  // Đặt nét liền / nét đứt cho một TẬP nét. Text bị bỏ qua dù có nằm trong vùng
+  // chọn: nó vẽ bằng `fill`, không có nét nào để làm đứt.
+  function setDrawingsDashed(ids, dashed) {
+    const list = board.drawings || [];
+    if (!ids.size || !list.some((d) => ids.has(d.id) && d.kind !== "text")) return;
+    commitAndSave({
+      ...board,
+      drawings: list.map((d) => (ids.has(d.id) && d.kind !== "text" ? { ...d, dashed } : d))
+    });
+  }
+
+  // Bấm hai lần lên một nét đã vẽ: đổi nét liền ↔ nét đứt.
+  //
+  // Nét được nhắm nằm TRONG vùng chọn thì cả vùng chọn đổi theo — cùng luật với
+  // cú thả màu vào vùng chọn, và cùng luật với việc bấm vào một nét trong cụm là
+  // kéo cả cụm. Quét chọn chục cái nét xong mà vẫn phải nhắm lại từng cái một
+  // thì vùng chọn coi như không tồn tại.
+  //
+  // Cả cụm nhận CÙNG một giá trị lấy từ cái nét được nhắm, chứ không phải mỗi
+  // nét tự lật lấy: vùng chọn lẫn lộn nửa liền nửa đứt mà lật từng cái thì nó
+  // vẫn lẫn lộn mãi mãi, chỉ đảo vai. Lấy một giá trị chung thì một cử chỉ là cả
+  // cụm về cùng một kiểu — thứ người ta thật sự muốn khi bôi cả đám rồi bấm.
+  //
+  // `dashed` vắng mặt nghĩa là nét liền, nên `!d.dashed` là phép lật đúng cho cả
+  // những nét đã lưu từ trước khi có tính năng này.
+  function toggleDrawingDash(id) {
+    const target = (board.drawings || []).find((d) => d.id === id);
+    if (!target) return;
+    setDrawingsDashed(selectedDrawingIds.has(id) ? selectedDrawingIds : new Set([id]), !target.dashed);
+  }
+
+  // Vùng chọn có ít nhất một thứ ĐỔI ĐƯỢC nét hay không. Không phải cứ
+  // `selectedDrawingIds.size >= 1` là đủ: quét trúng đúng một đoạn chữ thì hai
+  // nút nét liền/nét đứt hiện ra nhưng bấm vào không có gì xảy ra.
+  const hasDashableSelected = (board.drawings || [])
+    .some((d) => selectedDrawingIds.has(d.id) && d.kind !== "text");
+
+  // Nét nằm ngay dưới cú bấm, hoặc null nếu cú bấm rơi vào chỗ trống.
+  //
+  // Trả null luôn ở cục gôm và ở tool Text, dù có nét ở dưới: ở hai chỗ đó CÚ BẤM
+  // ĐÃ CÓ VIỆC RỒI — cục gôm xoá nét ngay từ cú bấm đầu, tool Text mở ô nhập tại
+  // chỗ bấm. Chồng thêm cử chỉ này lên là vừa xoá vừa đổi nét, hoặc vừa mở ô nhập
+  // vừa đổi một nét mà người dùng còn không nhắm tới.
+  function dashTargetAt(e) {
+    if (mode === "draw" && (tool === "eraser" || tool === "text")) return null;
+    const list = board.drawings || [];
+    const hits = drawingsHitBy(list, clientToCanvas(e.clientX, e.clientY), PICK_RADIUS);
+    // Nét vẽ sau cùng nằm trên, nên trúng nhiều thì lấy cái trên — cùng luật với
+    // cú bấm chọn ở mode Chuột. Text bị bỏ qua: nó vẽ bằng `fill`, không có nét
+    // nào để làm đứt.
+    for (let i = hits.length - 1; i >= 0; i--) {
+      const d = list.find((x) => x.id === hits[i]);
+      if (d && d.kind !== "text") return d.id;
+    }
+    return null;
+  }
+
   // ── Bấm nhiều lần lên nền trống: 2 lần hoàn tác, 3 lần làm lại ─────────────
   //
   // Cử chỉ này THAY CHỖ của "bấm đúp nền trống để tạo thẻ". Hai cái không ở
@@ -1588,7 +1874,22 @@ export default function IdeaMap() {
     if (role === "viewer" || dragged || !isBoardBackground(e.target)) { mc.cancel(); return; }
 
     clearTimeout(multiClickTimerRef.current);
-    const count = mc.click(Date.now());
+    // Đích của cú bấm đi vào bộ đếm: một nét vẽ, hay nền trống (null). Đổi đích
+    // là chuỗi bắt đầu lại, nên bấm một cái lên nét rồi một cái lên nền không
+    // cộng thành cú hoàn tác nào.
+    const hitId = dashTargetAt(e);
+    const count = mc.click(Date.now(), hitId);
+
+    // Trên một NÉT VẼ: làm NGAY ở lần thứ hai, không chờ hết cửa sổ như ở nền
+    // trống. Chờ ở đó là bắt buộc vì còn phải phân biệt 2 lần với 3 lần; ở đây
+    // lần thứ 3 không có nghĩa gì cả, nên chờ chỉ tổ làm cử chỉ ì ra. Đóng chuỗi
+    // ngay sau khi làm: bấm thêm hai lần nữa là đổi ngược lại, chứ không phải
+    // lần thứ ba lại lật thêm một phát.
+    if (hitId != null) {
+      if (count >= 2) { mc.cancel(); toggleDrawingDash(hitId); }
+      return;
+    }
+
     const action = multiClickAction(count);
     if (!action) return;
     // CHỜ hết cửa sổ rồi mới làm. Làm ngay ở lần thứ 2 thì lần thứ 3 chỉ còn
@@ -2349,8 +2650,15 @@ export default function IdeaMap() {
     startDrawingDrag(e, picked, EMPTY_SET, EMPTY_SET);
   }
 
-  function startDrawingDrag(e, ids, carryNodeIds, carryGroupIds) {
-    if (role === "viewer" || ids.size === 0) return;
+  // `onClickNoDrag` chỉ có ở lối vào từ chỗ TRỐNG trong vùng chọn (xem
+  // startSelectionDrag): ở đó bấm-không-kéo phải bỏ chọn. Bấm trúng một cái nét
+  // thì không — đó là cú chọn chính cái nét đó, bỏ chọn ngay sau khi vừa chọn là
+  // vô nghĩa.
+  function startDrawingDrag(e, ids, carryNodeIds, carryGroupIds, onClickNoDrag) {
+    // `ids` rỗng vẫn đi tiếp nếu còn thẻ/khung: cú kéo từ chỗ trống trong một
+    // vùng chọn toàn thẻ không có nét nào để mà kéo, nhưng vẫn phải kéo được.
+    if (role === "viewer") return;
+    if (ids.size === 0 && carryNodeIds.size === 0 && carryGroupIds.size === 0) return;
     const start = eventToCanvas(e);
     const base = boardRef.current;
     // Chốt toạ độ gốc một lần, mỗi nhịp chuột tính lại TỪ ĐÓ chứ không cộng dồn
@@ -2370,6 +2678,7 @@ export default function IdeaMap() {
     );
     let moved = false;
     let latest = base;
+    inkLive.beginMove();
 
     const onMove = rafThrottle((ev) => {
       const p = eventToCanvas(ev);
@@ -2395,6 +2704,16 @@ export default function IdeaMap() {
         latest = next;
         return next;
       });
+      // Nét đi qua kênh ink, còn thẻ/khung bị kéo theo thì đi qua kênh geom —
+      // hai loại vật thể, hai kênh, cùng một cú kéo. Trước đây cú kéo này không
+      // phát gì cả, kể cả thẻ.
+      inkLive.pushMove(movingPayload(latest, ids));
+      if (startNodes.size || startGroups.size) {
+        publishGeom({
+          nodes: latest.nodes.filter((n) => startNodes.has(n.id)),
+          groups: latest.groups.filter((g) => startGroups.has(g.id))
+        });
+      }
     });
 
     function cleanup() {
@@ -2404,9 +2723,20 @@ export default function IdeaMap() {
       onMove.cancel();
     }
 
-    function onUp() {
+    function onUp(ev) {
       cleanup();
-      if (!moved) return;                          // bấm-không-kéo: chỉ là cú chọn, không lưu
+      // bấm-không-kéo: chỉ là cú chọn (hoặc cú bỏ chọn), không lưu gì. Chỉ tính
+      // là "bấm" khi thật sự có cú NHẢ CHUỘT — hàm này còn là handler của `blur`,
+      // mà mất focus giữa lúc đang giữ chuột thì người dùng không hề bấm xong,
+      // và bỏ mất vùng chọn của họ ở đó là vô cớ.
+      if (!moved) { inkLive.cancelMove(); if (ev?.type === "mouseup") onClickNoDrag?.(); return; }
+      inkLive.endMove(movingPayload(latest, ids));
+      if (startNodes.size || startGroups.size) {
+        finishGeom({
+          nodes: latest.nodes.filter((n) => startNodes.has(n.id)),
+          groups: latest.groups.filter((g) => startGroups.has(g.id))
+        });
+      }
       recordHistory(base);
       saveNow(latest);
     }
@@ -2429,19 +2759,219 @@ export default function IdeaMap() {
     // Nét vẽ phải xét TRƯỚC vùng quét: cú bấm nào cũng rơi xuống nền canvas
     // (lớp vẽ không nhận chuột), nên nếu quét trước thì không bao giờ chạm được
     // vào một nét. Nét vẽ sau cùng nằm trên, nên trúng nhiều thì lấy cái trên.
-    const hits = drawingsHitBy(board.drawings || [], eventToCanvas(e), PICK_RADIUS);
+    const p = eventToCanvas(e);
+    const hits = drawingsHitBy(board.drawings || [], p, PICK_RADIUS);
     if (hits.length) { handleDrawingMouseDown(e, hits[hits.length - 1]); return; }
+    // Khoảng TRỐNG bên trong vùng chọn: kéo cả cụm. Trước đây chỗ này quét vùng,
+    // nghĩa là muốn dời một cụm đã gom xong thì phải nhắm cho trúng đúng một cái
+    // thẻ hay đúng một cái nét — càng nhiều thứ mảnh trong cụm thì càng khó nhắm,
+    // mà trượt một cái là mất luôn cả vùng chọn vừa gom.
+    //
+    // Ctrl vẫn đi đường quét: ở đó Ctrl nghĩa là "đang cộng dồn lựa chọn", và
+    // vùng quét mới hoàn toàn có thể bắt đầu từ bên trong vùng chọn cũ.
+    if (selBounds && !e.ctrlKey && !e.metaKey && pointInBounds(selBounds, p, SEL_GRAB_PAD / board.view.scale)) {
+      startSelectionDrag(e);
+      return;
+    }
     handleMarqueeMouseDown(e);
+  }
+
+  // Kéo cả cụm từ một chỗ trống trong vùng chọn. Dùng lại nguyên đường của cú
+  // kéo nét vẽ — nó vốn đã kéo được cả ba loại cùng lúc — chỉ khác một điểm:
+  // bấm-mà-không-kéo ở đây là BỎ CHỌN, giữ đúng phản xạ "bấm ra chỗ trống là bỏ
+  // chọn" đã có từ trước, chứ không im lặng như khi bấm trúng một cái nét.
+  function startSelectionDrag(e) {
+    startDrawingDrag(e, selectedDrawingIds, selectedIds, selectedGroupIds, clearSelection);
+  }
+
+  // Kéo một tay cầm của MỘT hình = đặt đúng cái góc / cái cạnh đó vào chỗ muốn.
+  // Ý nghĩa từng tay cầm nằm hết ở lib/shape.js (shapeHandles/moveShapeHandle);
+  // ở đây chỉ là phần nối chuột và phần lưu.
+  function handleShapeHandleMouseDown(e, handle) {
+    if (e.button !== 0 || role === "viewer" || !editShape) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const base = boardRef.current;
+    const id = editShape.d.id;
+    // Hình LÚC BẮT ĐẦU kéo. Mọi nhịp chuột tính lại từ nó chứ không từ bản vừa
+    // sửa: cộng dồn thì tay cầm cạnh (dời theo delta) sẽ trôi mỗi khung hình một
+    // ít, và kéo ra rồi kéo về không quay lại đúng chỗ cũ.
+    const start = (base.drawings || []).find((x) => x.id === id);
+    if (!start) return;
+    let latest = base;
+    let moved = false;
+    const oneId = new Set([id]);
+    inkLive.beginMove();
+
+    const onMove = rafThrottle((ev) => {
+      const p = eventToCanvas(ev);
+      if (!moved && Math.hypot(p.x - handle.x, p.y - handle.y) < TEXT_DRAG_THRESHOLD / board.view.scale) return;
+      moved = true;
+      // Ghi đè CẢ kind: kéo góc một chữ nhật thì nó thành tứ giác, kéo góc một
+      // tam giác cân thì nó thành tam giác thường (xem ghi chú ở lib/shape.js).
+      const { kind, pts } = moveShapeHandle(start, handle, p.x, p.y);
+      setBoard((prev) => {
+        const next = {
+          ...prev,
+          drawings: (prev.drawings || []).map((x) => (x.id === id ? { ...x, kind, pts } : x))
+        };
+        latest = next;
+        return next;
+      });
+      inkLive.pushMove(movingPayload(latest, oneId));
+    });
+
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("blur", onUp);
+      onMove.flush();
+      if (!moved) { inkLive.cancelMove(); return; }
+      inkLive.endMove(movingPayload(latest, oneId));
+      recordHistory(base);
+      saveNow(latest);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    // Mất focus giữa cú kéo: hình mới đã nằm sẵn trong board, nên đường thoát
+    // đúng là CHỐT nó lại — cùng lý do đã ghi ở startDrawingDrag.
+    window.addEventListener("blur", onUp);
+  }
+
+  // Kéo một trong bốn góc hộp bao = co giãn CẢ CỤM, đều hai chiều, quanh góc đối
+  // diện (góc đó đứng yên tuyệt đối). Phép tính nằm hết ở lib/selection-box.js.
+  function handleSelectionResizeMouseDown(e, corner) {
+    if (e.button !== 0 || role === "viewer" || !selBounds) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const bounds = selBounds;
+    const anchor = anchorFor(bounds, corner);
+    // MỌI khung hình tính lại từ `base`, không cộng dồn lên kết quả lần trước:
+    // nhân hệ số lên một bản đã bị nhân rồi thì cụm phình theo cấp số nhân, và
+    // kéo ra rồi kéo về không quay lại đúng chỗ cũ. Cùng kỷ luật với
+    // startPositions của cú kéo thẻ.
+    const base = boardRef.current;
+    const sel = selectionSet;
+    let latest = base;
+    let moved = false;
+    inkLive.beginMove();
+
+    const onMove = rafThrottle((ev) => {
+      const k = scaleFactorFor(bounds, corner, eventToCanvas(ev));
+      if (!moved && Math.abs(k - 1) < 0.02) return;
+      moved = true;
+      const scaled = scaleSelection(base, sel, anchor, k);
+      // Đắp lên `prev` chứ không thay thẳng bằng `scaled`: một gói board:update
+      // của người khác hoàn toàn có thể về giữa cú kéo, và `scaled` dựng từ bản
+      // board LÚC BẮT ĐẦU — trả nguyên nó ra là xoá mất mọi thứ họ vừa sửa.
+      // Chỉ lấy các trường HÌNH HỌC, phần còn lại của mỗi phần tử giữ nguyên bản
+      // mới nhất (tiêu đề họ vừa gõ, màu họ vừa đổi…).
+      const nodeGeom = new Map(scaled.nodes.filter((n) => sel.nodeIds.has(n.id)).map((n) => [n.id, n]));
+      const groupGeom = new Map(scaled.groups.filter((g) => sel.groupIds.has(g.id)).map((g) => [g.id, g]));
+      const drawGeom = new Map((scaled.drawings || []).filter((d) => sel.drawingIds.has(d.id)).map((d) => [d.id, d]));
+      setBoard((prev) => {
+        const next = {
+          ...prev,
+          nodes: prev.nodes.map((n) => {
+            const s = nodeGeom.get(n.id);
+            return s ? { ...n, x: s.x, y: s.y, w: s.w } : n;
+          }),
+          groups: prev.groups.map((g) => {
+            const s = groupGeom.get(g.id);
+            return s ? { ...g, x: s.x, y: s.y, w: s.w, h: s.h } : g;
+          }),
+          drawings: (prev.drawings || []).map((d) => {
+            const s = drawGeom.get(d.id);
+            if (!s) return d;
+            // `size` chỉ có ở text, `w`/`h` mang nghĩa khác nhau giữa text và nét
+            // vẽ — nên chép theo những gì scaleSelection thật sự trả về, không
+            // dựng sẵn một danh sách trường thứ hai ở đây để rồi lệch với nó.
+            const geom = { pts: s.pts };
+            if (s.w !== undefined) geom.w = s.w;
+            if (s.h !== undefined) geom.h = s.h;
+            if (s.size !== undefined) geom.size = s.size;
+            return { ...d, ...geom };
+          })
+        };
+        latest = next;
+        return next;
+      });
+      // Co giãn đổi cả pts lẫn cỡ chữ, và thẻ/khung trong cụm cũng co theo —
+      // nên cú này phải phát trên CẢ HAI kênh.
+      inkLive.pushMove(movingPayload(latest, sel.drawingIds));
+      if (sel.nodeIds.size || sel.groupIds.size) {
+        publishGeom({
+          nodes: latest.nodes.filter((n) => sel.nodeIds.has(n.id)),
+          groups: latest.groups.filter((g) => sel.groupIds.has(g.id))
+        });
+      }
+    });
+
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("blur", onUp);
+      onMove.flush();
+      if (!moved) { inkLive.cancelMove(); return; }
+      inkLive.endMove(movingPayload(latest, sel.drawingIds));
+      if (sel.nodeIds.size || sel.groupIds.size) {
+        finishGeom({
+          nodes: latest.nodes.filter((n) => sel.nodeIds.has(n.id)),
+          groups: latest.groups.filter((g) => sel.groupIds.has(g.id))
+        });
+      }
+      recordHistory(base);
+      saveNow(latest);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    // Mất focus giữa cú kéo: vị trí mới đã nằm sẵn trong board rồi, nên đường
+    // thoát đúng là CHỐT nó lại — cùng lý do đã ghi ở startDrawingDrag.
+    window.addEventListener("blur", onUp);
   }
 
   // Nhường đường cho lia bảng TRƯỚC khi nghĩ tới việc vẽ — đúng thứ tự
   // handleViewportMouseDown đang dùng, nên chuột phải và Space+trái vẫn lia
   // bảng bình thường ở mode Sửa.
+  // Tay cầm sửa hình nằm gần chỗ bấm tới mức nào thì coi là bấm trúng nó, tính
+  // bằng pixel MÀN HÌNH: tay cầm được bù trừ zoom nên trên màn hình nó luôn to
+  // 11px, bất kể bảng đang phóng bao nhiêu. Rộng hơn cỡ thật một chút cho dễ tóm.
+  const SHAPE_HANDLE_GRAB = 9;
+
+  // Tay cầm nằm dưới chỗ bấm, nếu có.
+  //
+  // VÌ SAO PHẢI TỰ DÒ thay vì để trình duyệt lo bằng pointer-events: tay cầm là
+  // con của `.canvas`, mà `.canvas` có `transform` — thứ tạo ra một NGỮ CẢNH XẾP
+  // LỚP riêng. Mọi z-index bên trong đó chỉ so với nhau, không bao giờ leo ra
+  // ngoài để thắng `.ink-capture` (z-index 8) đang phủ kín khung nhìn. Nên ở mode
+  // Sửa, cú bấm luôn rơi vào lớp vẽ trước. Bắt ở đây, bằng đúng toạ độ canvas mà
+  // tay cầm đang đứng, là đường duy nhất không phải bê cả hệ tay cầm ra khỏi
+  // `.canvas` và tự tính lại pan/zoom cho chúng.
+  function shapeHandleAt(e) {
+    if (!editShape || role === "viewer") return null;
+    const p = clientToCanvas(e.clientX, e.clientY);
+    const limit = SHAPE_HANDLE_GRAB / board.view.scale;
+    let best = null;
+    let bestD = Infinity;
+    for (const h of editShape.handles) {
+      const d = Math.hypot(h.x - p.x, h.y - p.y);
+      if (d <= limit && d < bestD) { best = h; bestD = d; }
+    }
+    return best;
+  }
+
   function handleInkCaptureMouseDown(e) {
     if (e.button === 2) { startPan(e); return; }
     if (e.button === 0 && spacePanRef.current) { startPan(e); return; }
     if (e.button !== 0) return;
     if (tool === "text") { handleTextMouseDown(e); return; }
+    // Tay cầm xét TRƯỚC nét vẽ: nó nhỏ và luôn nằm ngay trên đường bao của hình
+    // đang chọn, nên nếu để lượt vẽ ăn trước thì không bao giờ tóm được nó.
+    // Chỉ ở tool Bút — xem ghi chú ở chỗ render tay cầm.
+    if (canGrabShapeHandles) {
+      const handle = shapeHandleAt(e);
+      if (handle) { handleShapeHandleMouseDown(e, handle); return; }
+    }
     ink.handleMouseDown(e);
   }
 
@@ -2549,7 +3079,9 @@ export default function IdeaMap() {
       .map((id) => current.drawings.find((d) => d.id === id))
       .find((d) => d && d.kind === "text");
     if (hit) { startTextDrag(hit, p); return; }
-    setTextEdit({ id: null, x: Math.round(p.x), y: Math.round(p.y), value: "", size: penPrefs.size, color: penPrefs.color });
+    const fresh = { id: null, x: Math.round(p.x), y: Math.round(p.y), value: "", size: penPrefs.size, color: penPrefs.color };
+    setTextEdit(fresh);
+    beginLiveText(fresh);
   }
 
   // Bấm trúng một text: MỘT cú bấm phục vụ hai việc. Di dưới ngưỡng thì coi như
@@ -2560,6 +3092,7 @@ export default function IdeaMap() {
     const offY = start.y - el.pts[1];
     let moved = false;
     let last = { x: el.pts[0], y: el.pts[1] };
+    inkLive.beginMove();
 
     function onMove(ev) {
       const p = eventToCanvas(ev);
@@ -2569,6 +3102,9 @@ export default function IdeaMap() {
       // Chỉ đẩy vào state NHÁP, không ghi vào board: một lần kéo phải là một
       // lần lưu, không phải một lần cho mỗi nhịp chuột.
       setTextDrag({ id: el.id, x: last.x, y: last.y });
+      // Vì board KHÔNG đổi trong lúc kéo, gói live phải dựng từ vị trí nháp chứ
+      // không dựng qua movingPayload — hàm đó đọc board.
+      inkLive.pushMove([{ id: el.id, pts: [last.x, last.y] }]);
     }
 
     function cleanup() {
@@ -2581,16 +3117,20 @@ export default function IdeaMap() {
     // Cửa sổ mất focus giữa lượt kéo: mouseup sẽ không bao giờ tới. Cùng cái bẫy
     // useInk.js đã có ghi chú dài — không dọn thì text treo ở vị trí nháp và cú
     // mouseup sau đó (ở một ngữ cảnh khác) vẫn commit.
-    function cancel() { cleanup(); }
+    function cancel() { cleanup(); inkLive.cancelMove(); }
 
     function finish() {
       cleanup();
       if (!moved) {
-        setTextEdit({ id: el.id, x: el.pts[0], y: el.pts[1], value: el.text, size: el.size, color: el.color });
+        inkLive.cancelMove();
+        const reopen = { id: el.id, x: el.pts[0], y: el.pts[1], value: el.text, size: el.size, color: el.color };
+        setTextEdit(reopen);
+        beginLiveText(reopen);
         return;
       }
       const current = boardRef.current;
-      if (!current) return;
+      if (!current) { inkLive.cancelMove(); return; }
+      inkLive.endMove([{ id: el.id, pts: [last.x, last.y] }]);
       const next = {
         ...current,
         drawings: current.drawings.map((d) => (d.id === el.id ? { ...d, pts: [last.x, last.y] } : d))
@@ -2610,17 +3150,31 @@ export default function IdeaMap() {
   // chú thích mất vài chục giây, board:update của người khác về giữa chừng mà
   // mình dựng `next` từ `board` đóng gói lúc mở ô nhập thì cú PUT sau đó đè mất
   // thay đổi của họ.
+  // Mở kênh live cho một lượt gõ. Tách ra vì có HAI chỗ mở ô nhập — bấm chỗ
+  // trống để tạo mới, và bấm lên một đoạn có sẵn để sửa — mà cả hai phải phát
+  // gói đầu giống hệt nhau, không thì một trong hai đường lặng lẽ không realtime.
+  function beginLiveText(edit) {
+    inkLive.beginText(
+      [Math.round(edit.x), Math.round(edit.y)],
+      edit.value, edit.color, edit.size, edit.id
+    );
+  }
+
   function commitText() {
     const edit = textEditRef.current;
     textEditRef.current = null;
     setTextEdit(null);
     if (!edit) return;
     const current = boardRef.current;
-    if (!current) return;
+    if (!current) { inkLive.cancelText(); return; }
     const value = edit.value.trim();
 
     // Rỗng: tạo mới thì không đẻ ra phần tử vô hình; sửa thì coi như xoá.
     if (!value) {
+      // Cả hai nhánh dưới đây đều KHÔNG để lại đoạn text nào, nên overlay phải
+      // bị huỷ chứ không phải chốt: gói done không có drawingId sẽ treo trên
+      // màn hình người khác tới hết INK_SETTLE_TTL_MS.
+      inkLive.cancelText();
       if (edit.id == null) return;
       const next = { ...current, drawings: current.drawings.filter((d) => d.id !== edit.id) };
       recordHistory(current);
@@ -2638,6 +3192,9 @@ export default function IdeaMap() {
       if (before && before.text === value && before.size === edit.size
           && before.color === edit.color
           && before.pts[0] === Math.round(edit.x) && before.pts[1] === Math.round(edit.y)) {
+        // Không lưu gì ⇒ sẽ KHÔNG có board:update nào để reconcileInkOverlay
+        // dọn overlay theo, nên phải huỷ tay.
+        inkLive.cancelText();
         return;
       }
     }
@@ -2649,12 +3206,19 @@ export default function IdeaMap() {
       text: value, color: edit.color, size: edit.size, w: box.w, h: box.h
     };
     let next;
+    let savedId;
     if (edit.id == null) {
       const id = current.nextDrawingId;
+      savedId = id;
       next = { ...current, drawings: [...current.drawings, { id, ...el }], nextDrawingId: id + 1 };
     } else {
+      savedId = edit.id;
       next = { ...current, drawings: current.drawings.map((d) => (d.id === edit.id ? { ...d, ...el } : d)) };
     }
+    // Chốt kèm id vừa lưu: người nhận giữ overlay cho tới đúng lúc board:update
+    // mang id đó về, không sớm hơn (chữ biến mất rồi hiện lại) cũng không muộn
+    // hơn (hai lớp chữ chồng nhau).
+    inkLive.endText(savedId);
     recordHistory(current);
     setBoard(next);
     boardRef.current = next;
@@ -3058,6 +3622,9 @@ export default function IdeaMap() {
     if (selectedIds.size === 0 && selectedGroupIds.size === 0 && selectedDrawingIds.size === 0) return;
     if (nudgeBaseRef.current == null) {
       nudgeBaseRef.current = board;   // history recorded once per burst, at burst end
+      // Mỗi loạt nhích là MỘT lượt live riêng. Thiếu dòng này thì gói dùng lại
+      // strokeId của lượt kéo trước và đè lên entry của nó.
+      inkLive.beginMove();
     }
     // Cùng tập với cú kéo bằng chuột: khung đang chọn đi kèm ruột của nó.
     const { groupIds, nodeIds } = selectionDragSet(board, selectedGroupIds, selectedIds);
@@ -3079,6 +3646,8 @@ export default function IdeaMap() {
       nodes: next.nodes.filter((n) => moveNodes.has(n.id)),
       groups: next.groups.filter((g) => moveGroups.has(g.id))
     });
+    // Nét vẽ / hình / chữ trong cụm cũng nhích, và chúng đi kênh riêng.
+    if (selectedDrawingIds.size) inkLive.pushMove(movingPayload(next, selectedDrawingIds));
     saveDebounced(next);
     if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
     nudgeTimerRef.current = setTimeout(() => {
@@ -3086,6 +3655,7 @@ export default function IdeaMap() {
         nodes: boardRef.current.nodes.filter((n) => moveNodes.has(n.id)),
         groups: boardRef.current.groups.filter((g) => moveGroups.has(g.id))
       });
+      if (selectedDrawingIds.size) inkLive.endMove(movingPayload(boardRef.current, selectedDrawingIds));
       flushNudgeBurst();
     }, 600);
   }
@@ -3353,8 +3923,14 @@ export default function IdeaMap() {
       // việc có tìm được nút DOM nào dưới con trỏ hay không. Xét SAU thẻ và dây:
       // thả màu lên chỗ một nét vẽ nằm đè lên thẻ thì cái người ta nhắm tới gần
       // như luôn là cái thẻ.
-      const hits = drawingsHitBy(boardRef.current?.drawings || [], clientToCanvas(clientX, clientY), PICK_RADIUS);
+      const p = clientToCanvas(clientX, clientY);
+      const hits = drawingsHitBy(boardRef.current?.drawings || [], p, PICK_RADIUS);
       if (hits.length) return { kind: "drawing", id: hits[hits.length - 1] };
+      // Chỗ TRỐNG bên trong vùng chọn: cả cụm nhận màu. Xét CUỐI cùng, sau mọi
+      // đích cụ thể — thả trúng một cái thẻ trong vùng chọn thì vẫn đi đường cũ
+      // (dropIdsFor cũng đã tô cả vùng), còn đây là để không phải nhắm cho trúng
+      // một cái gì cả.
+      if (selBounds && pointInBounds(selBounds, p)) return { kind: "selection" };
       return null;
     }
 
@@ -3363,7 +3939,11 @@ export default function IdeaMap() {
       if (!dragging) return;
       setColorDrag({ token, x: ev.clientX, y: ev.clientY });
       const target = colorTargetAt(ev.clientX, ev.clientY);
-      setDropTargetId(target && target.kind === "node" ? { id: target.id, kind: "node" } : null);
+      // "selection" cũng phải sáng lên: thả vào chỗ trống mà không có phản hồi
+      // nào thì người dùng không tin là nó sẽ ăn, và sẽ đi nhắm vào từng cái một
+      // — đúng cái việc mà đích này sinh ra để khỏi phải làm.
+      if (target && target.kind === "selection") setDropTargetId(SELECTION_DROP);
+      else setDropTargetId(target && target.kind === "node" ? { id: target.id, kind: "node" } : null);
     });
     function onUp(ev) {
       window.removeEventListener("mousemove", onMove);
@@ -3374,6 +3954,10 @@ export default function IdeaMap() {
       setColorDrag(null);
       setDropTargetId(null);
       if (!target) return;
+      // Thả vào chỗ trống trong vùng chọn: đi đúng hàm mà menu chuột phải đang
+      // dùng cho "tô cả vùng chọn", nên hai lối vào không bao giờ cho hai kết
+      // quả khác nhau.
+      if (target.kind === "selection") { applyColorToSelection(token); return; }
       // Badge đi đường applyColorTo như cũ — nó không thuộc vùng chọn nào.
       if (target.kind === "node" || target.kind === "edge" || target.kind === "drawing") {
         commitAndSave(applyColorToMany(board, target.kind, dropIdsFor(target.kind, target.id), token));
@@ -3505,6 +4089,34 @@ export default function IdeaMap() {
                   className={"btn ghost toggle" + (theme === "dark" ? " active" : "")}
                   onClick={() => setTheme("dark")}
                 ><Trans>Tối</Trans></button>
+              </div>
+            </div>
+            {/* Cuộn hai ngón nghĩa là gì. Đứng ở nhóm "chỉ mình bạn thấy" vì nó
+                là chuyện CÁI MÁY đang cầm, không phải chuyện cái bảng: cùng một
+                board mở trên laptop và trên máy có chuột rời thì hai người muốn
+                hai hành vi khác nhau.
+                "Tự động" nhận thiết bị theo dấu hiệu của từng sự kiện wheel và
+                đúng gần hết các trường hợp — nhưng trên macOS thì nút lăn chuột
+                cho ra đúng những con số mà touchpad cho, không có cách nào tách.
+                Đó là lý do hai nút chọn tay tồn tại, không phải để cho đủ bộ. */}
+            <div className="theme-row">
+              <span className="fb-count"><Trans>Cuộn hai ngón</Trans></span>
+              <div className="fb-chips">
+                <button
+                  className={"btn ghost toggle" + (wheelMode === "auto" ? " active" : "")}
+                  title={t`Nhận thiết bị theo cách cuộn: touchpad thì lia bảng, nút lăn thì thu phóng`}
+                  onClick={() => setWheelMode("auto")}
+                ><Trans>Tự động</Trans></button>
+                <button
+                  className={"btn ghost toggle" + (wheelMode === "pan" ? " active" : "")}
+                  title={t`Cuộn luôn là lia bảng. Chụm hai ngón (hoặc Ctrl+cuộn) để thu phóng`}
+                  onClick={() => setWheelMode("pan")}
+                ><Trans>Lia bảng</Trans></button>
+                <button
+                  className={"btn ghost toggle" + (wheelMode === "zoom" ? " active" : "")}
+                  title={t`Cuộn luôn là thu phóng. Giữ Shift để lia bảng`}
+                  onClick={() => setWheelMode("zoom")}
+                ><Trans>Thu phóng</Trans></button>
               </div>
             </div>
             <div className="theme-row">
@@ -3804,7 +4416,29 @@ export default function IdeaMap() {
           />
         )}
         {mode === "draw" && (
-          <div className="ink-capture" onMouseDown={handleInkCaptureMouseDown} />
+          <div className="ink-capture" style={{ cursor: eraseCursor }} onMouseDown={handleInkCaptureMouseDown} />
+        )}
+        {/* Vòng báo "đang giữ tay" — hiện ngay dưới con trỏ khi tay đứng lại.
+            BA việc dùng chung một vòng: sắp BẮT HÌNH (nét vừa vẽ về hình chuẩn),
+            sắp TẨY nét đang nằm dưới tay, và sắp ĐỔI bút ↔ cục gôm. `kind` thành
+            luôn tên class nên mỗi việc một màu, và nét sắp bị tẩy thì mờ đi song
+            song (useInk gọi setEraseIds).
+            Không có vòng này thì cả hai cử chỉ đều vô hình: người dùng chỉ tình
+            cờ gặp một lần rồi không hiểu vừa xảy ra chuyện gì.
+            position: fixed nên toạ độ là toạ độ MÀN HÌNH, không phải toạ độ
+            canvas — nó bám ngón tay, không bám bảng.
+            Thời gian chạy do useInk tính sẵn và gửi kèm: hai chỗ giữ hai con số
+            rồi lệch nhau thì vòng đầy xong mà chưa có gì xảy ra (hoặc ngược
+            lại), và đó là kiểu lỗi không ai đọc code ra được. */}
+        {ink.snapHint && (
+          <div
+            className={"snap-hint " + ink.snapHint.kind}
+            style={{
+              left: ink.snapHint.x,
+              top: ink.snapHint.y,
+              "--snap-hold": `${ink.snapHint.ms}ms`
+            }}
+          />
         )}
         {/* Cùng vai trò .ink-capture: phủ kín khung nhìn để di chuột ngang qua
             một cái thẻ vẫn ra vệt laser chứ không bị thẻ ăn mất chuột. */}
@@ -3846,7 +4480,10 @@ export default function IdeaMap() {
               width: (textBox(textLines(textEdit.value), textEdit.size, measureTextWidth).w + 12) * board.view.scale,
               height: textLines(textEdit.value).length * textEdit.size * TEXT_LINE_H * board.view.scale
             }}
-            onChange={(e) => setTextEdit((prev) => ({ ...prev, value: e.target.value }))}
+            onChange={(e) => {
+              setTextEdit((prev) => ({ ...prev, value: e.target.value }));
+              inkLive.pushText(e.target.value);
+            }}
             onBlur={commitText}
             // Escape kết thúc — blur() rồi để onBlur lo phần lưu, nên chỉ có MỘT
             // đường commit. Enter thì XUỐNG DÒNG chứ không kết thúc: chú thích
@@ -3878,6 +4515,66 @@ export default function IdeaMap() {
           )}
           {placeDraft && (
             <div className="place-draft" style={{ left: placeDraft.x, top: placeDraft.y, width: placeDraft.w, height: placeDraft.h }} />
+          )}
+          {/* TAY CẦM SỬA HÌNH — hiện khi chọn đúng MỘT hình khối. Kéo tay cầm
+              góc để đặt từng đỉnh, kéo tay cầm cạnh (ô tròn ở giữa cạnh) để dời
+              trọn một cạnh. Với hình định nghĩa bằng hộp bao (chữ nhật, ê-líp,
+              hình thoi, tam giác cân) thì góc là góc hộp và cạnh là mép hộp —
+              xem ghi chú dài ở lib/shape.js về lý do hai ý nghĩa khác nhau.
+              Hiện ở mode Chuột, VÀ ở mode Sửa khi đang cầm BÚT. Ở mode Sửa thì
+              `.ink-capture` phủ kín khung nhìn nên chúng không tự nhận được
+              chuột — handleInkCaptureMouseDown dò tay để bắt hộ (xem
+              shapeHandleAt). Cố ý chỉ ở tool Bút: cục gôm quét trúng tay cầm là
+              xoá mất hình, còn tool Hình khối thì việc đang làm là ĐẶT hình mới,
+              mấy ô vuông nhỏ nằm giữa vùng kéo chỉ tổ vướng. */}
+          {editShape && canGrabShapeHandles && role !== "viewer" && editShape.handles.map((h) => (
+            <div
+              key={h.t + h.i}
+              className={"shape-handle" + (h.t === HANDLE_EDGE ? " edge" : "")}
+              // Bù trừ zoom, cùng lý do với tay cầm của hộp bao vùng chọn: cỡ cố
+              // định thì ở zoom 40% không bấm nổi, ở 240% thì to hơn cả cái hình.
+              style={{
+                left: h.x, top: h.y,
+                transform: `translate(-50%, -50%) scale(${1 / board.view.scale})`
+              }}
+              title={h.t === HANDLE_EDGE ? t`Kéo để dời cả cạnh này` : t`Kéo để đặt góc này vào chỗ khác`}
+              onMouseDown={(e) => handleShapeHandleMouseDown(e, h)}
+            />
+          ))}
+          {/* HỘP BAO VÙNG CHỌN. Bản thân hộp KHÔNG nhận chuột (pointer-events:
+              none trong CSS) — nó chỉ nói cho mắt biết "cả vùng này là một cụm".
+              Cú kéo trong lòng hộp do handleViewportMouseDown bắt, nên bấm trúng
+              một cái thẻ ở giữa vùng vẫn là bấm vào cái thẻ đó: bấm đúp để sửa,
+              kéo góc ảnh, bấm chip… tất cả còn nguyên.
+              Bốn tay cầm ở góc thì NGƯỢC LẠI, chúng bật lại pointer-events —
+              chúng là thứ duy nhất trong hộp cướp chuột, và chỉ ở đúng 4 ô nhỏ.
+              Chỉ hiện ở mode Chuột: ở mode Sửa cả khung nhìn đã bị .ink-capture
+              phủ kín, tay cầm sẽ không bao giờ bấm được, mà vẫn che mất chỗ vẽ. */}
+          {selBounds && mode === "select" && (
+            <div
+              className={"selection-box" + (dropTargetId?.kind === "selection" ? " drop" : "")}
+              style={{ left: selBounds.x, top: selBounds.y, width: selBounds.w, height: selBounds.h }}
+            >
+              {role !== "viewer" && SELECTION_CORNERS.map((corner) => {
+                const p = cornerPoint(selBounds, corner);
+                return (
+                  <div
+                    key={corner}
+                    className={"selection-handle " + corner}
+                    // Bù trừ zoom: tay cầm nằm trong .canvas (đã scale) nên nếu
+                    // để cỡ cố định thì ở zoom 40% nó bé tới mức không bấm nổi,
+                    // còn ở zoom 240% thì nó to hơn cả cái thẻ.
+                    style={{
+                      left: p.x - selBounds.x,
+                      top: p.y - selBounds.y,
+                      transform: `translate(-50%, -50%) scale(${1 / board.view.scale})`
+                    }}
+                    title={t`Kéo để phóng to / thu nhỏ cả cụm`}
+                    onMouseDown={(e) => handleSelectionResizeMouseDown(e, corner)}
+                  />
+                );
+              })}
+            </div>
           )}
           {liveGroups.map((group) => (
             <FrameBox
@@ -3940,6 +4637,7 @@ export default function IdeaMap() {
             drawings={inkDrawings}
             draft={ink.draft}
             eraseIds={ink.eraseIds}
+            cut={ink.cut}
             liveStrokes={inkLive.liveStrokes}
             sketch={skin === "sketch"}
             editingTextId={textEdit ? textEdit.id : null}
@@ -4127,6 +4825,19 @@ export default function IdeaMap() {
                 <button key={token} className="be-swatch" style={{ background: colorVar(token) }} onClick={() => applyColorToSelection(token)} title={token} />
               ))}
             </div>
+            {/* NÉT LIỀN / NÉT ĐỨT cho cả vùng chọn. Cử chỉ bấm hai lần đã làm
+                được việc này, nhưng nó đòi nhắm TRÚNG một cái nét — với một nét
+                mảnh giữa một đám vừa quét thì đó là việc khó chịu. Ở đây thì
+                không phải nhắm gì cả.
+                Hai nút đặt giá trị TƯỜNG MINH chứ không phải một nút lật: vùng
+                chọn có thể đang nửa liền nửa đứt, mà "lật" một tập lẫn lộn thì
+                không có nghĩa gì rõ ràng. */}
+            {hasDashableSelected && (
+              <>
+                <button className="bb-clear" onClick={() => setDrawingsDashed(selectedDrawingIds, false)}><Trans>Nét liền</Trans></button>
+                <button className="bb-clear" onClick={() => setDrawingsDashed(selectedDrawingIds, true)}><Trans>Nét đứt</Trans></button>
+              </>
+            )}
             {selectedIds.size >= 2 && (
               <>
                 <button className="bb-clear" onClick={groupSelectedCards}><Trans>Gom nhóm</Trans></button>

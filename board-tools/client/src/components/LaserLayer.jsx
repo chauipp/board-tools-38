@@ -17,7 +17,7 @@ function LaserLayer({ socket, store, scale }) {
       if (!pts || pts.length < 2) return;
       // Server chỉ chặn được "chuỗi ngắn" và "số trong biên độ"; lọc lần hai ở
       // đây mới biết đâu là token màu THẬT và đâu là bề rộng có trong bảng.
-      const { color, w } = sanitizeLaserStyle(packet.color, packet.w);
+      const { color, w, fade } = sanitizeLaserStyle(packet.color, packet.w, packet.fade);
       // Bấm chuột lần mới bên kia = bỏ vệt cũ. Không có bước này thì thả chuột
       // ở một góc rồi bấm lại ở góc kia sẽ nối thành một vạch băng qua bảng.
       if (packet.reset === true) store.drop(packet.socketId);
@@ -26,9 +26,9 @@ function LaserLayer({ socket, store, scale }) {
       // không bao giờ tan. Cả lô điểm trong một gói cùng một mốc — sai số tối đa
       // đúng bằng một nhịp phát (40ms), mắt không thấy.
       const now = Date.now();
-      for (let i = 0; i + 1 < pts.length; i += 2) store.add(packet.socketId, color, w, pts[i], pts[i + 1], now);
+      for (let i = 0; i + 1 < pts.length; i += 2) store.add(packet.socketId, color, w, fade, pts[i], pts[i + 1], now);
     }
-    // Người rời board giữa lúc đang chỉ: vệt vẫn tự tan sau LASER_FADE_MS, nhưng
+    // Người rời board giữa lúc đang chỉ: vệt vẫn tự tan sau `fade` của nó, nhưng
     // bỏ ngay thì không có cái đuôi treo lại của một người đã đi.
     function onLeave(payload) {
       if (payload && typeof payload.socketId === "string") store.drop(payload.socketId);

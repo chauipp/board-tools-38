@@ -1,8 +1,9 @@
 import { useLingui } from "@lingui/react/macro";
 import { PEN_COLORS, PEN_WIDTHS, penVar } from "../lib/pen.js";
-import { LASER_WIDTHS } from "../lib/laser.js";
-import { SHAPE_KINDS, SHAPE_CLOSED } from "../lib/shape.js";
+import { LASER_WIDTHS, LASER_FADE_MIN, LASER_FADE_MAX, LASER_FADE_STEP, LASER_FADE_DEFAULT } from "../lib/laser.js";
+import { SHAPE_TOOL_KINDS, SHAPE_CLOSED, shapeKindOf } from "../lib/shape.js";
 import { TEXT_SIZES } from "../lib/text-el.js";
+import { ERASE_STROKE, ERASE_PART, ERASE_WIDTHS } from "../lib/erase.js";
 import { CARD_LEVELS } from "../lib/card-levels.js";
 import CardLevelIcon from "./CardLevelIcon.jsx";
 
@@ -14,8 +15,28 @@ const SHAPE_ICON = {
   line: <path d="M 3 16 L 17 4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />,
   arrow: <path d="M 3 16 L 17 4 M 11 4 L 17 4 L 17 10" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />,
   triangle: <path d="M 10 4 L 17 16 L 3 16 Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />,
-  diamond: <path d="M 10 3 L 17 10 L 10 17 L 3 10 Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+  diamond: <path d="M 10 3 L 17 10 L 10 17 L 3 10 Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />,
+  parallelogram: <path d="M 7 5 L 18 5 L 13 15 L 2 15 Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />,
+  trapezoid: <path d="M 6 5 L 14 5 L 18 15 L 2 15 Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
 };
+
+// Nút "giữ tay để bắt hình": một nét tay lượn đi vào một hình chuẩn. Nói đúng
+// việc nó làm bằng một hình, không cần chữ — cùng luật với mọi icon khác ở đây.
+function IconSnap() {
+  return (
+    <svg viewBox="0 0 20 20" width="18" height="18">
+      <path d="M2 13 C4 13 3.5 8 6 8 C8 8 7.5 12 9 12" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <rect x="11.5" y="6" width="7" height="7" rx="0.8" fill="none" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+// Số giây, một chữ số thập phân, bỏ phần ",0" cho số tròn: "0,9s" và "2s" chứ
+// không phải "0.9s" và "2.0s". Dấu phẩy vì đây là nhãn tiếng Việt.
+function secondsLabel(ms) {
+  const s = Math.round(ms / 100) / 10;
+  return (Number.isInteger(s) ? String(s) : s.toFixed(1).replace(".", ",")) + "s";
+}
 
 // Nhãn của từng bậc thẻ. Cố ý KHÔNG gom vào lib/card-levels.js: macro `t` cần
 // binding từ useLingui() ngay trong component, còn lib là code thuần không React.
@@ -125,15 +146,98 @@ export default function ToolOptions({ tool, prefs, onPrefs, level, onLevel }) {
             <span className="bar" style={{ height: w }} />
           </button>
         ))}
+        <div className="tool-sep" />
+        {/* THỜI GIAN TAN. Là một thanh trượt chứ không phải ba nút như độ đậm:
+            đây là một dải liên tục, và "vừa" là bao nhiêu thì tuỳ việc — chỉ vào
+            một chữ thì vệt ngắn cho gọn, còn khoanh một vùng lớn rồi nói về nó
+            thì vệt phải sống đủ lâu để cả đường khoanh cùng hiện một lúc.
+            Có nhãn số giây ngay dưới: một thanh trượt trần trong ô 48px thì
+            không cách nào biết mình đang đặt 1 giây hay 3 giây. */}
+        <div className="tool-range-wrap">
+          <input
+            type="range"
+            className="tool-range"
+            min={LASER_FADE_MIN}
+            max={LASER_FADE_MAX}
+            step={LASER_FADE_STEP}
+            value={prefs.fade ?? LASER_FADE_DEFAULT}
+            title={t`Vệt laser tan sau bao lâu`}
+            onChange={(e) => onPrefs({ ...prefs, fade: Number(e.target.value) })}
+          />
+          <span className="tool-range-val mono">{secondsLabel(prefs.fade ?? LASER_FADE_DEFAULT)}</span>
+        </div>
       </div>
     );
   }
 
-  // Cục gôm và nút vẽ khung không có tuỳ chọn nào, và mode Chuột thì IdeaMap
-  // không render component này — nên chỉ còn hai trường hợp phải vẽ.
+  // CỤC GÔM: hai kiểu tẩy, cộng ba cỡ khi đang ở kiểu cắt theo độ rộng.
+  //
+  // Ba nút cỡ chỉ hiện ở kiểu "theo độ rộng", không phải hiện rồi làm mờ: ở kiểu
+  // "cả nét" thì bề rộng KHÔNG có tác dụng gì cả (cục tẩy ở đó là một cái que
+  // chỉ, xem ERASE_RADIUS trong useInk.js), nên để chúng nằm đó là mời người
+  // dùng chỉnh một thứ không đổi được gì.
+  if (tool === "eraser") {
+    const partMode = prefs.erase === ERASE_PART;
+    return (
+      <div className="tool-options" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="tool-grid">
+          <button
+            type="button"
+            className={"tool-btn erase-pick" + (!partMode ? " on" : "")}
+            title={t`Tẩy cả nét — chạm vào đâu thì mất nguyên nét đó`}
+            onClick={() => onPrefs({ ...prefs, erase: ERASE_STROKE })}
+          >
+            {/* Nguyên đường lượn nhưng MỜ đi: chạm một chỗ thì cả đường biến mất. */}
+            <svg viewBox="0 0 20 20" width="18" height="18">
+              <path d="M 2 14 C 5 7 8 15 11 9 C 13 5 16 10 18 7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.38" />
+              <circle cx="10" cy="10" r="3.6" fill="none" stroke="currentColor" strokeWidth="1.6" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            className={"tool-btn erase-pick" + (partMode ? " on" : "")}
+            title={t`Tẩy theo độ rộng — chỉ mất đúng phần quét qua, nét bị cắt thành nhiều mảnh (hình khối và chữ vẫn mất cả)`}
+            onClick={() => onPrefs({ ...prefs, erase: ERASE_PART })}
+          >
+            {/* Cùng đường lượn đó nhưng KHUYẾT đúng một khúc ở chỗ cục tẩy đi
+                qua — khác biệt giữa hai icon chính là khác biệt giữa hai kiểu. */}
+            <svg viewBox="0 0 20 20" width="18" height="18">
+              <path d="M 2 14 C 4 10 5 12 6.4 10.6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              <path d="M 13.6 8.4 C 15 6 16.6 9.4 18 7" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+              <circle cx="10" cy="10" r="3.6" fill="none" stroke="currentColor" strokeWidth="1.6" />
+            </svg>
+          </button>
+        </div>
+        {partMode && (
+          <>
+            <div className="tool-sep" />
+            {ERASE_WIDTHS.map((ew) => (
+              <button
+                key={ew}
+                type="button"
+                className={"tool-btn erase-width" + (prefs.ew === ew ? " on" : "")}
+                title={t`Bề rộng cục tẩy`}
+                onClick={() => onPrefs({ ...prefs, ew })}
+              >
+                {/* Cỡ thật là đơn vị canvas (10/24/56), không nhét vừa ô 34px —
+                    thu lại theo tỉ lệ, nhưng vẫn phải đọc ra "cái nào to hơn". */}
+                <span className="dot" style={{ width: Math.round(ew * 0.42), height: Math.round(ew * 0.42) }} />
+              </button>
+            ))}
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // Nút vẽ khung không có tuỳ chọn nào, và mode Chuột thì IdeaMap không render
+  // component này — nên chỉ còn hai trường hợp phải vẽ.
   if (tool !== "pen" && tool !== "shape") return null;
   const isShape = tool === "shape";
-  const canFill = isShape && SHAPE_CLOSED.has(prefs.kind);
+  // prefs.kind là ID của nút ở khu 4, không phải kind lưu vào board: hình bình
+  // hành và hình thang đều lưu ra "quad". Hỏi SHAPE_CLOSED bằng id thì hai hình
+  // đó rơi ra ngoài và nút "tô cả hình" bị vô hiệu oan.
+  const canFill = isShape && SHAPE_CLOSED.has(shapeKindOf(prefs.kind));
 
   const SHAPE_LABEL = {
     rect: t`Chữ nhật`,
@@ -141,7 +245,9 @@ export default function ToolOptions({ tool, prefs, onPrefs, level, onLevel }) {
     line: t`Đường thẳng`,
     arrow: t`Mũi tên`,
     triangle: t`Tam giác`,
-    diamond: t`Hình thoi`
+    diamond: t`Hình thoi`,
+    parallelogram: t`Hình bình hành`,
+    trapezoid: t`Hình thang`
   };
 
   return (
@@ -149,7 +255,7 @@ export default function ToolOptions({ tool, prefs, onPrefs, level, onLevel }) {
       {isShape && (
         <>
           <div className="tool-grid">
-            {SHAPE_KINDS.map((kind) => (
+            {SHAPE_TOOL_KINDS.map((kind) => (
               <button
                 key={kind}
                 type="button"
@@ -157,7 +263,7 @@ export default function ToolOptions({ tool, prefs, onPrefs, level, onLevel }) {
                 title={SHAPE_LABEL[kind]}
                 // Chọn hình mở thì tắt luôn chế độ tô: để `fill` bật ngầm rồi
                 // đổi lại sang chữ nhật sẽ tô đặc bất ngờ.
-                onClick={() => onPrefs({ ...prefs, kind, fill: SHAPE_CLOSED.has(kind) ? prefs.fill : false })}
+                onClick={() => onPrefs({ ...prefs, kind, fill: SHAPE_CLOSED.has(shapeKindOf(kind)) ? prefs.fill : false })}
               ><svg viewBox="0 0 20 20" width="18" height="18">{SHAPE_ICON[kind]}</svg></button>
             ))}
           </div>
@@ -189,6 +295,44 @@ export default function ToolOptions({ tool, prefs, onPrefs, level, onLevel }) {
           <span className="bar" style={{ height: w }} />
         </button>
       ))}
+
+      {/* NÉT LIỀN / NÉT ĐỨT — có ở CẢ bút lẫn hình khối, không riêng hình khối:
+          nó là một thuộc tính của cái nét, và cùng một field `dashed` chạy cho
+          cả hai. Tách ra chỉ cho hình khối thì vẽ tay một đường bao "tạm thời"
+          bằng nét đứt — việc hay làm nhất với nét đứt — lại không làm được.
+          Icon vẽ đúng thứ nút đó tạo ra, cùng luật với bảng hình ở trên. */}
+      <div className="tool-sep" />
+      <div className="tool-grid">
+        <button
+          type="button"
+          className={"tool-btn dash-pick" + (!prefs.dashed ? " on" : "")}
+          title={t`Nét liền`}
+          onClick={() => onPrefs({ ...prefs, dashed: false })}
+        ><svg viewBox="0 0 20 20" width="18" height="18"><path d="M 3 10 L 17 10" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" /></svg></button>
+        <button
+          type="button"
+          className={"tool-btn dash-pick" + (prefs.dashed ? " on" : "")}
+          title={t`Nét đứt — bấm hai lần lên một nét đã vẽ cũng đổi qua lại được`}
+          onClick={() => onPrefs({ ...prefs, dashed: true })}
+        ><svg viewBox="0 0 20 20" width="18" height="18"><path d="M 3 10 L 17 10" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeDasharray="1.6 3.4" /></svg></button>
+      </div>
+
+      {/* GIỮ TAY ĐỂ BẮT HÌNH — chỉ của bút, không có ở tool Hình khối: ở đó
+          người ta đã chọn sẵn hình muốn vẽ, không có gì phải đoán.
+          Là một nút bật/tắt chứ không phải thanh chọn thời gian: 1,2s đã cân
+          giữa "không bắt oan lúc ngập ngừng" và "không phải đợi lâu", còn thứ
+          người ta thật sự cần điều khiển là CÓ dùng nó hay không. */}
+      {!isShape && (
+        <>
+          <div className="tool-sep" />
+          <button
+            type="button"
+            className={"tool-btn" + (prefs.snap !== false ? " on" : "")}
+            title={t`Giữ tay tại chỗ khi vẽ xong để nét tự về hình chuẩn (thẳng, tròn, vuông, tam giác cân…)`}
+            onClick={() => onPrefs({ ...prefs, snap: prefs.snap === false })}
+          ><IconSnap /></button>
+        </>
+      )}
 
       {isShape && (
         <>

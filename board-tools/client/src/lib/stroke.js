@@ -5,7 +5,7 @@ const RDP_TOLERANCE = 1;
 
 // Khoảng cách từ điểm P tới ĐOẠN AB (không phải tới đường thẳng AB): kẹp t vào
 // [0,1] để điểm nằm ngoài hai đầu đoạn thì đo tới đầu gần nhất.
-function distToSegment(px, py, ax, ay, bx, by) {
+export function distToSegment(px, py, ax, ay, bx, by) {
   const dx = bx - ax, dy = by - ay;
   const len2 = dx * dx + dy * dy;
   if (len2 === 0) return Math.hypot(px - ax, py - ay);
@@ -73,6 +73,22 @@ export function polylineHitBy(pts, point, limit) {
     if (distToSegment(point.x, point.y, pts[i], pts[i + 1], pts[i + 2], pts[i + 3]) <= limit) return true;
   }
   return false;
+}
+
+// Khoảng cách từ một điểm tới ĐƯỜNG GẤP KHÚC. Khác polylineHitBy ở chỗ nó trả
+// về con số chứ không phải câu trả lời có/không: recognize.js cần đo xem nét tay
+// khớp với từng hình mẫu tới đâu, không chỉ cần biết "có chạm hay không". Giữ
+// polylineHitBy riêng vì nó thoát sớm ngay khi chạm — với hit-test của cục gôm
+// thì đó là phần lớn số lần gọi.
+export function distToPolyline(pts, x, y) {
+  if (!pts || pts.length < 2) return Infinity;
+  if (pts.length === 2) return Math.hypot(x - pts[0], y - pts[1]);
+  let best = Infinity;
+  for (let i = 0; i + 3 < pts.length; i += 2) {
+    const d = distToSegment(x, y, pts[i], pts[i + 1], pts[i + 2], pts[i + 3]);
+    if (d < best) best = d;
+  }
+  return best;
 }
 
 // Ray casting: bắn một tia sang phải, đếm số cạnh cắt qua. Lẻ là trong, chẵn là

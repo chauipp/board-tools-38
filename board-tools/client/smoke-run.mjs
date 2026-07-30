@@ -123,7 +123,13 @@ globalThis.fetch = async (url, opts = {}) => {
 };
 function json(body) { return { ok: true, status: 200, json: async () => body }; }
 
-setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process.exit(2); }, 60000).unref();
+// Chốt chặn "có gì đó treo", không phải hạn mức hiệu năng. Cả bộ hiện chạy chừng
+// 62 giây, và phần lớn con số đó là CHỜ THẬT chứ không phải tính toán: mấy cử chỉ
+// giữ tay (bắt hình, khép nét gấp khúc) mỗi lần chốt là 900ms đồng hồ treo, mà
+// một nét gấp khúc bốn cạnh thì chốt bốn lần. Để gấp đôi thời gian thật: rộng để
+// máy chậm không báo động giả, mà vẫn đủ chặt để một vòng lặp vô hạn lộ ra trong
+// vòng hai phút thay vì treo mãi.
+setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process.exit(2); }, 120000).unref();
 
 // Bẫy CSS-vs-attribute của hình khối (Task 5): nếu rule `.ink-layer path`
 // khai lại `fill` thì trong SVG, CSS thắng presentation attribute, nên mọi
@@ -167,16 +173,16 @@ setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process
   // chọn hình bị cắt khỏi panel 62px. Lỗi thuần layout + cascade: jsdom không
   // tính cả hai thứ đó, nên chỉ đọc thứ tự trong file mới chốt được.
   const iBtn = css.indexOf(".tool-btn {");
-  const iPick = css.search(/^\.shape-pick,\s*\.fill-pick\s*\{/m);
+  const iPick = css.search(/^\.shape-pick,\s*\.fill-pick,\s*\.dash-pick,\s*\.erase-pick\s*\{/m);
   if (iBtn < 0 || iPick < 0) {
-    console.log("\n❌ SMOKE FAIL: không tìm thấy rule `.tool-btn` hoặc `.shape-pick, .fill-pick` trong idea-map.css — rule bị đổi tên thì bài kiểm thứ tự nguồn này vô nghĩa mà vẫn xanh");
+    console.log("\n❌ SMOKE FAIL: không tìm thấy rule `.tool-btn` hoặc `.shape-pick, .fill-pick, .dash-pick, .erase-pick` trong idea-map.css — rule bị đổi tên, hoặc có nút MỚI trong .tool-grid chưa được thêm vào rule thu 22px; cả hai đều làm bài kiểm thứ tự nguồn này vô nghĩa mà vẫn xanh");
     process.exit(1);
   }
   if (iPick < iBtn) {
-    console.log("\n❌ SMOKE FAIL: `.shape-pick, .fill-pick` đứng TRƯỚC `.tool-btn` trong idea-map.css — cùng độ đặc hiệu một class nên `.tool-btn { width: 34px }` sẽ đè mất bề rộng 22px, và cột phải của bảng chọn hình ở khu 4 bị cắt khỏi panel");
+    console.log("\n❌ SMOKE FAIL: `.shape-pick, .fill-pick, .dash-pick, .erase-pick` đứng TRƯỚC `.tool-btn` trong idea-map.css — cùng độ đặc hiệu một class nên `.tool-btn { width: 34px }` sẽ đè mất bề rộng 22px, và cột phải của bảng chọn hình ở khu 4 bị cắt khỏi panel");
     process.exit(1);
   }
-  console.log("  ·", "CSS: `.shape-pick/.fill-pick` đứng sau `.tool-btn` (đúng — cùng độ đặc hiệu thì thứ tự nguồn quyết định)");
+  console.log("  ·", "CSS: `.shape-pick/.fill-pick/.dash-pick/.erase-pick` đứng sau `.tool-btn` (đúng — cùng độ đặc hiệu thì thứ tự nguồn quyết định)");
 
   // Thanh công cụ chia thành khung rời: bao ngoài .tool-rail bỏ pointer-events
   // để khoảng hở giữa hai khung không nuốt cú bấm xuống canvas, và .tool-group
