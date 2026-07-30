@@ -28,6 +28,9 @@ import ToolRail from "../components/ToolRail.jsx";
 import ToolOptions from "../components/ToolOptions.jsx";
 import { nodesInFrame, edgesMatch, rectForEndpoint, clipToRect, segmentIntersectsRect } from "../lib/board-geometry.js";
 import { computeSnap } from "../lib/snap.js";
+import {
+  MULTI_CLICK_MS, CLICK_DRAG_TOL, multiClickAction, createMultiClick
+} from "../lib/multi-click.js";
 import { placeLinkedNode, parentNodeId } from "../lib/place-node.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout, layerLayout } from "../lib/layout.js";
@@ -374,6 +377,14 @@ export default function IdeaMap() {
   const nudgeTimerRef = useRef(null);
   const nudgeBaseRef = useRef(null);
   const spacePanRef = useRef(false);
+  // Cử chỉ bấm nhiều lần lên nền trống (2 lần hoàn tác, 3 lần làm lại). Phần
+  // việc nằm ở handleViewportClickCapture bên dưới; ba cái ref phải khai ở đây
+  // vì component có nhánh `if (!board) return` ở giữa.
+  const multiClickRef = useRef(null);
+  if (!multiClickRef.current) multiClickRef.current = createMultiClick();
+  const clickAnchorRef = useRef(null);
+  const multiClickTimerRef = useRef(0);
+  useEffect(() => () => clearTimeout(multiClickTimerRef.current), []);
   // Đang giữ chuột trái ở mode Laser. Ref chứ không state: nó đổi ở mỗi lần bấm
   // và chỉ được đọc trong handler chuột, không có gì trên màn hình phụ thuộc nó.
   const laserDownRef = useRef(false);
@@ -1542,13 +1553,52 @@ export default function IdeaMap() {
     setColorMenu(null);
   }
 
-  function handleViewportDoubleClick(e) {
-    if (role === "viewer") return;
-    if (e.target !== viewportRef.current && e.target !== canvasRef.current) return;
-    const rect = viewportRef.current.getBoundingClientRect();
-    const cx = (e.clientX - rect.left - board.view.panX) / board.view.scale;
-    const cy = (e.clientY - rect.top - board.view.panY) / board.view.scale;
-    createNode(cx - CARD_W / 2, cy - 40);
+  // ── Bấm nhiều lần lên nền trống: 2 lần hoàn tác, 3 lần làm lại ─────────────
+  //
+  // Cử chỉ này THAY CHỖ của "bấm đúp nền trống để tạo thẻ". Hai cái không ở
+  // chung được: muốn biết là 2 hay 3 lần thì phải đợi hết cửa sổ bấm, mà đợi thì
+  // thao tác tạo thẻ — thao tác hay dùng nhất — chậm đi thấy rõ ở mọi lần dùng.
+  // Tạo thẻ vẫn còn nguyên hai đường khác: mode Đặt, và Tab/Enter từ một thẻ.
+  //
+  // Luật đếm và các hằng số nằm ở lib/multi-click.js; ở đây chỉ là phần nối
+  // chuột: lọc ra đúng những cú bấm TRÊN NỀN, và tách bấm khỏi kéo. Ba cái ref
+  // của cử chỉ này khai ở đầu component cùng mọi hook khác — dưới đây đã qua
+  // nhánh `if (!board) return`, gọi hook ở đây là gọi có điều kiện.
+
+  // Nền trống của bảng, kể cả những lớp phủ kín khung nhìn của từng mode. KHÔNG
+  // gồm lớp của mode Đặt: ở đó mỗi cú bấm là một cái thẻ mới, đếm chồng lên
+  // thành ra vừa tạo thẻ vừa hoàn tác nó.
+  function isBoardBackground(el) {
+    if (el === viewportRef.current || el === canvasRef.current) return true;
+    return el instanceof Element
+      && (el.classList.contains("ink-capture") || el.classList.contains("laser-capture"));
+  }
+
+  // Ghi mốc ở pha BẮT (capture): nó chạy trước mọi handler con, nên một lớp phủ
+  // gọi stopPropagation cũng không giấu được cú bấm khỏi bộ đếm.
+  function handleViewportMouseDownCapture(e) {
+    clickAnchorRef.current = { x: e.clientX, y: e.clientY };
+  }
+
+  function handleViewportClickCapture(e) {
+    const mc = multiClickRef.current;
+    const anchor = clickAnchorRef.current;
+    const dragged = !anchor || Math.hypot(e.clientX - anchor.x, e.clientY - anchor.y) > CLICK_DRAG_TOL;
+    // Kéo, bấm trúng một vật thể, hoặc không có quyền sửa: chuỗi đứt tại đây.
+    if (role === "viewer" || dragged || !isBoardBackground(e.target)) { mc.cancel(); return; }
+
+    clearTimeout(multiClickTimerRef.current);
+    const count = mc.click(Date.now());
+    const action = multiClickAction(count);
+    if (!action) return;
+    // CHỜ hết cửa sổ rồi mới làm. Làm ngay ở lần thứ 2 thì lần thứ 3 chỉ còn
+    // cách huỷ đúng cú hoàn tác vừa rồi — tức bấm 3 lần quay về chỗ cũ chứ không
+    // tiến thêm một bước, và nó thôi không còn bằng Ctrl+Shift+Z nữa.
+    multiClickTimerRef.current = setTimeout(() => {
+      mc.cancel();
+      if (action === "undo") undo();
+      else redo();
+    }, MULTI_CLICK_MS);
   }
 
   // Suppress the browser's native context menu across the whole page, so
@@ -3724,7 +3774,8 @@ export default function IdeaMap() {
         className={"viewport" + (isPanning ? " panning" : "")}
         ref={viewportRef}
         onMouseDown={handleViewportMouseDown}
-        onDoubleClick={handleViewportDoubleClick}
+        onMouseDownCapture={handleViewportMouseDownCapture}
+        onClickCapture={handleViewportClickCapture}
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleViewportImageDrop}
         onMouseMove={handlePresenceMouseMove}

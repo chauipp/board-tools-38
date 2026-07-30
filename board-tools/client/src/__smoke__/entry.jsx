@@ -8,6 +8,7 @@ import { AuthProvider } from "../context/AuthContext.jsx";
 import { LASER_FADE_MS, LASER_WIDTHS } from "../lib/laser.js";
 import { PEN_COLORS } from "../lib/pen.js";
 import { BOARD_BGS, BOARD_GRIDS, COLOR_PACKS } from "../lib/board-theme.js";
+import { MULTI_CLICK_MS } from "../lib/multi-click.js";
 
 export async function run(log) {
   const root = createRoot(document.getElementById("root"));
@@ -1422,6 +1423,70 @@ export async function run(log) {
   });
   if (posAfterOpen() === openedLayout) throw new Error("Ctrl+Z sau khi xếp cây không lùi được");
   log(`Ctrl+Z sau khi đóng bảng: ${posAfterOpen()}`);
+
+  // ── Bấm nhiều lần trên NỀN TRỐNG: 2 lần hoàn tác, 3 lần làm lại ──────────
+  // Cử chỉ này thay chỗ "bấm đúp nền trống để tạo thẻ", nên phần đầu canh luôn
+  // rằng bấm đúp KHÔNG còn đẻ ra thẻ nữa.
+  const mcCard = () => document.querySelector('.idea-card[data-id="1"]');
+  const viewportEl = document.querySelector(".viewport");
+  const bgClick = (x, y, upX, upY) => {
+    mouse("mousedown", x, y, viewportEl);
+    mouse("mouseup", upX ?? x, upY ?? y, viewportEl);
+    viewportEl.dispatchEvent(new window.MouseEvent("click", {
+      bubbles: true, clientX: upX ?? x, clientY: upY ?? y, button: 0
+    }));
+  };
+  const settle = () => new Promise((r) => setTimeout(r, MULTI_CLICK_MS + 150));
+
+  // Một bước để mà lùi: kéo thẻ 1 đi một đoạn.
+  const mcStart = mcCard().style.left;
+  await act(async () => {
+    mouse("mousedown", 300, 300, mcCard());
+    mouse("mousemove", 460, 300);
+    await new Promise((r) => setTimeout(r, 60));
+  });
+  await act(async () => { mouse("mouseup", 460, 300); await new Promise((r) => setTimeout(r, 60)); });
+  const mcMoved = mcCard().style.left;
+  if (mcMoved === mcStart) throw new Error("không kéo được thẻ thì không có bước hoàn tác để thử");
+
+  const mcCardsBefore = document.querySelectorAll(".idea-card").length;
+  await act(async () => { bgClick(900, 400); bgClick(900, 400); await settle(); });
+  const mcUndone = mcCard().style.left;
+  log(`bấm 2 lần nền trống: thẻ ${mcMoved} → ${mcUndone} (phải về ${mcStart})`
+    + ` · số thẻ ${mcCardsBefore} → ${document.querySelectorAll(".idea-card").length}`);
+  if (document.querySelectorAll(".idea-card").length !== mcCardsBefore) {
+    throw new Error("bấm đúp nền trống vẫn đẻ ra thẻ mới — cử chỉ cũ chưa được gỡ");
+  }
+  if (mcUndone !== mcStart) throw new Error(`bấm 2 lần phải hoàn tác về ${mcStart}, đang ở ${mcUndone}`);
+
+  await act(async () => { bgClick(900, 400); bgClick(900, 400); bgClick(900, 400); await settle(); });
+  log(`bấm 3 lần nền trống: thẻ ${mcUndone} → ${mcCard().style.left} (phải về ${mcMoved})`);
+  if (mcCard().style.left !== mcMoved) {
+    throw new Error(`bấm 3 lần phải làm lại về ${mcMoved}, đang ở ${mcCard().style.left}`);
+  }
+
+  // Bấm 1 lần: không được động vào dữ liệu. Đây là cú bấm hay dùng nhất trên
+  // bảng (bỏ chọn), nên nó mà lùi được một bước thì hỏng hẳn.
+  const mcOnePos = mcCard().style.left;
+  await act(async () => { bgClick(900, 400); await settle(); });
+  if (mcCard().style.left !== mcOnePos) throw new Error("bấm MỘT lần trên nền mà bảng đổi trạng thái");
+
+  // KÉO không phải BẤM: quét chọn hai lượt liền nhau không được thành hoàn tác.
+  // Không có chốt này thì mỗi lần quét hụt là một bước lùi không ai gọi.
+  await act(async () => {
+    bgClick(700, 300, 860, 420);
+    bgClick(700, 300, 860, 420);
+    await settle();
+  });
+  log(`kéo 2 lượt trên nền: thẻ vẫn ở ${mcCard().style.left} (phải là ${mcOnePos})`);
+  if (mcCard().style.left !== mcOnePos) throw new Error("hai cú KÉO bị đếm thành hai cú bấm → hoàn tác oan");
+
+  // Bấm 4 lần: bấm loạn tay không được biến thành một chuỗi thao tác.
+  await act(async () => {
+    for (let i = 0; i < 4; i++) bgClick(900, 400);
+    await settle();
+  });
+  if (mcCard().style.left !== mcOnePos) throw new Error("bấm 4 lần mà bảng vẫn đổi trạng thái");
 
   // ── Chọn nét vẽ / hình / chữ ở mode Chuột ───────────────────────────────
   // Lớp vẽ là một <svg> pointer-events: none, nên MỌI thao tác ở đây đi qua
