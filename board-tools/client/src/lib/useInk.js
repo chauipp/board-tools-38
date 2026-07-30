@@ -10,6 +10,8 @@ import {
 } from "./polygon-snap.js";
 import { ERASE_PART, eraseRadius, eraseBounds, cuttableOutline, cutPartsAlong } from "./erase.js";
 import { isScribble, scribbleTargets } from "./scribble.js";
+import { recognizeInk } from "./handwriting.js";
+import { TEXT_SIZES, textBox } from "./text-el.js";
 import { createStillWatch, STILL_TOL } from "./pointer-input.js";
 
 // Bán kính gôm KIỂU "CẢ NÉT", đơn vị toạ độ canvas. Cộng thêm w/2 của từng nét
@@ -46,6 +48,74 @@ export const HOLD_SWAP_MS = HOLD_ERASE_MS;
 // (memo) dựng lại toàn bộ nét đã lưu dù chẳng có nét nào đang bị đánh dấu.
 const EMPTY_IDS = [];
 
+// ── ĐỆM NÉT VỪA VIẾT (cho cử chỉ đọc chữ) ──────────────────────────────────
+//
+// Đọc chữ khác mọi cử chỉ khác của cây bút ở một điểm quyết định KIẾN TRÚC: một
+// chữ cái không phải một nét. Chữ "i" là hai nét, số "4" là hai nét, cụm "42"
+// là ba nét — mà toàn bộ máy móc trong file này sống trong lòng MỘT lượt
+// mousedown→mouseup. Nên phải có một cái đệm nằm ngoài lượt vẽ, nhớ lại mấy nét
+// bút vừa lưu, để lúc giữ tay còn có cái mà đọc.
+//
+// Đệm bị VỨT khi nét mới rõ ràng không thuộc cùng một cụm chữ với mấy nét cũ:
+//   cách xa theo chiều NGANG quá HW_GAP lần chiều cao dòng → cụm khác;
+//   lệch theo chiều DỌC quá HW_LINE lần chiều cao dòng → dòng khác.
+// Đo bằng chiều cao dòng chứ không bằng một số tuyệt đối, vì đây là toạ độ
+// canvas: viết chữ to hay nhỏ, phóng to hay thu nhỏ bảng, thì khoảng cách giữa
+// hai chữ cũng co giãn theo đúng cỡ chữ.
+//
+// HW_GAP để rộng hơn hẳn ngưỡng khoảng-trắng bên handwriting.js (0,45) là cố ý:
+// ở đó khe hở nghĩa là "có dấu cách", còn ở đây nghĩa là "thôi, hai chuyện khác
+// nhau". Viết "80 90" phải còn nằm trong cùng một đệm thì mới đọc ra được cả
+// cụm có dấu cách ở giữa.
+const HW_GAP = 1.4;
+const HW_LINE = 0.8;
+
+// Đệm không giữ quá ngần này nét. Một dòng chữ dài hơn thế thì phần đầu đã trôi
+// ra khỏi tầm nhìn của phép đọc rồi, mà giữ lại chỉ tổ làm mỗi lần giữ tay phải
+// quét một đống nét không liên quan.
+const HW_MAX_STROKES = 24;
+
+// Chiều cao phần thân chữ hoa so với cỡ chữ. Dùng để chọn cỡ chữ máy cho khớp
+// với cỡ chữ vừa viết tay: viết to thì ra chữ to.
+const CAP_RATIO = 0.7;
+
+function bufBox(buf) {
+  let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
+  for (const e of buf) {
+    for (let i = 0; i + 1 < e.pts.length; i += 2) {
+      if (e.pts[i] < l) l = e.pts[i];
+      if (e.pts[i] > r) r = e.pts[i];
+      if (e.pts[i + 1] < t) t = e.pts[i + 1];
+      if (e.pts[i + 1] > b) b = e.pts[i + 1];
+    }
+  }
+  return { l, t, r, b, w: r - l, h: b - t };
+}
+
+// Ghi thêm một nét vào đệm, vứt đệm cũ nếu nét mới rõ ràng thuộc chuyện khác.
+function extendInkBuf(buf, id, pts) {
+  const box = bufBox([{ pts }]);
+  if (buf.length) {
+    const prev = bufBox(buf);
+    // Sàn 1 đơn vị: nét đầu tiên có thể là một cái chấm (chiều cao 0), và chia
+    // cho 0 thì mọi khoảng cách đều thành vô cực — đệm bị vứt ở mọi nét.
+    const lineH = Math.max(prev.h, box.h, 1);
+    const gapX = box.l - prev.r;
+    const dy = Math.abs((box.t + box.h / 2) - (prev.t + prev.h / 2));
+    if (gapX > HW_GAP * lineH || dy > HW_LINE * lineH) buf = [];
+  }
+  const next = buf.concat([{ id, pts }]);
+  return next.length > HW_MAX_STROKES ? next.slice(next.length - HW_MAX_STROKES) : next;
+}
+
+// Cỡ chữ máy gần nhất với chiều cao vừa viết tay.
+function nearestSize(capH) {
+  const want = capH / CAP_RATIO;
+  let best = TEXT_SIZES[0];
+  for (const s of TEXT_SIZES) if (Math.abs(s - want) < Math.abs(best - want)) best = s;
+  return best;
+}
+
 // Chuột → toạ độ canvas. Camera nằm trong board.view, đọc qua ref để handler
 // gắn vào window không bị bám vào một bản chụp cũ.
 function toCanvas(e, viewportEl, view) {
@@ -56,7 +126,10 @@ function toCanvas(e, viewportEl, view) {
   };
 }
 
-export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, onEraseDone, onPick, onSwapTool, live }) {
+export function useInk({
+  tool, penPrefs, boardRef, viewportRef,
+  onStrokeDone, onEraseDone, onPick, onSwapTool, live, measureText
+}) {
   const [draft, setDraft] = useState(null);
   const [eraseIds, setEraseIds] = useState([]);
   // Bản xem trước của CỤC TẨY THEO ĐỘ RỘNG: { ids, parts }. `ids` là các nét
@@ -96,6 +169,9 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
   // phép loại-cho-rẻ lại thành thứ đắt nhất. Khoá theo tham chiếu mảng drawings:
   // board là bất biến nên mảng đổi tham chiếu đúng lúc nội dung đổi.
   const boxCacheRef = useRef({ list: null, map: null });
+  // Mấy nét bút vừa lưu, [{ id, pts }], để cử chỉ đọc chữ còn có cái mà đọc.
+  // Xem ghi chú dài ở HW_GAP về việc vì sao nó phải sống NGOÀI lượt vẽ.
+  const inkBufRef = useRef([]);
   const activeRef = useRef(null);   // "pen" | "eraser" | "shape" | null
   const startRef = useRef(null);   // điểm bắt đầu của hình khối đang kéo
   // Hộp mới nhất phải nằm trong REF, không đọc lại từ state `draft`: pushDraft
@@ -308,6 +384,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
     const isPen = activeRef.current === "pen";
     const snapOn = isPen && penPrefs.snap !== false;
     const scratchOn = isPen && penPrefs.scratch !== false;
+    const hwOn = isPen && penPrefs.hw === true;
     // Nét nằm ngay dưới chỗ vừa ấn xuống. Nét vẽ sau cùng nằm trên, nên trúng
     // nhiều thì lấy cái trên — cùng luật với cú bấm chọn ở mode Chuột.
     const pressHits = isPen ? drawingsHitBy(board.drawings || [], start, ERASE_RADIUS) : [];
@@ -385,6 +462,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
     let snapped = null;   // { kind, pts } sau khi đã bắt được hình
     let erased = false;   // đã tẩy nét dưới tay — lượt này không lưu gì nữa
     let swapped = false;  // đã đổi bút ↔ cục gôm — lượt này bỏ hẳn, không lưu gì
+    let written = false;  // đã đọc chữ và thay bằng text — lượt này không lưu gì
 
     // setState chỉ khi trạng thái THẬT SỰ đổi. Không có chốt hintShown/dimmed thì
     // mỗi nhịp chuột (cả trăm lần/giây) là một lời gọi setState — đúng thứ mà cả
@@ -432,6 +510,92 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       live?.beginErase([id]);
       live?.endErase();
       onEraseDone([id]);
+      inkBufRef.current = [];
+    }
+
+    // ĐỌC CHỮ: mấy nét vừa viết (đệm) cộng nét đang viết dở → một chuỗi ký tự,
+    // thay tại chỗ bằng một text thật. Trả về true nếu đọc được.
+    //
+    // Chốt NGAY LÚC GIỮ TAY chứ không đợi nhả chuột, theo đúng khuôn doErase ở
+    // trên: cử chỉ này thay chữ viết tay bằng chữ máy, và người dùng phải thấy
+    // kết quả đúng lúc họ yêu cầu nó. Đợi tới mouseup thì giữa hai thời điểm ấy
+    // có một quãng không ai biết cử chỉ đã ăn hay chưa.
+    //
+    // Đọc không ra thì IM LẶNG trả về false, và doSnap đi tiếp xuống nhánh bắt
+    // hình như chưa có gì xảy ra. Đây là hành vi đúng chứ không phải bỏ sót:
+    // recognizeInk từ chối khá nhiều (xem MAX_DIST bên đó), mà nét không đọc
+    // được thì gần như bao giờ cũng là một nét vẽ thật.
+    function doWrite() {
+      // LỌC LẠI ĐỆM THEO NHỮNG NÉT CÒN SỐNG. Đệm giữ id của mấy nét đã lưu, mà
+      // giữa lúc viết thì một nét trong đó có thể đã biến mất — mình vừa tẩy
+      // nó, hoặc người ngồi máy khác vừa tẩy. Không lọc thì hai chuyện hỏng
+      // cùng lúc: chuỗi đọc ra có cả cái ký tự đã bị xoá, và nếu nét bị xoá lại
+      // đúng là nét ĐẦU cụm thì `from` trỏ vào một id không còn tồn tại — mà
+      // commitErase đặt thứ mới vào đúng chỗ nét cũ, nên cái text lặng lẽ rơi
+      // mất, người dùng thấy nét biến đi mà chẳng có chữ nào hiện ra.
+      const alive = new Set((boardRef.current?.drawings || []).map((d) => d.id));
+      const buf = inkBufRef.current.filter((e) => alive.has(e.id));
+      const strokes = buf.map((e) => e.pts).concat([ptsRef.current]);
+      const rec = recognizeInk(strokes);
+      if (!rec) return false;
+
+      const size = nearestSize(rec.box.h);
+      const lines = [rec.text];
+      // Không đo được bề rộng (không có canvas 2d) thì ước lượng thô — cùng
+      // cách IdeaMap.measureTextWidth đang lùi về. Hộp chỉ dùng cho vùng chạm.
+      const box = textBox(lines, size, measureText || ((line, s) => line.length * s * 0.55));
+      const el = {
+        kind: "text",
+        // Căn theo TÂM DỌC của chỗ vừa viết, không căn mép trên: hộp chữ máy
+        // cao hơn phần thân chữ (còn chừa chỗ cho nét trên và nét dưới), nên
+        // căn mép trên thì chữ hiện ra thấp hơn hẳn chỗ tay vừa viết.
+        pts: [Math.round(rec.box.l), Math.round(rec.box.t + rec.box.h / 2 - box.h / 2)],
+        text: rec.text, color: penPrefs.color, size, w: box.w, h: box.h
+      };
+
+      written = true;
+      pushDraft.current.cancel();
+      setDraft(null);
+
+      // LƯU NÉT ĐANG VIẾT DỞ TRƯỚC ĐÃ, dù ngay dòng sau nó bị thay bằng text.
+      //
+      // Nghe thừa, nhưng bỏ nó đi thì HOÀN TÁC MẤT MỘT NÉT, và bài smoke đã bắt
+      // đúng chuyện đó: viết "42" (ba nét, nét cuối là số 2 đang cầm bút) rồi
+      // giữ tay, bấm Ctrl+Z thì chỉ số 4 quay lại. Lý do ở chỗ hoàn tác chụp
+      // lại BẢN BOARD trước khi sửa, mà nét đang viết dở thì chưa hề có trong
+      // bản nào cả — không bản ghi nào chứa nó thì không phép lùi nào tìm lại
+      // được. Lưu nó ra một bản riêng rồi mới thay: bấm Ctrl+Z một lần là được
+      // lại đúng chữ mình vừa viết, đủ cả ba nét.
+      //
+      // Cái giá là hai lượt ghi thay vì một, và người khác thấy nét loé lên rồi
+      // biến mất. Đổi lấy việc hoàn tác trả về đúng thứ người ta vừa làm thì rẻ.
+      const tail = { kind: "pen", color: penPrefs.color, w: penPrefs.w, pts: simplifyStroke(ptsRef.current) };
+      if (dashed) tail.dashed = true;
+      ptsRef.current = [];
+      unsentRef.current = [];
+      inkBufRef.current = [];
+      const tailId = onStrokeDone(tail);
+      live?.endStroke(tailId);
+
+      const ids = buf.map((e) => e.id).concat(tailId != null ? [tailId] : []);
+      if (ids.length) {
+        // Với người khác: đi ĐÚNG đường của cục gôm để mấy nét cũ mờ đi rồi
+        // biến mất, y như doErase. Bản thân cái text thì tới cùng board:update —
+        // kênh live không có đường phát một text do người khác sinh ra giữa
+        // chừng, và đó cũng chính là cách các mảnh của cục tẩy đang đi.
+        live?.beginErase(ids);
+        live?.endErase();
+        // `from` là nét ĐẦU TIÊN của cụm: commitErase đặt thứ mới vào đúng chỗ
+        // nét đó đang đứng trong mảng drawings, tức giữ nguyên tầng trên/dưới.
+        onEraseDone(ids, [{ from: ids[0], ...el }]);
+      } else {
+        // Không lưu nổi nét đang viết dở (không có board) nên chẳng có id nào để
+        // thay. Chốt phòng thủ, không phải đường chạy thường: đi qua onEraseDone
+        // với danh sách rỗng thì cái text LẶNG LẼ RƠI MẤT — hàm đó đặt thứ mới
+        // vào đúng chỗ một nét bị xoá, mà ở đây không có nét nào bị xoá cả.
+        onStrokeDone(el);
+      }
+      return true;
     }
 
     // Đổi bút ↔ cục gôm ngay giữa lượt. Lượt này bị BỎ HẲN: tay đang giữ nguyên
@@ -456,6 +620,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       // hình người khác cho tới gói kế tiếp.
       if (was === "eraser") live?.endErase();
       else live?.cancelStroke();
+      inkBufRef.current = [];
       onSwapTool();
     }
 
@@ -551,6 +716,30 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       // thẳng, `snapped` được đặt, và lúc nhả chuột thì nhánh gạch xoá dưới kia
       // không bao giờ chạy tới. Trả về lặng lẽ, để nguyên nét cho lúc nhả tay xử.
       if (scratchOn && isScribble(ptsRef.current)) return;
+      // ĐANG BẬT ĐỌC CHỮ THÌ CỬ CHỈ GIỮ TAY LÀ CỦA RIÊNG NÓ. Đọc không ra thì
+      // dừng hẳn ở đây, KHÔNG rơi xuống nhánh bắt hình.
+      //
+      // Bản đầu viết `if (hwOn && !verts.length && doWrite()) return;` rồi cho
+      // rơi tiếp, nghĩ rằng đọc không ra thì trả nguyên nét lại cho bắt hình.
+      // Sai, và sai theo kiểu phá sạch: viết chữ thì phải ngập ngừng giữa nét —
+      // đưa bút xong một khúc, ngắm, rồi viết tiếp — mà mỗi lần ngập ngừng quá
+      // 900ms là một lần doSnap chạy. Lúc ấy trong tay mới có nửa cái chữ nên
+      // đọc không ra, thế là bắt hình nhận lấy, nắn nửa chữ ấy thành một ĐOẠN
+      // THẲNG và ghi vào `verts`. Từ giây đó `verts` khác rỗng, mà chốt cũ lại
+      // đòi `!verts.length` — đọc chữ bị khoá vĩnh viễn cho tới hết nét, còn mỗi
+      // lần ngập ngừng tiếp theo lại chốt thêm một cạnh. Kết quả trên màn hình
+      // là chữ viết tay biến thành một chuỗi đoạn thẳng gấp khúc, ngập ngừng đủ
+      // nhiều thì khép luôn thành đa giác. Đúng thứ người dùng gửi ảnh về.
+      //
+      // Hai cử chỉ này không chia nhau được cùng một cú giữ tay, vì chúng đòi
+      // hai thứ trái ngược nhau ở CÙNG một thời điểm: bắt hình muốn chốt NGAY
+      // từng khúc một, đọc chữ cần ĐỢI cho tới khi cả cụm chữ xong. Nên phải
+      // chọn, và cái nút bật/tắt chính là chỗ người dùng chọn: bật đọc chữ lên
+      // là nói "tôi đang viết", mà đang viết thì không ai muốn nét mình bị nắn
+      // thành hình chuẩn cả.
+      if (hwOn) { doWrite(); return; }
+      // Tắt hết bắt hình thì cử chỉ giữ tay không còn việc gì.
+      if (!snapOn) return;
       const rec = verts.length ? snapLine(ptsRef.current) : snapShape(ptsRef.current);
       // Không ra được gì: im lặng bỏ qua, nét vẫn là nét tay và người dùng vẽ tiếp
       // bình thường. Tới đây thì hiếm — snapShape đã có sẵn phương án cuối là nắn
@@ -652,7 +841,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
     function onMove(ev) {
       // Đã bắt được hình, đã tẩy nét dưới tay, hoặc đã đổi tool: lượt vẽ chốt
       // tại đó, mọi cú di chuột sau đều bị bỏ.
-      if (snapped || erased || swapped) return;
+      if (snapped || erased || swapped || written) return;
       const b = boardRef.current;
       if (!b) return;
       const p = toCanvas(ev, viewportEl, b.view);
@@ -802,7 +991,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
 
       // Lên nòng bắt hình ở nhịp chuột ĐẦU TIÊN (chưa có bộ đếm nào chạy), rồi
       // chỉ lên nòng LẠI khi tay thật sự đang ĐI.
-      if (snapOn && (!holdTimer || going)) armHold("snap", ev.clientX, ev.clientY);
+      if ((snapOn || hwOn) && (!holdTimer || going)) armHold("snap", ev.clientX, ev.clientY);
     }
 
     function cleanup() {
@@ -868,6 +1057,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
         // Quét mà không chạm nét nào: không commit, không tạo entry hoàn tác rác.
         if (ids.length) onEraseDone(ids, adds);
         live?.endErase();
+        inkBufRef.current = [];
         return;
       }
 
@@ -891,12 +1081,17 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
         if (dashed) stroke.dashed = true;
         const drawingId = onStrokeDone(stroke);
         live?.endShape(drawingId);
+        inkBufRef.current = [];
         return;
       }
 
       // Cú giữ để tẩy đã ăn: doErase() làm hết mọi việc rồi (bỏ nét đang vẽ, báo
       // cho người khác, gọi onEraseDone). Ở đây chỉ việc không lưu thêm gì.
       if (erased) return;
+
+      // Cú giữ để đọc chữ đã ăn: doWrite() đã thay cả cụm bằng một text. Nét
+      // đang viết dở KHÔNG được lưu — nó là nét cuối của chữ vừa đọc xong.
+      if (written) return;
 
       // Nét đã được bắt thành hình: lưu ra HÌNH, không lưu nét tay. Đi qua đúng
       // khuôn dữ liệu của tool Hình khối nên hit-test, cục gôm, hoàn tác và gói
@@ -916,6 +1111,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
         // cũng là lượt bút (xem doClose) — phải đóng đúng cái đang mở.
         if (snapped.kind === "pen") live?.endStroke(snapId);
         else live?.endShape(snapId);
+        inkBufRef.current = [];
         return;
       }
 
@@ -943,6 +1139,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
         if (dashed) chained.dashed = true;
         const chainId = onStrokeDone(chained);
         live?.endStroke(chainId);
+        inkBufRef.current = [];
         return;
       }
 
@@ -980,6 +1177,11 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       // cử chỉ bấm-hai-lần-đổi-nét-đứt chỉ ăn từ lần bấm thứ HAI.
       if (moveFar <= SNAP_MOVE_TOL || pts.length < 4) {
         live?.cancelStroke();
+        // Vứt đệm đọc chữ. Không phải vì cú bấm phá hỏng gì, mà vì thứ nó mở ra
+        // sau đó thì có: chọn xong là kéo đi được, mà đệm giữ TOẠ ĐỘ đã chụp
+        // lúc vẽ — kéo một nét đi rồi giữ tay đọc chữ sẽ đọc ra chuỗi ở chỗ cũ
+        // rồi xoá mất cái nét ở chỗ mới.
+        inkBufRef.current = [];
         onPick?.(pickTargetId, pickAdditive);
         return;
       }
@@ -1000,6 +1202,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
           live?.beginErase(scratched);
           live?.endErase();
           onEraseDone(scratched);
+          inkBufRef.current = [];
           return;
         }
       }
@@ -1008,6 +1211,10 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       if (dashed) penStroke.dashed = true;
       const drawingId = onStrokeDone(penStroke);
       live?.endStroke(drawingId);
+      // Chỗ DUY NHẤT đệm đọc chữ lớn lên. Ghi vô điều kiện chứ không hỏi
+      // `hwOn`: bật nút đọc chữ lên giữa chừng thì mấy nét vừa viết phải đọc
+      // được ngay, chứ không phải viết lại từ đầu mới ăn.
+      if (drawingId != null) inkBufRef.current = extendInkBuf(inkBufRef.current, drawingId, pts);
     }
 
     cleanupRef.current = cleanup;
@@ -1018,7 +1225,7 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
       window.addEventListener("keydown", onShiftKey);
       window.addEventListener("keyup", onShiftKey);
     }
-  }, [tool, penPrefs, boardRef, viewportRef, onStrokeDone, onEraseDone, onPick, onSwapTool, live]);
+  }, [tool, penPrefs, boardRef, viewportRef, onStrokeDone, onEraseDone, onPick, onSwapTool, live, measureText]);
 
   // Cửa sổ mất focus giữa nét: mouseup sẽ không bao giờ tới, nên phải tự huỷ —
   // nếu không, nét treo lại trên màn hình mình và trên màn hình người khác.

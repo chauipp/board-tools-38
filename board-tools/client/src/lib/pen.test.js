@@ -62,18 +62,18 @@ test("loadPenPrefs: kind lạ và fill sai kiểu chỉ lùi phần của chúng
   const s = fakeStorage({
     "ideamap.pen": JSON.stringify({ color: "pen-blue", w: 8, kind: "star", fill: "yes" })
   });
-  assert.deepEqual(loadPenPrefs(s), { color: "pen-blue", w: 8, kind: PEN_DEFAULT.kind, fill: false, size: PEN_DEFAULT.size, snap: true, scratch: true, dashed: false, erase: PEN_DEFAULT.erase, ew: PEN_DEFAULT.ew });
+  assert.deepEqual(loadPenPrefs(s), { color: "pen-blue", w: 8, kind: PEN_DEFAULT.kind, fill: false, size: PEN_DEFAULT.size, snap: true, scratch: true, hw: false, dashed: false, erase: PEN_DEFAULT.erase, ew: PEN_DEFAULT.ew });
 });
 
 test("loadPenPrefs: prefs cũ chỉ có color/w vẫn đọc được, kind/fill lấy mặc định", () => {
   const s = fakeStorage({ "ideamap.pen": JSON.stringify({ color: "pen-green", w: 2 }) });
-  assert.deepEqual(loadPenPrefs(s), { color: "pen-green", w: 2, kind: PEN_DEFAULT.kind, fill: false, size: PEN_DEFAULT.size, snap: true, scratch: true, dashed: false, erase: PEN_DEFAULT.erase, ew: PEN_DEFAULT.ew });
+  assert.deepEqual(loadPenPrefs(s), { color: "pen-green", w: 2, kind: PEN_DEFAULT.kind, fill: false, size: PEN_DEFAULT.size, snap: true, scratch: true, hw: false, dashed: false, erase: PEN_DEFAULT.erase, ew: PEN_DEFAULT.ew });
 });
 
 test("savePenPrefs rồi loadPenPrefs trả lại đúng giá trị", () => {
   const s = fakeStorage();
-  savePenPrefs(s, { color: "pen-green", w: 8, kind: "ellipse", fill: true, size: 30, snap: false, scratch: false, dashed: true, erase: "part", ew: 56 });
-  assert.deepEqual(loadPenPrefs(s), { color: "pen-green", w: 8, kind: "ellipse", fill: true, size: 30, snap: false, scratch: false, dashed: true, erase: "part", ew: 56 });
+  savePenPrefs(s, { color: "pen-green", w: 8, kind: "ellipse", fill: true, size: 30, snap: false, scratch: false, hw: true, dashed: true, erase: "part", ew: 56 });
+  assert.deepEqual(loadPenPrefs(s), { color: "pen-green", w: 8, kind: "ellipse", fill: true, size: 30, snap: false, scratch: false, hw: true, dashed: true, erase: "part", ew: 56 });
 });
 
 // Cục gôm có bộ nhớ RIÊNG, và `ew` cố ý không dùng chung ô với `w`: gộp lại thì
