@@ -3398,6 +3398,12 @@ export async function run(log) {
   // TẮT sẵn, ngược với hai nút cạnh nó. Xem ghi chú ở PEN_DEFAULT: bật sẵn thì
   // hình của người đang vẽ sơ đồ sẽ bị đọc thành chữ cái.
   if (hwBtn().classList.contains("on")) throw new Error("đọc chữ viết tay phải TẮT sẵn");
+  // Nút BẮT HÌNH — loại trừ nhau với nút đọc chữ. Bật sẵn (default), nên giờ nó
+  // phải đang sáng.
+  const snapBtn = () => Array.from(document.querySelectorAll(".tool-options .tool-btn"))
+    .find((b) => (b.title || "").startsWith("Giữ tay tại chỗ khi vẽ"));
+  if (!snapBtn()) throw new Error("khu 4 của bút phải có nút bật/tắt bắt hình");
+  if (!snapBtn().classList.contains("on")) throw new Error("bắt hình phải BẬT sẵn");
 
   const hwGlyph = new Map();
   for (const g of GLYPHS) if (!hwGlyph.has(g.label)) hwGlyph.set(g.label, g.strokes);
@@ -3508,6 +3514,11 @@ export async function run(log) {
   // BẬT lên rồi viết lại đúng thế.
   await act(async () => { hwBtn().click(); await new Promise((r) => setTimeout(r, 30)); });
   if (!hwBtn().classList.contains("on")) throw new Error("không bật được đọc chữ viết tay");
+  // LOẠI TRỪ NHAU: bật đọc chữ thì bắt hình phải tự tắt — không để nút bắt hình
+  // sáng mà không làm gì (đúng chỗ người dùng từng phàn nàn). Đây là cách chặn
+  // lỗi cũ ngay từ gốc: hai cái không bao giờ cùng bật thì cú ngập ngừng lúc
+  // viết không có bắt hình nào chen vào được.
+  if (snapBtn().classList.contains("on")) throw new Error("bật đọc chữ mà bắt hình vẫn còn bật — hai nút phải loại trừ nhau");
 
   const hwBefore = hwDrawings().length;
   await hwWrite("42", hwArea.x, hwArea.y, 62, { settle: true });
@@ -3574,6 +3585,14 @@ export async function run(log) {
 
   await act(async () => { hwBtn().click(); await new Promise((r) => setTimeout(r, 30)); });
   if (hwBtn().classList.contains("on")) throw new Error("không tắt lại được đọc chữ viết tay");
+  // Tắt đọc chữ KHÔNG tự bật lại bắt hình (loại trừ nhau chỉ ép lúc BẬT một cái).
+  // Người dùng muốn bắt hình thì tự bật — bấm lại đúng như ngoài đời, và các bài
+  // dưới đây (cắt hình, v.v.) cần nó bật. Bấm xong bắt hình phải sáng, đọc chữ
+  // vẫn tắt.
+  if (snapBtn().classList.contains("on")) throw new Error("tắt đọc chữ mà bắt hình tự bật lại — không đúng, loại trừ nhau chỉ ép lúc bật");
+  await act(async () => { snapBtn().click(); await new Promise((r) => setTimeout(r, 30)); });
+  if (!snapBtn().classList.contains("on")) throw new Error("không bật lại được bắt hình sau khi viết chữ");
+  if (hwBtn().classList.contains("on")) throw new Error("bật lại bắt hình mà đọc chữ cũng bật theo — sai chiều loại trừ");
 
   // CỤC GÔM không được dính cử chỉ đổi nét đứt: ở đó cú bấm ĐÃ CÓ VIỆC (xoá nét
   // ngay từ cú bấm đầu), chồng thêm là vừa xoá vừa đổi. Bài này sinh ra từ một

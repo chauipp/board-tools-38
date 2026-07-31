@@ -347,6 +347,14 @@ export default function ToolOptions({ tool, prefs, onPrefs, level, onLevel }) {
           Là một nút bật/tắt chứ không phải thanh chọn thời gian: 1,2s đã cân
           giữa "không bắt oan lúc ngập ngừng" và "không phải đợi lâu", còn thứ
           người ta thật sự cần điều khiển là CÓ dùng nó hay không. */}
+      {/* BẮT HÌNH và ĐỌC CHỮ LOẠI TRỪ NHAU: bật cái này thì cái kia tự tắt.
+          Hai thứ tranh cùng một chuyện — giữ/ngừng tay giữa lúc vẽ. Bắt hình
+          cần cú giữ tay đó để nắn nét thành hình; đọc chữ thì cần chính cú
+          ngập ngừng ấy phải VÔ HẠI (viết chữ ai chả ngập ngừng giữa nét). Để
+          cả hai cùng bật thì mỗi lần ngập ngừng lúc viết, bắt hình nhảy vào nắn
+          nửa cái chữ thành đa giác — đúng lỗi người dùng từng gặp. Nên chỉ một
+          trong hai được bật, và ép ngay ở nút để không bao giờ có nút sáng mà
+          không làm gì. */}
       {!isShape && (
         <>
           <div className="tool-sep" />
@@ -354,7 +362,11 @@ export default function ToolOptions({ tool, prefs, onPrefs, level, onLevel }) {
             type="button"
             className={"tool-btn" + (prefs.snap !== false ? " on" : "")}
             title={t`Giữ tay tại chỗ khi vẽ xong để nét tự về hình chuẩn (thẳng, tròn, vuông, tam giác cân…)`}
-            onClick={() => onPrefs({ ...prefs, snap: prefs.snap === false })}
+            onClick={() => {
+              const snap = prefs.snap === false;
+              // Bật bắt hình → tắt đọc chữ. Tắt bắt hình thì để đọc chữ yên.
+              onPrefs({ ...prefs, snap, ...(snap ? { hw: false } : {}) });
+            }}
           ><IconSnap /></button>
           <button
             type="button"
@@ -368,8 +380,12 @@ export default function ToolOptions({ tool, prefs, onPrefs, level, onLevel }) {
           <button
             type="button"
             className={"tool-btn" + (prefs.hw === true ? " on" : "")}
-            title={t`Viết chữ số hoặc chữ không dấu, ngừng tay một chút là tự đổi thành chữ máy (tắt sẵn: đang bật thì hình vẽ cũng có thể bị đọc thành chữ)`}
-            onClick={() => onPrefs({ ...prefs, hw: prefs.hw !== true })}
+            title={t`Viết chữ số hoặc chữ không dấu, ngừng tay một chút là tự đổi thành chữ máy (bật lên thì tạm tắt bắt hình; hình vẽ cũng có thể bị đọc thành chữ)`}
+            onClick={() => {
+              const hw = prefs.hw !== true;
+              // Bật đọc chữ → tắt bắt hình. Tắt đọc chữ thì để bắt hình yên.
+              onPrefs({ ...prefs, hw, ...(hw ? { snap: false } : {}) });
+            }}
           ><IconHandwrite /></button>
         </>
       )}

@@ -259,7 +259,7 @@ msgstr "Stat"
 msgid "Chỉ số mới"
 msgstr "New stat"
 
-#: src/components/ToolOptions.jsx:384
+#: src/components/ToolOptions.jsx:400
 msgid "Chỉ viền"
 msgstr "Outline only"
 
@@ -504,7 +504,7 @@ msgstr "This email is already the board owner."
 msgid "Enter: lưu · Ctrl+Enter: lưu & tạo ý nối tiếp"
 msgstr "Enter: save · Ctrl+Enter: save & create next idea"
 
-#: src/components/ToolOptions.jsx:362
+#: src/components/ToolOptions.jsx:374
 msgid "Gạch ngoằn ngoèo đè lên một nét (qua lại vài lần) là xoá nét đó"
 msgstr "Scribble back and forth over a stroke to erase it"
 
@@ -524,7 +524,7 @@ msgstr "Look"
 msgid "Giấy kraft"
 msgstr "Kraft paper"
 
-#: src/components/ToolOptions.jsx:356
+#: src/components/ToolOptions.jsx:364
 msgid "Giữ tay tại chỗ khi vẽ xong để nét tự về hình chuẩn (thẳng, tròn, vuông, tam giác cân…)"
 msgstr "Hold still after drawing to snap the stroke to a clean shape (line, circle, square, isosceles triangle…)"
 
@@ -1077,7 +1077,7 @@ msgstr "Search (Ctrl+F)"
 msgid "Tìm theo tên/mô tả…"
 msgstr "Search by title/description…"
 
-#: src/components/ToolOptions.jsx:390
+#: src/components/ToolOptions.jsx:406
 msgid "Tô cả hình"
 msgstr "Filled"
 
@@ -1130,9 +1130,9 @@ msgstr "Dashed border"
 msgid "Viết bình luận…"
 msgstr "Write a comment…"
 
-#: src/components/ToolOptions.jsx:371
-msgid "Viết chữ số hoặc chữ không dấu, ngừng tay một chút là tự đổi thành chữ máy (tắt sẵn: đang bật thì hình vẽ cũng có thể bị đọc thành chữ)"
-msgstr "Write digits or unaccented letters, then pause briefly to auto-convert them to typed text (off by default: while on, drawings can also be read as text)"
+#: src/components/ToolOptions.jsx:383
+msgid "Viết chữ số hoặc chữ không dấu, ngừng tay một chút là tự đổi thành chữ máy (bật lên thì tạm tắt bắt hình; hình vẽ cũng có thể bị đọc thành chữ)"
+msgstr "Write digits or unaccented letters, then pause briefly to auto-convert them to typed text (turning this on temporarily disables shape-snap; drawings can also be read as text)"
 
 #: src/pages/IdeaMap.jsx:5204
 msgid "Vô hướng"

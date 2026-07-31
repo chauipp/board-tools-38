@@ -259,7 +259,7 @@ msgstr "Chỉ số"
 msgid "Chỉ số mới"
 msgstr "Chỉ số mới"
 
-#: src/components/ToolOptions.jsx:384
+#: src/components/ToolOptions.jsx:400
 msgid "Chỉ viền"
 msgstr "Chỉ viền"
 
@@ -504,7 +504,7 @@ msgstr "Email này đã là chủ sở hữu board."
 msgid "Enter: lưu · Ctrl+Enter: lưu & tạo ý nối tiếp"
 msgstr "Enter: lưu · Ctrl+Enter: lưu & tạo ý nối tiếp"
 
-#: src/components/ToolOptions.jsx:362
+#: src/components/ToolOptions.jsx:374
 msgid "Gạch ngoằn ngoèo đè lên một nét (qua lại vài lần) là xoá nét đó"
 msgstr "Gạch ngoằn ngoèo đè lên một nét (qua lại vài lần) là xoá nét đó"
 
@@ -524,7 +524,7 @@ msgstr "Giao diện"
 msgid "Giấy kraft"
 msgstr "Giấy kraft"
 
-#: src/components/ToolOptions.jsx:356
+#: src/components/ToolOptions.jsx:364
 msgid "Giữ tay tại chỗ khi vẽ xong để nét tự về hình chuẩn (thẳng, tròn, vuông, tam giác cân…)"
 msgstr "Giữ tay tại chỗ khi vẽ xong để nét tự về hình chuẩn (thẳng, tròn, vuông, tam giác cân…)"
 
@@ -1077,7 +1077,7 @@ msgstr "Tìm kiếm (Ctrl+F)"
 msgid "Tìm theo tên/mô tả…"
 msgstr "Tìm theo tên/mô tả…"
 
-#: src/components/ToolOptions.jsx:390
+#: src/components/ToolOptions.jsx:406
 msgid "Tô cả hình"
 msgstr "Tô cả hình"
 
@@ -1130,9 +1130,9 @@ msgstr "Viền nét đứt"
 msgid "Viết bình luận…"
 msgstr "Viết bình luận…"
 
-#: src/components/ToolOptions.jsx:371
-msgid "Viết chữ số hoặc chữ không dấu, ngừng tay một chút là tự đổi thành chữ máy (tắt sẵn: đang bật thì hình vẽ cũng có thể bị đọc thành chữ)"
-msgstr "Viết chữ số hoặc chữ không dấu, ngừng tay một chút là tự đổi thành chữ máy (tắt sẵn: đang bật thì hình vẽ cũng có thể bị đọc thành chữ)"
+#: src/components/ToolOptions.jsx:383
+msgid "Viết chữ số hoặc chữ không dấu, ngừng tay một chút là tự đổi thành chữ máy (bật lên thì tạm tắt bắt hình; hình vẽ cũng có thể bị đọc thành chữ)"
+msgstr "Viết chữ số hoặc chữ không dấu, ngừng tay một chút là tự đổi thành chữ máy (bật lên thì tạm tắt bắt hình; hình vẽ cũng có thể bị đọc thành chữ)"
 
 #: src/pages/IdeaMap.jsx:5204
 msgid "Vô hướng"
