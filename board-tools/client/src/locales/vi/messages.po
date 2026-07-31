@@ -1131,8 +1131,8 @@ msgid "Viết bình luận…"
 msgstr "Viết bình luận…"
 
 #: src/components/ToolOptions.jsx:371
-msgid "Viết chữ số hoặc chữ không dấu rồi giữ tay để đổi thành chữ máy (tắt sẵn: đang bật thì hình vẽ cũng có thể bị đọc thành chữ)"
-msgstr "Viết chữ số hoặc chữ không dấu rồi giữ tay để đổi thành chữ máy (tắt sẵn: đang bật thì hình vẽ cũng có thể bị đọc thành chữ)"
+msgid "Viết chữ số hoặc chữ không dấu, ngừng tay một chút là tự đổi thành chữ máy (tắt sẵn: đang bật thì hình vẽ cũng có thể bị đọc thành chữ)"
+msgstr "Viết chữ số hoặc chữ không dấu, ngừng tay một chút là tự đổi thành chữ máy (tắt sẵn: đang bật thì hình vẽ cũng có thể bị đọc thành chữ)"
 
 #: src/pages/IdeaMap.jsx:5204
 msgid "Vô hướng"

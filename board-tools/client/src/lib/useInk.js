@@ -79,6 +79,18 @@ const HW_MAX_STROKES = 24;
 // với cỡ chữ vừa viết tay: viết to thì ra chữ to.
 const CAP_RATIO = 0.7;
 
+// TỰ ĐỌC CHỮ SAU KHI NGỪNG TAY. Viết xong, NHẤC bút, rồi ngừng chừng này không
+// viết tiếp thì cả cụm tự thành chữ máy. Khác hẳn cử chỉ bắt hình (giữ tay khi
+// chuột VẪN đang ấn): ở đây tay đã nhả, thời gian đo từ lúc mouseup.
+//
+// Con số này là một đánh đổi không tránh được. Dài quá thì viết xong phải chờ
+// mới thấy chữ; ngắn quá thì cái ngừng-tay-để-nghĩ ngay GIỮA lúc viết (giữa hai
+// nét, giữa hai chữ) cũng kích hoạt, và nó đọc mất nửa cụm. Chọn hơi rộng tay —
+// dài hơn nhịp nhấc-hạ bút thường giữa hai nét — vì đọc sớm nửa cụm khó chịu hơn
+// là chờ thêm non một giây. Mỗi lần ấn bút mới huỷ cái hẹn cũ rồi finish() đặt
+// lại, nên viết đều tay thì hẹn cứ bị dời tới lúc thật sự ngừng.
+export const HW_PAUSE_MS = 900;
+
 function bufBox(buf) {
   let l = Infinity, t = Infinity, r = -Infinity, b = -Infinity;
   for (const e of buf) {
@@ -172,6 +184,11 @@ export function useInk({
   // Mấy nét bút vừa lưu, [{ id, pts }], để cử chỉ đọc chữ còn có cái mà đọc.
   // Xem ghi chú dài ở HW_GAP về việc vì sao nó phải sống NGOÀI lượt vẽ.
   const inkBufRef = useRef([]);
+  // Hẹn giờ tự-đọc-chữ đang chờ (id của setTimeout, 0 = không có). Phải nằm
+  // NGOÀI lượt vẽ như inkBufRef, cùng một lý do: một cụm chữ trải qua nhiều lần
+  // nhấc bút, mà cái hẹn phải sống xuyên suốt để lần nhấc bút CUỐI mới là lần
+  // kích hoạt. Đặt ở finish() lúc nhấc bút, huỷ ở đầu handleMouseDown lúc ấn bút.
+  const hwTimerRef = useRef(0);
   const activeRef = useRef(null);   // "pen" | "eraser" | "shape" | null
   const startRef = useRef(null);   // điểm bắt đầu của hình khối đang kéo
   // Hộp mới nhất phải nằm trong REF, không đọc lại từ state `draft`: pushDraft
@@ -210,12 +227,20 @@ export function useInk({
     pushDraft.current?.cancel();
     pushErase.current?.cancel();
     pushCut.current?.cancel();
+    if (hwTimerRef.current) clearTimeout(hwTimerRef.current);
   }, []);
 
   const handleMouseDown = useCallback((e) => {
     const viewportEl = viewportRef.current;
     const board = boardRef.current;
     if (!viewportEl || !board) return;
+
+    // ẤN BÚT MỚI → HUỶ HẸN TỰ-ĐỌC-CHỮ ĐANG CHỜ. Nếu đây là nét viết TIẾP của cùng
+    // cụm thì finish() sẽ đặt lại hẹn lúc nhấc bút; nếu là việc khác (xoá, chọn,
+    // đổi tool) thì đằng nào cũng phải dừng — không để cái hẹn đọc mất nửa cụm
+    // hay đọc lên trên một nét vừa bị đụng tới. Đặt TRƯỚC mọi return bên dưới để
+    // bất kỳ cú ấn nào cũng huỷ được.
+    if (hwTimerRef.current) { clearTimeout(hwTimerRef.current); hwTimerRef.current = 0; }
 
     // Tool text KHÔNG đi qua đây: nó không có lượt kéo nào để theo dõi, ô nhập
     // do IdeaMap dựng. Thiếu chốt này thì nhánh `else` cuối hàm — nhánh bút —
@@ -462,7 +487,6 @@ export function useInk({
     let snapped = null;   // { kind, pts } sau khi đã bắt được hình
     let erased = false;   // đã tẩy nét dưới tay — lượt này không lưu gì nữa
     let swapped = false;  // đã đổi bút ↔ cục gôm — lượt này bỏ hẳn, không lưu gì
-    let written = false;  // đã đọc chữ và thay bằng text — lượt này không lưu gì
 
     // setState chỉ khi trạng thái THẬT SỰ đổi. Không có chốt hintShown/dimmed thì
     // mỗi nhịp chuột (cả trăm lần/giây) là một lời gọi setState — đúng thứ mà cả
@@ -513,37 +537,40 @@ export function useInk({
       inkBufRef.current = [];
     }
 
-    // ĐỌC CHỮ: mấy nét vừa viết (đệm) cộng nét đang viết dở → một chuỗi ký tự,
-    // thay tại chỗ bằng một text thật. Trả về true nếu đọc được.
+    // ĐẶT HẸN TỰ ĐỌC CHỮ. Gọi ở finish() mỗi khi vừa lưu xong một nét bút trong
+    // lúc bật đọc chữ. Cái hẹn cũ (nếu có) bị huỷ trước — viết đều tay thì hẹn cứ
+    // bị dời tới lúc thật sự ngừng, và chỉ lần nhấc bút CUỐI mới để nó chạy hết.
+    function scheduleAutoWrite() {
+      if (hwTimerRef.current) clearTimeout(hwTimerRef.current);
+      hwTimerRef.current = setTimeout(runAutoWrite, HW_PAUSE_MS);
+    }
+
+    // ĐỌC CHỮ: cả cụm nét trong đệm → một chuỗi ký tự, thay tại chỗ bằng một text
+    // thật. Chạy từ HẸN GIỜ sau khi tay đã NHẤC và ngừng đủ lâu — khác hẳn bản
+    // cũ chạy giữa lúc giữ tay. Nhờ tay đã nhả nên mọi nét đã được finish() lưu
+    // vào đệm rồi: ở đây không còn nét "đang viết dở", không phải cứu nét đuôi,
+    // không đụng tới React draft (đâu có lượt vẽ nào đang mở).
     //
-    // Chốt NGAY LÚC GIỮ TAY chứ không đợi nhả chuột, theo đúng khuôn doErase ở
-    // trên: cử chỉ này thay chữ viết tay bằng chữ máy, và người dùng phải thấy
-    // kết quả đúng lúc họ yêu cầu nó. Đợi tới mouseup thì giữa hai thời điểm ấy
-    // có một quãng không ai biết cử chỉ đã ăn hay chưa.
-    //
-    // Đọc không ra thì IM LẶNG trả về false, và doSnap đi tiếp xuống nhánh bắt
-    // hình như chưa có gì xảy ra. Đây là hành vi đúng chứ không phải bỏ sót:
-    // recognizeInk từ chối khá nhiều (xem MAX_DIST bên đó), mà nét không đọc
-    // được thì gần như bao giờ cũng là một nét vẽ thật.
-    function doWrite() {
-      // LỌC LẠI ĐỆM THEO NHỮNG NÉT CÒN SỐNG. Đệm giữ id của mấy nét đã lưu, mà
-      // giữa lúc viết thì một nét trong đó có thể đã biến mất — mình vừa tẩy
-      // nó, hoặc người ngồi máy khác vừa tẩy. Không lọc thì hai chuyện hỏng
-      // cùng lúc: chuỗi đọc ra có cả cái ký tự đã bị xoá, và nếu nét bị xoá lại
-      // đúng là nét ĐẦU cụm thì `from` trỏ vào một id không còn tồn tại — mà
-      // commitErase đặt thứ mới vào đúng chỗ nét cũ, nên cái text lặng lẽ rơi
-      // mất, người dùng thấy nét biến đi mà chẳng có chữ nào hiện ra.
+    // Đọc không ra thì IM LẶNG để nguyên mấy nét tay — recognizeInk từ chối khá
+    // nhiều (xem MAX_DIST), mà nét không đọc được thì gần như bao giờ cũng là
+    // một nét vẽ thật, cứ để nó là nét vẽ.
+    function runAutoWrite() {
+      hwTimerRef.current = 0;
+      // LỌC LẠI ĐỆM THEO NHỮNG NÉT CÒN SỐNG. Giữa lúc chờ, một nét trong đệm có
+      // thể đã biến mất — người ngồi máy khác vừa tẩy nó. Không lọc thì chuỗi
+      // đọc ra có cả ký tự đã mất, và nếu nét bị xoá đúng là nét ĐẦU cụm thì
+      // `from` trỏ vào một id không còn tồn tại — commitErase đặt text vào đúng
+      // chỗ nét cũ, nên cái text lặng lẽ rơi mất.
       const alive = new Set((boardRef.current?.drawings || []).map((d) => d.id));
       const buf = inkBufRef.current.filter((e) => alive.has(e.id));
-      const strokes = buf.map((e) => e.pts).concat([ptsRef.current]);
-      const rec = recognizeInk(strokes);
-      if (!rec) return false;
+      if (!buf.length) return;
+      const rec = recognizeInk(buf.map((e) => e.pts));
+      if (!rec) return;
 
       const size = nearestSize(rec.box.h);
-      const lines = [rec.text];
       // Không đo được bề rộng (không có canvas 2d) thì ước lượng thô — cùng
       // cách IdeaMap.measureTextWidth đang lùi về. Hộp chỉ dùng cho vùng chạm.
-      const box = textBox(lines, size, measureText || ((line, s) => line.length * s * 0.55));
+      const box = textBox([rec.text], size, measureText || ((line, s) => line.length * s * 0.55));
       const el = {
         kind: "text",
         // Căn theo TÂM DỌC của chỗ vừa viết, không căn mép trên: hộp chữ máy
@@ -553,49 +580,18 @@ export function useInk({
         text: rec.text, color: penPrefs.color, size, w: box.w, h: box.h
       };
 
-      written = true;
-      pushDraft.current.cancel();
-      setDraft(null);
-
-      // LƯU NÉT ĐANG VIẾT DỞ TRƯỚC ĐÃ, dù ngay dòng sau nó bị thay bằng text.
-      //
-      // Nghe thừa, nhưng bỏ nó đi thì HOÀN TÁC MẤT MỘT NÉT, và bài smoke đã bắt
-      // đúng chuyện đó: viết "42" (ba nét, nét cuối là số 2 đang cầm bút) rồi
-      // giữ tay, bấm Ctrl+Z thì chỉ số 4 quay lại. Lý do ở chỗ hoàn tác chụp
-      // lại BẢN BOARD trước khi sửa, mà nét đang viết dở thì chưa hề có trong
-      // bản nào cả — không bản ghi nào chứa nó thì không phép lùi nào tìm lại
-      // được. Lưu nó ra một bản riêng rồi mới thay: bấm Ctrl+Z một lần là được
-      // lại đúng chữ mình vừa viết, đủ cả ba nét.
-      //
-      // Cái giá là hai lượt ghi thay vì một, và người khác thấy nét loé lên rồi
-      // biến mất. Đổi lấy việc hoàn tác trả về đúng thứ người ta vừa làm thì rẻ.
-      const tail = { kind: "pen", color: penPrefs.color, w: penPrefs.w, pts: simplifyStroke(ptsRef.current) };
-      if (dashed) tail.dashed = true;
-      ptsRef.current = [];
-      unsentRef.current = [];
+      // Mọi nét của cụm đều đã nằm trong drawings (finish() lưu từng nét lúc nhấc
+      // bút), nên chỉ việc THAY cả cụm bằng một text trong đúng một bước hoàn tác.
+      const ids = buf.map((e) => e.id);
       inkBufRef.current = [];
-      const tailId = onStrokeDone(tail);
-      live?.endStroke(tailId);
-
-      const ids = buf.map((e) => e.id).concat(tailId != null ? [tailId] : []);
-      if (ids.length) {
-        // Với người khác: đi ĐÚNG đường của cục gôm để mấy nét cũ mờ đi rồi
-        // biến mất, y như doErase. Bản thân cái text thì tới cùng board:update —
-        // kênh live không có đường phát một text do người khác sinh ra giữa
-        // chừng, và đó cũng chính là cách các mảnh của cục tẩy đang đi.
-        live?.beginErase(ids);
-        live?.endErase();
-        // `from` là nét ĐẦU TIÊN của cụm: commitErase đặt thứ mới vào đúng chỗ
-        // nét đó đang đứng trong mảng drawings, tức giữ nguyên tầng trên/dưới.
-        onEraseDone(ids, [{ from: ids[0], ...el }]);
-      } else {
-        // Không lưu nổi nét đang viết dở (không có board) nên chẳng có id nào để
-        // thay. Chốt phòng thủ, không phải đường chạy thường: đi qua onEraseDone
-        // với danh sách rỗng thì cái text LẶNG LẼ RƠI MẤT — hàm đó đặt thứ mới
-        // vào đúng chỗ một nét bị xoá, mà ở đây không có nét nào bị xoá cả.
-        onStrokeDone(el);
-      }
-      return true;
+      // Với người khác: đi ĐÚNG đường của cục gôm để mấy nét cũ mờ đi rồi biến
+      // mất, y như doErase. Bản thân cái text thì tới cùng board:update — kênh
+      // live không có đường phát một text do người khác sinh ra giữa chừng.
+      live?.beginErase(ids);
+      live?.endErase();
+      // `from` là nét ĐẦU TIÊN của cụm: commitErase đặt text vào đúng chỗ nét đó
+      // đang đứng trong mảng drawings, tức giữ nguyên tầng trên/dưới.
+      onEraseDone(ids, [{ from: ids[0], ...el }]);
     }
 
     // Đổi bút ↔ cục gôm ngay giữa lượt. Lượt này bị BỎ HẲN: tay đang giữ nguyên
@@ -716,29 +712,17 @@ export function useInk({
       // thẳng, `snapped` được đặt, và lúc nhả chuột thì nhánh gạch xoá dưới kia
       // không bao giờ chạy tới. Trả về lặng lẽ, để nguyên nét cho lúc nhả tay xử.
       if (scratchOn && isScribble(ptsRef.current)) return;
-      // ĐANG BẬT ĐỌC CHỮ THÌ CỬ CHỈ GIỮ TAY LÀ CỦA RIÊNG NÓ. Đọc không ra thì
-      // dừng hẳn ở đây, KHÔNG rơi xuống nhánh bắt hình.
-      //
-      // Bản đầu viết `if (hwOn && !verts.length && doWrite()) return;` rồi cho
-      // rơi tiếp, nghĩ rằng đọc không ra thì trả nguyên nét lại cho bắt hình.
-      // Sai, và sai theo kiểu phá sạch: viết chữ thì phải ngập ngừng giữa nét —
-      // đưa bút xong một khúc, ngắm, rồi viết tiếp — mà mỗi lần ngập ngừng quá
-      // 900ms là một lần doSnap chạy. Lúc ấy trong tay mới có nửa cái chữ nên
-      // đọc không ra, thế là bắt hình nhận lấy, nắn nửa chữ ấy thành một ĐOẠN
-      // THẲNG và ghi vào `verts`. Từ giây đó `verts` khác rỗng, mà chốt cũ lại
-      // đòi `!verts.length` — đọc chữ bị khoá vĩnh viễn cho tới hết nét, còn mỗi
-      // lần ngập ngừng tiếp theo lại chốt thêm một cạnh. Kết quả trên màn hình
-      // là chữ viết tay biến thành một chuỗi đoạn thẳng gấp khúc, ngập ngừng đủ
-      // nhiều thì khép luôn thành đa giác. Đúng thứ người dùng gửi ảnh về.
-      //
-      // Hai cử chỉ này không chia nhau được cùng một cú giữ tay, vì chúng đòi
-      // hai thứ trái ngược nhau ở CÙNG một thời điểm: bắt hình muốn chốt NGAY
-      // từng khúc một, đọc chữ cần ĐỢI cho tới khi cả cụm chữ xong. Nên phải
-      // chọn, và cái nút bật/tắt chính là chỗ người dùng chọn: bật đọc chữ lên
-      // là nói "tôi đang viết", mà đang viết thì không ai muốn nét mình bị nắn
-      // thành hình chuẩn cả.
-      if (hwOn) { doWrite(); return; }
       // Tắt hết bắt hình thì cử chỉ giữ tay không còn việc gì.
+      //
+      // Không có nhánh đọc chữ ở đây, cố ý: đọc chữ giờ TỰ CHẠY sau khi nhấc bút
+      // ngừng tay (xem HW_PAUSE_MS / runAutoWrite), không đi qua cú giữ tay nữa.
+      // Và khi bật đọc chữ thì cú giữ-tay-bắt-hình còn bị CHẶN không lên nòng
+      // (xem chỗ armHold("snap") — điều kiện `!hwOn`). Lý do là bài học từ cái
+      // ảnh người dùng gửi về: viết chữ phải ngập ngừng giữa nét, mà mỗi lần
+      // ngập ngừng quá SNAP_HOLD_MS là một lần doSnap chạy, nắn nửa cái chữ đang
+      // cầm bút thành một đoạn thẳng rồi cả cụm biến thành đa giác gấp khúc. Bật
+      // đọc chữ = "tôi đang viết", mà đang viết thì không được để bắt hình chen
+      // vào giữa chừng — nên chặn hẳn nó, chứ không chia nhau cùng một cú giữ.
       if (!snapOn) return;
       const rec = verts.length ? snapLine(ptsRef.current) : snapShape(ptsRef.current);
       // Không ra được gì: im lặng bỏ qua, nét vẫn là nét tay và người dùng vẽ tiếp
@@ -841,7 +825,7 @@ export function useInk({
     function onMove(ev) {
       // Đã bắt được hình, đã tẩy nét dưới tay, hoặc đã đổi tool: lượt vẽ chốt
       // tại đó, mọi cú di chuột sau đều bị bỏ.
-      if (snapped || erased || swapped || written) return;
+      if (snapped || erased || swapped) return;
       const b = boardRef.current;
       if (!b) return;
       const p = toCanvas(ev, viewportEl, b.view);
@@ -991,7 +975,12 @@ export function useInk({
 
       // Lên nòng bắt hình ở nhịp chuột ĐẦU TIÊN (chưa có bộ đếm nào chạy), rồi
       // chỉ lên nòng LẠI khi tay thật sự đang ĐI.
-      if ((snapOn || hwOn) && (!holdTimer || going)) armHold("snap", ev.clientX, ev.clientY);
+      //
+      // `!hwOn`: BẬT ĐỌC CHỮ THÌ CHẶN HẲN bắt-hình-khi-giữ. Đang viết mà giữ tay
+      // giữa nét (chuyện thường: đưa bút một khúc rồi ngắm) không được để nó nắn
+      // nửa cái chữ thành hình — xem ghi chú dài ở doSnap. Đọc chữ có đường riêng:
+      // tự chạy sau khi NHẤC bút ngừng tay, không mượn cú giữ tay này.
+      if (snapOn && !hwOn && (!holdTimer || going)) armHold("snap", ev.clientX, ev.clientY);
     }
 
     function cleanup() {
@@ -1088,10 +1077,6 @@ export function useInk({
       // Cú giữ để tẩy đã ăn: doErase() làm hết mọi việc rồi (bỏ nét đang vẽ, báo
       // cho người khác, gọi onEraseDone). Ở đây chỉ việc không lưu thêm gì.
       if (erased) return;
-
-      // Cú giữ để đọc chữ đã ăn: doWrite() đã thay cả cụm bằng một text. Nét
-      // đang viết dở KHÔNG được lưu — nó là nét cuối của chữ vừa đọc xong.
-      if (written) return;
 
       // Nét đã được bắt thành hình: lưu ra HÌNH, không lưu nét tay. Đi qua đúng
       // khuôn dữ liệu của tool Hình khối nên hit-test, cục gôm, hoàn tác và gói
@@ -1214,7 +1199,14 @@ export function useInk({
       // Chỗ DUY NHẤT đệm đọc chữ lớn lên. Ghi vô điều kiện chứ không hỏi
       // `hwOn`: bật nút đọc chữ lên giữa chừng thì mấy nét vừa viết phải đọc
       // được ngay, chứ không phải viết lại từ đầu mới ăn.
-      if (drawingId != null) inkBufRef.current = extendInkBuf(inkBufRef.current, drawingId, pts);
+      if (drawingId != null) {
+        inkBufRef.current = extendInkBuf(inkBufRef.current, drawingId, pts);
+        // TỰ ĐỌC CHỮ: vừa lưu xong một nét trong lúc bật đọc chữ → đặt (hoặc dời)
+        // hẹn. Ngừng tay HW_PAUSE_MS không viết tiếp thì runAutoWrite chạy và
+        // thay cả cụm bằng chữ máy. Chỉ đặt khi hwOn: tắt thì mấy nét cứ là nét
+        // vẽ, không có gì hẹn giờ đụng vào chúng.
+        if (hwOn) scheduleAutoWrite();
+      }
     }
 
     cleanupRef.current = cleanup;

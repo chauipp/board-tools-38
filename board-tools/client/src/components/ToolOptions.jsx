@@ -368,7 +368,7 @@ export default function ToolOptions({ tool, prefs, onPrefs, level, onLevel }) {
           <button
             type="button"
             className={"tool-btn" + (prefs.hw === true ? " on" : "")}
-            title={t`Viết chữ số hoặc chữ không dấu rồi giữ tay để đổi thành chữ máy (tắt sẵn: đang bật thì hình vẽ cũng có thể bị đọc thành chữ)`}
+            title={t`Viết chữ số hoặc chữ không dấu, ngừng tay một chút là tự đổi thành chữ máy (tắt sẵn: đang bật thì hình vẽ cũng có thể bị đọc thành chữ)`}
             onClick={() => onPrefs({ ...prefs, hw: prefs.hw !== true })}
           ><IconHandwrite /></button>
         </>

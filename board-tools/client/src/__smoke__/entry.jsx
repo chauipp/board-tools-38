@@ -8,7 +8,7 @@ import { AuthProvider } from "../context/AuthContext.jsx";
 import { LASER_FADE_DEFAULT, LASER_WIDTHS } from "../lib/laser.js";
 import { PEN_COLORS } from "../lib/pen.js";
 import { SNAP_HOLD_MS } from "../lib/recognize.js";
-import { HOLD_ERASE_MS, HOLD_SWAP_MS } from "../lib/useInk.js";
+import { HOLD_ERASE_MS, HOLD_SWAP_MS, HW_PAUSE_MS } from "../lib/useInk.js";
 import { BOARD_BGS, BOARD_GRIDS, COLOR_PACKS } from "../lib/board-theme.js";
 import { MULTI_CLICK_MS } from "../lib/multi-click.js";
 import { drawingsHitBy } from "../lib/shape.js";
@@ -3385,12 +3385,13 @@ export async function run(log) {
   await act(async () => { scratchBtn().click(); await new Promise((r) => setTimeout(r, 30)); });
   if (!scratchBtn().classList.contains("on")) throw new Error("không bật lại được gạch xoá");
 
-  // ── Viết chữ số rồi giữ tay = đổi thành chữ máy ──────────────────────────
+  // ── Viết chữ số rồi NGỪNG TAY = tự đổi thành chữ máy ─────────────────────
   //
   // Cử chỉ này đi qua nhiều tầng hơn mọi cử chỉ khác của cây bút, và bài test
   // phải chạm vào cả bốn: nét viết ra được LƯU thành nét bút bình thường, cái
-  // ĐỆM ngoài lượt vẽ nhớ được chúng qua nhiều lần nhấc bút, cú giữ tay đọc cả
-  // cụm, rồi mấy nét cũ bị thay bằng MỘT text trong đúng MỘT bước hoàn tác.
+  // ĐỆM ngoài lượt vẽ nhớ được chúng qua nhiều lần nhấc bút, HẸN GIỜ đọc cả cụm
+  // sau khi nhấc bút ngừng tay, rồi mấy nét cũ bị thay bằng MỘT text trong đúng
+  // MỘT bước hoàn tác. Không còn "giữ tay" như bản đầu: chỉ viết rồi ngừng.
   const hwBtn = () => Array.from(document.querySelectorAll(".tool-options .tool-btn"))
     .find((b) => (b.title || "").startsWith("Viết chữ số"));
   if (!hwBtn()) throw new Error("khu 4 của bút phải có nút bật/tắt đọc chữ viết tay");
@@ -3423,8 +3424,8 @@ export async function run(log) {
   log(`khoảng trống để thử đọc chữ: ${hwArea.x},${hwArea.y}`);
 
   // Viết một chuỗi bằng chính bộ mẫu trong glyphs.js, mỗi nét là một lượt
-  // mousedown→mouseup thật. `hold` = giữ tay ở cuối nét CUỐI CÙNG thay vì nhả
-  // ngay: đó chính là cú kích hoạt việc đọc.
+  // mousedown→mouseup thật. `settle` = sau nét CUỐI, NHẤC bút rồi ngồi im quá
+  // HW_PAUSE_MS: đó chính là cú kích hoạt việc đọc bây giờ (không giữ tay nữa).
   //
   // Chèn điểm giữa mỗi đoạn của mẫu: mẫu chỉ có mấy cái đỉnh, mà thứ đi vào
   // useInk là nhịp chuột — không chèn thì một nét cong ra bốn điểm và không còn
@@ -3432,8 +3433,9 @@ export async function run(log) {
   // `pause` = ngập ngừng quá SNAP_HOLD_MS ở GIỮA mỗi nét, chuột vẫn đang ấn.
   // Đây là cách người ta viết chữ thật — đưa bút một khúc, ngắm, viết tiếp — và
   // là thứ bản đầu chết ở đó: mỗi lần ngập ngừng, bắt hình nhận lấy nửa cái chữ
-  // rồi nắn thành đoạn thẳng.
-  const hwWrite = async (text, ox, oy, h, { hold = false, pause = false } = {}) => {
+  // rồi nắn thành đoạn thẳng. Giờ bật đọc chữ thì bắt hình bị CHẶN, nên cú ngập
+  // ngừng này phải vô hại.
+  const hwWrite = async (text, ox, oy, h, { settle = false, pause = false } = {}) => {
     const jobs = [];
     let cursor = 0;
     for (const ch of text) {
@@ -3470,27 +3472,30 @@ export async function run(log) {
         }
       });
       const end = pts[pts.length - 1];
-      if (last && hold) {
-        // Giữ tay TẠI CHỖ, chuột vẫn đang ấn: bộ đếm bắt hình/đọc chữ chạy từ
-        // nhịp chuột cuối cùng, nên chờ dài hơn SNAP_HOLD_MS một quãng.
-        await act(async () => { await new Promise((r) => setTimeout(r, SNAP_HOLD_MS + 350)); });
-      }
       await act(async () => {
         mouse("mouseup", Math.round(end[0]), Math.round(end[1]));
         await new Promise((r) => setTimeout(r, 70));
       });
+      // Sau nét CUỐI: NHẤC bút rồi ngồi im quá HW_PAUSE_MS cho hẹn tự-đọc-chữ
+      // chạy. Đây là cú kích hoạt mới — không giữ tay, chỉ ngừng. Chỉ nét cuối
+      // mới chờ dài: giữa các nét chỉ 70ms nên hẹn (nếu có) chưa kịp chạy đã bị
+      // cú ấn bút kế tiếp huỷ, đúng như viết đều tay ngoài đời.
+      if (last && settle) {
+        await act(async () => { await new Promise((r) => setTimeout(r, HW_PAUSE_MS + 300)); });
+      }
     }
   };
   const hwDrawings = () => globalThis.__puts[globalThis.__puts.length - 1].drawings || [];
   const hwTexts = () => hwDrawings().filter((d) => d.kind === "text");
 
-  // TẮT thì viết xong giữ tay chỉ ra hành vi cũ: mấy nét vẫn là nét bút, và cú
-  // giữ tay cùng lắm nắn nét cuối về hình chuẩn. Không được sinh ra text nào.
+  // TẮT thì viết xong dù ngừng tay bao lâu cũng chỉ ra hành vi cũ: mấy nét vẫn
+  // là nét bút, KHÔNG hẹn giờ nào đụng vào chúng. `settle` để chờ hẳn qua mốc
+  // HW_PAUSE_MS — chứng minh không có gì tự đọc khi nút đang tắt.
   const hwOffTexts = hwTexts().length;
   const hwOffBefore = hwDrawings().length;
-  await hwWrite("42", hwArea.x, hwArea.y, 62, { hold: true });
-  if (hwTexts().length !== hwOffTexts) throw new Error("chưa bật đọc chữ mà đã sinh ra text");
-  log(`chưa bật đọc chữ: viết "42" rồi giữ tay → ${hwOffBefore} → ${hwDrawings().length} nét, 0 text (đúng)`);
+  await hwWrite("42", hwArea.x, hwArea.y, 62, { settle: true });
+  if (hwTexts().length !== hwOffTexts) throw new Error("chưa bật đọc chữ mà đã tự sinh ra text");
+  log(`chưa bật đọc chữ: viết "42" rồi ngừng tay → ${hwOffBefore} → ${hwDrawings().length} nét, 0 text (đúng)`);
 
   // Dọn mấy nét vừa viết đi để vùng thử lại sạch.
   for (let k = 0; k < 3; k++) {
@@ -3505,13 +3510,13 @@ export async function run(log) {
   if (!hwBtn().classList.contains("on")) throw new Error("không bật được đọc chữ viết tay");
 
   const hwBefore = hwDrawings().length;
-  await hwWrite("42", hwArea.x, hwArea.y, 62, { hold: true });
+  await hwWrite("42", hwArea.x, hwArea.y, 62, { settle: true });
   const hwMade = hwTexts().filter((d) => d.text === "42");
   const hwAfter = hwDrawings().length;
-  log(`đọc chữ: viết "42" rồi giữ tay → ${hwBefore} → ${hwAfter} nét, text đọc ra = `
+  log(`đọc chữ: viết "42" rồi ngừng tay → ${hwBefore} → ${hwAfter} nét, text đọc ra = `
     + JSON.stringify(hwTexts().map((d) => d.text)));
   if (!hwMade.length) {
-    throw new Error(`giữ tay sau khi viết "42" không ra text nào — đang có: `
+    throw new Error(`ngừng tay sau khi viết "42" không tự ra text nào — đang có: `
       + JSON.stringify(hwTexts().map((d) => d.text)));
   }
   // Ba nét viết ra (số 4 hai nét, số 2 một nét) phải bị THAY, không phải cộng
@@ -3538,15 +3543,17 @@ export async function run(log) {
 
   // NGẬP NGỪNG GIỮA NÉT — bài này sinh ra từ một lỗi thật, người dùng gửi ảnh
   // về: chữ viết tay hiện ra thành mấy hình gấp khúc đầy góc nhọn, có cái còn
-  // khép thành đa giác. Nguyên do là bản đầu cho cử chỉ giữ tay CHIA cho cả hai
-  // việc — đọc không ra thì rơi xuống nhánh bắt hình. Mà viết chữ thì phải ngập
-  // ngừng, và mỗi lần ngập ngừng là bắt hình nắn nửa cái chữ thành một đoạn
-  // thẳng rồi khoá luôn đường đọc chữ cho tới hết nét.
+  // khép thành đa giác. Nguyên do là viết chữ thì phải ngập ngừng giữa nét, mà
+  // mỗi lần ngập ngừng quá SNAP_HOLD_MS là bắt hình nắn nửa cái chữ thành một
+  // đoạn thẳng. Cách chữa bây giờ: BẬT ĐỌC CHỮ THÌ CHẶN HẲN bắt-hình-khi-giữ
+  // (armHold "snap" có điều kiện `!hwOn`), nên cú ngập ngừng giữa nét phải hoàn
+  // toàn vô hại — không sinh ra nét "line" nào, và cả cụm vẫn đọc ra "42" khi
+  // ngừng tay sau nét cuối.
   //
   // Nên bài test phải ngập ngừng ở GIỮA mỗi nét, đúng như tay người.
   const hwPauseBefore = hwDrawings().length;
   const hwLinesBefore = hwDrawings().filter((d) => d.kind === "line").length;
-  await hwWrite("42", hwArea.x, hwArea.y, 62, { hold: true, pause: true });
+  await hwWrite("42", hwArea.x, hwArea.y, 62, { settle: true, pause: true });
   const hwPauseText = hwTexts().filter((d) => d.text === "42");
   const hwLinesAfter = hwDrawings().filter((d) => d.kind === "line").length;
   log(`đọc chữ + ngập ngừng giữa nét: ${hwPauseBefore} → ${hwDrawings().length} nét`
