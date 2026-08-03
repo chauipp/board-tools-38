@@ -428,12 +428,7 @@ export default function IdeaMap() {
     onEraseDone: commitErase,
     onPick: pickDrawingWhileDrawing,
     onSwapTool: swapPenEraser,
-    live: inkLive,
-    // Cử chỉ đọc chữ dựng ra một text thật, mà hộp của text thì phải ĐO bằng
-    // đúng font đang hiển thị — việc cần DOM, nên nó không thể nằm trong
-    // useInk. Cùng hàm đo mà tool Text đang dùng, để hai đường tạo text ra cùng
-    // một cỡ hộp.
-    measureText: measureTextWidth
+    live: inkLive
   });
 
   useEffect(() => {

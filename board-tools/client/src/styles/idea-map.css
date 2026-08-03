@@ -1275,9 +1275,7 @@
 .ink-layer path { stroke-linecap: round; stroke-linejoin: round; }
 .ink-layer path.erasing { opacity: 0.25; }
 
-/* Đây là TOÀN BỘ phần "skin cho text": chữ trên bảng đi qua --canvas-font nên
-   bật skin vẽ tay là nó thành chữ viết tay, không cần một dòng JS nào.
-   `white-space: pre` giữ khoảng trắng người dùng gõ — SVG mặc định gộp chúng. */
+/* `white-space: pre` giữ khoảng trắng người dùng gõ — SVG mặc định gộp chúng. */
 .ink-layer text { font-family: var(--canvas-font); white-space: pre; }
 .ink-layer text.erasing { opacity: 0.25; }
 

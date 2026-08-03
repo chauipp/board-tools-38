@@ -41,19 +41,9 @@ export const PEN_WIDTHS = [2, 4, 8];
 // vẫn ra một nét vẽ bình thường. Nút tắt vẫn phải có, cho ai vẽ nhiều hình răng
 // cưa đè lên nhau.
 //
-// `hw` (đọc chữ viết tay — handwriting.js) mặc định TẮT, và đây là chỗ nó khác
-// hẳn `snap` với `scratch`. Hai cái kia bật sẵn được vì chốt của chúng hẹp tới
-// mức một nét vẽ bình thường không bao giờ chạm phải. Cái này thì không: với
-// máy thì một hình tam giác ĐÚNG LÀ giống chữ A, một vòng xoắn ốc giống số 0 —
-// đo được hẳn hoi, xem ghi chú MAX_DIST bên handwriting.js. Nghĩa là bật sẵn
-// thì người đang vẽ sơ đồ sẽ thấy hình mình vừa vẽ bỗng hoá thành một chữ cái,
-// mà họ chưa hề yêu cầu gì cả.
-//
-// Bật nó lên là một lời khai: "tôi đang VIẾT CHỮ, không phải đang vẽ". Có lời
-// khai ấy thì việc ưu tiên đọc chữ hơn bắt hình mới là đúng.
 export const PEN_DEFAULT = {
   color: "pen-red", w: 4, kind: "rect", fill: false, size: 20, snap: true, dashed: false,
-  scratch: true, hw: false, erase: ERASE_STROKE, ew: 24
+  scratch: true, erase: ERASE_STROKE, ew: 24
 };
 
 export function penVar(token) {
@@ -101,9 +91,6 @@ export function loadPenPrefs(storage) {
     // `!== false` cùng lý do với `snap`: prefs lưu từ trước khi có tính năng này
     // không có field `scratch`, mà mặc định của nó là bật.
     scratch: saved.scratch !== false,
-    // `=== true` chứ không `!== false`, ngược hẳn hai cái trên: mặc định của
-    // `hw` là TẮT, nên prefs cũ không có field này phải ra tắt.
-    hw: saved.hw === true,
     // Ngược lại với `snap`: mặc định là TẮT (nét liền), nên `=== true` mới đúng —
     // prefs cũ không có field này phải ra nét liền.
     dashed: saved.dashed === true,
@@ -119,7 +106,7 @@ export function savePenPrefs(storage, prefs) {
     storage.setItem(KEY, JSON.stringify({
       color: prefs.color, w: prefs.w, kind: prefs.kind, fill: prefs.fill === true,
       size: prefs.size, snap: prefs.snap !== false, scratch: prefs.scratch !== false,
-      hw: prefs.hw === true, dashed: prefs.dashed === true,
+      dashed: prefs.dashed === true,
       erase: prefs.erase, ew: prefs.ew
     }));
   } catch {
