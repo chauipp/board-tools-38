@@ -28,6 +28,7 @@ import IdeaCard from "../components/IdeaCard.jsx";
 import EdgeLayer from "../components/EdgeLayer.jsx";
 import PeerLayer from "../components/PeerLayer.jsx";
 import ToolRail from "../components/ToolRail.jsx";
+import PdfUsage from "../components/PdfUsage.jsx";
 import ToolOptions from "../components/ToolOptions.jsx";
 import { nodesInFrame, edgesMatch, rectForEndpoint, clipToRect, segmentIntersectsRect } from "../lib/board-geometry.js";
 import { computeSnap } from "../lib/snap.js";
@@ -766,7 +767,8 @@ export default function IdeaMap() {
     saveAndNext: (id, fields) => actionsRef.current.saveNodeEditAndNext(id, fields),
     dropImage: (e, id) => actionsRef.current.dropImage(e, id),
     removeImage: (id) => actionsRef.current.removeImage(id),
-    imageResize: (e, id) => actionsRef.current.imageResize(e, id)
+    imageResize: (e, id) => actionsRef.current.imageResize(e, id),
+    pdfResize: (e, id) => actionsRef.current.pdfResize(e, id)
   }), []);
   const groupHandlers = useMemo(() => ({
     mouseDown: (e, id) => actionsRef.current.groupMouseDown(e, id),
@@ -2210,13 +2212,57 @@ export default function IdeaMap() {
   // có sẵn do handleImageDrop xử lý và đã stopPropagation).
   function handleViewportImageDrop(e) {
     if (role === "viewer") return;
-    const f = Array.from(e.dataTransfer?.files ?? []).find((x) => x.type.startsWith("image/"));
+    const f = Array.from(e.dataTransfer?.files ?? []).find((x) => x.type.startsWith("image/") || x.type === "application/pdf");
     if (!f) return;
     e.preventDefault();
     const rect = viewportRef.current.getBoundingClientRect();
     const x = Math.round((e.clientX - rect.left - board.view.panX) / board.view.scale - CARD_W / 2);
     const y = Math.round((e.clientY - rect.top - board.view.panY) / board.view.scale - 40);
-    readImageFile(f).then((d) => createImageNode(d, { x, y })).catch(() => {});
+    if (f.type === "application/pdf") {
+      uploadPdfFile(f, { x, y });
+    } else {
+      readImageFile(f).then((d) => createImageNode(d, { x, y })).catch(() => {});
+    }
+  }
+
+  async function uploadPdfFile(file, pos) {
+    if (!boardRef.current) return;
+    const data = new FormData();
+    data.append("file", file);
+    try {
+      const res = await fetch(`/api/boards/${encodeURIComponent(boardId)}/files`, {
+        method: "POST", credentials: "include", body: data
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        let msg = t`Không thể tải PDF lên.`;
+        if (body.error === "file_too_large") msg = t`PDF vượt giới hạn 30MB.`;
+        // Kho chung đã đầy — nói rõ đang dùng bao nhiêu, vì cách sửa là đi xoá
+        // thẻ PDF cũ chứ không phải thử lại.
+        else if (body.error === "storage_full") {
+          msg = t`Kho PDF đã đầy (${body.used} / ${body.limit}). Xoá vài thẻ PDF không cần nữa rồi thử lại — dung lượng được trả lại sau khoảng một ngày.`;
+        }
+        window.alert(msg);
+        return;
+      }
+      const pdf = await res.json();
+      const current = boardRef.current;
+      if (!current) return;
+      const id = current.nextNodeId;
+      const node = {
+        id, title: pdf.name, desc: "", tagId: null, statusId: null,
+        x: pos.x, y: pos.y, w: 420, pdfH: 500,
+        pdf: { fileId: pdf.fileId, name: pdf.name, size: pdf.size }
+      };
+      const next = { ...current, nodes: [...current.nodes, node], nextNodeId: id + 1 };
+      recordHistory(current);
+      setBoard(next);
+      boardRef.current = next;
+      saveNow(next);
+      setSelectedIds(new Set([id]));
+    } catch {
+      window.alert(t`Không thể tải PDF lên.`);
+    }
   }
 
   // Kéo góc ảnh đổi bề rộng thẻ (node.w); chiều cao ảnh theo tỉ lệ. Cùng
@@ -2256,6 +2302,50 @@ export default function IdeaMap() {
       if (!moved) return;
       recordHistory(boardBeforeDrag);
       finishGeom({ nodes: latest.nodes.filter((n) => n.id === node.id) });
+      saveNow(latest);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  // Khung PDF cần kéo cả hai chiều: chiều rộng quyết định cỡ trang, chiều cao
+  // là cửa sổ đọc/scroll của tài liệu. Khác ảnh (giữ tỉ lệ), nên không dùng lại
+  // tay cầm ảnh chỉ kéo ngang.
+  function handlePdfResizeMouseDown(e, nodeId) {
+    const node = board.nodes.find((n) => n.id === nodeId);
+    if (e.button !== 0 || !node?.pdf || node.locked) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX, startY = e.clientY;
+    const scale = board.view.scale;
+    const boardBeforeDrag = board;
+    const startW = node.w || 420, startH = node.pdfH || 500;
+    let latest = board;
+    let moved = false;
+    const onMove = rafThrottle((ev) => {
+      const dx = (ev.clientX - startX) / scale;
+      const dy = (ev.clientY - startY) / scale;
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
+      const w = Math.max(260, Math.round(startW + dx));
+      const pdfH = Math.max(220, Math.round(startH + dy));
+      setBoard((prev) => {
+        const next = { ...prev, nodes: prev.nodes.map((n) => (n.id === nodeId ? { ...n, w, pdfH } : n)) };
+        latest = next;
+        return next;
+      });
+      if (moved) publishGeom({ nodes: [{ id: node.id, x: node.x, y: node.y, w, h: pdfH }] });
+    });
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      onMove.flush();
+      if (!moved) return;
+      recordHistory(boardBeforeDrag);
+      finishGeom({
+        nodes: latest.nodes
+          .filter((n) => n.id === node.id)
+          .map((n) => ({ ...n, h: n.pdfH }))
+      });
       saveNow(latest);
     }
     window.addEventListener("mousemove", onMove);
@@ -3985,6 +4075,7 @@ export default function IdeaMap() {
     dropImage: handleImageDrop,
     removeImage: removeNodeImage,
     imageResize: handleImageResizeMouseDown,
+    pdfResize: handlePdfResizeMouseDown,
     groupMouseDown: handleGroupMouseDown,
     deleteGroup,
     saveGroupTitle,
@@ -4018,6 +4109,10 @@ export default function IdeaMap() {
             <div className="menubar-sep" />
             <button className="btn ghost" onClick={() => { setIoMode("export"); setIoText(JSON.stringify(board, null, 2)); setIoOpen(true); }}><Trans>Xuất JSON</Trans></button>
             <button className="btn ghost" data-mutating onClick={() => { setIoMode("import"); setIoText(""); setIoOpen(true); }}><Trans>Nhập JSON</Trans></button>
+            {/* Dung lượng PDF đứng cùng nhóm "dữ liệu" với Xuất/Nhập JSON, không
+                đứng cùng nhóm "cách xem" — nó nói về thứ đang chiếm chỗ trên
+                kho, chứ không đổi gì trên màn hình. */}
+            <PdfUsage />
             <div className="menubar-sep" />
             <button className="btn ghost" disabled={board.groups.length === 0} onClick={startPresentation}><Trans>Trình chiếu</Trans></button>
             <button className={"btn ghost toggle" + (outlineOpen ? " active" : "")} onClick={() => setOutlineOpen((v) => !v)}><Trans>Mục lục</Trans></button>
@@ -4614,6 +4709,7 @@ export default function IdeaMap() {
               <IdeaCard
                 key={liveNode.id}
                 node={renderNode}
+                boardId={boardId}
                 statusDef={statusDefById.get(liveNode.statusId) ?? null}
                 tagDef={tagDefById.get(liveNode.tagId) ?? null}
                 statuses={board.statuses}

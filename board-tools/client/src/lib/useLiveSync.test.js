@@ -105,6 +105,11 @@ test("mergeGeomPacket: gói đầu tiên tạo entry kèm hạn dùng", () => {
   assert.deepEqual(out.get("node:1"), { x: 5, y: 6, w: 210, expiresAt: 1000 + 900 });
 });
 
+test("mergeGeomPacket: node có chiều cao tạm thời giữ lại để khung PDF resize cùng lúc", () => {
+  const out = mergeGeomPacket(new Map(), { nodes: [{ id: 1, x: 5, y: 6, w: 420, h: 640 }] }, 1000);
+  assert.deepEqual(out.get("node:1"), { x: 5, y: 6, w: 420, h: 640, expiresAt: 1000 + 900 });
+});
+
 test("mergeGeomPacket: gói `done` được giữ lâu hơn hẳn — nó phải cầm cự tới khi board:update về", () => {
   const live = mergeGeomPacket(new Map(), { nodes: [{ id: 1, x: 5, y: 6 }] }, 1000);
   const done = mergeGeomPacket(new Map(), { nodes: [{ id: 1, x: 5, y: 6 }], done: true }, 1000);

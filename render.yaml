@@ -38,6 +38,23 @@ services:
       # var instead — not a secret, so a plain value.
       - key: COOKIE_SECURE
         value: "true"
+      # Cloudflare R2 — where uploaded PDFs live. Without these four, PDFs fall
+      # back to the server's local disk, which Render wipes on every redeploy;
+      # that is exactly what R2 is here to prevent, so set all four in the
+      # dashboard. Values come from the R2 bucket + an API token scoped to it
+      # (Object Read & Write). See server/.env.example step 9.
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      # Discord webhook for PDF storage alerts. Optional — leave unset and the
+      # alerts only go to the Render logs.
+      - key: DISCORD_WEBHOOK_URL
+        sync: false
       # Node 22+ required: @lingui/cli imports fs.globSync, which does not
       # exist before Node 22 (build fails on 20 with a node:fs SyntaxError).
       - key: NODE_VERSION

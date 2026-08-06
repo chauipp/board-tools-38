@@ -35,7 +35,7 @@ const MdLite = memo(function MdLite({ text }) {
 // mọi prop hàm đều là object mới ở mỗi lần render cha, memo không bao giờ ăn và
 // kéo một thẻ vẫn dựng lại cả trăm thẻ còn lại.
 function IdeaCard({
-  node, statusDef, tagDef, statuses, tags, currentUser,
+  node, boardId, statusDef, tagDef, statuses, tags, currentUser,
   editing, dimmed, linkPending, dropTarget, selected, flash,
   observeCard, h
 }) {
@@ -175,6 +175,23 @@ function IdeaCard({
           <img className="card-img" src={node.image} alt="" draggable={false} />
           {!node.locked && (
             <span className="img-resize" title={t`Kéo để đổi cỡ ảnh`} onMouseDown={(e) => h.imageResize(e, node.id)} onClick={(e) => e.stopPropagation()} />
+          )}
+        </div>
+      )}
+      {node.pdf && (
+        <div
+          className="card-pdf-wrap"
+          style={{ "--pdf-h": `${node.pdfH || node.h || 500}px` }}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <iframe
+            className="card-pdf"
+            title={node.pdf.name || node.title}
+            src={`/api/boards/${encodeURIComponent(boardId)}/files/${encodeURIComponent(node.pdf.fileId)}#toolbar=0&navpanes=0`}
+          />
+          {!node.locked && (
+            <span className="pdf-resize" title={t`Kéo để đổi cỡ khung PDF`}
+              onMouseDown={(e) => h.pdfResize(e, node.id)} onClick={(e) => e.stopPropagation()} />
           )}
         </div>
       )}

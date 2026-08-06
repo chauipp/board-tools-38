@@ -1,6 +1,20 @@
 import { Router } from "express";
+import fs from "node:fs";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import multer from "multer";
 import { Board, User } from "./models.js";
 import { getBoardRole, isEmailAllowed } from "./auth.js";
+import { PDF_DIR, isR2Enabled, sendPdf, storePdf } from "./pdf-storage.js";
+import {
+  checkRoom,
+  recordUpload,
+  forgetUpload,
+  syncBoardRefs,
+  orphanBoardFiles,
+  noteUsageAfterUpload,
+  formatBytes
+} from "./pdf-quota.js";
 
 const DEFAULT_STATUSES = [
   { id: 1, name: "Ý tưởng mới", color: "st-idea" },
@@ -11,6 +25,22 @@ const DEFAULT_STATUSES = [
 ];
 
 const router = Router();
+
+// PDF không nằm trong document MongoDB của board: chỉ metadata sống trong node.
+// Nếu đủ biến R2, bytes ở Cloudflare R2; còn local thì dùng disk để phát triển.
+fs.mkdirSync(PDF_DIR, { recursive: true });
+const PDF_MAX_BYTES = 30 * 1024 * 1024;
+const pdfUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, PDF_DIR),
+    filename: (_req, _file, cb) => cb(null, `${randomUUID()}.pdf`)
+  }),
+  limits: { fileSize: PDF_MAX_BYTES, files: 1 },
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype === "application/pdf") cb(null, true);
+    else cb(new Error("pdf_only"));
+  }
+}).single("file");
 
 // Board nhúng ảnh base64 trong nodes[] (giới hạn body 10mb), nên đọc cả document
 // chỉ để xét quyền là rất đắt — nhất là ở PUT, nơi client autosave mỗi 500ms.
@@ -110,6 +140,82 @@ router.post("/", async (req, res) => {
   }
 });
 
+// Upload phải kiểm quyền board ngay trong route, và nếu người dùng không có
+// quyền thì xoá file Multer vừa ghi trước khi trả lỗi. URL file đi qua route GET
+// bên dưới, nên không có PDF nào bị public chỉ vì biết tên file.
+router.post("/:id/files", (req, res, next) => {
+  pdfUpload(req, res, (err) => {
+    if (!err) return next();
+    const tooLarge = err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE";
+    return res.status(tooLarge ? 413 : 400).json({ error: tooLarge ? "file_too_large" : "pdf_only" });
+  });
+}, async (req, res) => {
+  try {
+    const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS);
+    if (!found) {
+      if (req.file) fs.unlink(req.file.path, () => {});
+      return;
+    }
+    if (!req.file) return res.status(400).json({ error: "missing_file" });
+
+    // Trần cứng dung lượng. Đặt trước cú PutObject, vì đây là chỗ duy nhất giữ
+    // cho kho không bò tới mốc 10 GB mà Cloudflare bắt đầu tính tiền.
+    const room = await checkRoom(req.file.size);
+    if (!room.ok) {
+      fs.unlink(req.file.path, () => {});
+      return res.status(507).json({
+        error: "storage_full",
+        used: formatBytes(room.report.usedBytes),
+        limit: formatBytes(room.report.limitBytes)
+      });
+    }
+
+    const name = path.basename(req.file.originalname || "Tài liệu.pdf").slice(0, 180) || "Tài liệu.pdf";
+    // Ghi sổ TRƯỚC khi đẩy bytes lên. Làm ngược lại thì một lỗi Mongo sẽ để lại
+    // bytes trên R2 mà không dòng sổ nào đếm — dung lượng bị chiếm âm thầm. Theo
+    // thứ tự này, lỗi tệ nhất là một dòng sổ không có bytes, và reconcile dọn được.
+    await recordUpload({
+      fileId: req.file.filename,
+      boardId: String(found.board._id),
+      name,
+      size: req.file.size
+    });
+    try {
+      await storePdf(req.file.filename, req.file.path);
+    } catch (e) {
+      await forgetUpload(req.file.filename).catch(() => {});
+      throw e;
+    }
+    if (isR2Enabled) fs.unlink(req.file.path, () => {});
+    // Không chờ: cảnh báo vượt ngưỡng không được làm người ta đợi lâu hơn khi tải
+    // PDF, và cron vẫn là cái chốt nếu cú này lỗi.
+    noteUsageAfterUpload().catch(() => {});
+    res.status(201).json({
+      fileId: req.file.filename,
+      name,
+      size: req.file.size,
+      url: `/api/boards/${encodeURIComponent(req.params.id)}/files/${encodeURIComponent(req.file.filename)}`
+    });
+  } catch (e) {
+    if (req.file) fs.unlink(req.file.path, () => {});
+    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
+    res.status(500).json({ error: "Không tải được PDF." });
+  }
+});
+
+router.get("/:id/files/:fileId", async (req, res) => {
+  try {
+    const found = await loadBoardWithRole(req, res, "viewer", AUTH_FIELDS);
+    if (!found) return;
+    // fileId do server sinh ra; chặn path traversal trước cả khi ghép đường dẫn.
+    if (!/^[0-9a-f-]{36}\.pdf$/i.test(req.params.fileId)) return res.status(404).json({ error: "not_found" });
+    if (!await sendPdf(req.params.fileId, res)) return res.status(404).json({ error: "not_found" });
+  } catch (e) {
+    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
+    res.status(500).json({ error: "Không đọc được PDF." });
+  }
+});
+
 router.get("/:id", async (req, res) => {
   try {
     const found = await loadBoardWithRole(req, res, "viewer");
@@ -185,6 +291,14 @@ router.put("/:id", async (req, res) => {
     if (clientId) io.in(room).except(clientId).emit("board:update", payload);
     else io.in(room).emit("board:update", payload);
     res.json({ ok: true, updatedAt: updatedAt.toISOString() });
+
+    // Thẻ PDF nào vừa mất khỏi nodes[] thì ghi nhận là mồ côi, để bộ dọn rác trả
+    // lại dung lượng sau thời gian chờ. Chạy SAU khi đã trả lời và không await:
+    // đây là sổ sách nội bộ, không bao giờ được làm chậm hay làm chết một cú lưu
+    // của người dùng — hỏng thì vòng reconcile của cron sửa lại.
+    syncBoardRefs(found.board._id, nodes).catch((e) => {
+      console.warn(`[pdf-quota] không đồng bộ được sổ PDF của board ${found.board._id}: ${e.message}`);
+    });
   } catch (e) {
     if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
     res.status(500).json({ error: "Không lưu được dữ liệu board." });
@@ -196,6 +310,12 @@ router.delete("/:id", async (req, res) => {
     const found = await loadBoardWithRole(req, res, "owner", AUTH_FIELDS);
     if (!found) return;
     await Board.findByIdAndDelete(req.params.id);
+    // Xoá board là xoá mọi thẻ trong đó, nên PDF của nó cũng thành mồ côi. Vẫn
+    // qua thời gian chờ như xoá thẻ lẻ, không xoá thẳng: xoá board nhầm là chuyện
+    // xảy ra được, và trong thời gian chờ thì bytes vẫn còn để cứu.
+    await orphanBoardFiles(found.board._id).catch((e) => {
+      console.warn(`[pdf-quota] không đánh dấu được PDF của board vừa xoá: ${e.message}`);
+    });
     res.json({ ok: true });
   } catch (e) {
     if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
