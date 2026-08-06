@@ -36,7 +36,7 @@ if (QUOTA.warnBytes > QUOTA.highBytes || QUOTA.highBytes > QUOTA.limitBytes) {
   throw new Error("Ngưỡng PDF phải tăng dần: PDF_QUOTA_WARN_GB <= PDF_QUOTA_HIGH_GB <= PDF_QUOTA_LIMIT_GB");
 }
 
-export const LEVELS = ["ok", "warn", "high", "full"];
+const LEVELS = ["ok", "warn", "high", "full"];
 
 export function formatBytes(bytes) {
   if (bytes >= GB) return `${(bytes / GB).toFixed(2)} GB`;
