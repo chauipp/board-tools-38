@@ -88,7 +88,11 @@ export function mergeGeomPacket(prev, packet, now, skipKey) {
     if (!next) next = new Map(prev);
     next.set(key, { ...value, expiresAt: now + ttl });
   }
-  for (const n of (packet && packet.nodes) || []) put("node:" + n.id, { x: n.x, y: n.y, w: n.w });
+  for (const n of (packet && packet.nodes) || []) {
+    const value = { x: n.x, y: n.y, w: n.w };
+    if (n.h != null) value.h = n.h;
+    put("node:" + n.id, value);
+  }
   for (const g of (packet && packet.groups) || []) put("group:" + g.id, { x: g.x, y: g.y, w: g.w, h: g.h });
   return next || prev;
 }

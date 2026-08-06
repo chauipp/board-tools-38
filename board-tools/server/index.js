@@ -20,6 +20,7 @@ import { Board, upsertUser } from "./models.js";
 import boardsRouter from "./boards.js";
 import { sanitizeView, resolveFollow, countWatchers, releaseFollowersOf } from "./follow.js";
 import { sanitizeLiveText, sanitizeLiveMoves } from "./live-text.js";
+import { runQuotaCheck, usageReport, describeUsage } from "./pdf-quota.js";
 
 dotenv.config();
 
@@ -162,6 +163,17 @@ app.put("/api/calculator", requireAuth, async (req, res) => {
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: "Không lưu được dữ liệu bàn tính." });
+  }
+});
+
+// Xem dung lượng kho PDF từ trình duyệt, không phải đi mò log Render. Ai đăng
+// nhập được cũng xem được: đây là con số của cả hệ thống, và người dùng cần biết
+// vì sắp tới lúc họ không upload được nữa.
+app.get("/api/pdf-usage", requireAuth, async (req, res) => {
+  try {
+    res.json(await usageReport());
+  } catch (e) {
+    res.status(500).json({ error: "Không đọc được dung lượng kho PDF." });
   }
 });
 
@@ -374,7 +386,11 @@ function sanitizeGeom(payload) {
   for (const n of Array.isArray(payload.nodes) ? payload.nodes : []) {
     if (nodes.length >= MAX_LIVE_GEOM_ITEMS) break;
     if (!n || !Number.isFinite(n.id) || !Number.isFinite(n.x) || !Number.isFinite(n.y)) continue;
-    nodes.push({ id: n.id, x: n.x, y: n.y, w: Number.isFinite(n.w) ? n.w : undefined });
+    nodes.push({
+      id: n.id, x: n.x, y: n.y,
+      w: Number.isFinite(n.w) ? n.w : undefined,
+      h: Number.isFinite(n.h) ? n.h : undefined
+    });
   }
   for (const g of Array.isArray(payload.groups) ? payload.groups : []) {
     if (groups.length >= MAX_LIVE_GEOM_ITEMS) break;
@@ -610,6 +626,31 @@ io.on("connection", (socket) => {
   });
 });
 
-server.listen(PORT, () => {
+// Cron dọn rác + đo dung lượng kho PDF. Là setInterval trong tiến trình, không
+// phải Render Cron Job: cron của Render là dịch vụ trả tiền, còn cái này chạy
+// miễn phí ngay trong web service.
+//
+// Đánh đổi phải biết: web service free của Render ngủ sau 15 phút không ai truy
+// cập, và lúc ngủ thì interval không chạy. Nên đây là "mỗi 6 giờ nếu app còn
+// thức", không phải đúng giờ tuyệt đối. Với việc chỉ để cảnh báo dung lượng thì
+// đủ, vì dung lượng chỉ tăng khi có người dùng app — mà lúc đó app đang thức.
+const QUOTA_CHECK_INTERVAL_MS = 6 * 60 * 60 * 1000;
+
+function scheduleQuotaChecks() {
+  const run = () =>
+    runQuotaCheck().catch((e) => console.warn(`[pdf-quota] vòng kiểm tra lỗi: ${e.message}`));
+  // Chạy một lượt sau khi khởi động, chậm 30 giây để không giành tài nguyên với
+  // lúc app đang lên và phục vụ request đầu tiên.
+  setTimeout(run, 30_000).unref();
+  setInterval(run, QUOTA_CHECK_INTERVAL_MS).unref();
+}
+
+server.listen(PORT, async () => {
   console.log("Game tools server đang chạy tại http://localhost:" + PORT);
+  try {
+    console.log(`[pdf-quota] ${describeUsage(await usageReport())}`);
+  } catch (e) {
+    console.warn(`[pdf-quota] chưa đọc được dung lượng kho PDF: ${e.message}`);
+  }
+  scheduleQuotaChecks();
 });
