@@ -5,6 +5,7 @@ import { randomUUID } from "node:crypto";
 import multer from "multer";
 import { Board, User } from "./models.js";
 import { getBoardRole, isEmailAllowed } from "./auth.js";
+import { rateLimit } from "./rate-limit.js";
 import { PDF_DIR, isR2Enabled, sendPdf, storePdf } from "./pdf-storage.js";
 import {
   checkRoom,
@@ -143,7 +144,19 @@ router.post("/", async (req, res) => {
 // Upload phải kiểm quyền board ngay trong route, và nếu người dùng không có
 // quyền thì xoá file Multer vừa ghi trước khi trả lỗi. URL file đi qua route GET
 // bên dưới, nên không có PDF nào bị public chỉ vì biết tên file.
-router.post("/:id/files", (req, res, next) => {
+// Chặn theo EMAIL chứ không theo IP: kho PDF là tài nguyên dùng chung có hạn
+// mức, nên thứ cần giới hạn là "một người ngốn bao nhiêu", không phải "một
+// đường mạng gửi bao nhiêu" — cả văn phòng ngồi chung một IP là chuyện thường.
+// 20 file/giờ × 30MB là 600MB/giờ cho mỗi người: thoải mái cho việc dùng thật,
+// nhưng để lấp 8 GB thì một tài khoản phải cày liên tục hơn nửa ngày.
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 20,
+  keyOf: (req) => req.user?.email,
+  error: "too_many_uploads"
+});
+
+router.post("/:id/files", uploadLimiter, (req, res, next) => {
   pdfUpload(req, res, (err) => {
     if (!err) return next();
     const tooLarge = err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE";

@@ -120,11 +120,18 @@ export async function getCalculator() {
   return res.json();
 }
 
-export async function saveCalculator(state) {
+// `savedAt` là mốc lúc người dùng sửa, không phải lúc gửi đi: server dùng nó để
+// bỏ những cú ghi đã lỗi thời, nên nó phải nói về thời điểm SINH RA thay đổi.
+export async function saveCalculator(state, savedAt = Date.now()) {
   const res = await fetch("/api/calculator", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(state)
+    body: JSON.stringify({
+      budget: state.budget,
+      nextStatId: state.nextStatId,
+      stats: state.stats,
+      savedAt
+    })
   });
   checkAuthExpired(res);
   if (!res.ok) throw apiError("CALC_SAVE_FAILED");

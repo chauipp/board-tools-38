@@ -9,6 +9,8 @@ import { Server } from "socket.io";
 import {
   requireAuth,
   isEmailAllowed,
+  isPublicMode,
+  allowlistStartupError,
   signSession,
   verifyGoogleIdToken,
   parseSessionFromCookieHeader,
@@ -21,6 +23,8 @@ import boardsRouter from "./boards.js";
 import { sanitizeView, resolveFollow, countWatchers, releaseFollowersOf } from "./follow.js";
 import { sanitizeLiveText, sanitizeLiveMoves } from "./live-text.js";
 import { runQuotaCheck, usageReport, describeUsage } from "./pdf-quota.js";
+import { rateLimit } from "./rate-limit.js";
+import { sanitizeCalculator, isStaleWrite } from "./calculator.js";
 
 dotenv.config();
 
@@ -50,20 +54,41 @@ if (!process.env.SESSION_SECRET) {
   process.exit(1);
 }
 
-if (!process.env.ALLOWED_EMAILS) {
+// Dừng hẳn chứ không cảnh báo. Cảnh báo cũ nằm lẫn giữa hàng chục dòng log lúc
+// khởi động và đã bị bỏ qua suốt nhiều tháng — app chạy public mà không ai để ý.
+// Mở cửa là một quyết định, nên phải viết ra thành PUBLIC_MODE=true.
+const allowlistError = allowlistStartupError();
+if (allowlistError) {
+  console.error(allowlistError);
+  process.exit(1);
+}
+if (isPublicMode()) {
   console.warn(
-    "ALLOWED_EMAILS trống — app đang public, ai có tài khoản Google cũng đăng nhập được. Điền ALLOWED_EMAILS trong server/.env nếu muốn giới hạn."
+    "PUBLIC_MODE=true — ai có tài khoản Google cũng đăng nhập được, và cùng tiêu chung hạn mức kho PDF."
   );
 }
 
 await mongoose.connect(MONGODB_URI);
 
+// Mỗi người một bàn tính riêng.
+//
+// Trước đây đây là MỘT document duy nhất (`singleton: "main"`) dùng chung cho cả
+// hệ thống: ai đăng nhập cũng ghi đè được bảng chỉ số của người khác, và không
+// có cách nào biết ai vừa xoá cái gì. Khoá lại bằng phân quyền thì phải nghĩ ra
+// luật "ai được sửa"; cho mỗi người một bản thì câu hỏi đó biến mất.
+//
+// Document cũ vẫn nằm trong collection và không có `email`. Nó không còn được
+// ghi vào nữa, chỉ dùng làm bản mẫu để dựng bàn tính đầu tiên cho mỗi người —
+// xem ensureCalculatorFor() bên dưới — nên không ai mất dữ liệu đang có.
 const calculatorSchema = new mongoose.Schema(
   {
-    singleton: { type: String, default: "main", unique: true },
+    email: { type: String, required: true, lowercase: true, trim: true, index: true },
     budget: { type: Number, default: 500 },
     nextStatId: { type: Number, default: 1 },
-    stats: { type: Array, default: [] }
+    stats: { type: Array, default: [] },
+    // Mốc do client khai lúc sửa, dùng để bỏ những cú ghi đã lỗi thời. Xem
+    // isStaleWrite() trong calculator.js.
+    savedAt: { type: Number, default: null }
   },
   { minimize: false, versionKey: false }
 );
@@ -81,17 +106,31 @@ const defaultCalculator = {
   ]
 };
 
-async function ensureSeed() {
-  const calcCount = await Calculator.countDocuments({ singleton: "main" });
-  if (calcCount === 0) await Calculator.create({ singleton: "main", ...defaultCalculator });
-}
-await ensureSeed();
+// Bàn tính của một người, dựng ra lúc họ mở lần đầu.
+//
+// Bản mẫu lấy từ document dùng chung cũ nếu nó còn: người đang dùng app mở lại
+// trang là thấy đúng bảng chỉ số họ đã dựng bấy lâu, không phải bảng mặc định.
+// Hết bản cũ (cài mới) thì dùng defaultCalculator.
+async function ensureCalculatorFor(email) {
+  const existing = await Calculator.findOne({ email });
+  if (existing) return existing;
 
-function stripMongoMeta(doc) {
-  const obj = doc.toObject();
-  delete obj._id;
-  delete obj.singleton;
-  return obj;
+  const legacy = await Calculator.findOne({ email: { $exists: false } }).lean();
+  const seed = legacy
+    ? { budget: legacy.budget, nextStatId: legacy.nextStatId, stats: legacy.stats }
+    : defaultCalculator;
+  return Calculator.create({ email, ...seed });
+}
+
+// Chỉ trả ra phần client cần. `email` cũng bị bỏ: client đã biết mình là ai, và
+// không có lý do gì để địa chỉ email đi lại trong payload của mỗi lần tải bàn tính.
+function calculatorPayload(doc) {
+  return {
+    budget: doc.budget,
+    nextStatId: doc.nextStatId,
+    stats: doc.stats,
+    savedAt: doc.savedAt ?? null
+  };
 }
 
 const app = express();
@@ -99,11 +138,25 @@ const app = express();
 // lượng gốc, nên một lần PUT có thể mang theo vài MB ảnh. Phải lớn hơn trần
 // 16MB của một document MongoDB, nếu không request chết ở đây trước khi tới chỗ
 // báo lỗi tử tế; client đã tự chặn ở ngưỡng 14MB (lib/image-budget.js).
+// Render đứng sau một lớp proxy. Không khai trust proxy thì req.ip là IP của
+// proxy — mọi người dùng chung một ô đếm, và bộ giới hạn đăng nhập sẽ khoá cả
+// thiên hạ ngay khi một người gõ sai vài lần. Số 1 = tin đúng một lớp proxy,
+// không tin cả chuỗi X-Forwarded-For do client tự bịa ra.
+app.set("trust proxy", 1);
 app.use(express.json({ limit: "20mb" }));
 app.use(cookieParser());
 app.use("/api/boards", requireAuth, boardsRouter);
 
-app.post("/api/auth/google", async (req, res) => {
+// Đăng nhập: chặn theo IP. Mỗi lần gọi là một lượt xác minh token với Google,
+// nên đây vừa là cửa chống dò tài khoản vừa là cửa giữ cho quota Google không
+// bị đốt bởi một vòng lặp nào đó.
+const loginLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 20,
+  keyOf: (req) => req.ip
+});
+
+app.post("/api/auth/google", loginLimiter, async (req, res) => {
   let googleUser;
   try {
     googleUser = await verifyGoogleIdToken(req.body.idToken);
@@ -145,8 +198,8 @@ app.post("/api/auth/logout", (req, res) => {
 
 app.get("/api/calculator", requireAuth, async (req, res) => {
   try {
-    const doc = await Calculator.findOne({ singleton: "main" });
-    res.json(stripMongoMeta(doc));
+    const doc = await ensureCalculatorFor(req.user.email.toLowerCase());
+    res.json(calculatorPayload(doc));
   } catch (e) {
     res.status(500).json({ error: "Không đọc được dữ liệu bàn tính." });
   }
@@ -154,10 +207,22 @@ app.get("/api/calculator", requireAuth, async (req, res) => {
 
 app.put("/api/calculator", requireAuth, async (req, res) => {
   try {
-    const { budget, nextStatId, stats } = req.body;
+    const clean = sanitizeCalculator(req.body);
+    if (!clean) return res.status(400).json({ error: "invalid_payload" });
+
+    const email = req.user.email.toLowerCase();
+    const savedAt = typeof req.body.savedAt === "number" ? req.body.savedAt : null;
+    const current = await Calculator.findOne({ email }).select("savedAt").lean();
+    // Cú ghi đã lỗi thời (một request cũ về sau request mới, hoặc tab khác đang
+    // mở bản cũ hơn) thì bỏ qua — nhưng vẫn trả ok, vì với client thì "bản của
+    // tôi không phải bản mới nhất" không phải lỗi cần báo đỏ lên màn hình.
+    if (isStaleWrite(savedAt, current?.savedAt)) {
+      return res.json({ ok: true, stale: true });
+    }
+
     await Calculator.findOneAndUpdate(
-      { singleton: "main" },
-      { budget, nextStatId, stats },
+      { email },
+      { ...clean, savedAt },
       { upsert: true }
     );
     res.json({ ok: true });
