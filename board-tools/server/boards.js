@@ -6,6 +6,7 @@ import multer from "multer";
 import { Board, User } from "./models.js";
 import { getBoardRole, isEmailAllowed } from "./auth.js";
 import { rateLimit } from "./rate-limit.js";
+import { validateBoardPayload } from "./board-payload.js";
 import { PDF_DIR, isR2Enabled, sendPdf, storePdf } from "./pdf-storage.js";
 import {
   checkRoom,
@@ -252,6 +253,12 @@ router.put("/:id", async (req, res) => {
   try {
     const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS_VERSIONED);
     if (!found) return;
+
+    // Kiểm TRƯỚC khi ghi. Client đã kiểm khá nhiều, nhưng client là thứ ai cũng
+    // thay được — còn cái ghi vào Mongo thì cả phòng phải đọc lên và vẽ lại.
+    const invalid = validateBoardPayload(req.body);
+    if (invalid) return res.status(400).json({ error: "invalid_board", detail: invalid });
+
     const {
       nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
       nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, nextDrawingId,
