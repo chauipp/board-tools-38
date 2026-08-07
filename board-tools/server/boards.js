@@ -126,12 +126,33 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.post("/", async (req, res) => {
+// Tạo board là thao tác rẻ với người gọi nhưng đắt với hệ thống: mỗi board là
+// một document trong Atlas M0 free, vốn chỉ có 512 MB cho TOÀN BỘ dữ liệu, và
+// board có ảnh base64 thì một cái đã gần 5 MB. Không chặn thì một vòng lặp gọi
+// API vài phút là lấp đầy DB và cả app ngừng ghi được — rẻ hơn nhiều so với
+// việc lấp 8 GB kho PDF.
+//
+// Hai lớp: trần theo giờ chặn cú bùng phát, trần tổng chặn việc tích tụ chậm.
+// Người dùng thật đang có nhiều nhất 5 board, nên cả hai đều rất rộng rãi.
+const MAX_BOARDS_PER_USER = 100;
+const createBoardLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 30,
+  keyOf: (req) => req.user?.email,
+  error: "too_many_boards"
+});
+
+router.post("/", createBoardLimiter, async (req, res) => {
   try {
+    const email = req.user.email.toLowerCase();
+    const owned = await Board.countDocuments({ ownerEmail: email });
+    if (owned >= MAX_BOARDS_PER_USER) {
+      return res.status(403).json({ error: "board_limit_reached", limit: MAX_BOARDS_PER_USER });
+    }
     const name = (req.body.name || "").trim() || "Untitled board";
     const board = await Board.create({
       name,
-      ownerEmail: req.user.email.toLowerCase(),
+      ownerEmail: email,
       members: [],
       statuses: DEFAULT_STATUSES.map((s) => ({ ...s })),
       nextStatusId: 6

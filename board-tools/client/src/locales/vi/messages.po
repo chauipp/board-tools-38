@@ -52,7 +52,7 @@ msgstr "{watcherCount} đang xem màn hình bạn"
 msgid "← Danh sách board"
 msgstr "← Danh sách board"
 
-#: src/pages/Calculator.jsx:173
+#: src/pages/Calculator.jsx:206
 msgid "← Trang chủ"
 msgstr "← Trang chủ"
 
@@ -64,11 +64,11 @@ msgstr "+ Board mới"
 msgid "+ Mời"
 msgstr "+ Mời"
 
-#: src/pages/Calculator.jsx:221
+#: src/pages/Calculator.jsx:254
 msgid "+ Thêm chỉ số"
 msgstr "+ Thêm chỉ số"
 
-#: src/pages/Calculator.jsx:239
+#: src/pages/Calculator.jsx:272
 msgid "A gây <0>{dmgToB}</0> sát thương/lượt lên B  ·  B gây <1>{dmgToA}</1> sát thương/lượt lên A"
 msgstr "A gây <0>{dmgToB}</0> sát thương/lượt lên B  ·  B gây <1>{dmgToA}</1> sát thương/lượt lên A"
 
@@ -139,6 +139,10 @@ msgstr "Bấm để sửa màu — kéo thả vào thẻ / dây / badge để t�
 msgid "Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác"
 msgstr "Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác"
 
+#: src/components/LoadError.jsx:7
+msgid "Bạn đã tạo tối đa số board cho phép. Xoá bớt board không dùng nữa rồi thử lại."
+msgstr "Bạn đã tạo tối đa số board cho phép. Xoá bớt board không dùng nữa rồi thử lại."
+
 #: src/pages/BoardList.jsx:64
 #: src/pages/Home.jsx:40
 msgid "Bản đồ ý tưởng"
@@ -148,13 +152,17 @@ msgstr "Bản đồ ý tưởng"
 msgid "Bàn tính đối đầu"
 msgstr "Bàn tính đối đầu"
 
-#: src/pages/Calculator.jsx:169
+#: src/pages/Calculator.jsx:202
 msgid "Bàn Tính Đối Đầu"
 msgstr "Bàn Tính Đối Đầu"
 
 #: src/pages/IdeaMap.jsx:246
 msgid "Bản vẽ"
 msgstr "Bản vẽ"
+
+#: src/components/LoadError.jsx:11
+msgid "Bạn vừa tạo quá nhiều board trong một giờ. Chờ một lát rồi thử lại."
+msgstr "Bạn vừa tạo quá nhiều board trong một giờ. Chờ một lát rồi thử lại."
 
 #: src/pages/IdeaMap.jsx:4327
 #: src/pages/IdeaMap.jsx:4414
@@ -165,7 +173,7 @@ msgstr "Bảng màu"
 msgid "Bề rộng cục tẩy"
 msgstr "Bề rộng cục tẩy"
 
-#: src/pages/Calculator.jsx:256
+#: src/pages/Calculator.jsx:289
 msgid "Bế tắc: không bên nào đủ tấn công xuyên phá giáp đối phương. Đây là dấu hiệu nên xem lại cách quy đổi điểm."
 msgstr "Bế tắc: không bên nào đủ tấn công xuyên phá giáp đối phương. Đây là dấu hiệu nên xem lại cách quy đổi điểm."
 
@@ -198,19 +206,19 @@ msgstr "Board của bạn"
 msgid "Board mới"
 msgstr "Board mới"
 
-#: src/pages/Calculator.jsx:200
+#: src/pages/Calculator.jsx:233
 msgid "Build A"
 msgstr "Build A"
 
-#: src/pages/Calculator.jsx:260
+#: src/pages/Calculator.jsx:293
 msgid "Build A thắng ở lượt {rounds}, còn lại {hp} máu."
 msgstr "Build A thắng ở lượt {rounds}, còn lại {hp} máu."
 
-#: src/pages/Calculator.jsx:201
+#: src/pages/Calculator.jsx:234
 msgid "Build B"
 msgstr "Build B"
 
-#: src/pages/Calculator.jsx:262
+#: src/pages/Calculator.jsx:295
 msgid "Build B thắng ở lượt {rounds}, còn lại {hp} máu."
 msgstr "Build B thắng ở lượt {rounds}, còn lại {hp} máu."
 
@@ -218,7 +226,7 @@ msgstr "Build B thắng ở lượt {rounds}, còn lại {hp} máu."
 msgid "Bút (P)"
 msgstr "Bút (P)"
 
-#: src/pages/Calculator.jsx:258
+#: src/pages/Calculator.jsx:291
 msgid "Cả hai cùng gục ở lượt {rounds} — hoà."
 msgstr "Cả hai cùng gục ở lượt {rounds} — hoà."
 
@@ -231,7 +239,7 @@ msgstr "Các nhánh của gốc chia đều về {0} phía"
 msgid "Camera của bạn đang được chia sẻ cho những người đang ghim"
 msgstr "Camera của bạn đang được chia sẻ cho những người đang ghim"
 
-#: src/pages/Calculator.jsx:240
+#: src/pages/Calculator.jsx:273
 msgid "Cần có ít nhất Máu, Giáp và Tấn công trong bảng để xem trước đối đầu."
 msgstr "Cần có ít nhất Máu, Giáp và Tấn công trong bảng để xem trước đối đầu."
 
@@ -251,11 +259,11 @@ msgstr "Chỉ hiện thẻ yêu thích"
 msgid "Chỉ mình bạn thấy"
 msgstr "Chỉ mình bạn thấy"
 
-#: src/pages/Calculator.jsx:198
+#: src/pages/Calculator.jsx:231
 msgid "Chỉ số"
 msgstr "Chỉ số"
 
-#: src/pages/Calculator.jsx:135
+#: src/pages/Calculator.jsx:168
 msgid "Chỉ số mới"
 msgstr "Chỉ số mới"
 
@@ -277,7 +285,7 @@ msgstr "Chỉ xem — bạn không có quyền chỉnh sửa board này."
 msgid "Chỉ xem thẻ liên quan"
 msgstr "Chỉ xem thẻ liên quan"
 
-#: src/pages/Calculator.jsx:170
+#: src/pages/Calculator.jsx:203
 msgid "Chia ngân sách điểm vào chỉ số chiến đấu cho hai build, rồi mô phỏng xem ai thắng."
 msgstr "Chia ngân sách điểm vào chỉ số chiến đấu cho hai build, rồi mô phỏng xem ai thắng."
 
@@ -321,7 +329,7 @@ msgstr "Chưa có màu nào — bấm + để tạo."
 msgid "Chưa mời ai vào board này."
 msgstr "Chưa mời ai vào board này."
 
-#: src/pages/Calculator.jsx:264
+#: src/pages/Calculator.jsx:297
 msgid "Chưa phân thắng bại sau {rounds} lượt — trận kéo dài, có thể cần xem lại tỉ lệ sát thương/máu."
 msgstr "Chưa phân thắng bại sau {rounds} lượt — trận kéo dài, có thể cần xem lại tỉ lệ sát thương/máu."
 
@@ -359,11 +367,11 @@ msgstr "Có lỗi xảy ra, thử tải lại trang."
 msgid "Có thể sửa"
 msgstr "Có thể sửa"
 
-#: src/pages/Calculator.jsx:226
+#: src/pages/Calculator.jsx:259
 msgid "Còn lại — Build A"
 msgstr "Còn lại — Build A"
 
-#: src/pages/Calculator.jsx:230
+#: src/pages/Calculator.jsx:263
 msgid "Còn lại — Build B"
 msgstr "Còn lại — Build B"
 
@@ -406,7 +414,7 @@ msgstr "Đăng nhập thất bại, thử lại."
 
 #: src/components/InviteModal.jsx:97
 #: src/pages/BoardList.jsx:82
-#: src/pages/Calculator.jsx:106
+#: src/pages/Calculator.jsx:139
 #: src/pages/IdeaMap.jsx:1239
 msgid "Đang tải…"
 msgstr "Đang tải…"
@@ -449,12 +457,12 @@ msgstr "Độ đậm vệt"
 msgid "Độ dày nét"
 msgstr "Độ dày nét"
 
-#: src/pages/Calculator.jsx:236
+#: src/pages/Calculator.jsx:269
 msgid "Đối đầu thử"
 msgstr "Đối đầu thử"
 
 #: src/pages/BoardList.jsx:71
-#: src/pages/Calculator.jsx:177
+#: src/pages/Calculator.jsx:210
 #: src/pages/Home.jsx:25
 msgid "Đổi giao diện sáng/tối"
 msgstr "Đổi giao diện sáng/tối"
@@ -516,7 +524,7 @@ msgstr "Gạch ngoằn ngoèo đè lên một nét (qua lại vài lần) là xo
 msgid "Ghim màn hình"
 msgstr "Ghim màn hình"
 
-#: src/pages/Calculator.jsx:199
+#: src/pages/Calculator.jsx:232
 msgid "Giá / điểm"
 msgstr "Giá / điểm"
 
@@ -577,7 +585,7 @@ msgstr "Hình thang"
 msgid "Hình thoi"
 msgstr "Hình thoi"
 
-#: src/pages/Calculator.jsx:174
+#: src/pages/Calculator.jsx:207
 #: src/pages/IdeaMap.jsx:4470
 msgid "Hoàn tác (Ctrl+Z)"
 msgstr "Hoàn tác (Ctrl+Z)"
@@ -672,7 +680,7 @@ msgstr "Không ghim được màn hình."
 msgid "Không lưới"
 msgstr "Không lưới"
 
-#: src/pages/Calculator.jsx:181
+#: src/pages/Calculator.jsx:214
 #: src/pages/IdeaMap.jsx:4474
 msgid "Không lưu được lên server."
 msgstr "Không lưu được lên server."
@@ -682,7 +690,7 @@ msgstr "Không lưu được lên server."
 msgid "Không màu"
 msgstr "Không màu"
 
-#: src/components/LoadError.jsx:10
+#: src/components/LoadError.jsx:18
 msgid "Không mở được board này. Có thể board đã bị xoá, hoặc bạn chưa được mời vào board."
 msgstr "Không mở được board này. Có thể board đã bị xoá, hoặc bạn chưa được mời vào board."
 
@@ -697,7 +705,7 @@ msgstr "Không mời được thành viên."
 msgid "Không nhãn"
 msgstr "Không nhãn"
 
-#: src/components/LoadError.jsx:14
+#: src/components/LoadError.jsx:22
 msgid "Không tải được dữ liệu. Kiểm tra server đã chạy chưa (npm run dev trong thư mục server) và biến MONGODB_URI đã đúng chưa."
 msgstr "Không tải được dữ liệu. Kiểm tra server đã chạy chưa (npm run dev trong thư mục server) và biến MONGODB_URI đã đúng chưa."
 
@@ -744,7 +752,7 @@ msgstr "Kiểu nét"
 msgid "Kiểu vẽ"
 msgstr "Kiểu vẽ"
 
-#: src/pages/Calculator.jsx:175
+#: src/pages/Calculator.jsx:208
 #: src/pages/IdeaMap.jsx:4471
 msgid "Làm lại (Ctrl+Shift+Z)"
 msgstr "Làm lại (Ctrl+Shift+Z)"
@@ -818,7 +826,7 @@ msgstr "Menu"
 msgid "Mở khoá"
 msgstr "Mở khoá"
 
-#: src/pages/Calculator.jsx:242
+#: src/pages/Calculator.jsx:275
 msgid "Mô phỏng đối đầu"
 msgstr "Mô phỏng đối đầu"
 
@@ -889,7 +897,7 @@ msgstr "Nét đứt — bấm hai lần lên một nét đã vẽ cũng đổi q
 msgid "Nét liền"
 msgstr "Nét liền"
 
-#: src/pages/Calculator.jsx:184
+#: src/pages/Calculator.jsx:217
 msgid "Ngân sách điểm"
 msgstr "Ngân sách điểm"
 
@@ -971,7 +979,7 @@ msgstr "Phóng to"
 msgid "Rực"
 msgstr "Rực"
 
-#: src/pages/Calculator.jsx:168
+#: src/pages/Calculator.jsx:201
 msgid "Sa bàn thiết kế"
 msgstr "Sa bàn thiết kế"
 
@@ -1088,7 +1096,7 @@ msgstr "Thêm ý tưởng — bấm lên bảng để chọn chỗ (N)"
 msgid "Theo giao diện sáng/tối"
 msgstr "Theo giao diện sáng/tối"
 
-#: src/pages/Calculator.jsx:254
+#: src/pages/Calculator.jsx:287
 msgid "Thiếu chỉ số Máu / Giáp / Tấn công — không mô phỏng được."
 msgstr "Thiếu chỉ số Máu / Giáp / Tấn công — không mô phỏng được."
 
@@ -1246,7 +1254,7 @@ msgstr "Xoá board \"{0}\"? Thao tác này không hoàn tác được."
 msgid "Xoá cạnh"
 msgstr "Xoá cạnh"
 
-#: src/pages/Calculator.jsx:213
+#: src/pages/Calculator.jsx:246
 msgid "Xoá chỉ số"
 msgstr "Xoá chỉ số"
 

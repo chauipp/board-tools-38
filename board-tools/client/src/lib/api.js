@@ -31,7 +31,10 @@ export async function createBoard(name) {
     body: JSON.stringify({ name })
   });
   checkAuthExpired(res);
-  if (!res.ok) throw apiError("BOARD_CREATE_FAILED");
+  // Lấy mã lỗi thật của server thay vì gộp hết vào một mã: hai trường hợp
+  // board_limit_reached và too_many_boards cần câu chữ khác nhau, và khác hẳn
+  // với "server chết".
+  if (!res.ok) throw apiError(await parseErrorCode(res, "BOARD_CREATE_FAILED"));
   return res.json();
 }
 

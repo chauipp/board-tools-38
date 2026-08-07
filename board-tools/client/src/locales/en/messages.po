@@ -52,7 +52,7 @@ msgstr "{watcherCount} watching your screen"
 msgid "← Danh sách board"
 msgstr "← Board list"
 
-#: src/pages/Calculator.jsx:173
+#: src/pages/Calculator.jsx:206
 msgid "← Trang chủ"
 msgstr "← Home"
 
@@ -64,11 +64,11 @@ msgstr "+ New board"
 msgid "+ Mời"
 msgstr "+ Invite"
 
-#: src/pages/Calculator.jsx:221
+#: src/pages/Calculator.jsx:254
 msgid "+ Thêm chỉ số"
 msgstr "+ Add stat"
 
-#: src/pages/Calculator.jsx:239
+#: src/pages/Calculator.jsx:272
 msgid "A gây <0>{dmgToB}</0> sát thương/lượt lên B  ·  B gây <1>{dmgToA}</1> sát thương/lượt lên A"
 msgstr "A deals <0>{dmgToB}</0> damage/turn to B  ·  B deals <1>{dmgToA}</1> damage/turn to A"
 
@@ -139,6 +139,10 @@ msgstr "Click to edit — drag onto a card / wire / badge to color it"
 msgid "Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác"
 msgstr "Click to create a follow-up idea — hold and drag to link to another card"
 
+#: src/components/LoadError.jsx:7
+msgid "Bạn đã tạo tối đa số board cho phép. Xoá bớt board không dùng nữa rồi thử lại."
+msgstr "You have reached the maximum number of boards. Delete some you no longer need and try again."
+
 #: src/pages/BoardList.jsx:64
 #: src/pages/Home.jsx:40
 msgid "Bản đồ ý tưởng"
@@ -148,13 +152,17 @@ msgstr "Idea map"
 msgid "Bàn tính đối đầu"
 msgstr "Duel calculator"
 
-#: src/pages/Calculator.jsx:169
+#: src/pages/Calculator.jsx:202
 msgid "Bàn Tính Đối Đầu"
 msgstr "Duel Calculator"
 
 #: src/pages/IdeaMap.jsx:246
 msgid "Bản vẽ"
 msgstr "Blueprint"
+
+#: src/components/LoadError.jsx:11
+msgid "Bạn vừa tạo quá nhiều board trong một giờ. Chờ một lát rồi thử lại."
+msgstr "You have created too many boards in the past hour. Wait a moment and try again."
 
 #: src/pages/IdeaMap.jsx:4327
 #: src/pages/IdeaMap.jsx:4414
@@ -165,7 +173,7 @@ msgstr "Palette"
 msgid "Bề rộng cục tẩy"
 msgstr "Eraser width"
 
-#: src/pages/Calculator.jsx:256
+#: src/pages/Calculator.jsx:289
 msgid "Bế tắc: không bên nào đủ tấn công xuyên phá giáp đối phương. Đây là dấu hiệu nên xem lại cách quy đổi điểm."
 msgstr "Deadlock: neither side has enough attack to break through the other's armor. This is a sign the point conversion needs revisiting."
 
@@ -198,19 +206,19 @@ msgstr "Your boards"
 msgid "Board mới"
 msgstr "New board"
 
-#: src/pages/Calculator.jsx:200
+#: src/pages/Calculator.jsx:233
 msgid "Build A"
 msgstr "Build A"
 
-#: src/pages/Calculator.jsx:260
+#: src/pages/Calculator.jsx:293
 msgid "Build A thắng ở lượt {rounds}, còn lại {hp} máu."
 msgstr "Build A wins on turn {rounds} with {hp} HP left."
 
-#: src/pages/Calculator.jsx:201
+#: src/pages/Calculator.jsx:234
 msgid "Build B"
 msgstr "Build B"
 
-#: src/pages/Calculator.jsx:262
+#: src/pages/Calculator.jsx:295
 msgid "Build B thắng ở lượt {rounds}, còn lại {hp} máu."
 msgstr "Build B wins on turn {rounds} with {hp} HP left."
 
@@ -218,7 +226,7 @@ msgstr "Build B wins on turn {rounds} with {hp} HP left."
 msgid "Bút (P)"
 msgstr "Pen (P)"
 
-#: src/pages/Calculator.jsx:258
+#: src/pages/Calculator.jsx:291
 msgid "Cả hai cùng gục ở lượt {rounds} — hoà."
 msgstr "Both fall on turn {rounds} — a draw."
 
@@ -231,7 +239,7 @@ msgstr "Root branches split evenly across {0} sides"
 msgid "Camera của bạn đang được chia sẻ cho những người đang ghim"
 msgstr "Your view is being shared with everyone pinned to you"
 
-#: src/pages/Calculator.jsx:240
+#: src/pages/Calculator.jsx:273
 msgid "Cần có ít nhất Máu, Giáp và Tấn công trong bảng để xem trước đối đầu."
 msgstr "The table needs at least HP, Armor and Attack to preview a duel."
 
@@ -251,11 +259,11 @@ msgstr "Show favourites only"
 msgid "Chỉ mình bạn thấy"
 msgstr "Only you see this"
 
-#: src/pages/Calculator.jsx:198
+#: src/pages/Calculator.jsx:231
 msgid "Chỉ số"
 msgstr "Stat"
 
-#: src/pages/Calculator.jsx:135
+#: src/pages/Calculator.jsx:168
 msgid "Chỉ số mới"
 msgstr "New stat"
 
@@ -277,7 +285,7 @@ msgstr "View only — you do not have permission to edit this board."
 msgid "Chỉ xem thẻ liên quan"
 msgstr "Show related cards only"
 
-#: src/pages/Calculator.jsx:170
+#: src/pages/Calculator.jsx:203
 msgid "Chia ngân sách điểm vào chỉ số chiến đấu cho hai build, rồi mô phỏng xem ai thắng."
 msgstr "Split a point budget across combat stats for two builds, then simulate who wins."
 
@@ -321,7 +329,7 @@ msgstr "No colors yet — press + to create one."
 msgid "Chưa mời ai vào board này."
 msgstr "No one has been invited to this board yet."
 
-#: src/pages/Calculator.jsx:264
+#: src/pages/Calculator.jsx:297
 msgid "Chưa phân thắng bại sau {rounds} lượt — trận kéo dài, có thể cần xem lại tỉ lệ sát thương/máu."
 msgstr "No winner after {rounds} turns — the fight drags on; the damage-to-HP ratio may need revisiting."
 
@@ -359,11 +367,11 @@ msgstr "Something went wrong, try reloading the page."
 msgid "Có thể sửa"
 msgstr "Can edit"
 
-#: src/pages/Calculator.jsx:226
+#: src/pages/Calculator.jsx:259
 msgid "Còn lại — Build A"
 msgstr "Remaining — Build A"
 
-#: src/pages/Calculator.jsx:230
+#: src/pages/Calculator.jsx:263
 msgid "Còn lại — Build B"
 msgstr "Remaining — Build B"
 
@@ -406,7 +414,7 @@ msgstr "Sign-in failed, try again."
 
 #: src/components/InviteModal.jsx:97
 #: src/pages/BoardList.jsx:82
-#: src/pages/Calculator.jsx:106
+#: src/pages/Calculator.jsx:139
 #: src/pages/IdeaMap.jsx:1239
 msgid "Đang tải…"
 msgstr "Loading…"
@@ -449,12 +457,12 @@ msgstr "Beam intensity"
 msgid "Độ dày nét"
 msgstr "Stroke width"
 
-#: src/pages/Calculator.jsx:236
+#: src/pages/Calculator.jsx:269
 msgid "Đối đầu thử"
 msgstr "Test duel"
 
 #: src/pages/BoardList.jsx:71
-#: src/pages/Calculator.jsx:177
+#: src/pages/Calculator.jsx:210
 #: src/pages/Home.jsx:25
 msgid "Đổi giao diện sáng/tối"
 msgstr "Toggle light/dark theme"
@@ -516,7 +524,7 @@ msgstr "Scribble back and forth over a stroke to erase it"
 msgid "Ghim màn hình"
 msgstr "Pin screen"
 
-#: src/pages/Calculator.jsx:199
+#: src/pages/Calculator.jsx:232
 msgid "Giá / điểm"
 msgstr "Cost / point"
 
@@ -577,7 +585,7 @@ msgstr "Trapezoid"
 msgid "Hình thoi"
 msgstr "Diamond"
 
-#: src/pages/Calculator.jsx:174
+#: src/pages/Calculator.jsx:207
 #: src/pages/IdeaMap.jsx:4470
 msgid "Hoàn tác (Ctrl+Z)"
 msgstr "Undo (Ctrl+Z)"
@@ -672,7 +680,7 @@ msgstr "Couldn't pin the screen."
 msgid "Không lưới"
 msgstr "No grid"
 
-#: src/pages/Calculator.jsx:181
+#: src/pages/Calculator.jsx:214
 #: src/pages/IdeaMap.jsx:4474
 msgid "Không lưu được lên server."
 msgstr "Could not save to the server."
@@ -682,7 +690,7 @@ msgstr "Could not save to the server."
 msgid "Không màu"
 msgstr "No color"
 
-#: src/components/LoadError.jsx:10
+#: src/components/LoadError.jsx:18
 msgid "Không mở được board này. Có thể board đã bị xoá, hoặc bạn chưa được mời vào board."
 msgstr "This board could not be opened. It may have been deleted, or you have not been invited to it."
 
@@ -697,7 +705,7 @@ msgstr "Could not invite the member."
 msgid "Không nhãn"
 msgstr "No tag"
 
-#: src/components/LoadError.jsx:14
+#: src/components/LoadError.jsx:22
 msgid "Không tải được dữ liệu. Kiểm tra server đã chạy chưa (npm run dev trong thư mục server) và biến MONGODB_URI đã đúng chưa."
 msgstr "Could not load data. Check that the server is running (npm run dev in the server folder) and that MONGODB_URI is correct."
 
@@ -744,7 +752,7 @@ msgstr "Line style"
 msgid "Kiểu vẽ"
 msgstr "Style"
 
-#: src/pages/Calculator.jsx:175
+#: src/pages/Calculator.jsx:208
 #: src/pages/IdeaMap.jsx:4471
 msgid "Làm lại (Ctrl+Shift+Z)"
 msgstr "Redo (Ctrl+Shift+Z)"
@@ -818,7 +826,7 @@ msgstr "Menu"
 msgid "Mở khoá"
 msgstr "Unlock"
 
-#: src/pages/Calculator.jsx:242
+#: src/pages/Calculator.jsx:275
 msgid "Mô phỏng đối đầu"
 msgstr "Simulate duel"
 
@@ -889,7 +897,7 @@ msgstr "Dashed — double-clicking an existing stroke toggles it too"
 msgid "Nét liền"
 msgstr "Solid"
 
-#: src/pages/Calculator.jsx:184
+#: src/pages/Calculator.jsx:217
 msgid "Ngân sách điểm"
 msgstr "Point budget"
 
@@ -971,7 +979,7 @@ msgstr "Zoom in"
 msgid "Rực"
 msgstr "Vivid"
 
-#: src/pages/Calculator.jsx:168
+#: src/pages/Calculator.jsx:201
 msgid "Sa bàn thiết kế"
 msgstr "Design sandbox"
 
@@ -1088,7 +1096,7 @@ msgstr "Add idea — click the board to pick a spot (N)"
 msgid "Theo giao diện sáng/tối"
 msgstr "Follow light/dark theme"
 
-#: src/pages/Calculator.jsx:254
+#: src/pages/Calculator.jsx:287
 msgid "Thiếu chỉ số Máu / Giáp / Tấn công — không mô phỏng được."
 msgstr "Missing HP / Armor / Attack stats — cannot simulate."
 
@@ -1246,7 +1254,7 @@ msgstr "Delete board \"{0}\"? This cannot be undone."
 msgid "Xoá cạnh"
 msgstr "Delete edge"
 
-#: src/pages/Calculator.jsx:213
+#: src/pages/Calculator.jsx:246
 msgid "Xoá chỉ số"
 msgstr "Delete stat"
 
