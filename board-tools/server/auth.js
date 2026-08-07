@@ -11,10 +11,33 @@ function getAllowedEmails() {
     .filter(Boolean);
 }
 
+export function isPublicMode() {
+  return String(process.env.PUBLIC_MODE || "").trim().toLowerCase() === "true";
+}
+
+// Danh sách rỗng KHÔNG còn nghĩa là "cho tất cả". Muốn mở cửa thì phải khai
+// PUBLIC_MODE=true.
+//
+// Lý do đổi: "quên cấu hình allowlist" và "cố ý làm app public" trước đây trông
+// giống hệt nhau — cùng một biến để trống — mà hậu quả thì không giống. App này
+// có board cộng tác và một kho PDF DÙNG CHUNG có hạn mức: người lạ đăng nhập
+// được là chiếm được dung lượng của cả nhóm cho tới khi chạm trần, lúc đó chính
+// chủ cũng không tải PDF lên được nữa.
 export function isEmailAllowed(email) {
   const allowed = getAllowedEmails();
-  if (allowed.length === 0) return true; // no allowlist configured = public app, anyone can log in
+  if (allowed.length === 0) return isPublicMode();
   return allowed.includes(String(email || "").toLowerCase());
+}
+
+// Lý do phải dừng ngay lúc khởi động, hoặc null nếu cấu hình dùng được. Tách
+// khỏi index.js để test được mà không phải dựng cả server lên.
+export function allowlistStartupError() {
+  if (getAllowedEmails().length > 0) return null;
+  if (isPublicMode()) return null;
+  return (
+    "ALLOWED_EMAILS trống. Điền danh sách email được phép đăng nhập (cách nhau bởi dấu phẩy), " +
+    "hoặc khai PUBLIC_MODE=true nếu thật sự muốn ai có tài khoản Google cũng vào được."
+  );
 }
 
 export function getBoardRole(board, email) {

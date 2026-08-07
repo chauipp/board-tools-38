@@ -2,6 +2,8 @@ import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import {
   isEmailAllowed,
+  isPublicMode,
+  allowlistStartupError,
   signSession,
   verifySession,
   parseSessionFromCookieHeader,
@@ -13,9 +15,47 @@ before(() => {
   process.env.SESSION_SECRET = "test-secret";
 });
 
-test("isEmailAllowed: allows everyone when ALLOWED_EMAILS is unset (public app)", () => {
+// Đây là chốt an ninh quan trọng nhất của app: danh sách trống từng có nghĩa là
+// "cho tất cả", nên chỉ cần quên một biến môi trường là mọi tài khoản Google vào
+// được — và cùng tiêu chung hạn mức kho PDF.
+test("isEmailAllowed: danh sách trống thì CẤM hết, không còn mặc định mở cửa", () => {
   delete process.env.ALLOWED_EMAILS;
+  delete process.env.PUBLIC_MODE;
+  assert.equal(isEmailAllowed("anyone@gmail.com"), false);
+});
+
+test("isEmailAllowed: chỉ mở cửa khi khai PUBLIC_MODE=true một cách rõ ràng", () => {
+  delete process.env.ALLOWED_EMAILS;
+  process.env.PUBLIC_MODE = "true";
   assert.equal(isEmailAllowed("anyone@gmail.com"), true);
+  delete process.env.PUBLIC_MODE;
+});
+
+test("isPublicMode: chỉ đúng chữ 'true' mới tính, không nhận giá trị mơ hồ", () => {
+  for (const v of ["1", "yes", "TRUE ", "True"]) {
+    process.env.PUBLIC_MODE = v;
+    // "TRUE " và "True" vẫn tính (cắt khoảng trắng, không phân biệt hoa thường);
+    // "1" và "yes" thì không — đọc lướt qua .env phải thấy ngay là đang mở cửa.
+    assert.equal(isPublicMode(), v.trim().toLowerCase() === "true", `PUBLIC_MODE=${v}`);
+  }
+  delete process.env.PUBLIC_MODE;
+});
+
+test("allowlistStartupError: chặn server khởi động khi chưa cấu hình gì", () => {
+  delete process.env.ALLOWED_EMAILS;
+  delete process.env.PUBLIC_MODE;
+  assert.match(allowlistStartupError(), /ALLOWED_EMAILS/);
+});
+
+test("allowlistStartupError: im lặng khi đã có danh sách, hoặc đã cố ý mở cửa", () => {
+  process.env.ALLOWED_EMAILS = "a@b.com";
+  delete process.env.PUBLIC_MODE;
+  assert.equal(allowlistStartupError(), null);
+
+  delete process.env.ALLOWED_EMAILS;
+  process.env.PUBLIC_MODE = "true";
+  assert.equal(allowlistStartupError(), null);
+  delete process.env.PUBLIC_MODE;
 });
 
 test("isEmailAllowed: matches case-insensitively against the list", () => {

@@ -39,9 +39,42 @@ export default function Calculator() {
     return () => { cancelled = true; };
   }, []);
 
+  // Gõ một ký tự là một cú PUT. Gõ "1500" vào ô ngân sách trước đây bắn bốn
+  // request chồng nhau, và không gì bảo đảm chúng về đúng thứ tự gửi đi — cú cũ
+  // về sau sẽ ghi đè cú mới và con số tự lùi lại trước mắt người đang gõ.
+  //
+  // Gộp lại thành một cú sau 400ms không gõ nữa. Mốc thời gian gửi kèm là lúc
+  // SỬA, không phải lúc gửi, để server bỏ được cú đã lỗi thời (xem
+  // isStaleWrite trong server/calculator.js).
+  const SAVE_DELAY_MS = 400;
+  const saveTimerRef = useRef(null);
+  const pendingRef = useRef(null);
+  const saveSeqRef = useRef(0);
+
+  const flushSaveRef = useRef(() => {});
+  flushSaveRef.current = () => {
+    const pending = pendingRef.current;
+    if (!pending) return;
+    pendingRef.current = null;
+    const seq = ++saveSeqRef.current;
+    saveCalculator(pending.state, pending.savedAt)
+      // Chỉ cú mới nhất được quyền đổi đèn báo lỗi: một cú cũ về muộn và hỏng
+      // không nên bật báo đỏ khi cú mới sau đó đã lưu xong xuôi.
+      .then(() => { if (seq === saveSeqRef.current) setSaveError(null); })
+      .catch(() => { if (seq === saveSeqRef.current) setSaveError(true); });
+  };
+
   function saveNow(next) {
-    saveCalculator(next).then(() => setSaveError(null)).catch(() => setSaveError(true));
+    pendingRef.current = { state: next, savedAt: Date.now() };
+    clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => flushSaveRef.current(), SAVE_DELAY_MS);
   }
+
+  // Rời trang trong lúc còn cú chờ thì gửi ngay, đừng nuốt mất thay đổi cuối.
+  useEffect(() => () => {
+    clearTimeout(saveTimerRef.current);
+    flushSaveRef.current();
+  }, []);
 
   function applyFieldChange(next) {
     setCalc(next);

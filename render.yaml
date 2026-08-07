@@ -29,7 +29,19 @@ services:
         sync: false
       - key: SESSION_SECRET
         sync: false
+      # REQUIRED. The server refuses to boot without it (or without an explicit
+      # PUBLIC_MODE=true), so set it in the dashboard BEFORE deploying — an
+      # unset value is a failed deploy, not a public app.
+      #
+      # That is deliberate: an empty allowlist used to mean "anyone with a
+      # Google account can log in", announced only by a console.warn nobody
+      # reads. With a shared 8 GB PDF quota, a stranger logging in can fill it
+      # and lock the whole team out of uploads.
       - key: ALLOWED_EMAILS
+        sync: false
+      # Only if you genuinely want the app open to any Google account, and then
+      # ALLOWED_EMAILS must be left empty. Normally leave this unset.
+      - key: PUBLIC_MODE
         sync: false
       # NODE_ENV can't be "production" here: the build command runs
       # `npm install` for the client, and npm omits devDependencies under
