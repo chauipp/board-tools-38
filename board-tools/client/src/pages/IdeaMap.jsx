@@ -2237,10 +2237,15 @@ export default function IdeaMap() {
         const body = await res.json().catch(() => ({}));
         let msg = t`Không thể tải PDF lên.`;
         if (body.error === "file_too_large") msg = t`PDF vượt giới hạn 30MB.`;
-        // Kho chung đã đầy — nói rõ đang dùng bao nhiêu, vì cách sửa là đi xoá
-        // thẻ PDF cũ chứ không phải thử lại.
+        // Ba lỗi dưới đây dẫn tới ba việc phải làm khác nhau, nên không gộp
+        // chung: kho chung đầy là chuyện cả nhóm; phần riêng đầy thì tự xoá là
+        // xong; còn quá tay thì chỉ cần chờ.
         else if (body.error === "storage_full") {
-          msg = t`Kho PDF đã đầy (${body.used} / ${body.limit}). Xoá vài thẻ PDF không cần nữa rồi thử lại — dung lượng được trả lại sau khoảng một ngày.`;
+          msg = t`Kho PDF chung đã đầy (${body.used} / ${body.limit}). Xoá vài thẻ PDF không cần nữa rồi thử lại — dung lượng được trả lại sau khoảng một ngày.`;
+        } else if (body.error === "user_quota_full") {
+          msg = t`Bạn đã dùng hết phần dung lượng PDF của mình (${body.used} / ${body.limit}). Xoá vài thẻ PDF bạn đã tải lên rồi thử lại — dung lượng được trả lại sau khoảng một ngày.`;
+        } else if (body.error === "too_many_uploads") {
+          msg = t`Bạn vừa tải lên quá nhiều PDF trong một giờ. Chờ một lát rồi thử lại.`;
         }
         window.alert(msg);
         return;

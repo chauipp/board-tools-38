@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  checkQuotas,
   levelFor,
   shouldNotify,
   collectPdfFileIds,
@@ -13,6 +14,40 @@ import {
 const GB = 1_000_000_000;
 const HOUR = 3_600_000;
 const quota = { warnBytes: 6 * GB, highBytes: 7.5 * GB, limitBytes: 8 * GB };
+
+const MB = 1_000_000;
+const quotas = (over) => ({
+  globalUsed: 0, userUsed: 0, incoming: 10 * MB,
+  globalLimit: 8 * GB, userLimit: 500 * MB, ...over
+});
+
+test("còn chỗ ở cả hai hạn mức thì cho qua", () => {
+  assert.deepEqual(checkQuotas(quotas()), { ok: true, reason: null });
+});
+
+test("hết chỗ riêng thì chặn, dù kho chung còn mênh mông", () => {
+  const got = checkQuotas(quotas({ userUsed: 495 * MB }));
+  assert.equal(got.ok, false);
+  assert.equal(got.reason, "user_quota_full");
+});
+
+// Hai lý do dẫn tới hai việc phải làm khác nhau: kho chung đầy là chuyện cả
+// nhóm (mình xoá file của mình cũng chưa chắc đủ), còn phần riêng đầy thì tự
+// xoá bớt là xong ngay. Báo nhầm là chỉ sai việc.
+test("kho chung đầy được báo trước, kể cả khi phần riêng cũng đầy", () => {
+  const got = checkQuotas(quotas({ globalUsed: 8 * GB, userUsed: 500 * MB }));
+  assert.equal(got.reason, "storage_full");
+});
+
+test("vừa khít hạn mức thì vẫn cho qua, chỉ vượt mới chặn", () => {
+  assert.equal(checkQuotas(quotas({ userUsed: 490 * MB })).ok, true);
+  assert.equal(checkQuotas(quotas({ userUsed: 490 * MB + 1 })).ok, false);
+});
+
+test("người chưa upload gì thì dùng được trọn phần của mình", () => {
+  assert.equal(checkQuotas(quotas({ incoming: 500 * MB })).ok, true);
+  assert.equal(checkQuotas(quotas({ incoming: 500 * MB + 1 })).ok, false);
+});
 
 test("mức dung lượng chuyển đúng ở từng ngưỡng", () => {
   assert.equal(levelFor(0, quota), "ok");

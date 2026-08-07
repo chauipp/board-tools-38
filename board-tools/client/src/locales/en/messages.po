@@ -18,29 +18,29 @@ msgid "\"Lá\" là thẻ không có nhánh con nào."
 msgstr "A \"leaf\" is a card with no children."
 
 #. placeholder {0}: selectedGroupIds.size
-#: src/pages/IdeaMap.jsx:4898
+#: src/pages/IdeaMap.jsx:4903
 msgid "{0} khung"
 msgstr "{0} frames"
 
 #. placeholder {0}: selectedDrawingIds.size
-#: src/pages/IdeaMap.jsx:4900
+#: src/pages/IdeaMap.jsx:4905
 msgid "{0} nét vẽ"
 msgstr "{0} drawings"
 
 #. placeholder {0}: selectedIds.size
-#: src/pages/IdeaMap.jsx:4896
+#: src/pages/IdeaMap.jsx:4901
 msgid "{0} thẻ"
 msgstr "{0} cards"
 
-#: src/pages/IdeaMap.jsx:5337
+#: src/pages/IdeaMap.jsx:5342
 msgid "{d} ngày trước"
 msgstr "{d} days ago"
 
-#: src/pages/IdeaMap.jsx:5335
+#: src/pages/IdeaMap.jsx:5340
 msgid "{h} giờ trước"
 msgstr "{h} hours ago"
 
-#: src/pages/IdeaMap.jsx:5334
+#: src/pages/IdeaMap.jsx:5339
 msgid "{m} phút trước"
 msgstr "{m} minutes ago"
 
@@ -48,7 +48,7 @@ msgstr "{m} minutes ago"
 msgid "{watcherCount} đang xem màn hình bạn"
 msgstr "{watcherCount} watching your screen"
 
-#: src/pages/IdeaMap.jsx:4108
+#: src/pages/IdeaMap.jsx:4113
 msgid "← Danh sách board"
 msgstr "← Board list"
 
@@ -73,7 +73,7 @@ msgid "A gây <0>{dmgToB}</0> sát thương/lượt lên B  ·  B gây <1>{dmg
 msgstr "A deals <0>{dmgToB}</0> damage/turn to B  ·  B deals <1>{dmgToA}</1> damage/turn to A"
 
 #: src/components/MiniMap.jsx:51
-#: src/pages/IdeaMap.jsx:4817
+#: src/pages/IdeaMap.jsx:4822
 msgid "Ẩn bản đồ thu nhỏ"
 msgstr "Hide minimap"
 
@@ -120,15 +120,15 @@ msgstr "Level 5 — note"
 msgid "Bạc hà"
 msgstr "Mint"
 
-#: src/pages/IdeaMap.jsx:4390
+#: src/pages/IdeaMap.jsx:4395
 msgid "Bấm để lọc — kéo thả vào thẻ để gán nhãn — chuột phải để sửa"
 msgstr "Click to filter — drag onto a card to assign the tag — right-click to edit"
 
-#: src/pages/IdeaMap.jsx:4353
+#: src/pages/IdeaMap.jsx:4358
 msgid "Bấm để lọc — kéo thả vào thẻ để gán trạng thái — chuột phải để sửa"
 msgstr "Click to filter — drag onto a card to assign the status — right-click to edit"
 
-#: src/pages/IdeaMap.jsx:4423
+#: src/pages/IdeaMap.jsx:4428
 msgid "Bấm để sửa màu — kéo thả vào thẻ / dây / badge để tô màu"
 msgstr "Click to edit — drag onto a card / wire / badge to color it"
 
@@ -138,6 +138,12 @@ msgstr "Click to edit — drag onto a card / wire / badge to color it"
 #: src/components/IdeaCard.jsx:222
 msgid "Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác"
 msgstr "Click to create a follow-up idea — hold and drag to link to another card"
+
+#. placeholder {0}: body.used
+#. placeholder {1}: body.limit
+#: src/pages/IdeaMap.jsx:2246
+msgid "Bạn đã dùng hết phần dung lượng PDF của mình ({0} / {1}). Xoá vài thẻ PDF bạn đã tải lên rồi thử lại — dung lượng được trả lại sau khoảng một ngày."
+msgstr "You have used up your PDF storage share ({0} / {1}). Delete a few PDF cards you uploaded and try again — the space comes back after about a day."
 
 #: src/components/LoadError.jsx:7
 msgid "Bạn đã tạo tối đa số board cho phép. Xoá bớt board không dùng nữa rồi thử lại."
@@ -160,12 +166,16 @@ msgstr "Duel Calculator"
 msgid "Bản vẽ"
 msgstr "Blueprint"
 
+#: src/pages/IdeaMap.jsx:2248
+msgid "Bạn vừa tải lên quá nhiều PDF trong một giờ. Chờ một lát rồi thử lại."
+msgstr "You have uploaded too many PDFs in the past hour. Wait a moment and try again."
+
 #: src/components/LoadError.jsx:11
 msgid "Bạn vừa tạo quá nhiều board trong một giờ. Chờ một lát rồi thử lại."
 msgstr "You have created too many boards in the past hour. Wait a moment and try again."
 
-#: src/pages/IdeaMap.jsx:4327
-#: src/pages/IdeaMap.jsx:4414
+#: src/pages/IdeaMap.jsx:4332
+#: src/pages/IdeaMap.jsx:4419
 msgid "Bảng màu"
 msgstr "Palette"
 
@@ -181,7 +191,7 @@ msgstr "Deadlock: neither side has enough attack to break through the other's ar
 msgid "Bình luận"
 msgstr "Comments"
 
-#: src/pages/IdeaMap.jsx:4946
+#: src/pages/IdeaMap.jsx:4951
 msgid "Bỏ chọn"
 msgstr "Clear selection"
 
@@ -193,7 +203,7 @@ msgstr "Unpin"
 msgid "Bỏ ghim màn hình"
 msgstr "Unpin screen"
 
-#: src/pages/IdeaMap.jsx:4286
+#: src/pages/IdeaMap.jsx:4291
 msgid "Bộ màu"
 msgstr "Color set"
 
@@ -251,11 +261,11 @@ msgstr "Sand"
 msgid "Chép liên kết"
 msgstr "Copy link"
 
-#: src/pages/IdeaMap.jsx:4332
+#: src/pages/IdeaMap.jsx:4337
 msgid "Chỉ hiện thẻ yêu thích"
 msgstr "Show favourites only"
 
-#: src/pages/IdeaMap.jsx:4171
+#: src/pages/IdeaMap.jsx:4176
 msgid "Chỉ mình bạn thấy"
 msgstr "Only you see this"
 
@@ -277,7 +287,7 @@ msgstr "Outline only"
 msgid "Chỉ xem"
 msgstr "View only"
 
-#: src/pages/IdeaMap.jsx:4089
+#: src/pages/IdeaMap.jsx:4094
 msgid "Chỉ xem — bạn không có quyền chỉnh sửa board này."
 msgstr "View only — you do not have permission to edit this board."
 
@@ -321,7 +331,7 @@ msgstr "Medium text"
 msgid "Chưa có board nào — bấm \"+ Board mới\" để bắt đầu."
 msgstr "No boards yet — click \"+ New board\" to get started."
 
-#: src/pages/IdeaMap.jsx:4429
+#: src/pages/IdeaMap.jsx:4434
 msgid "Chưa có màu nào — bấm + để tạo."
 msgstr "No colors yet — press + to create one."
 
@@ -337,7 +347,7 @@ msgstr "No winner after {rounds} turns — the fight drags on; the damage-to-HP 
 msgid "Chuột — chọn và di chuyển (V)"
 msgstr "Cursor — select and move (V)"
 
-#: src/pages/IdeaMap.jsx:4783
+#: src/pages/IdeaMap.jsx:4788
 msgid "Chuột trái kéo để bôi đen chọn thẻ, chuột phải kéo để lia sa bàn, cuộn để lia, giữ Ctrl/⌘ + cuộn để phóng to."
 msgstr "Left-drag to marquee-select cards, right-drag to pan the board, scroll to pan, hold Ctrl/⌘ and scroll to zoom."
 
@@ -349,11 +359,11 @@ msgstr "Switch to English"
 msgid "Chuyển sang tiếng Việt"
 msgstr "Switch to Vietnamese"
 
-#: src/pages/IdeaMap.jsx:4293
+#: src/pages/IdeaMap.jsx:4298
 msgid "Cổ điển"
 msgstr "Classic"
 
-#: src/pages/IdeaMap.jsx:5298
+#: src/pages/IdeaMap.jsx:5303
 msgid "Có hướng"
 msgstr "Directed"
 
@@ -379,23 +389,19 @@ msgstr "Remaining — Build B"
 msgid "Cục gôm (E)"
 msgstr "Eraser (E)"
 
-#: src/pages/IdeaMap.jsx:4198
+#: src/pages/IdeaMap.jsx:4203
 msgid "Cuộn hai ngón"
 msgstr "Two-finger scroll"
 
-#: src/pages/IdeaMap.jsx:4207
+#: src/pages/IdeaMap.jsx:4212
 msgid "Cuộn luôn là lia bảng. Chụm hai ngón (hoặc Ctrl+cuộn) để thu phóng"
 msgstr "Scrolling always pans. Pinch (or Ctrl+scroll) to zoom"
 
-#: src/pages/IdeaMap.jsx:4212
+#: src/pages/IdeaMap.jsx:4217
 msgid "Cuộn luôn là thu phóng. Giữ Shift để lia bảng"
 msgstr "Scrolling always zooms. Hold Shift to pan"
 
-#: src/components/PdfUsage.jsx:39
-msgid "Đã đầy — không tải PDF mới lên được cho tới khi xoá bớt."
-msgstr "Full — no new PDFs can be uploaded until you delete some."
-
-#: src/pages/IdeaMap.jsx:4955
+#: src/pages/IdeaMap.jsx:4960
 msgid "Dán JSON đã xuất trước đó, rồi bấm Nhập vào bản đồ."
 msgstr "Paste previously exported JSON, then click Import to map."
 
@@ -419,7 +425,7 @@ msgstr "Sign-in failed, try again."
 msgid "Đang tải…"
 msgstr "Loading…"
 
-#: src/pages/IdeaMap.jsx:4789
+#: src/pages/IdeaMap.jsx:4794
 msgid "Đang tập trung — Esc để thoát"
 msgstr "Focusing — Esc to exit"
 
@@ -437,7 +443,7 @@ msgstr "Watching {0}'s screen"
 msgid "Đăng xuất"
 msgstr "Sign out"
 
-#: src/pages/IdeaMap.jsx:5302
+#: src/pages/IdeaMap.jsx:5307
 msgid "Đảo chiều"
 msgstr "Reverse"
 
@@ -472,7 +478,7 @@ msgid "Đơn sắc"
 msgstr "Monochrome"
 
 #: src/components/TreePanel.jsx:63
-#: src/pages/IdeaMap.jsx:4960
+#: src/pages/IdeaMap.jsx:4965
 msgid "Đóng"
 msgstr "Close"
 
@@ -528,7 +534,7 @@ msgstr "Pin screen"
 msgid "Giá / điểm"
 msgstr "Cost / point"
 
-#: src/pages/IdeaMap.jsx:4165
+#: src/pages/IdeaMap.jsx:4170
 msgid "Giao diện"
 msgstr "Look"
 
@@ -553,11 +559,11 @@ msgid "Giữa các nhánh"
 msgstr "Between branches"
 
 #: src/components/ColorMenu.jsx:50
-#: src/pages/IdeaMap.jsx:4939
+#: src/pages/IdeaMap.jsx:4944
 msgid "Gom nhóm"
 msgstr "Group"
 
-#: src/pages/IdeaMap.jsx:5369
+#: src/pages/IdeaMap.jsx:5374
 msgid "Gửi"
 msgstr "Send"
 
@@ -565,7 +571,11 @@ msgstr "Send"
 msgid "Hai công cụ nhẹ để quản lý ý tưởng và thử cân bằng số liệu trước khi bắt tay code thật. Dữ liệu dùng chung cho cả nhóm."
 msgstr "Two lightweight tools for managing ideas and testing number balance before writing real code. Data is shared across the team."
 
-#: src/pages/IdeaMap.jsx:4817
+#: src/components/PdfUsage.jsx:45
+msgid "Hết phần của bạn — xoá bớt thẻ PDF bạn đã tải lên."
+msgstr "Your share is full — delete some PDF cards you uploaded."
+
+#: src/pages/IdeaMap.jsx:4822
 msgid "Hiện bản đồ thu nhỏ"
 msgstr "Show minimap"
 
@@ -586,7 +596,7 @@ msgid "Hình thoi"
 msgstr "Diamond"
 
 #: src/pages/Calculator.jsx:207
-#: src/pages/IdeaMap.jsx:4470
+#: src/pages/IdeaMap.jsx:4475
 msgid "Hoàn tác (Ctrl+Z)"
 msgstr "Undo (Ctrl+Z)"
 
@@ -594,7 +604,7 @@ msgstr "Undo (Ctrl+Z)"
 msgid "Hồng phấn"
 msgstr "Blush"
 
-#: src/pages/IdeaMap.jsx:5293
+#: src/pages/IdeaMap.jsx:5298
 msgid "Hướng"
 msgstr "Direction"
 
@@ -604,23 +614,23 @@ msgstr "Grow direction"
 
 #: src/components/BadgeEditor.jsx:46
 #: src/components/IdeaCard.jsx:125
-#: src/pages/IdeaMap.jsx:5175
+#: src/pages/IdeaMap.jsx:5180
 msgid "Hủy"
 msgstr "Cancel"
 
-#: src/pages/IdeaMap.jsx:4954
+#: src/pages/IdeaMap.jsx:4959
 msgid "JSON hiện tại — copy để sao lưu hoặc gửi cho người khác xem."
 msgstr "Current JSON — copy it to back up or share with someone."
 
-#: src/pages/IdeaMap.jsx:3762
+#: src/pages/IdeaMap.jsx:3767
 msgid "JSON không hợp lệ — kiểm tra lại nội dung đã dán."
 msgstr "Invalid JSON — check what you pasted."
 
-#: src/pages/IdeaMap.jsx:4635
+#: src/pages/IdeaMap.jsx:4640
 msgid "Kéo để đặt góc này vào chỗ khác"
 msgstr "Drag to move this corner"
 
-#: src/pages/IdeaMap.jsx:4635
+#: src/pages/IdeaMap.jsx:4640
 msgid "Kéo để dời cả cạnh này"
 msgstr "Drag to move this whole edge"
 
@@ -632,33 +642,33 @@ msgstr "Drag to resize image"
 msgid "Kéo để đổi cỡ khung PDF"
 msgstr "Drag to resize PDF frame"
 
-#: src/pages/IdeaMap.jsx:4667
+#: src/pages/IdeaMap.jsx:4672
 msgid "Kéo để phóng to / thu nhỏ cả cụm"
 msgstr "Drag to scale the whole selection"
 
-#: src/pages/IdeaMap.jsx:4151
+#: src/pages/IdeaMap.jsx:4156
 msgid "Kết quả sau (Enter)"
 msgstr "Next result (Enter)"
 
-#: src/pages/IdeaMap.jsx:4150
+#: src/pages/IdeaMap.jsx:4155
 msgid "Kết quả trước (Shift+Enter)"
 msgstr "Previous result (Shift+Enter)"
 
-#: src/pages/IdeaMap.jsx:3684
-#: src/pages/IdeaMap.jsx:4855
-#: src/pages/IdeaMap.jsx:4855
+#: src/pages/IdeaMap.jsx:3689
+#: src/pages/IdeaMap.jsx:4860
+#: src/pages/IdeaMap.jsx:4860
 msgid "Khác"
 msgstr "Other"
 
-#: src/components/PdfUsage.jsx:30
-msgid "Kho PDF"
-msgstr "PDF storage"
+#: src/components/PdfUsage.jsx:51
+msgid "Kho chung"
+msgstr "Shared storage"
 
 #. placeholder {0}: body.used
 #. placeholder {1}: body.limit
-#: src/pages/IdeaMap.jsx:2243
-msgid "Kho PDF đã đầy ({0} / {1}). Xoá vài thẻ PDF không cần nữa rồi thử lại — dung lượng được trả lại sau khoảng một ngày."
-msgstr "PDF storage is full ({0} / {1}). Delete a few PDF cards you no longer need and try again — the space comes back after about a day."
+#: src/pages/IdeaMap.jsx:2244
+msgid "Kho PDF chung đã đầy ({0} / {1}). Xoá vài thẻ PDF không cần nữa rồi thử lại — dung lượng được trả lại sau khoảng một ngày."
+msgstr "Shared PDF storage is full ({0} / {1}). Delete a few PDF cards you no longer need and try again — the space comes back after about a day."
 
 #: src/components/ColorMenu.jsx:53
 msgid "Khoá"
@@ -681,12 +691,12 @@ msgid "Không lưới"
 msgstr "No grid"
 
 #: src/pages/Calculator.jsx:214
-#: src/pages/IdeaMap.jsx:4474
+#: src/pages/IdeaMap.jsx:4479
 msgid "Không lưu được lên server."
 msgstr "Could not save to the server."
 
 #: src/components/ColorMenu.jsx:71
-#: src/pages/IdeaMap.jsx:4919
+#: src/pages/IdeaMap.jsx:4924
 msgid "Không màu"
 msgstr "No color"
 
@@ -699,9 +709,9 @@ msgid "Không mời được thành viên."
 msgstr "Could not invite the member."
 
 #: src/components/IdeaCard.jsx:115
-#: src/pages/IdeaMap.jsx:4405
-#: src/pages/IdeaMap.jsx:4911
-#: src/pages/IdeaMap.jsx:4991
+#: src/pages/IdeaMap.jsx:4410
+#: src/pages/IdeaMap.jsx:4916
+#: src/pages/IdeaMap.jsx:4996
 msgid "Không nhãn"
 msgstr "No tag"
 
@@ -709,19 +719,19 @@ msgstr "No tag"
 msgid "Không tải được dữ liệu. Kiểm tra server đã chạy chưa (npm run dev trong thư mục server) và biến MONGODB_URI đã đúng chưa."
 msgstr "Could not load data. Check that the server is running (npm run dev in the server folder) and that MONGODB_URI is correct."
 
-#: src/pages/IdeaMap.jsx:4878
+#: src/pages/IdeaMap.jsx:4883
 msgid "Không tên"
 msgstr "Untitled"
 
 #: src/pages/IdeaMap.jsx:2238
-#: src/pages/IdeaMap.jsx:2264
+#: src/pages/IdeaMap.jsx:2269
 msgid "Không thể tải PDF lên."
 msgstr "Could not upload the PDF."
 
 #: src/components/IdeaCard.jsx:119
-#: src/pages/IdeaMap.jsx:4368
-#: src/pages/IdeaMap.jsx:4906
-#: src/pages/IdeaMap.jsx:4991
+#: src/pages/IdeaMap.jsx:4373
+#: src/pages/IdeaMap.jsx:4911
+#: src/pages/IdeaMap.jsx:4996
 msgid "Không trạng thái"
 msgstr "No status"
 
@@ -730,7 +740,7 @@ msgid "Không xoá được thành viên khỏi board."
 msgstr "Could not remove the member from the board."
 
 #. placeholder {0}: board.nodes.length
-#: src/pages/IdeaMap.jsx:4311
+#: src/pages/IdeaMap.jsx:4316
 msgid "Khớp {matchCount}/{0}"
 msgstr "{matchCount}/{0} match"
 
@@ -744,16 +754,16 @@ msgstr "Frame"
 msgid "Khung mới"
 msgstr "New frame"
 
-#: src/pages/IdeaMap.jsx:5281
+#: src/pages/IdeaMap.jsx:5286
 msgid "Kiểu nét"
 msgstr "Line style"
 
-#: src/pages/IdeaMap.jsx:4218
+#: src/pages/IdeaMap.jsx:4223
 msgid "Kiểu vẽ"
 msgstr "Style"
 
 #: src/pages/Calculator.jsx:208
-#: src/pages/IdeaMap.jsx:4471
+#: src/pages/IdeaMap.jsx:4476
 msgid "Làm lại (Ctrl+Shift+Z)"
 msgstr "Redo (Ctrl+Shift+Z)"
 
@@ -761,23 +771,23 @@ msgstr "Redo (Ctrl+Shift+Z)"
 msgid "Laser — chỉ trỏ khi thuyết trình (K)"
 msgstr "Laser pointer — for presenting (K)"
 
-#: src/pages/IdeaMap.jsx:4209
+#: src/pages/IdeaMap.jsx:4214
 msgid "Lia bảng"
 msgstr "Pan"
 
-#: src/pages/IdeaMap.jsx:3684
+#: src/pages/IdeaMap.jsx:3689
 msgid "Liên kết"
 msgstr "Links"
 
-#: src/pages/IdeaMap.jsx:4365
+#: src/pages/IdeaMap.jsx:4370
 msgid "Lọc thẻ chưa có trạng thái"
 msgstr "Filter cards with no status"
 
-#: src/pages/IdeaMap.jsx:4402
+#: src/pages/IdeaMap.jsx:4407
 msgid "Lọc thẻ chưa gắn nhãn"
 msgstr "Filter cards with no tag"
 
-#: src/pages/IdeaMap.jsx:4259
+#: src/pages/IdeaMap.jsx:4264
 msgid "Lưới"
 msgstr "Grid"
 
@@ -790,11 +800,11 @@ msgid "Lưới ô"
 msgstr "Square grid"
 
 #: src/components/IdeaCard.jsx:124
-#: src/pages/IdeaMap.jsx:5102
+#: src/pages/IdeaMap.jsx:5107
 msgid "Lưu"
 msgstr "Save"
 
-#: src/pages/IdeaMap.jsx:5312
+#: src/pages/IdeaMap.jsx:5317
 msgid "Mặc định"
 msgstr "Default"
 
@@ -806,7 +816,7 @@ msgstr "Pen colour"
 msgid "Màu chữ"
 msgstr "Text color"
 
-#: src/pages/IdeaMap.jsx:5310
+#: src/pages/IdeaMap.jsx:5315
 msgid "Màu dây"
 msgstr "Wire color"
 
@@ -814,11 +824,11 @@ msgstr "Wire color"
 msgid "Màu laser"
 msgstr "Laser color"
 
-#: src/pages/IdeaMap.jsx:5239
+#: src/pages/IdeaMap.jsx:5244
 msgid "Màu mới"
 msgstr "New color"
 
-#: src/pages/IdeaMap.jsx:4107
+#: src/pages/IdeaMap.jsx:4112
 msgid "Menu"
 msgstr "Menu"
 
@@ -854,11 +864,11 @@ msgstr "Grow downward"
 msgid "Mời"
 msgstr "Invite"
 
-#: src/pages/IdeaMap.jsx:5163
+#: src/pages/IdeaMap.jsx:5168
 msgid "Mỗi dòng một ý tưởng — xác nhận để tạo hàng loạt thẻ."
 msgstr "One idea per line — confirm to create cards in bulk."
 
-#: src/pages/IdeaMap.jsx:4231
+#: src/pages/IdeaMap.jsx:4236
 msgid "Mọi người cùng thấy"
 msgstr "Everyone sees this"
 
@@ -866,7 +876,7 @@ msgstr "Everyone sees this"
 msgid "Mời thành viên"
 msgstr "Invite members"
 
-#: src/pages/IdeaMap.jsx:4118
+#: src/pages/IdeaMap.jsx:4123
 msgid "Mục lục"
 msgstr "Outline"
 
@@ -874,7 +884,7 @@ msgstr "Outline"
 msgid "Mũi tên"
 msgstr "Arrow"
 
-#: src/pages/IdeaMap.jsx:4233
+#: src/pages/IdeaMap.jsx:4238
 msgid "Nền bảng"
 msgstr "Board background"
 
@@ -882,8 +892,8 @@ msgstr "Board background"
 msgid "Neon"
 msgstr "Neon"
 
-#: src/pages/IdeaMap.jsx:4934
-#: src/pages/IdeaMap.jsx:5286
+#: src/pages/IdeaMap.jsx:4939
+#: src/pages/IdeaMap.jsx:5291
 msgid "Nét đứt"
 msgstr "Dashed"
 
@@ -892,8 +902,8 @@ msgid "Nét đứt — bấm hai lần lên một nét đã vẽ cũng đổi qu
 msgstr "Dashed — double-clicking an existing stroke toggles it too"
 
 #: src/components/ToolOptions.jsx:319
-#: src/pages/IdeaMap.jsx:4933
-#: src/pages/IdeaMap.jsx:5283
+#: src/pages/IdeaMap.jsx:4938
+#: src/pages/IdeaMap.jsx:5288
 msgid "Nét liền"
 msgstr "Solid"
 
@@ -901,7 +911,7 @@ msgstr "Solid"
 msgid "Ngân sách điểm"
 msgstr "Point budget"
 
-#: src/pages/IdeaMap.jsx:4173
+#: src/pages/IdeaMap.jsx:4178
 msgid "Ngôn ngữ"
 msgstr "Language"
 
@@ -913,33 +923,33 @@ msgstr "They're already watching your screen — you can't pin to each other."
 msgid "Người đó vừa rời khỏi bảng."
 msgstr "They just left the board."
 
-#: src/pages/IdeaMap.jsx:4326
-#: src/pages/IdeaMap.jsx:4377
+#: src/pages/IdeaMap.jsx:4331
+#: src/pages/IdeaMap.jsx:4382
 msgid "Nhãn"
 msgstr "Tag"
 
 #: src/components/ColorMenu.jsx:54
-#: src/pages/IdeaMap.jsx:4941
+#: src/pages/IdeaMap.jsx:4946
 msgid "Nhân bản"
 msgstr "Duplicate"
 
-#: src/pages/IdeaMap.jsx:5275
+#: src/pages/IdeaMap.jsx:5280
 msgid "Nhãn edge…"
 msgstr "Edge label…"
 
-#: src/pages/IdeaMap.jsx:4202
+#: src/pages/IdeaMap.jsx:4207
 msgid "Nhận thiết bị theo cách cuộn: touchpad thì lia bảng, nút lăn thì thu phóng"
 msgstr "Detect the device from how you scroll: touchpad pans, mouse wheel zooms"
 
-#: src/pages/IdeaMap.jsx:4910
+#: src/pages/IdeaMap.jsx:4915
 msgid "Nhãn…"
 msgstr "Tag…"
 
-#: src/pages/IdeaMap.jsx:4782
+#: src/pages/IdeaMap.jsx:4787
 msgid "Nhấp đúp vào khoảng trống để tạo ý tưởng đầu tiên."
 msgstr "Double-click empty space to create your first idea."
 
-#: src/pages/IdeaMap.jsx:4111
+#: src/pages/IdeaMap.jsx:4116
 msgid "Nhập JSON"
 msgstr "Import JSON"
 
@@ -947,7 +957,7 @@ msgstr "Import JSON"
 msgid "Nhập nhanh"
 msgstr "Quick capture"
 
-#: src/pages/IdeaMap.jsx:4959
+#: src/pages/IdeaMap.jsx:4964
 msgid "Nhập vào bản đồ"
 msgstr "Import to map"
 
@@ -967,11 +977,15 @@ msgstr "Lavender"
 msgid "Pastel"
 msgstr "Pastel"
 
+#: src/components/PdfUsage.jsx:37
+msgid "PDF của bạn"
+msgstr "Your PDFs"
+
 #: src/pages/IdeaMap.jsx:2239
 msgid "PDF vượt giới hạn 30MB."
 msgstr "PDF exceeds the 30MB limit."
 
-#: src/pages/IdeaMap.jsx:4810
+#: src/pages/IdeaMap.jsx:4815
 msgid "Phóng to"
 msgstr "Zoom in"
 
@@ -983,21 +997,17 @@ msgstr "Vivid"
 msgid "Sa bàn thiết kế"
 msgstr "Design sandbox"
 
-#: src/pages/IdeaMap.jsx:4223
+#: src/pages/IdeaMap.jsx:4228
 msgid "Sạch"
 msgstr "Clean"
 
-#: src/pages/IdeaMap.jsx:4182
+#: src/pages/IdeaMap.jsx:4187
 msgid "Sáng"
 msgstr "Light"
 
-#: src/pages/IdeaMap.jsx:4177
+#: src/pages/IdeaMap.jsx:4182
 msgid "Sáng/tối"
 msgstr "Light/dark"
-
-#: src/components/PdfUsage.jsx:40
-msgid "Sắp đầy — xoá bớt thẻ PDF cũ để khỏi bị chặn khi tải lên."
-msgstr "Almost full — delete some old PDF cards so uploads do not get blocked."
 
 #: src/components/FollowBanner.jsx:10
 msgid "Server không phản hồi — chưa ghim được màn hình."
@@ -1007,7 +1017,7 @@ msgstr "No response from the server — couldn't pin the screen."
 msgid "Sơ đồ tư duy tự do: kéo-thả, nối quan hệ, gắn nhãn/trạng thái, lọc và tìm kiếm — quản lý mọi ý tưởng liên quan đến game."
 msgstr "A free-form mind map: drag and drop, link relationships, assign tags and statuses, filter and search — manage every idea about the game."
 
-#: src/pages/IdeaMap.jsx:4310
+#: src/pages/IdeaMap.jsx:4315
 msgid "Số ý tưởng khớp bộ lọc"
 msgstr "Ideas matching the filter"
 
@@ -1020,7 +1030,7 @@ msgstr "Edit"
 msgid "Sửa — vẽ lên bảng (P)"
 msgstr "Edit — draw on the board (P)"
 
-#: src/pages/IdeaMap.jsx:5239
+#: src/pages/IdeaMap.jsx:5244
 msgid "Sửa màu"
 msgstr "Edit color"
 
@@ -1036,11 +1046,11 @@ msgstr "This account does not have access yet."
 msgid "Tam giác"
 msgstr "Triangle"
 
-#: src/pages/IdeaMap.jsx:5090
+#: src/pages/IdeaMap.jsx:5095
 msgid "Tạo"
 msgstr "Create"
 
-#: src/pages/IdeaMap.jsx:5174
+#: src/pages/IdeaMap.jsx:5179
 msgid "Tạo thẻ"
 msgstr "Create cards"
 
@@ -1076,15 +1086,15 @@ msgstr "Root card"
 msgid "Thêm khung — tô một vùng trên bảng"
 msgstr "Add frame — drag out an area on the board"
 
-#: src/pages/IdeaMap.jsx:4426
+#: src/pages/IdeaMap.jsx:4431
 msgid "Thêm màu"
 msgstr "Add color"
 
-#: src/pages/IdeaMap.jsx:4408
+#: src/pages/IdeaMap.jsx:4413
 msgid "Thêm nhãn"
 msgstr "Add tag"
 
-#: src/pages/IdeaMap.jsx:4371
+#: src/pages/IdeaMap.jsx:4376
 msgid "Thêm trạng thái"
 msgstr "Add status"
 
@@ -1092,7 +1102,7 @@ msgstr "Add status"
 msgid "Thêm ý tưởng — bấm lên bảng để chọn chỗ (N)"
 msgstr "Add idea — click the board to pick a spot (N)"
 
-#: src/pages/IdeaMap.jsx:4243
+#: src/pages/IdeaMap.jsx:4248
 msgid "Theo giao diện sáng/tối"
 msgstr "Follow light/dark theme"
 
@@ -1100,19 +1110,19 @@ msgstr "Follow light/dark theme"
 msgid "Thiếu chỉ số Máu / Giáp / Tấn công — không mô phỏng được."
 msgstr "Missing HP / Armor / Attack stats — cannot simulate."
 
-#: src/pages/IdeaMap.jsx:4808
+#: src/pages/IdeaMap.jsx:4813
 msgid "Thu nhỏ"
 msgstr "Zoom out"
 
-#: src/pages/IdeaMap.jsx:4214
+#: src/pages/IdeaMap.jsx:4219
 msgid "Thu phóng"
 msgstr "Zoom"
 
-#: src/pages/IdeaMap.jsx:4130
+#: src/pages/IdeaMap.jsx:4135
 msgid "Tìm kiếm (Ctrl+F)"
 msgstr "Search (Ctrl+F)"
 
-#: src/pages/IdeaMap.jsx:4138
+#: src/pages/IdeaMap.jsx:4143
 msgid "Tìm theo tên/mô tả…"
 msgstr "Search by title/description…"
 
@@ -1120,7 +1130,7 @@ msgstr "Search by title/description…"
 msgid "Tô cả hình"
 msgstr "Filled"
 
-#: src/pages/IdeaMap.jsx:4186
+#: src/pages/IdeaMap.jsx:4191
 msgid "Tối"
 msgstr "Dark"
 
@@ -1128,20 +1138,20 @@ msgstr "Dark"
 msgid "Trắng"
 msgstr "White"
 
-#: src/pages/IdeaMap.jsx:4325
-#: src/pages/IdeaMap.jsx:4340
+#: src/pages/IdeaMap.jsx:4330
+#: src/pages/IdeaMap.jsx:4345
 msgid "Trạng thái"
 msgstr "Status"
 
-#: src/pages/IdeaMap.jsx:4905
+#: src/pages/IdeaMap.jsx:4910
 msgid "Trạng thái…"
 msgstr "Status…"
 
-#: src/pages/IdeaMap.jsx:4117
+#: src/pages/IdeaMap.jsx:4122
 msgid "Trình chiếu"
 msgstr "Present"
 
-#: src/pages/IdeaMap.jsx:4204
+#: src/pages/IdeaMap.jsx:4209
 msgid "Tự động"
 msgstr "Automatic"
 
@@ -1149,7 +1159,7 @@ msgstr "Automatic"
 msgid "Tuỳ chỉnh cây…"
 msgstr "Tree settings…"
 
-#: src/pages/IdeaMap.jsx:4227
+#: src/pages/IdeaMap.jsx:4232
 msgid "Vẽ tay"
 msgstr "Hand-drawn"
 
@@ -1165,19 +1175,19 @@ msgstr "Solid border"
 msgid "Viền nét đứt"
 msgstr "Dashed border"
 
-#: src/pages/IdeaMap.jsx:5365
+#: src/pages/IdeaMap.jsx:5370
 msgid "Viết bình luận…"
 msgstr "Write a comment…"
 
-#: src/pages/IdeaMap.jsx:5295
+#: src/pages/IdeaMap.jsx:5300
 msgid "Vô hướng"
 msgstr "Undirected"
 
-#: src/pages/IdeaMap.jsx:4812
+#: src/pages/IdeaMap.jsx:4817
 msgid "Vừa khung"
 msgstr "Fit to view"
 
-#: src/pages/IdeaMap.jsx:5333
+#: src/pages/IdeaMap.jsx:5338
 msgid "vừa xong"
 msgstr "just now"
 
@@ -1214,14 +1224,14 @@ msgid "Xếp cây xuống dưới"
 msgstr "Arrange tree downward"
 
 #: src/components/ColorMenu.jsx:51
-#: src/pages/IdeaMap.jsx:4940
+#: src/pages/IdeaMap.jsx:4945
 msgid "Xếp gọn"
 msgstr "Tidy up"
 
 #: src/components/ColorMenu.jsx:156
 #: src/components/IdeaCard.jsx:170
-#: src/pages/IdeaMap.jsx:4944
-#: src/pages/IdeaMap.jsx:5354
+#: src/pages/IdeaMap.jsx:4949
+#: src/pages/IdeaMap.jsx:5359
 msgid "Xoá"
 msgstr "Delete"
 
@@ -1250,7 +1260,7 @@ msgstr "Delete board"
 msgid "Xoá board \"{0}\"? Thao tác này không hoàn tác được."
 msgstr "Delete board \"{0}\"? This cannot be undone."
 
-#: src/pages/IdeaMap.jsx:5319
+#: src/pages/IdeaMap.jsx:5324
 msgid "Xoá cạnh"
 msgstr "Delete edge"
 
@@ -1266,23 +1276,23 @@ msgstr "Remove from board"
 msgid "Xoá khung"
 msgstr "Delete frame"
 
-#: src/pages/IdeaMap.jsx:4313
+#: src/pages/IdeaMap.jsx:4318
 msgid "Xoá lọc"
 msgstr "Clear filters"
 
-#: src/pages/IdeaMap.jsx:5242
+#: src/pages/IdeaMap.jsx:5247
 msgid "Xoá màu"
 msgstr "Delete color"
 
-#: src/pages/IdeaMap.jsx:4110
+#: src/pages/IdeaMap.jsx:4115
 msgid "Xuất JSON"
 msgstr "Export JSON"
 
-#: src/pages/IdeaMap.jsx:4839
+#: src/pages/IdeaMap.jsx:4844
 msgid "Xuất MD"
 msgstr "Export MD"
 
-#: src/pages/IdeaMap.jsx:4840
+#: src/pages/IdeaMap.jsx:4845
 msgid "Xuất PNG"
 msgstr "Export PNG"
 
@@ -1291,7 +1301,7 @@ msgstr "Export PNG"
 msgid "Xưởng Game Của Tôi"
 msgstr "My Game Workshop"
 
-#: src/pages/IdeaMap.jsx:5171
+#: src/pages/IdeaMap.jsx:5176
 msgid "Ý tưởng 1\n"
 "Ý tưởng 2\n"
 "…"

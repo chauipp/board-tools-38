@@ -77,6 +77,13 @@ const pdfFileSchema = new mongoose.Schema(
     // giữa đường, hoặc file có từ trước khi có sổ sách này) — chỉ nodes[] mới
     // biết file thuộc board nào, mà lúc nhận vào sổ thì chưa tra ra được.
     boardId: { type: String, required: true, default: "unknown", index: true },
+    // Người ĐẨY LÊN, không phải chủ board: hạn mức riêng phải tính vào đầu người
+    // tiêu dung lượng. Thả PDF vào board người khác thì vẫn là phần của mình.
+    //
+    // Rỗng với những file có từ trước khi có cột này, và với file được nhận vào
+    // sổ lúc đối chiếu (chỉ đọc được từ kho R2 nên không biết ai đẩy lên). Chúng
+    // vẫn tính vào hạn mức CHUNG, chỉ là không tính vào đầu ai cả.
+    email: { type: String, default: "", lowercase: true, trim: true, index: true },
     name: { type: String, default: "" },
     size: { type: Number, required: true },
     createdAt: { type: Date, default: Date.now },
