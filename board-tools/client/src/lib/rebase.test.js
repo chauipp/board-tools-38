@@ -210,6 +210,25 @@ test("isSaneBoard bắt id trùng và dây trỏ vào hư không", () => {
   assert.equal(isSaneBoard(boardOf({ nodes: [N(1), N(2)], edges: [{ id: 1, from: 1, to: 2 }] })), true);
 });
 
+// Đây là cái hố mà savingRef ở IdeaMap.jsx (saveNow) phải chặn TRƯỚC khi gọi
+// tới đây: nếu `base` bị đọc quá sớm (từ một cú saveNow bắn chồng lên cú vừa
+// rồi của CHÍNH MÌNH), nó sẽ không biết thẻ mình vừa tạo đã tồn tại trên
+// server rồi — hàm này khi đó không cách nào phân biệt "server có id này vì
+// chính mình vừa lưu xong" với "server có id này vì người lạ trùng id", nên xử
+// lý (đúng luật cho trường hợp thứ hai) là cấp id mới và giữ lại CẢ HAI. Kết
+// quả: thẻ vừa tạo bị nhân bản. Test này không kiểm code sửa (nó nằm ở
+// IdeaMap.jsx, không thể unit-test tới đây) — nó ghi lại vì sao `base` không
+// được phép stale, để không ai "tối ưu" bỏ mất chốt savingRef sau này.
+test("base không cập nhật kịp thẻ mình vừa tạo → tưởng lầm là trùng id, nhân bản thẻ", () => {
+  const base = boardOf({ nodes: [], nextNodeId: 5 });                        // trước khi dán ảnh
+  const server = boardOf({ nodes: [N(5, { w: 200 })], nextNodeId: 6 });      // lần lưu (paste) của MÌNH đã lên server
+  const mine = boardOf({ nodes: [N(5, { w: 500 })], nextNodeId: 6 });        // mình vừa kéo rộng thẻ đó ra
+
+  const out = rebaseBoard(server, base, mine);
+  assert.equal(out.nodes.length, 2, "base stale khiến thẻ 5 bị coi là VỪA THÊM nên nhân bản thành 2");
+  assert.ok(out.nodes.some((n) => n.w === 200), "bản gốc (cỡ cũ) vẫn còn nguyên — đúng hiện tượng người dùng thấy");
+});
+
 // Board thiếu hẳn field (bản cũ chưa có `drawings`/`palette`) không được làm vỡ
 // đường ghép — nếu vỡ thì người dùng board cũ mất luôn cả đường dự phòng.
 test("board cũ thiếu field vẫn ghép được", () => {
