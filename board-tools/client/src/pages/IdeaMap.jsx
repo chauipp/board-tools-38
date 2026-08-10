@@ -32,9 +32,7 @@ import PdfUsage from "../components/PdfUsage.jsx";
 import ToolOptions from "../components/ToolOptions.jsx";
 import { nodesInFrame, edgesMatch, rectForEndpoint, clipToRect, segmentIntersectsRect } from "../lib/board-geometry.js";
 import { computeSnap } from "../lib/snap.js";
-import {
-  MULTI_CLICK_MS, CLICK_DRAG_TOL, multiClickAction, createMultiClick
-} from "../lib/multi-click.js";
+import { CLICK_DRAG_TOL, createMultiClick } from "../lib/multi-click.js";
 import { placeLinkedNode, parentNodeId } from "../lib/place-node.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout, layerLayout } from "../lib/layout.js";
@@ -394,19 +392,28 @@ export default function IdeaMap() {
   // (lib/rebase.js). Cập nhật ở ba chỗ: lúc tải xong, lúc lưu thành công, và
   // lúc áp một board:update của người khác.
   const serverBaseRef = useRef(null);
+  // true khi có một cú PUT đang bay. Không cho cú saveNow() thứ hai bay chồng
+  // lên: nó sẽ chốt `base`/`baseUpdatedAt` TỪ TRƯỚC khi cú thứ nhất về, nên nếu
+  // cú thứ nhất vừa thêm một thẻ (ví dụ dán ảnh) thì `base` của cú thứ hai vẫn
+  // chưa biết thẻ đó tồn tại. Khi đó cú thứ hai đụng conflict, rebaseBoard thấy
+  // thẻ đó có trên server nhưng không có trong base của mình → tưởng lầm là
+  // thẻ CỦA NGƯỜI KHÁC trùng id, tự cấp cho nó một id mới rồi giữ lại CẢ HAI —
+  // đúng hiện tượng "dán ảnh xong kéo rộng ra thì hiện thêm 1 ảnh cỡ gốc ở vị
+  // trí cũ". Xếp hàng ở đây để `base` luôn phản ánh đúng lần lưu gần nhất của
+  // CHÍNH MÌNH trước khi tính delta tiếp.
+  const savingRef = useRef(false);
+  const pendingSaveRef = useRef(null);
   const selectedIdsRef = useRef(selectedIds);
   const suppressContextMenuRef = useRef(false);
   const nudgeTimerRef = useRef(null);
   const nudgeBaseRef = useRef(null);
   const spacePanRef = useRef(false);
-  // Cử chỉ bấm nhiều lần lên nền trống (2 lần hoàn tác, 3 lần làm lại). Phần
-  // việc nằm ở handleViewportClickCapture bên dưới; ba cái ref phải khai ở đây
+  // Cử chỉ bấm nhiều lần lên một nét vẽ (2 lần đổi nét liền ↔ nét đứt). Phần
+  // việc nằm ở handleViewportClickCapture bên dưới; hai cái ref phải khai ở đây
   // vì component có nhánh `if (!board) return` ở giữa.
   const multiClickRef = useRef(null);
   if (!multiClickRef.current) multiClickRef.current = createMultiClick();
   const clickAnchorRef = useRef(null);
-  const multiClickTimerRef = useRef(0);
-  useEffect(() => () => clearTimeout(multiClickTimerRef.current), []);
   // Đang giữ chuột trái ở mode Laser. Ref chứ không state: nó đổi ở mỗi lần bấm
   // và chỉ được đọc trong handler chuột, không có gì trên màn hình phụ thuộc nó.
   const laserDownRef = useRef(false);
@@ -882,9 +889,29 @@ export default function IdeaMap() {
   // đường dự phòng còn hơn quay vòng mãi.
   const MAX_REBASE_TRIES = 3;
 
+  // Cú lưu hiện tại (kể cả các vòng ghép lại của riêng nó) vừa xong — cho nó
+  // chạy tiếp cú đang xếp hàng, nếu có, với `base` giờ đã mới nhất.
+  function settleSave() {
+    savingRef.current = false;
+    if (pendingSaveRef.current == null) return;
+    const queued = pendingSaveRef.current;
+    pendingSaveRef.current = null;
+    saveNow(queued);
+  }
+
   function saveNow(next, tries = 0) {
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
     if (roleRef.current === "viewer") return;
+    // Đang có một cú PUT bay (kể cả đang ghép lại): không bắn cú mới đè lên nó.
+    // `base` chốt bên dưới sẽ là bản NGAY LÚC NÀY, mà cú đang bay có thể sắp
+    // thêm một thẻ mà `base` chưa biết — bắn chồng lên là hạt giống của đúng
+    // bug "dán ảnh rồi kéo rộng ra thì hiện thêm 1 ảnh cỡ gốc ở vị trí cũ" (xem
+    // ghi chú ở savingRef). Chỉ giữ lại BẢN MỚI NHẤT cần lưu; những state ở giữa
+    // không cần lưu riêng.
+    if (tries === 0) {
+      if (savingRef.current) { pendingSaveRef.current = next; return; }
+      savingRef.current = true;
+    }
     // Mốc và bản nền được CHỐT ngay đây, trước khi cú PUT rời máy: nếu đọc lại ở
     // trong .catch thì lúc đó chúng có thể đã bị một gói board:update chen vào
     // sửa mất, và delta sẽ tính từ nhầm mốc.
@@ -895,9 +922,10 @@ export default function IdeaMap() {
         lastUpdatedAtRef.current = res.updatedAt;
         serverBaseRef.current = next;
         setSaveError(null);
+        settleSave();
       })
       .catch((e) => {
-        if (e.code !== "CONFLICT") { setSaveError(true); return; }
+        if (e.code !== "CONFLICT") { setSaveError(true); settleSave(); return; }
         // Có người lưu chen vào giữa. Bản của họ đi kèm ngay trong lỗi; đắp
         // những gì mình đã đổi (base → next) lên đó rồi lưu lại.
         const server = e.board;
@@ -913,8 +941,9 @@ export default function IdeaMap() {
               lastUpdatedAtRef.current = res.updatedAt;
               serverBaseRef.current = next;
               setSaveError(null);
+              settleSave();
             })
-            .catch(() => setSaveError(true));
+            .catch(() => { setSaveError(true); settleSave(); });
           return;
         }
         // Giữ nguyên camera của mình và giữ nguyên đúng cái thẻ đang gõ dở —
@@ -1841,15 +1870,10 @@ export default function IdeaMap() {
     return null;
   }
 
-  // ── Bấm nhiều lần lên nền trống: 2 lần hoàn tác, 3 lần làm lại ─────────────
-  //
-  // Cử chỉ này THAY CHỖ của "bấm đúp nền trống để tạo thẻ". Hai cái không ở
-  // chung được: muốn biết là 2 hay 3 lần thì phải đợi hết cửa sổ bấm, mà đợi thì
-  // thao tác tạo thẻ — thao tác hay dùng nhất — chậm đi thấy rõ ở mọi lần dùng.
-  // Tạo thẻ vẫn còn nguyên hai đường khác: mode Đặt, và Tab/Enter từ một thẻ.
+  // ── Bấm nhiều lần lên một nét vẽ: 2 lần đổi nét liền ↔ nét đứt ─────────────
   //
   // Luật đếm và các hằng số nằm ở lib/multi-click.js; ở đây chỉ là phần nối
-  // chuột: lọc ra đúng những cú bấm TRÊN NỀN, và tách bấm khỏi kéo. Ba cái ref
+  // chuột: lọc ra đúng những cú bấm TRÊN NỀN, và tách bấm khỏi kéo. Hai cái ref
   // của cử chỉ này khai ở đầu component cùng mọi hook khác — dưới đây đã qua
   // nhánh `if (!board) return`, gọi hook ở đây là gọi có điều kiện.
 
@@ -1875,33 +1899,16 @@ export default function IdeaMap() {
     // Kéo, bấm trúng một vật thể, hoặc không có quyền sửa: chuỗi đứt tại đây.
     if (role === "viewer" || dragged || !isBoardBackground(e.target)) { mc.cancel(); return; }
 
-    clearTimeout(multiClickTimerRef.current);
     // Đích của cú bấm đi vào bộ đếm: một nét vẽ, hay nền trống (null). Đổi đích
     // là chuỗi bắt đầu lại, nên bấm một cái lên nét rồi một cái lên nền không
-    // cộng thành cú hoàn tác nào.
+    // cộng thành cú đổi nét nào.
     const hitId = dashTargetAt(e);
     const count = mc.click(Date.now(), hitId);
+    if (hitId == null) return;
 
-    // Trên một NÉT VẼ: làm NGAY ở lần thứ hai, không chờ hết cửa sổ như ở nền
-    // trống. Chờ ở đó là bắt buộc vì còn phải phân biệt 2 lần với 3 lần; ở đây
-    // lần thứ 3 không có nghĩa gì cả, nên chờ chỉ tổ làm cử chỉ ì ra. Đóng chuỗi
-    // ngay sau khi làm: bấm thêm hai lần nữa là đổi ngược lại, chứ không phải
-    // lần thứ ba lại lật thêm một phát.
-    if (hitId != null) {
-      if (count >= 2) { mc.cancel(); toggleDrawingDash(hitId); }
-      return;
-    }
-
-    const action = multiClickAction(count);
-    if (!action) return;
-    // CHỜ hết cửa sổ rồi mới làm. Làm ngay ở lần thứ 2 thì lần thứ 3 chỉ còn
-    // cách huỷ đúng cú hoàn tác vừa rồi — tức bấm 3 lần quay về chỗ cũ chứ không
-    // tiến thêm một bước, và nó thôi không còn bằng Ctrl+Shift+Z nữa.
-    multiClickTimerRef.current = setTimeout(() => {
-      mc.cancel();
-      if (action === "undo") undo();
-      else redo();
-    }, MULTI_CLICK_MS);
+    // Làm NGAY ở lần thứ hai. Đóng chuỗi ngay sau khi làm: bấm thêm hai lần
+    // nữa là đổi ngược lại, chứ không phải lần thứ ba lại lật thêm một phát.
+    if (count >= 2) { mc.cancel(); toggleDrawingDash(hitId); }
   }
 
   // Suppress the browser's native context menu across the whole page, so

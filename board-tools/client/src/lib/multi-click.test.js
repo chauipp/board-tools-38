@@ -1,20 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  MULTI_CLICK_MS, CLICK_DRAG_TOL, multiClickAction, createMultiClick
+  MULTI_CLICK_MS, CLICK_DRAG_TOL, createMultiClick
 } from "./multi-click.js";
-
-test("2 lần là hoàn tác, 3 lần là làm lại", () => {
-  assert.equal(multiClickAction(2), "undo");
-  assert.equal(multiClickAction(3), "redo");
-});
-
-test("1 lần và từ 4 lần trở lên KHÔNG làm gì", () => {
-  // Một lần bấm là chọn/bỏ chọn, đã có nghĩa sẵn. Từ bốn lần là bấm loạn tay —
-  // không được biến thành một chuỗi thao tác lên dữ liệu.
-  assert.equal(multiClickAction(1), null);
-  for (const n of [0, 4, 5, 12]) assert.equal(multiClickAction(n), null, String(n));
-});
 
 test("bấm liên tiếp trong cửa sổ thì cộng dồn", () => {
   const mc = createMultiClick();
@@ -88,7 +76,7 @@ test("cùng một đích thì đếm dồn như thường", () => {
   assert.equal(mc.click(200, 7), 3);
 });
 
-// Không truyền đích = nền trống. Toàn bộ đường undo/redo cũ gọi kiểu này.
+// Không truyền đích = nền trống.
 test("không truyền đích thì mặc định là nền trống, đếm dồn bình thường", () => {
   const mc = createMultiClick(300);
   assert.equal(mc.click(0), 1);

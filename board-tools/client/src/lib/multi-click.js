@@ -1,6 +1,6 @@
-// Bấm nhiều lần liên tiếp trên bảng. Trên NỀN TRỐNG: 2 lần là hoàn tác, 3 lần là
-// làm lại. Trên MỘT NÉT VẼ: 2 lần là đổi nét liền ↔ nét đứt của đúng nét đó.
-// Không dính React, không đụng DOM — nhờ vậy test được bằng node:test.
+// Bấm nhiều lần liên tiếp trên bảng. Trên MỘT NÉT VẼ: 2 lần là đổi nét liền ↔
+// nét đứt của đúng nét đó. Không dính React, không đụng DOM — nhờ vậy test
+// được bằng node:test.
 //
 // Vì sao tự đếm thay vì đọc `event.detail` mà trình duyệt đã đếm sẵn: `detail`
 // đếm theo cửa sổ riêng của từng trình duyệt (Chrome chừng 500ms, không chỉnh
@@ -15,14 +15,6 @@ export const MULTI_CLICK_MS = 300;
 // vùng, vẽ một nét, lia bảng — cả ba đều kết thúc bằng một sự kiện `click` trên
 // nền, và hai lần quét liền nhau sẽ thành một cú hoàn tác không ai gọi.
 export const CLICK_DRAG_TOL = 4;
-
-// Bấm mấy lần thì làm gì. Bốn lần trở lên KHÔNG làm gì: bấm loạn tay không được
-// biến thành một chuỗi thao tác lên dữ liệu.
-export function multiClickAction(count) {
-  if (count === 2) return "undo";
-  if (count === 3) return "redo";
-  return null;
-}
 
 // Bộ đếm bấm liên tiếp. `now` truyền từ ngoài vào (Date.now) chứ không đọc trong
 // hàm: test phải chạy được mà không cần đợi thật.
