@@ -133,9 +133,12 @@
 .pdf-usage-bar i { display: block; height: 100%; background: var(--accent); transition: width .2s; }
 /* Qua ngưỡng cảnh báo mới đổi màu. Tô đỏ suốt thì lúc thật sự sắp đầy không còn
    gì để báo thêm. */
-.pdf-usage.hot { color: var(--danger); }
-.pdf-usage.hot .pdf-usage-bar i { background: var(--danger); }
+.pdf-usage .hot { color: var(--danger); }
+.pdf-usage .hot .pdf-usage-bar i { background: var(--danger); }
 .pdf-usage-note { margin-top: 3px; line-height: 1.35; }
+/* Kho chung là dòng phụ: người ta chạm trần riêng trước, nên trần chung chỉ cần
+   ở đó cho biết, không cần thanh tiến độ giành lấy sự chú ý. */
+.pdf-usage-sub { margin-top: 6px; opacity: 0.75; font-size: 11px; }
 
 /* Ruột của đảo nội dung: các panel đang bật xếp cạnh nhau, hết chỗ mới xuống
    dòng. Nhiều panel bật cùng lúc thì chúng dính liền một dải, nên mỗi panel phải

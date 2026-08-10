@@ -193,15 +193,17 @@ router.post("/:id/files", uploadLimiter, (req, res, next) => {
     }
     if (!req.file) return res.status(400).json({ error: "missing_file" });
 
-    // Trần cứng dung lượng. Đặt trước cú PutObject, vì đây là chỗ duy nhất giữ
-    // cho kho không bò tới mốc 10 GB mà Cloudflare bắt đầu tính tiền.
-    const room = await checkRoom(req.file.size);
+    // Trần dung lượng, đặt trước cú PutObject: đây là chỗ duy nhất giữ cho kho
+    // không bò tới mốc 10 GB mà Cloudflare bắt đầu tính tiền, và giữ cho một
+    // người không chiếm hết chỗ của những người còn lại.
+    const room = await checkRoom(req.file.size, req.user.email);
     if (!room.ok) {
       fs.unlink(req.file.path, () => {});
+      const full = room.reason === "storage_full";
       return res.status(507).json({
-        error: "storage_full",
-        used: formatBytes(room.report.usedBytes),
-        limit: formatBytes(room.report.limitBytes)
+        error: room.reason,
+        used: formatBytes(full ? room.report.usedBytes : room.userUsed),
+        limit: formatBytes(full ? room.report.limitBytes : room.userLimit)
       });
     }
 
@@ -212,6 +214,7 @@ router.post("/:id/files", uploadLimiter, (req, res, next) => {
     await recordUpload({
       fileId: req.file.filename,
       boardId: String(found.board._id),
+      email: req.user.email,
       name,
       size: req.file.size
     });

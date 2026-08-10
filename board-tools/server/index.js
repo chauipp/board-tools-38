@@ -22,7 +22,7 @@ import { Board, upsertUser } from "./models.js";
 import boardsRouter from "./boards.js";
 import { sanitizeView, resolveFollow, countWatchers, releaseFollowersOf } from "./follow.js";
 import { sanitizeLiveText, sanitizeLiveMoves } from "./live-text.js";
-import { runQuotaCheck, usageReport, describeUsage } from "./pdf-quota.js";
+import { runQuotaCheck, usageReport, usageReportFor, describeUsage } from "./pdf-quota.js";
 import { rateLimit } from "./rate-limit.js";
 import { sanitizeCalculator, isStaleWrite } from "./calculator.js";
 
@@ -236,7 +236,7 @@ app.put("/api/calculator", requireAuth, async (req, res) => {
 // vì sắp tới lúc họ không upload được nữa.
 app.get("/api/pdf-usage", requireAuth, async (req, res) => {
   try {
-    res.json(await usageReport());
+    res.json(await usageReportFor(req.user.email));
   } catch (e) {
     res.status(500).json({ error: "Không đọc được dung lượng kho PDF." });
   }

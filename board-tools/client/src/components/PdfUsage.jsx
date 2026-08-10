@@ -24,22 +24,33 @@ export default function PdfUsage() {
 
   if (!usage) return null;
 
+  const you = usage.you;
+  // Phần của mình mới là thứ người ta chặn phải trước, vì trần riêng nhỏ hơn
+  // trần chung rất nhiều — nên nó đứng trên, còn kho chung thành dòng phụ.
+  const youHot = you && you.percent >= 80;
+
   return (
-    <div className={"pdf-usage" + (usage.level === "ok" ? "" : " hot")}>
-      <div className="pdf-usage-row">
-        <Trans>Kho PDF</Trans>
-        <span className="mono">{usage.usedText} / {usage.limitText}</span>
-      </div>
-      {/* Chặn ở 100%: khi kho đã tràn thì percent vượt 100 và thanh sẽ lòi ra
-          khỏi khung nếu đổ thẳng vào width. */}
-      <div className="pdf-usage-bar"><i style={{ width: `${Math.min(100, usage.percent)}%` }} /></div>
-      {usage.level !== "ok" && (
-        <div className="pdf-usage-note">
-          {usage.level === "full"
-            ? <Trans>Đã đầy — không tải PDF mới lên được cho tới khi xoá bớt.</Trans>
-            : <Trans>Sắp đầy — xoá bớt thẻ PDF cũ để khỏi bị chặn khi tải lên.</Trans>}
+    <div className="pdf-usage">
+      {you && (
+        <div className={youHot ? "hot" : ""}>
+          <div className="pdf-usage-row">
+            <Trans>PDF của bạn</Trans>
+            <span className="mono">{you.usedText} / {you.limitText}</span>
+          </div>
+          {/* Chặn ở 100%: khi đã tràn thì percent vượt 100 và thanh sẽ lòi ra
+              khỏi khung nếu đổ thẳng vào width. */}
+          <div className="pdf-usage-bar"><i style={{ width: `${Math.min(100, you.percent)}%` }} /></div>
+          {you.percent >= 100 && (
+            <div className="pdf-usage-note">
+              <Trans>Hết phần của bạn — xoá bớt thẻ PDF bạn đã tải lên.</Trans>
+            </div>
+          )}
         </div>
       )}
+      <div className={"pdf-usage-row pdf-usage-sub" + (usage.level === "ok" ? "" : " hot")}>
+        <Trans>Kho chung</Trans>
+        <span className="mono">{usage.usedText} / {usage.limitText}</span>
+      </div>
     </div>
   );
 }

@@ -29,7 +29,16 @@ export const QUOTA = {
   limitBytes: envNumber("PDF_QUOTA_LIMIT_GB", 8) * GB,
   highBytes: envNumber("PDF_QUOTA_HIGH_GB", 7.5) * GB,
   warnBytes: envNumber("PDF_QUOTA_WARN_GB", 6) * GB,
-  graceMs: envNumber("PDF_ORPHAN_GRACE_HOURS", 24) * HOUR
+  graceMs: envNumber("PDF_ORPHAN_GRACE_HOURS", 24) * HOUR,
+  // Phần riêng của mỗi người, nằm TRONG hạn mức chung.
+  //
+  // Trần chung một mình nó không đủ khi app mở cho mọi tài khoản Google: nó giữ
+  // cho khỏi bị Cloudflare tính tiền, nhưng không giữ được CHỖ của từng người —
+  // một tài khoản lạ lấp đầy 8 GB là cả nhóm hết upload được. Có phần riêng thì
+  // người lạ chỉ tiêu hết phần của họ.
+  //
+  // 500 MB ≈ 17 file cỡ trần 30MB, và 8 GB vẫn đủ chỗ cho 16 người dùng thật.
+  userLimitBytes: envNumber("PDF_USER_QUOTA_MB", 500) * 1_000_000
 };
 
 if (QUOTA.warnBytes > QUOTA.highBytes || QUOTA.highBytes > QUOTA.limitBytes) {
@@ -139,6 +148,24 @@ export function planReconcile({ stored, docs, referencedIds, now, graceMs = QUOT
   return { ghosts, adopt, sweep };
 }
 
+// Báo cáo kèm phần riêng của một người. Tách khỏi usageReport() vì cron và
+// script không có "người đang hỏi" nào cả.
+export async function usageReportFor(email) {
+  const [report, userUsed] = await Promise.all([usageReport(), usedBytesFor(email)]);
+  return {
+    ...report,
+    you: {
+      usedBytes: userUsed,
+      limitBytes: QUOTA.userLimitBytes,
+      usedText: formatBytes(userUsed),
+      limitText: formatBytes(QUOTA.userLimitBytes),
+      percent: QUOTA.userLimitBytes
+        ? Math.round((userUsed / QUOTA.userLimitBytes) * 1000) / 10
+        : 0
+    }
+  };
+}
+
 export async function usageReport() {
   const rows = await PdfFile.aggregate([
     {
@@ -182,21 +209,50 @@ export function describeUsage(report) {
   return parts.join(" · ");
 }
 
+// Hai cửa, và thứ tự xét có ý nghĩa: kho chung đầy là việc cả nhóm phải xử lý
+// (không ai upload được nữa), còn phần riêng đầy thì chỉ mình người đó bị chặn
+// và tự xoá bớt là xong. Báo nhầm cái nọ thành cái kia là chỉ sai việc phải làm.
+export function checkQuotas({ globalUsed, userUsed, incoming, globalLimit, userLimit }) {
+  if (globalUsed + incoming > globalLimit) return { ok: false, reason: "storage_full" };
+  if (userUsed + incoming > userLimit) return { ok: false, reason: "user_quota_full" };
+  return { ok: true, reason: null };
+}
+
+// Dung lượng một người đang chiếm. Tính cả file mồ côi chưa tới lượt dọn: bytes
+// của họ vẫn nằm trên R2, nên vẫn là phần họ đang giữ.
+export async function usedBytesFor(email) {
+  if (!email) return 0;
+  const [row] = await PdfFile.aggregate([
+    { $match: { email: String(email).toLowerCase() } },
+    { $group: { _id: null, bytes: { $sum: "$size" } } }
+  ]);
+  return row?.bytes || 0;
+}
+
 // Cửa chặn upload. Trả về ok=false thì nơi gọi phải bỏ file tạm và trả lỗi —
 // không được đẩy lên R2, vì đây là cái duy nhất giữ cho dung lượng không bò tới
 // mốc 10 GB bị tính tiền.
-export async function checkRoom(incomingBytes) {
-  const report = await usageReport();
-  const after = report.usedBytes + incomingBytes;
-  return {
-    ok: after <= QUOTA.limitBytes,
-    report,
-    afterBytes: after
-  };
+export async function checkRoom(incomingBytes, email) {
+  const [report, userUsed] = await Promise.all([usageReport(), usedBytesFor(email)]);
+  const verdict = checkQuotas({
+    globalUsed: report.usedBytes,
+    userUsed,
+    incoming: incomingBytes,
+    globalLimit: QUOTA.limitBytes,
+    userLimit: QUOTA.userLimitBytes
+  });
+  return { ...verdict, report, userUsed, userLimit: QUOTA.userLimitBytes };
 }
 
-export async function recordUpload({ fileId, boardId, name, size }) {
-  await PdfFile.create({ fileId, boardId: String(boardId), name, size, createdAt: new Date() });
+export async function recordUpload({ fileId, boardId, email, name, size }) {
+  await PdfFile.create({
+    fileId,
+    boardId: String(boardId),
+    email: String(email || "").toLowerCase(),
+    name,
+    size,
+    createdAt: new Date()
+  });
 }
 
 export async function forgetUpload(fileId) {
