@@ -24,11 +24,11 @@ export async function listBoards() {
   return res.json();
 }
 
-export async function createBoard(name) {
+export async function createBoard(name, kind = "idea") {
   const res = await fetch("/api/boards", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name })
+    body: JSON.stringify({ name, kind })
   });
   checkAuthExpired(res);
   // Lấy mã lỗi thật của server thay vì gộp hết vào một mã: hai trường hợp

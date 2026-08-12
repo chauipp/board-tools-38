@@ -33,6 +33,13 @@ const boardMemberSchema = new mongoose.Schema(
 const boardSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, default: "Untitled board" },
+    // Board cũ không có field này; phía API/client coi thiếu là board tư duy.
+    kind: { type: String, enum: ["idea", "game-design"], default: "idea" },
+    // Context chỉ có một bản ở cấp board, không lặp lại trong từng thẻ design.
+    gameDesignBrief: { type: Object, default: null },
+    // Overview Player Loop/Progression Map cấp board; card chỉ được tham chiếu một chiều.
+    gameDesignFlow: { type: Object, default: null },
+    gameDesignBalance: { type: Object, default: null },
     ownerEmail: { type: String, required: true, lowercase: true, trim: true },
     members: { type: [boardMemberSchema], default: [] },
     nodes: { type: Array, default: [] },

@@ -36,6 +36,46 @@ test("đổi thiết lập cấp bảng cũng vào delta", () => {
   assert.deepEqual(diffBoard(base, next).scalars, { pack: "neon" });
 });
 
+test("rebase giữ brief local khi server đổi node và edge", () => {
+  const base = boardOf({ kind: "game-design", gameDesignBrief: { genre: "", targetAudience: "", playerFantasy: "", playerJourney: [] }, nodes: [N(1), N(2)], edges: [{ id: 1, from: 1, to: 2 }], nextNodeId: 3, nextEdgeId: 2 });
+  const server = boardOf({ ...base, nodes: [N(1, { x: 50 }), N(2)], edges: [{ id: 1, from: 1, to: 2, relation: "unlocks" }] });
+  const mine = boardOf({ ...base, gameDesignBrief: { ...base.gameDesignBrief, genre: "Roguelite" } });
+  const out = rebaseBoard(server, base, mine);
+  assert.equal(out.gameDesignBrief.genre, "Roguelite");
+  assert.equal(out.nodes[0].x, 50);
+  assert.equal(out.edges[0].relation, "unlocks");
+});
+
+test("rebase giữ Game Flow local khi server đổi node", () => {
+  const base = boardOf({ kind: "game-design", gameDesignFlow: { playerLoop: [], progressionMap: [] }, nodes: [N(1)], nextNodeId: 2 });
+  const server = boardOf({ ...base, nodes: [N(1, { x: 50 })] });
+  const mine = boardOf({ ...base, gameDesignFlow: { playerLoop: [{ id: "loop-1", title: "Khám phá" }], progressionMap: [] } });
+  const out = rebaseBoard(server, base, mine);
+  assert.equal(out.gameDesignFlow.playerLoop[0].title, "Khám phá");
+  assert.equal(out.nodes[0].x, 50);
+});
+
+test("rebase giữ checklist GD của mình và relation edge của server", () => {
+  const base = boardOf({
+    kind: "game-design",
+    nodes: [N(1, { design: { acceptanceCriteria: "Có cooldown" } }), N(2)],
+    edges: [{ id: 1, from: 1, to: 2 }], nextNodeId: 3, nextEdgeId: 2
+  });
+  const server = boardOf({
+    kind: "game-design",
+    nodes: base.nodes,
+    edges: [{ id: 1, from: 1, to: 2, relation: "unlocks" }], nextNodeId: 3, nextEdgeId: 2
+  });
+  const mine = boardOf({
+    kind: "game-design",
+    nodes: [N(1, { design: { acceptanceCriteria: [{ id: "ac-1", text: "Có cooldown", done: true }] } }), N(2)],
+    edges: base.edges, nextNodeId: 3, nextEdgeId: 2
+  });
+  const out = rebaseBoard(server, base, mine);
+  assert.deepEqual(out.nodes[0].design.acceptanceCriteria, [{ id: "ac-1", text: "Có cooldown", done: true }]);
+  assert.equal(out.edges[0].relation, "unlocks");
+});
+
 // Đây là chính cái cảnh cần chữa: hai người kéo hai thẻ khác nhau cùng lúc.
 test("hai người sửa hai thẻ khác nhau → cả hai thay đổi cùng sống", () => {
   const base = boardOf({ nodes: [N(1), N(2)], nextNodeId: 3 });

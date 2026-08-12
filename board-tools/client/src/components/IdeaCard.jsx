@@ -3,6 +3,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { colorVar, contrastInk } from "../lib/badges.js";
 import { cardLevel } from "../lib/card-levels.js";
 import { parseDesc } from "../lib/mdlite.js";
+import { acceptanceProgress, gameDesignPreview } from "../lib/game-design.js";
 
 // Phân tích markdown rút gọn của mô tả là việc thuần tuý theo `text`; bọc memo
 // để kéo/zoom/di chuột không bắt nó chạy lại cho từng thẻ ở mỗi khung hình.
@@ -37,7 +38,7 @@ const MdLite = memo(function MdLite({ text }) {
 function IdeaCard({
   node, boardId, statusDef, tagDef, statuses, tags, currentUser,
   editing, dimmed, linkPending, dropTarget, selected, flash,
-  observeCard, h
+  observeCard, gameDesign, onDesign, h
 }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(node.title);
@@ -79,6 +80,8 @@ function IdeaCard({
   // thắng được `.idea-card.lv-5 { border-style: dashed }`.
   else if (node.dashed === false) classNames.push("border-solid");
   const level = cardLevel(node);
+  const designPreview = gameDesign ? gameDesignPreview(node) : [];
+  const criteriaProgress = gameDesign ? acceptanceProgress(node) : { done: 0, total: 0 };
   classNames.push(`lv-${level}`);
 
   function handleEditKeyDown(e) {
@@ -146,7 +149,7 @@ function IdeaCard({
         ...tintStyle
       }}
       onMouseDown={(e) => h.mouseDown(e, node.id)}
-      onClick={() => h.click(node.id)}
+      onClick={() => { h.click(node.id); if (gameDesign) onDesign(); }}
       onContextMenu={(e) => h.contextMenu(e, node.id)}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => h.dropImage(e, node.id)}
@@ -158,6 +161,11 @@ function IdeaCard({
         {node.locked && <span className="lock-badge">🔒</span>}
         <div className="title">{node.title}</div>
         <div className="card-actions">
+          {gameDesign && (
+            <button className="icon-btn gd-card-btn" title={t`Mở chi tiết Game Design`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onDesign(); }}>
+              GD
+            </button>
+          )}
           <button
             className={"icon-btn fav-btn" + ((node.favorites ?? []).includes(currentUser) ? " on" : "")}
             title={t`Yêu thích`}
@@ -170,6 +178,12 @@ function IdeaCard({
           <button className="icon-btn" title={t`Xoá`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); h.remove(node.id); }}>×</button>
         </div>
       </div>
+      {gameDesign && <div className="gd-card-type">{node.type || "freeform"}</div>}
+      {criteriaProgress.total > 0 && (
+        <div className="gd-card-progress" aria-label={`Tiến độ tiêu chí ${criteriaProgress.done}/${criteriaProgress.total}`}>
+          Tiêu chí {criteriaProgress.done}/{criteriaProgress.total}
+        </div>
+      )}
       {node.image && (
         <div className="card-img-wrap">
           <img className="card-img" src={node.image} alt="" draggable={false} />
@@ -196,6 +210,11 @@ function IdeaCard({
         </div>
       )}
       <div className="desc">{node.desc ? <MdLite text={node.desc} /> : null}</div>
+      {designPreview.length > 0 && (
+        <div className="gd-card-preview">
+          {designPreview.map((item) => <div key={item.field}><span>{item.label}</span>{item.value}</div>)}
+        </div>
+      )}
       <div className="meta-row">
         {statusDef && (
           <span className="status-pill" data-badge-kind="status" data-badge-id={statusDef.id} style={{ background: colorVar(statusDef.color), color: contrastInk(statusDef.color) }}>{statusDef.name}</span>

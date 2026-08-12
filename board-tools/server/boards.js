@@ -6,7 +6,7 @@ import multer from "multer";
 import { Board, User } from "./models.js";
 import { getBoardRole, isEmailAllowed } from "./auth.js";
 import { rateLimit } from "./rate-limit.js";
-import { validateBoardPayload } from "./board-payload.js";
+import { normalizeGameDesignFlow, resolveGameDesignFields, validateBoardPayload } from "./board-payload.js";
 import { PDF_DIR, isR2Enabled, sendPdf, storePdf } from "./pdf-storage.js";
 import {
   checkRoom,
@@ -24,6 +24,15 @@ const DEFAULT_STATUSES = [
   { id: 3, name: "Đã chọn", color: "st-chosen" },
   { id: 4, name: "Gác lại", color: "st-parked" },
   { id: 5, name: "Đã loại", color: "st-rejected" }
+];
+
+const GAME_DESIGN_STATUSES = [
+  { id: 1, name: "Draft", color: "st-idea" },
+  { id: 2, name: "Review", color: "st-considering" },
+  { id: 3, name: "Ready for dev", color: "st-chosen" },
+  { id: 4, name: "In dev", color: "st-parked" },
+  { id: 5, name: "Testing", color: "st-rejected" },
+  { id: 6, name: "Done", color: "st-done" }
 ];
 
 const router = Router();
@@ -51,13 +60,17 @@ const AUTH_FIELDS = "ownerEmail members";
 // PUT cần thêm `updatedAt` để so với mốc client khai là mình đang dựa trên —
 // đó là toàn bộ cơ chế phát hiện hai người lưu đè nhau. Vẫn KHÔNG đọc nội dung
 // board: một Date thì rẻ, còn nodes[] có ảnh base64 thì không.
-const AUTH_FIELDS_VERSIONED = "ownerEmail members updatedAt";
+const AUTH_FIELDS_VERSIONED = "ownerEmail members updatedAt kind gameDesignBrief gameDesignFlow gameDesignBalance";
 
 // Nội dung board trả cho client. Dùng chung cho GET và cho thân của 409
 // (conflict) — hai chỗ đó phải trả ĐÚNG một hình dạng, lệch nhau là phía client
 // ghép nhầm một board thiếu field.
 function boardPayload(obj) {
   return {
+    kind: obj.kind || "idea",
+    gameDesignBrief: obj.gameDesignBrief ?? null,
+    gameDesignFlow: obj.gameDesignFlow ?? null,
+    gameDesignBalance: obj.gameDesignBalance ?? null,
     nodes: obj.nodes,
     edges: obj.edges,
     groups: obj.groups,
@@ -111,12 +124,13 @@ router.get("/", async (req, res) => {
     const boards = await Board.find({
       $or: [{ ownerEmail: email }, { "members.email": email }]
     })
-      .select("name ownerEmail members updatedAt")
+      .select("name kind ownerEmail members updatedAt")
       .lean();
     res.json(
       boards.map((b) => ({
         id: String(b._id),
         name: b.name,
+        kind: b.kind || "idea",
         role: getBoardRole(b, email),
         updatedAt: b.updatedAt
       }))
@@ -150,12 +164,14 @@ router.post("/", createBoardLimiter, async (req, res) => {
       return res.status(403).json({ error: "board_limit_reached", limit: MAX_BOARDS_PER_USER });
     }
     const name = (req.body.name || "").trim() || "Untitled board";
+    const kind = req.body.kind === "game-design" ? "game-design" : "idea";
     const board = await Board.create({
       name,
+      kind,
       ownerEmail: email,
       members: [],
-      statuses: DEFAULT_STATUSES.map((s) => ({ ...s })),
-      nextStatusId: 6
+      statuses: (kind === "game-design" ? GAME_DESIGN_STATUSES : DEFAULT_STATUSES).map((s) => ({ ...s })),
+      nextStatusId: 7
     });
     res.status(201).json({ id: String(board._id) });
   } catch (e) {
@@ -280,16 +296,20 @@ router.put("/:id", async (req, res) => {
 
     // Kiểm TRƯỚC khi ghi. Client đã kiểm khá nhiều, nhưng client là thứ ai cũng
     // thay được — còn cái ghi vào Mongo thì cả phòng phải đọc lên và vẽ lại.
-    const invalid = validateBoardPayload(req.body);
+    const body = Object.prototype.hasOwnProperty.call(req.body, "gameDesignFlow")
+      ? { ...req.body, gameDesignFlow: normalizeGameDesignFlow(req.body.gameDesignFlow) }
+      : req.body;
+    const invalid = validateBoardPayload(body);
     if (invalid) return res.status(400).json({ error: "invalid_board", detail: invalid });
 
     const {
-      nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
+      kind, gameDesignBrief, gameDesignFlow, gameDesignBalance, nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
       nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, nextDrawingId,
       view,
       clientId,
       baseUpdatedAt
-    } = req.body;
+    } = body;
+    const gameDesign = resolveGameDesignFields(body, found.board);
 
     // Kiểm phiên bản. Client khai "bản tôi đang dựa trên có mốc này"; nếu mốc
     // trên server đã khác thì trong lúc client dựng payload đã có người khác lưu
@@ -315,7 +335,7 @@ router.put("/:id", async (req, res) => {
 
     const updatedAt = new Date();
     await Board.findByIdAndUpdate(req.params.id, {
-      nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
+      kind: gameDesign.kind, gameDesignBrief: gameDesign.gameDesignBrief, gameDesignFlow: gameDesign.gameDesignFlow, gameDesignBalance: gameDesign.gameDesignBalance, nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
       nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, nextDrawingId,
       view, updatedAt
     });
@@ -328,7 +348,7 @@ router.put("/:id", async (req, res) => {
     // không từ URL — hex viết hoa/thường khác nhau vẫn phải vào đúng phòng.
     const room = "board:" + String(found.board._id);
     const payload = {
-      nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
+      kind: gameDesign.kind, gameDesignBrief: gameDesign.gameDesignBrief, gameDesignFlow: gameDesign.gameDesignFlow, gameDesignBalance: gameDesign.gameDesignBalance, nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
       nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, nextDrawingId,
       updatedAt: updatedAt.toISOString()
     };

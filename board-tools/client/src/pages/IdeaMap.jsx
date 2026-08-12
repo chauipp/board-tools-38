@@ -10,6 +10,7 @@ import {
 } from "../lib/shape.js";
 import { textLines, textBox, TEXT_LINE_H } from "../lib/text-el.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
+import { RELATION_OPTIONS, relationDefinition, isGameDesignRelation, normalizeAcceptanceCriteria, normalizeGameDesignBrief, normalizeGameDesignDetails, normalizeGameDesignFlow, normalizeGameDesignBalance, normalizeTechnicalNotes, normalizePlaytestSession, normalizeDecisionLog, createGameDesignNode, gameDesignMarkdown } from "../lib/game-design.js";
 import { paletteCss, applyColorTo, applyColorToMany, removePaletteColor } from "../lib/palette.js";
 import { BOARD_BGS, BOARD_GRIDS, COLOR_PACKS, isBoardBg, isBoardGrid, isColorPack } from "../lib/board-theme.js";
 import FilterPanel from "../components/FilterPanel.jsx";
@@ -25,6 +26,11 @@ import BadgeEditor from "../components/BadgeEditor.jsx";
 import ColorMenu from "../components/ColorMenu.jsx";
 import FrameBox from "../components/FrameBox.jsx";
 import IdeaCard from "../components/IdeaCard.jsx";
+import GameDesignPanel from "../components/GameDesignPanel.jsx";
+import GameDesignBriefPanel from "../components/GameDesignBriefPanel.jsx";
+import GameDesignFlowPanel from "../components/GameDesignFlowPanel.jsx";
+import DevHandoffPanel from "../components/DevHandoffPanel.jsx";
+import GameDesignBalancePanel from "../components/GameDesignBalancePanel.jsx";
 import EdgeLayer from "../components/EdgeLayer.jsx";
 import PeerLayer from "../components/PeerLayer.jsx";
 import ToolRail from "../components/ToolRail.jsx";
@@ -52,6 +58,27 @@ import { canAddImage, formatMB } from "../lib/image-budget.js";
 import { usePopoverPosition } from "../lib/usePopoverPosition.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
 import { loadPenPrefs, savePenPrefs, penVar } from "../lib/pen.js";
+
+function normalizeGameDesignBoard(board) {
+  if (!board || board.kind !== "game-design") return board;
+  return {
+    ...board,
+    gameDesignBrief: normalizeGameDesignBrief(board.gameDesignBrief),
+    gameDesignFlow: normalizeGameDesignFlow(board.gameDesignFlow, board.nodes),
+    gameDesignBalance: normalizeGameDesignBalance(board.gameDesignBalance, board.nodes),
+    nodes: (board.nodes || []).map((node) => node?.design ? {
+      ...node,
+      design: {
+        ...node.design,
+        technicalNotes: normalizeTechnicalNotes(node.design.technicalNotes),
+        acceptanceCriteria: normalizeAcceptanceCriteria(node.design.acceptanceCriteria),
+        ...normalizeGameDesignDetails(node.design),
+        playtestSession: normalizePlaytestSession(node.design.playtestSession, board.nodes),
+        decisionLog: normalizeDecisionLog(node.design.decisionLog, board.nodes)
+      }
+    } : node)
+  };
+}
 import { ERASE_PART } from "../lib/erase.js";
 import { CARD_LEVEL_W, cardLevel, levelPatch, loadCardLevel, saveCardLevel } from "../lib/card-levels.js";
 import InkLayer from "../components/InkLayer.jsx";
@@ -356,6 +383,11 @@ export default function IdeaMap() {
   const [spotlightPeerId, setSpotlightPeerId] = useState(null);
   const [matchIdx, setMatchIdx] = useState(-1);
   const [presentIndex, setPresentIndex] = useState(null); // null = không trình chiếu
+  const [designEditId, setDesignEditId] = useState(null);
+  const [briefOpen, setBriefOpen] = useState(false);
+  const [flowOpen, setFlowOpen] = useState(false);
+  const [handoffOpen, setHandoffOpen] = useState(false);
+  const [balanceOpen, setBalanceOpen] = useState(false);
   const [initialCardParam] = useState(() => new URLSearchParams(window.location.search).get("card"));
 
   const { user, logout } = useAuth();
@@ -373,6 +405,7 @@ export default function IdeaMap() {
 
   const viewportRef = useRef(null);
   const canvasRef = useRef(null);
+  const editDockRef = useRef(null);
   const searchInputRef = useRef(null);
   const saveTimerRef = useRef(null);
   const boardRef = useRef(null);
@@ -460,7 +493,7 @@ export default function IdeaMap() {
         const camera = loadCamera(window.localStorage, boardId);
         // Board cũ chưa có palette → mặc định rỗng, để mọi chỗ đọc board.palette
         // không phải ?? [] khắp nơi.
-        const loaded = { palette: [], nextPaletteId: 1, drawings: [], nextDrawingId: 1, bg: null, grid: null, pack: null, ...boardData, ...(camera ? { view: camera } : {}) };
+        const loaded = normalizeGameDesignBoard({ kind: "idea", palette: [], nextPaletteId: 1, drawings: [], nextDrawingId: 1, bg: null, grid: null, pack: null, ...boardData, ...(camera ? { view: camera } : {}) });
         setBoard(loaded);
         serverBaseRef.current = loaded;
       })
@@ -568,12 +601,13 @@ export default function IdeaMap() {
   // Overlay nào đã được board thật bắt kịp phải bỏ NGAY. Giữ lại nghĩa là tiếp
   // tục vẽ một bản tạm đè lên dữ liệu thật vừa nhận — nét nhấp nháy.
   const applyRemoteBoard = useCallback((next) => {
-    setBoard(next);
+    const normalized = normalizeGameDesignBoard(next);
+    setBoard(normalized);
     // Vừa áp bản của người khác → đó là bản mới nhất ta biết server đang giữ.
     // Thiếu dòng này thì lần va chạm sau sẽ tính delta từ một mốc quá cũ và đắp
     // lại cả những thay đổi đã được lưu từ lâu.
-    serverBaseRef.current = next;
-    inkLive.reconcile(next);
+    serverBaseRef.current = normalized;
+    inkLive.reconcile(normalized);
   }, [inkLive.reconcile]);
 
   const { geomOverlay, textOverlay, sendLiveText, publishGeom, finishGeom } =
@@ -796,6 +830,7 @@ export default function IdeaMap() {
     setColorMenu(null);
     setCommentsFor(null);
     setEdgeMenu(null);
+    setDesignEditId(null);
     if (e.ctrlKey || e.metaKey) {
       setSelectedEdgeIds((prev) => toggleId(prev, id));
       return;
@@ -804,15 +839,24 @@ export default function IdeaMap() {
     setSelectedIds(EMPTY_SET);
     setSelectedGroupIds(EMPTY_SET);
     setSelectedDrawingIds(EMPTY_SET);
-  }, []);
+  }, [board?.kind]);
 
   const onEdgeContextMenu = useMemo(() => (e, id) => {
     e.preventDefault();
     e.stopPropagation();
     setColorMenu(null);
     setCommentsFor(null);
+    if (board?.kind === "game-design") {
+      setDesignEditId(null);
+      setSelectedEdgeIds(new Set([id]));
+      setSelectedIds(EMPTY_SET);
+      setSelectedGroupIds(EMPTY_SET);
+      setSelectedDrawingIds(EMPTY_SET);
+      setEdgeMenu(null);
+      return;
+    }
     setEdgeMenu({ id, x: e.clientX, y: e.clientY });
-  }, []);
+  }, [board?.kind]);
 
   // Chip danh tính được render ở AuthGate, ngoài `.shell`, nên selector
   // `.shell.presenting` không với tới được. Đánh dấu trên body để ẩn nó khi
@@ -848,7 +892,11 @@ export default function IdeaMap() {
     const el = viewportRef.current;
     if (!el) return;
     function wheelHandler(e) {
-      if (e.target.closest(".outline-panel, .io-drawer, .tree-panel")) return;
+      // Dock/phần panel có vùng cuộn riêng: nếu canvas bắt wheel ở đây rồi
+      // preventDefault thì scrollbar vẫn hiện nhưng người dùng không thể cuộn
+      // form. Mọi panel nổi đều cùng luật này — di chuột trên panel chỉ cuộn
+      // nội dung của nó, không lia/zoom sa bàn nằm dưới.
+      if (e.target.closest(".outline-panel, .io-drawer, .tree-panel, .edit-dock")) return;
       e.preventDefault();
       const current = boardRef.current;
       if (!current) return;
@@ -950,7 +998,7 @@ export default function IdeaMap() {
         // cùng luật với lúc áp một board:update, nên không có hai cách trộn
         // khác nhau để lệch nhau.
         const local = boardRef.current;
-        const merged = local ? mergeRemoteBoard(local, rebased, editingIdRef.current) : rebased;
+        const merged = normalizeGameDesignBoard(local ? mergeRemoteBoard(local, rebased, editingIdRef.current) : rebased);
         lastUpdatedAtRef.current = server.updatedAt;
         serverBaseRef.current = server;
         setBoard(merged);
@@ -1296,6 +1344,43 @@ export default function IdeaMap() {
     const next = { ...board, nodes: [...board.nodes, node], nextNodeId: id + 1 };
     setEditingId(id);
     commitAndSave(next);
+  }
+
+  function addGameDesignCard(type = "mechanic") {
+    if (board.kind !== "game-design" || role === "viewer") return;
+    const rect = viewportRef.current.getBoundingClientRect();
+    const p = toCanvasPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    const node = createGameDesignNode(board.nextNodeId, p.x - CARD_W / 2, p.y - 55, type);
+    const next = { ...board, nodes: [...board.nodes, node], nextNodeId: node.id + 1 };
+    recordHistory(board); setBoard(next); boardRef.current = next; saveNow(next); setDesignEditId(node.id);
+  }
+
+  function saveDesignNode(nextNode) {
+    const current = boardRef.current;
+    const next = { ...current, nodes: current.nodes.map((n) => n.id === nextNode.id ? nextNode : n) };
+    // Panel là inspector của thẻ đang chọn, không phải modal dùng một lần. Giữ
+    // nó mở sau khi lưu để người thiết kế nhìn ngay phần vừa điền và chuyển qua
+    // thẻ khác bằng một cú bấm trên canvas.
+    recordHistory(current); setBoard(next); boardRef.current = next; saveNow(next);
+  }
+
+  function saveGameDesignBrief(nextBrief) {
+    const current = boardRef.current;
+    if (!current || current.kind !== "game-design") return;
+    const next = { ...current, gameDesignBrief: normalizeGameDesignBrief(nextBrief) };
+    recordHistory(current); setBoard(next); boardRef.current = next; saveNow(next);
+  }
+
+  function saveGameDesignFlow(nextFlow) {
+    const current = boardRef.current;
+    if (!current || current.kind !== "game-design") return;
+    const next = { ...current, gameDesignFlow: normalizeGameDesignFlow(nextFlow, current.nodes) };
+    recordHistory(current); setBoard(next); boardRef.current = next; saveNow(next);
+  }
+  function saveGameDesignBalance(nextBalance) {
+    const current = boardRef.current; if (!current || current.kind !== "game-design") return;
+    const next = { ...current, gameDesignBalance: normalizeGameDesignBalance(nextBalance, current.nodes) };
+    recordHistory(current); setBoard(next); boardRef.current = next; saveNow(next);
   }
 
   // Điểm trên bảng (toạ độ canvas) ứng với một điểm trên màn hình. Đọc qua
@@ -2380,7 +2465,7 @@ export default function IdeaMap() {
     if (existing) {
       commitAndSave({ ...board, edges: board.edges.filter((e) => e.id !== existing.id) });
     } else {
-      const edge = { id: board.nextEdgeId, from: a, fromKind: aKind, to: b, toKind: bKind };
+      const edge = { id: board.nextEdgeId, from: a, fromKind: aKind, to: b, toKind: bKind, ...(board.kind === "game-design" ? { relation: "depends-on" } : {}) };
       commitAndSave({ ...board, edges: [...board.edges, edge], nextEdgeId: board.nextEdgeId + 1 });
     }
   }
@@ -2392,6 +2477,7 @@ export default function IdeaMap() {
   function deleteEdge(id) {
     commitAndSave({ ...board, edges: board.edges.filter((e) => e.id !== id) });
     setEdgeMenu(null);
+    setSelectedEdgeIds((prev) => { if (!prev.has(id)) return prev; const next = new Set(prev); next.delete(id); return next; });
   }
 
   function handleCardClick(nodeId) {
@@ -3693,7 +3779,9 @@ export default function IdeaMap() {
   }
 
   function exportMarkdown() {
-    const md = outlineToMarkdown(board, frameCardSize, { other: t`Khác`, links: t`Liên kết` });
+    const md = board.kind === "game-design"
+      ? gameDesignMarkdown(board)
+      : outlineToMarkdown(board, frameCardSize, { other: t`Khác`, links: t`Liên kết` });
     const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -3768,7 +3856,7 @@ export default function IdeaMap() {
       if (!parsed.nodes || !parsed.edges || !parsed.view) throw new Error("bad shape");
       if (!Array.isArray(parsed.groups)) parsed.groups = [];
       if (typeof parsed.nextGroupId !== "number") parsed.nextGroupId = 1;
-      commitAndSave(parsed);
+      commitAndSave(normalizeGameDesignBoard(parsed));
       setIoOpen(false);
     } catch (e) {
       alert(t`JSON không hợp lệ — kiểm tra lại nội dung đã dán.`);
@@ -4135,6 +4223,35 @@ export default function IdeaMap() {
           </TopMenu>
 
           <span className="island-name" title={boardName}>{boardName}</span>
+
+          {board.kind === "game-design" && <button
+            type="button"
+            className={"btn ghost gd-brief-trigger" + (briefOpen ? " active" : "")}
+            title="Mở Game brief"
+            onClick={() => {
+              setDesignEditId(null);
+              setSelectedEdgeIds(EMPTY_SET);
+              setFlowOpen(false);
+              setHandoffOpen(false);
+              setBriefOpen(true);
+            }}
+          >Game brief</button>}
+
+          {board.kind === "game-design" && <button
+            type="button"
+            className={"btn ghost gd-brief-trigger" + (flowOpen ? " active" : "")}
+            title="Mở Game flow"
+            onClick={() => {
+              setDesignEditId(null);
+              setSelectedEdgeIds(EMPTY_SET);
+              setBriefOpen(false);
+              setHandoffOpen(false);
+              setFlowOpen(true);
+            }}
+          >Game flow</button>}
+          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (balanceOpen ? " active" : "")} title="Mở Balance sheet" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setHandoffOpen(false); setBalanceOpen(true); }}>Balance</button>}
+
+          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (handoffOpen ? " active" : "")} title="Mở Dev handoff" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(true); }}>Dev handoff</button>}
 
           <button
             type="button"
@@ -4505,6 +4622,8 @@ export default function IdeaMap() {
           placeTool={mode === "place" ? placeTool : null}
           canEdit={role !== "viewer"}
           linkMode={linkMode}
+          gameDesign={board.kind === "game-design"}
+          onGameTemplate={addGameDesignCard}
           onMode={enterMode}
           onTool={(next) => { enterMode("draw"); setTool(next); }}
           onPlace={armPlace}
@@ -4700,6 +4819,7 @@ export default function IdeaMap() {
             groupById={groupById}
             cardSize={frameCardSize}
             sketch={skin === "sketch"}
+            gameDesign={board.kind === "game-design"}
             hoveredEdgeId={hoveredEdgeId}
             selectedEdgeIds={selectedEdgeIds}
             edgeDragId={edgeDrag ? edgeDrag.edgeId : null}
@@ -4734,6 +4854,8 @@ export default function IdeaMap() {
                 dropTarget={isNodeDropTarget(liveNode.id)}
                 selected={selectedIds.has(liveNode.id)}
                 flash={flashId === liveNode.id}
+                gameDesign={board.kind === "game-design"}
+                onDesign={() => setDesignEditId(liveNode.id)}
                 h={cardHandlers}
               />
             );
@@ -4897,13 +5019,40 @@ export default function IdeaMap() {
           );
         })()}
 
-        {/* Thanh này vốn chỉ dành cho thẻ. Nay quét trúng cả khung, nên nó cũng
-            phải hiện khi chỉ có khung được chọn — không thì chọn xong hai cái
-            khung mà chẳng thấy nút "Xoá" hay "Bỏ chọn" nào. Các nút chỉ hợp lý
-            với thẻ (trạng thái, nhãn, gom nhóm, xếp gọn, nhân bản) tự ẩn khi
-            không có thẻ nào trong vùng chọn. */}
-        {(selectedIds.size + selectedGroupIds.size >= 2 || selectedGroupIds.size >= 1 || selectedDrawingIds.size >= 1) && (
-          <div className="bulk-bar" onMouseDown={(e) => e.stopPropagation()}>
+        {/* Dock bên phải là chỗ DUY NHẤT cho mọi thao tác làm đổi dữ liệu: spec
+            của thẻ GD và batch edit của mọi loại board cùng sống ở đây. */}
+        {(briefOpen || flowOpen || balanceOpen || handoffOpen || designEditId != null || selectedEdgeIds.size >= 1 || selectedIds.size + selectedGroupIds.size >= 2 || selectedGroupIds.size >= 1 || selectedDrawingIds.size >= 1) && (
+          <aside className="edit-dock" ref={editDockRef}>
+            {briefOpen && board.kind === "game-design" && <GameDesignBriefPanel brief={board.gameDesignBrief} canEdit={role !== "viewer"} onSave={saveGameDesignBrief} onClose={() => setBriefOpen(false)} outsideRef={editDockRef} />}
+            {flowOpen && board.kind === "game-design" && <GameDesignFlowPanel flow={board.gameDesignFlow} nodes={board.nodes} canEdit={role !== "viewer"} onSave={saveGameDesignFlow} onClose={() => setFlowOpen(false)} outsideRef={editDockRef} />}
+            {balanceOpen && board.kind === "game-design" && <GameDesignBalancePanel balance={board.gameDesignBalance} nodes={board.nodes} canEdit={role !== "viewer"} onSave={saveGameDesignBalance} onClose={() => setBalanceOpen(false)} outsideRef={editDockRef} />}
+            {handoffOpen && board.kind === "game-design" && <DevHandoffPanel board={board} selectedIds={selectedIds} onClose={() => setHandoffOpen(false)} outsideRef={editDockRef} />}
+            {designEditId != null && board.kind === "game-design" && (() => {
+              const node = board.nodes.find((n) => n.id === designEditId);
+              return node ? <GameDesignPanel node={node} nodes={board.nodes} canEdit={role !== "viewer"} onSave={saveDesignNode} onClose={() => setDesignEditId(null)} outsideRef={editDockRef} /> : null;
+            })()}
+            {board.kind === "game-design" && selectedEdgeIds.size === 1 && (() => {
+              const edge = board.edges.find((item) => item.id === [...selectedEdgeIds][0]);
+              if (!edge) return null;
+              const relation = relationDefinition(edge.relation);
+              return (
+                <div className="edge-inspector" onMouseDown={(e) => e.stopPropagation()}>
+                  <div className="gd-kicker">Quan hệ edge</div>
+                  <h2>Liên kết thẻ</h2>
+                  <label>Loại quan hệ
+                    <select value={isGameDesignRelation(edge.relation) ? edge.relation : "depends-on"} disabled={role === "viewer"} onChange={(e) => updateEdge(edge.id, { relation: e.target.value })}>
+                      {RELATION_OPTIONS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                    </select>
+                  </label>
+                  <p className="edge-relation-help">{relation.description}</p>
+                  {role !== "viewer" && <button className="btn danger edge-delete" onClick={() => deleteEdge(edge.id)}>Xóa dây</button>}
+                </div>
+              );
+            })()}
+            {/* Quét trúng cả khung/nét vẽ cũng cần edit dock; nút chỉ có nghĩa
+                với thẻ thì tự ẩn khi không có thẻ nào trong vùng chọn. */}
+            {(selectedIds.size + selectedGroupIds.size >= 2 || selectedGroupIds.size >= 1 || selectedDrawingIds.size >= 1) && (
+              <div className="bulk-bar" onMouseDown={(e) => e.stopPropagation()}>
             <span className="bb-count mono">
               {selectedIds.size > 0 && <Trans>{selectedIds.size} thẻ</Trans>}
               {selectedIds.size > 0 && selectedGroupIds.size > 0 && " · "}
@@ -4956,7 +5105,9 @@ export default function IdeaMap() {
             <button className="bb-clear danger" onClick={deleteSelection}><Trans>Xoá</Trans></button>
             <span className="bb-sep" />
             <button className="bb-clear" onClick={clearSelection}><Trans>Bỏ chọn</Trans></button>
-          </div>
+              </div>
+            )}
+          </aside>
         )}
 
         {ioOpen && (
@@ -5163,7 +5314,6 @@ export default function IdeaMap() {
           />
         );
       })()}
-
       {captureOpen && (
         <div className="capture-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setCaptureOpen(false); }}>
           <div
