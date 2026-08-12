@@ -2,11 +2,11 @@ import { useMemo, useState } from "react";
 import { gameDesignMarkdown } from "../lib/game-design.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 
-export default function DevHandoffPanel({ board, selectedIds, onClose, outsideRef }) {
+export default function DevHandoffPanel({ board, boardName, selectedIds, onClose, outsideRef }) {
   const [scope, setScope] = useState("all");
   const selected = useMemo(() => board.nodes.filter((node) => selectedIds.has(node.id)), [board.nodes, selectedIds]);
   const nodes = scope === "selected" ? selected : board.nodes;
-  const markdown = useMemo(() => gameDesignMarkdown(board, scope === "selected" ? { nodeIds: selected.map((node) => node.id) } : {}), [board, scope, selected]);
+  const markdown = useMemo(() => gameDesignMarkdown({ ...board, name: boardName }, scope === "selected" ? { nodeIds: selected.map((node) => node.id) } : {}), [board, boardName, scope, selected]);
   const [copied, setCopied] = useState(false);
   useCloseOnOutside(outsideRef, onClose);
 

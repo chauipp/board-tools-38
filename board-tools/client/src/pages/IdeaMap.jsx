@@ -5026,7 +5026,7 @@ export default function IdeaMap() {
             {briefOpen && board.kind === "game-design" && <GameDesignBriefPanel brief={board.gameDesignBrief} canEdit={role !== "viewer"} onSave={saveGameDesignBrief} onClose={() => setBriefOpen(false)} outsideRef={editDockRef} />}
             {flowOpen && board.kind === "game-design" && <GameDesignFlowPanel flow={board.gameDesignFlow} nodes={board.nodes} canEdit={role !== "viewer"} onSave={saveGameDesignFlow} onClose={() => setFlowOpen(false)} outsideRef={editDockRef} />}
             {balanceOpen && board.kind === "game-design" && <GameDesignBalancePanel balance={board.gameDesignBalance} nodes={board.nodes} canEdit={role !== "viewer"} onSave={saveGameDesignBalance} onClose={() => setBalanceOpen(false)} outsideRef={editDockRef} />}
-            {handoffOpen && board.kind === "game-design" && <DevHandoffPanel board={board} selectedIds={selectedIds} onClose={() => setHandoffOpen(false)} outsideRef={editDockRef} />}
+            {handoffOpen && board.kind === "game-design" && <DevHandoffPanel board={board} boardName={boardName} selectedIds={selectedIds} onClose={() => setHandoffOpen(false)} outsideRef={editDockRef} />}
             {designEditId != null && board.kind === "game-design" && (() => {
               const node = board.nodes.find((n) => n.id === designEditId);
               return node ? <GameDesignPanel node={node} nodes={board.nodes} canEdit={role !== "viewer"} onSave={saveDesignNode} onClose={() => setDesignEditId(null)} outsideRef={editDockRef} /> : null;
