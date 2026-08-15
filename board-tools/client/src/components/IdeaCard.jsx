@@ -3,7 +3,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { colorVar, contrastInk } from "../lib/badges.js";
 import { cardLevel } from "../lib/card-levels.js";
 import { parseDesc } from "../lib/mdlite.js";
-import { acceptanceProgress, gameDesignPreview } from "../lib/game-design.js";
+import { abTestProgress, acceptanceProgress, balanceMetricsForCard, followUpProgress, gameDesignPreview, hasLiveOps, hasPostLaunchReview, normalizeAnalyticsEvents, normalizeDelivery, normalizeLiveOps, normalizePostLaunchReview } from "../lib/game-design.js";
 
 // Phân tích markdown rút gọn của mô tả là việc thuần tuý theo `text`; bọc memo
 // để kéo/zoom/di chuột không bắt nó chạy lại cho từng thẻ ở mỗi khung hình.
@@ -38,7 +38,7 @@ const MdLite = memo(function MdLite({ text }) {
 function IdeaCard({
   node, boardId, statusDef, tagDef, statuses, tags, currentUser,
   editing, dimmed, linkPending, dropTarget, selected, flash,
-  observeCard, gameDesign, onDesign, h
+  observeCard, gameDesign, balance, blocked, dependencyCycle, onDesign, h
 }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(node.title);
@@ -82,6 +82,13 @@ function IdeaCard({
   const level = cardLevel(node);
   const designPreview = gameDesign ? gameDesignPreview(node) : [];
   const criteriaProgress = gameDesign ? acceptanceProgress(node) : { done: 0, total: 0 };
+  const delivery = gameDesign ? normalizeDelivery(node.design?.delivery) : null;
+  const analyticsCount = gameDesign ? normalizeAnalyticsEvents(node.design?.analyticsEvents).length : 0;
+  const abTests = gameDesign ? abTestProgress(node) : { total: 0, running: 0 };
+  const liveOps = gameDesign ? normalizeLiveOps(node.design?.liveOps) : null;
+  const postLaunchReview = gameDesign ? normalizePostLaunchReview(node.design?.postLaunchReview) : null;
+  const followUps = gameDesign ? followUpProgress(node) : { done: 0, total: 0 };
+  const balanceCount = gameDesign ? balanceMetricsForCard(balance, node.id).length : 0;
   classNames.push(`lv-${level}`);
 
   function handleEditKeyDown(e) {
@@ -179,6 +186,26 @@ function IdeaCard({
         </div>
       </div>
       {gameDesign && <div className="gd-card-type">{node.type || "freeform"}</div>}
+      {gameDesign && (blocked || dependencyCycle) && (
+        <div className="gd-card-dependency" aria-label="Trạng thái phụ thuộc">
+          {blocked && <span className="gd-dependency-badge blocked">Blocked</span>}
+          {dependencyCycle && <span className="gd-dependency-badge cycle">Vòng lặp</span>}
+        </div>
+      )}
+      {gameDesign && delivery && (delivery.milestone || delivery.assignee || delivery.deadline || delivery.blocker || delivery.blockerLevel !== "none") && (
+        <div className="gd-card-delivery">
+          {delivery.milestone && <span>{delivery.milestone}</span>}
+          {delivery.deadline && <time dateTime={delivery.deadline}>⌛ {delivery.deadline}</time>}
+          {delivery.assignee && <span>◎ {delivery.assignee}</span>}
+          {delivery.blockerLevel !== "none" && <span className={`gd-delivery-blocker ${delivery.blockerLevel}`}>{delivery.blockerLevel === "blocked" ? "Bị chặn" : "Rủi ro"}</span>}
+        </div>
+      )}
+      {gameDesign && analyticsCount > 0 && <div className="gd-card-analytics">◌ Analytics {analyticsCount}</div>}
+      {gameDesign && abTests.total > 0 && <div className="gd-card-ab-tests">⇄ A/B {abTests.total}{abTests.running ? " · Running" : ""}</div>}
+      {gameDesign && hasLiveOps(liveOps) && <div className={`gd-card-live-ops ${liveOps.status}`}>◉ Live · {liveOps.status === "paused" ? "Paused" : liveOps.status === "rolled-back" ? "Rolled back" : liveOps.status === "full" ? "Full" : liveOps.rolloutPercent ? `${liveOps.rolloutPercent}%` : liveOps.status === "running" ? "Running" : "Planned"}</div>}
+      {gameDesign && hasPostLaunchReview(postLaunchReview) && <div className={`gd-card-post-launch ${postLaunchReview.status}`}>◒ Post-launch · {postLaunchReview.status === "healthy" ? "Healthy" : postLaunchReview.status === "needs-iteration" ? "Iterate" : postLaunchReview.status === "sunset" ? "Sunset" : "Pending"}</div>}
+      {gameDesign && followUps.total > 0 && <div className="gd-card-follow-ups">✓ Follow-up {followUps.done}/{followUps.total}</div>}
+      {gameDesign && balanceCount > 0 && <div className="gd-card-balance">◈ Balance {balanceCount}</div>}
       {criteriaProgress.total > 0 && (
         <div className="gd-card-progress" aria-label={`Tiến độ tiêu chí ${criteriaProgress.done}/${criteriaProgress.total}`}>
           Tiêu chí {criteriaProgress.done}/{criteriaProgress.total}

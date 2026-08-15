@@ -13,7 +13,7 @@ import { relationDefinition, isGameDesignRelation } from "../lib/game-design.js"
 // trước đây mỗi đầu dây quét lại cả mảng thẻ.
 function EdgeLayer({
   edges, nodeById, groupById, cardSize, sketch,
-  gameDesign,
+  gameDesign, cycleEdgeIds,
   hoveredEdgeId, selectedEdgeIds, edgeDragId, snapGuides, linkDraft, edgeDraft,
   onEdgeEnter, onEdgeLeave, onEdgeClick, onEdgeContextMenu
 }) {
@@ -33,6 +33,7 @@ function EdgeLayer({
         const p2 = clipToRect(r2.cx, r2.cy, r2.w, r2.h, r1.cx, r1.cy);
         const hot = hoveredEdgeId === edge.id;
         const relationClass = gameDesign && isGameDesignRelation(edge.relation) ? ` relation-${edge.relation}` : "";
+        const cycleClass = cycleEdgeIds?.has(edge.id) ? " dependency-cycle" : "";
         return (
           <g
             key={edge.id}
@@ -51,7 +52,7 @@ function EdgeLayer({
                 không việc gì phải rung theo, và hit-test thẳng thì rẻ hơn. */}
             {sketch ? (
               <path
-                className={"visible" + (hot ? " hot" : "") + (selectedEdgeIds.has(edge.id) ? " selected" : "") + relationClass}
+                className={"visible" + (hot ? " hot" : "") + (selectedEdgeIds.has(edge.id) ? " selected" : "") + relationClass + cycleClass}
                 d={sketchyLine(p1.x, p1.y, p2.x, p2.y, seedFrom(edge.id))}
                 // fill="none" là BẮT BUỘC: CSS của .edge-layer chưa bao giờ khai
                 // fill cho path, thiếu attribute này là dây thành mảng đen đặc.
@@ -62,7 +63,7 @@ function EdgeLayer({
               />
             ) : (
               <line
-                className={"visible" + (hot ? " hot" : "") + (selectedEdgeIds.has(edge.id) ? " selected" : "") + relationClass}
+                className={"visible" + (hot ? " hot" : "") + (selectedEdgeIds.has(edge.id) ? " selected" : "") + relationClass + cycleClass}
                 x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                 style={edge.color ? { stroke: colorVar(edge.color) } : undefined}
                 strokeDasharray={edge.style === "dashed" ? "6 5" : undefined}

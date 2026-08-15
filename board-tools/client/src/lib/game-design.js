@@ -18,7 +18,8 @@ export const DESIGN_FIELD_LABELS = {
   dependencies: "Phụ thuộc / liên kết",
   owner: "Người phụ trách",
   priority: "Ưu tiên",
-  acceptanceCriteria: "Acceptance criteria"
+  acceptanceCriteria: "Acceptance criteria",
+  playerExperience: "Trải nghiệm người chơi"
 };
 
 export const RELATION_OPTIONS = [
@@ -27,6 +28,21 @@ export const RELATION_OPTIONS = [
   { id: "replaces", label: "Thay thế", description: "Nguồn thay cho phiên bản hoặc giải pháp ở đích." },
   { id: "conflicts-with", label: "Xung đột", description: "Hai thẻ không nên cùng được áp dụng." }
 ];
+
+export const TEAM_HANDOFF_TEAMS = [
+  { id: "dev", label: "Dev", fields: ["notes"] },
+  { id: "art", label: "Art", fields: ["brief", "requirements", "references", "format", "naming"] },
+  { id: "audio", label: "Audio", fields: ["brief", "requirements", "references", "format", "naming"] }
+];
+const TEAM_HANDOFF_STATUSES = new Set(["draft", "ready", "handed-off"]);
+
+export function exportVersion(board) {
+  return typeof board?.updatedAt === "string" && board.updatedAt.trim() ? board.updatedAt.trim() : "unsaved";
+}
+
+export function exportPackage(board, exportedAt = new Date().toISOString()) {
+  return { format: "game-design-board-export/v1", exportedAt, boardName: String(board?.name || "Untitled").trim() || "Untitled", boardKind: board?.kind || "game-design", version: exportVersion(board), board };
+}
 
 const RELATION_IDS = new Set(RELATION_OPTIONS.map((item) => item.id));
 
@@ -65,6 +81,153 @@ export function emptyGameDesignFlow() {
 
 export function emptyGameDesignBalance() { return { metrics: [] }; }
 
+export function emptyDelivery() { return { milestone: "", assignee: "", deadline: "", blocker: "", blockerLevel: "none" }; }
+
+export function normalizeDelivery(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const text = (key) => typeof source[key] === "string" ? source[key].trim() : "";
+  const deadline = text("deadline");
+  return {
+    milestone: text("milestone"), assignee: text("assignee"),
+    deadline: /^\d{4}-\d{2}-\d{2}$/.test(deadline) ? deadline : "",
+    blocker: text("blocker"),
+    blockerLevel: ["risk", "blocked"].includes(source.blockerLevel) ? source.blockerLevel : "none"
+  };
+}
+
+export function hasDelivery(value) {
+  const delivery = normalizeDelivery(value);
+  return Boolean(delivery.milestone || delivery.assignee || delivery.deadline || delivery.blocker);
+}
+
+export function normalizeAnalyticsEvents(value) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item) => item && typeof item === "object" && !Array.isArray(item)).map((item, index) => ({
+    id: typeof item.id === "string" && item.id.trim() ? item.id.trim() : `analytics-${index + 1}`,
+    eventName: typeof item.eventName === "string" ? item.eventName.trim() : "",
+    trigger: typeof item.trigger === "string" ? item.trigger.trim() : "",
+    properties: typeof item.properties === "string" ? item.properties.trim() : "",
+    kpi: typeof item.kpi === "string" ? item.kpi.trim() : "",
+    owner: typeof item.owner === "string" ? item.owner.trim() : ""
+  })).filter((item) => item.eventName).slice(0, 20);
+}
+
+const AB_TEST_STATUSES = new Set(["draft", "running", "concluded", "rejected"]);
+
+export function normalizeABTests(value) {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item) => item && typeof item === "object" && !Array.isArray(item)).map((item, index) => ({
+    id: typeof item.id === "string" && item.id.trim() ? item.id.trim() : `ab-test-${index + 1}`,
+    hypothesis: typeof item.hypothesis === "string" ? item.hypothesis.trim() : "",
+    control: typeof item.control === "string" ? item.control.trim() : "",
+    variant: typeof item.variant === "string" ? item.variant.trim() : "",
+    primaryMetric: typeof item.primaryMetric === "string" ? item.primaryMetric.trim() : "",
+    successCriteria: typeof item.successCriteria === "string" ? item.successCriteria.trim() : "",
+    segment: typeof item.segment === "string" ? item.segment.trim() : "",
+    status: AB_TEST_STATUSES.has(item.status) ? item.status : "draft"
+  })).filter((item) => item.hypothesis).slice(0, 20);
+}
+
+export function abTestProgress(node) {
+  const tests = normalizeABTests(node?.design?.abTests);
+  return { total: tests.length, running: tests.filter((item) => item.status === "running").length };
+}
+
+const LIVE_OPS_STATUSES = new Set(["planned", "running", "paused", "full", "rolled-back"]);
+
+export function emptyLiveOps() {
+  return { tuningNotes: "", version: "", featureFlag: "", rolloutPercent: "", audience: "", status: "planned", rollbackPlan: "" };
+}
+
+export function normalizeLiveOps(value) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const text = (key) => typeof source[key] === "string" ? source[key].trim() : "";
+  const rolloutPercent = text("rolloutPercent");
+  return {
+    tuningNotes: text("tuningNotes"), version: text("version"), featureFlag: text("featureFlag"),
+    rolloutPercent: /^(0|[1-9]\d?|100)$/.test(rolloutPercent) ? rolloutPercent : "",
+    audience: text("audience"), status: LIVE_OPS_STATUSES.has(source.status) ? source.status : "planned", rollbackPlan: text("rollbackPlan")
+  };
+}
+
+export function hasLiveOps(value) {
+  const liveOps = normalizeLiveOps(value);
+  return Boolean(liveOps.tuningNotes || liveOps.version || liveOps.featureFlag || liveOps.rolloutPercent || liveOps.audience || liveOps.rollbackPlan);
+}
+
+const POST_LAUNCH_STATUSES = new Set(["pending", "healthy", "needs-iteration", "sunset"]);
+
+export function emptyPostLaunchReview() {
+  return { outcome: "", actualMetrics: "", learnings: "", nextDecision: "", owner: "", reviewDate: "", status: "pending", cardIds: [] };
+}
+
+export function normalizePostLaunchReview(value, nodes) {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const nodeIds = Array.isArray(nodes) ? new Set(nodes.map((node) => String(node?.id))) : null;
+  const text = (key) => typeof source[key] === "string" ? source[key].trim() : "";
+  const reviewDate = text("reviewDate");
+  return {
+    outcome: text("outcome"), actualMetrics: text("actualMetrics"), learnings: text("learnings"), nextDecision: text("nextDecision"), owner: text("owner"),
+    reviewDate: /^\d{4}-\d{2}-\d{2}$/.test(reviewDate) ? reviewDate : "", status: POST_LAUNCH_STATUSES.has(source.status) ? source.status : "pending",
+    cardIds: Array.isArray(source.cardIds) ? source.cardIds.map((id) => String(id).trim()).filter((id, index, ids) => id && ids.indexOf(id) === index && (!nodeIds || nodeIds.has(id))) : []
+  };
+}
+
+export function hasPostLaunchReview(value) {
+  const review = normalizePostLaunchReview(value);
+  return Boolean(review.outcome || review.actualMetrics || review.learnings || review.nextDecision || review.owner || review.reviewDate || review.cardIds.length);
+}
+
+export function normalizeFollowUpTasks(value, nodes) {
+  const nodeIds = Array.isArray(nodes) ? new Set(nodes.map((node) => String(node?.id))) : null;
+  if (!Array.isArray(value)) return [];
+  return value.filter((item) => item && typeof item === "object" && !Array.isArray(item)).map((item, index) => ({
+    id: typeof item.id === "string" && item.id.trim() ? item.id.trim() : `follow-up-${index + 1}`,
+    text: typeof item.text === "string" ? item.text.trim() : "",
+    owner: typeof item.owner === "string" ? item.owner.trim() : "",
+    deadline: typeof item.deadline === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.deadline) ? item.deadline : "",
+    done: item.done === true,
+    cardIds: Array.isArray(item.cardIds) ? item.cardIds.map((id) => String(id).trim()).filter((id, i, ids) => id && ids.indexOf(id) === i && (!nodeIds || nodeIds.has(id))) : []
+  })).filter((item) => item.text).slice(0, 20);
+}
+
+export function followUpProgress(node) { const tasks = normalizeFollowUpTasks(node?.design?.followUpTasks); return { done: tasks.filter((task) => task.done).length, total: tasks.length }; }
+
+export const BALANCE_TEMPLATES = [
+  { id: "combat", label: "Combat", metrics: [
+    { key: "damage", name: "Sát thương", value: "10", min: "1", max: "999", unit: "HP", formula: "" },
+    { key: "cooldown", name: "Cooldown", value: "1", min: "0", max: "60", unit: "s", formula: "" },
+    { key: "dps", name: "Sát thương/giây", value: "", min: "0", max: "", unit: "HP/s", formula: "damage / cooldown" }
+  ] },
+  { id: "xp-level", label: "XP & Level", metrics: [
+    { key: "level", name: "Level", value: "1", min: "1", max: "100", unit: "level", formula: "" },
+    { key: "xp_to_next", name: "XP cần để lên cấp", value: "100", min: "1", max: "", unit: "XP", formula: "" },
+    { key: "xp_reward", name: "XP mỗi lượt", value: "20", min: "0", max: "", unit: "XP", formula: "" }
+  ] },
+  { id: "drop-rate", label: "Drop rate", metrics: [
+    { key: "common_rate", name: "Tỉ lệ Common", value: "70", min: "0", max: "100", unit: "%", formula: "" },
+    { key: "rare_rate", name: "Tỉ lệ Rare", value: "25", min: "0", max: "100", unit: "%", formula: "" },
+    { key: "legendary_rate", name: "Tỉ lệ Legendary", value: "5", min: "0", max: "100", unit: "%", formula: "" }
+  ] },
+  { id: "currency-flow", label: "Currency flow", metrics: [
+    { key: "currency_earned", name: "Tiền kiếm mỗi lượt", value: "100", min: "0", max: "", unit: "gold", formula: "" },
+    { key: "currency_spent", name: "Tiền chi mỗi lượt", value: "80", min: "0", max: "", unit: "gold", formula: "" },
+    { key: "currency_net", name: "Dòng tiền ròng", value: "", min: "", max: "", unit: "gold", formula: "currency_earned - currency_spent" }
+  ] }
+];
+
+export function appendBalanceTemplate(balance, templateId, nodes) {
+  const current = normalizeGameDesignBalance(balance, nodes);
+  const template = BALANCE_TEMPLATES.find((item) => item.id === templateId);
+  if (!template) return current;
+  const keys = new Set(current.metrics.map((item) => item.key));
+  const added = template.metrics.filter((item) => !keys.has(item.key)).map((item, index) => ({
+    id: globalThis.crypto?.randomUUID?.() || `metric-${Date.now()}-${index + 1}`,
+    ...item, cardIds: []
+  }));
+  return { metrics: [...current.metrics, ...added] };
+}
+
 export function normalizeGameDesignBalance(value, nodes) {
   const balance = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const nodeIds = Array.isArray(nodes) ? new Set(nodes.map((node) => String(node?.id))) : null;
@@ -75,6 +238,11 @@ export function normalizeGameDesignBalance(value, nodes) {
       return { id: typeof item.id === "string" && item.id.trim() ? item.id.trim() : `metric-${index + 1}`, key, name: typeof item.name === "string" ? item.name.trim() : "", value: typeof item.value === "string" ? item.value.trim() : "", min: typeof item.min === "string" ? item.min.trim() : "", max: typeof item.max === "string" ? item.max.trim() : "", unit: typeof item.unit === "string" ? item.unit.trim() : "", formula: typeof item.formula === "string" ? item.formula.trim() : "", cardIds: Array.isArray(item.cardIds) ? item.cardIds.map((id) => String(id).trim()).filter((id, i, ids) => id && ids.indexOf(id) === i && (!nodeIds || nodeIds.has(id))) : [] };
     }).filter((item) => item.key && item.name && !used.has(item.key) && (used.add(item.key) || true)).slice(0, 100)
   };
+}
+
+export function balanceMetricsForCard(balance, cardId, nodes) {
+  const id = String(cardId);
+  return normalizeGameDesignBalance(balance, nodes).metrics.filter((metric) => metric.cardIds.includes(id));
 }
 
 export function evaluateBalanceFormula(formula, variables = {}) {
@@ -97,6 +265,21 @@ export function evaluateBalanceFormula(formula, variables = {}) {
     else { const value = Number(variables[token]); if (!Number.isFinite(value)) return { value: null, error: `Chưa có giá trị cho ${token}.` }; stack.push(value); }
   }
   return stack.length === 1 ? { value: stack[0], error: "" } : { value: null, error: "Công thức không hợp lệ." };
+}
+
+export function balanceWarnings(metric, variables = {}) {
+  const warnings = [];
+  const number = (value) => value === "" ? null : Number(value);
+  const min = number(metric?.min), max = number(metric?.max);
+  if (min !== null && max !== null && Number.isFinite(min) && Number.isFinite(max) && min > max) warnings.push("Tối thiểu đang lớn hơn tối đa.");
+  const calculated = metric?.formula ? evaluateBalanceFormula(metric.formula, variables) : { value: number(metric?.value), error: "" };
+  if (!calculated.error && Number.isFinite(calculated.value)) {
+    if (min !== null && Number.isFinite(min) && calculated.value < min) warnings.push(`Kết quả thấp hơn tối thiểu (${min}).`);
+    if (max !== null && Number.isFinite(max) && calculated.value > max) warnings.push(`Kết quả vượt tối đa (${max}).`);
+    const isRate = metric?.unit === "%" || /_rate$/.test(metric?.key || "");
+    if (isRate && (calculated.value < 0 || calculated.value > 100)) warnings.push("Drop rate nên nằm trong khoảng 0–100%.");
+  }
+  return warnings;
 }
 
 function normalizeFlowItems(items, { prefix, fields, limit }, nodeIds) {
@@ -138,6 +321,28 @@ export function hasGameDesignFlow(flow) {
 
 export function emptyGameDesignDetails() {
   return { examples: [], failureStates: [], tuningParameters: [] };
+}
+
+export function emptyTeamHandoff() {
+  return {
+    dev: { status: "draft", owner: "", handedOffAt: "", notes: "" },
+    art: { status: "draft", owner: "", handedOffAt: "", brief: "", requirements: "", references: "", format: "", naming: "" },
+    audio: { status: "draft", owner: "", handedOffAt: "", brief: "", requirements: "", references: "", format: "", naming: "" }
+  };
+}
+
+export function normalizeTeamHandoff(value) {
+  const input = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const empty = emptyTeamHandoff();
+  return Object.fromEntries(TEAM_HANDOFF_TEAMS.map(({ id, fields }) => {
+    const item = input[id] && typeof input[id] === "object" && !Array.isArray(input[id]) ? input[id] : {};
+    return [id, {
+      status: TEAM_HANDOFF_STATUSES.has(item.status) ? item.status : "draft",
+      owner: typeof item.owner === "string" ? item.owner.trim() : "",
+      handedOffAt: typeof item.handedOffAt === "string" ? item.handedOffAt.trim() : "",
+      ...Object.fromEntries(fields.map((field) => [field, typeof item[field] === "string" ? item[field].trim() : empty[id][field]]))
+    }];
+  }));
 }
 
 export function emptyPlaytestSession() {
@@ -185,8 +390,39 @@ export function normalizeDecisionLog(value, nodes) {
     .slice(0, 30);
 }
 
+export function decisionTimeline(nodes) {
+  return (Array.isArray(nodes) ? nodes : []).flatMap((node) => normalizeDecisionLog(node?.design?.decisionLog, nodes).map((decision) => ({
+    ...decision,
+    decisionId: decision.id,
+    cardId: String(node.id),
+    cardTitle: node.title || `Thẻ ${node.id}`
+  }))).sort((left, right) => {
+    const leftDate = /^\d{4}-\d{2}-\d{2}$/.test(left.date) ? left.date : "";
+    const rightDate = /^\d{4}-\d{2}-\d{2}$/.test(right.date) ? right.date : "";
+    if (leftDate !== rightDate) return rightDate.localeCompare(leftDate);
+    return left.cardTitle.localeCompare(right.cardTitle);
+  });
+}
+
 export function normalizeTechnicalNotes(value) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+export function emptyReview() { return { reviewer: "", date: "", outcome: "pending", comments: [] }; }
+export function normalizeReview(value) {
+  const review = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const outcomes = new Set(["pending", "approved", "changes-requested", "rejected"]);
+  return {
+    reviewer: typeof review.reviewer === "string" ? review.reviewer.trim() : "",
+    date: typeof review.date === "string" ? review.date.trim() : "",
+    outcome: outcomes.has(review.outcome) ? review.outcome : "pending",
+    comments: (Array.isArray(review.comments) ? review.comments : []).filter((item) => item && typeof item === "object" && !Array.isArray(item)).map((item, index) => ({
+      id: typeof item.id === "string" && item.id.trim() ? item.id.trim() : `review-comment-${index + 1}`,
+      text: typeof item.text === "string" ? item.text.trim() : "",
+      author: typeof item.author === "string" ? item.author.trim() : "",
+      resolved: item.resolved === true
+    })).filter((item) => item.text).slice(0, 20)
+  };
 }
 
 function normalizeDetailItems(items, { prefix, key, fields, limit }) {
@@ -239,6 +475,30 @@ export function isGameDesignRelation(relation) {
   return RELATION_IDS.has(relation);
 }
 
+export function dependencyAnalysis(board) {
+  const nodes = Array.isArray(board?.nodes) ? board.nodes : [];
+  const ids = new Set(nodes.map((node) => String(node.id)));
+  const prerequisites = new Map(nodes.map((node) => [String(node.id), []]));
+  const dependents = new Map(nodes.map((node) => [String(node.id), []]));
+  const edges = (board?.edges || []).filter((edge) => edge?.relation === "depends-on" && (edge.fromKind || "node") === "node" && (edge.toKind || "node") === "node" && ids.has(String(edge.from)) && ids.has(String(edge.to)));
+  for (const edge of edges) { prerequisites.get(String(edge.from)).push(String(edge.to)); dependents.get(String(edge.to)).push(String(edge.from)); }
+  const cycleNodeIds = new Set(), cycleEdgeIds = new Set();
+  function reachable(start, target, seen = new Set()) {
+    if (start === target) return true;
+    if (seen.has(start)) return false; seen.add(start);
+    return (prerequisites.get(start) || []).some((next) => reachable(next, target, seen));
+  }
+  for (const edge of edges) if (reachable(String(edge.to), String(edge.from))) { cycleEdgeIds.add(edge.id); cycleNodeIds.add(String(edge.from)); cycleNodeIds.add(String(edge.to)); }
+  const done = new Set(nodes.filter((node) => String((board?.statuses || []).find((status) => status.id === node.statusId)?.name || "").trim().toLowerCase() === "done").map((node) => String(node.id)));
+  const blockedNodeIds = new Set(nodes.filter((node) => (prerequisites.get(String(node.id)) || []).some((id) => !done.has(id))).map((node) => String(node.id)));
+  function chainFrom(id) {
+    const chain = [], seen = new Set(); let current = String(id);
+    while (current && !seen.has(current)) { chain.push(current); seen.add(current); current = prerequisites.get(current)?.[0]; }
+    return chain;
+  }
+  return { prerequisites, dependents, blockedNodeIds, cycleNodeIds, cycleEdgeIds, chainFrom };
+}
+
 export function gameDesignType(type) {
   return GAME_DESIGN_TYPES.find((item) => item.id === type) || GAME_DESIGN_TYPES[2];
 }
@@ -249,7 +509,7 @@ export function emptyDesign(type = "mechanic") {
     design: Object.fromEntries(Object.keys(DESIGN_FIELD_LABELS).map((key) => [
       key,
       key === "priority" ? "medium" : key === "acceptanceCriteria" ? [] : ""
-    ]).concat([["technicalNotes", ""]]))
+    ]).concat([["technicalNotes", ""], ["playerExperience", ""], ["delivery", emptyDelivery()], ["teamHandoff", emptyTeamHandoff()], ["review", emptyReview()], ["analyticsEvents", []], ["followUpTasks", []], ["abTests", []], ["liveOps", emptyLiveOps()], ["postLaunchReview", emptyPostLaunchReview()]]))
   };
 }
 
@@ -257,22 +517,65 @@ export function createGameDesignNode(id, x, y, type = "mechanic") {
   const preset = emptyDesign(type);
   return { id, title: gameDesignType(type).label, desc: "", tagId: null, statusId: null, x: Math.round(x), y: Math.round(y), ...preset };
 }
+export function createRelatedGameDesignCard(board, sourceId, type = "mechanic", relation = "depends-on") {
+  const source = board.nodes.find((node) => node.id === sourceId);
+  if (!source) return board;
+  const node = createGameDesignNode(board.nextNodeId, source.x + 300, source.y, type);
+  return { ...board, nodes: [...board.nodes, node], edges: [...board.edges, { id: board.nextEdgeId, from: sourceId, fromKind: "node", to: node.id, toKind: "node", relation: RELATION_IDS.has(relation) ? relation : "depends-on" }], nextNodeId: node.id + 1, nextEdgeId: board.nextEdgeId + 1 };
+}
+
+function cloneDesign(value) {
+  if (typeof structuredClone === "function") return structuredClone(value || {});
+  return JSON.parse(JSON.stringify(value || {}));
+}
+
+export function duplicateGameDesignCard(board, sourceId) {
+  const source = board.nodes.find((node) => node.id === sourceId);
+  if (!source) return board;
+  const node = {
+    ...source,
+    id: board.nextNodeId,
+    title: `${source.title || gameDesignType(source.type).label} — bản sao`,
+    tagId: null,
+    statusId: null,
+    x: Math.round(source.x + 300),
+    y: Math.round(source.y),
+    design: cloneDesign(source.design)
+  };
+  return { ...board, nodes: [...board.nodes, node], nextNodeId: node.id + 1 };
+}
 
 // Canvas là nơi nhìn toàn cục, không phải nơi đọc nguyên một spec. Chỉ lấy vài
 // field đã điền đầu tiên để thẻ nói được "nó làm gì" mà không phình thành văn
 // bản dài che mất quan hệ giữa các hệ thống.
 export function gameDesignPreview(node, max = 3) {
   const fields = gameDesignType(node.type).fields;
-  return fields
+  const preview = fields
     .filter((field) => field !== "acceptanceCriteria")
     .map((field) => ({ field, label: DESIGN_FIELD_LABELS[field], value: String(node.design?.[field] || "").replace(/\s+/g, " ").trim() }))
     .filter((item) => item.value)
     .slice(0, max)
     .map((item) => ({ ...item, value: item.value.length > 78 ? item.value.slice(0, 77) + "…" : item.value }));
+  const playerExperience = String(node.design?.playerExperience || "").replace(/\s+/g, " ").trim();
+  if (playerExperience && preview.length < max) preview.push({ field: "playerExperience", label: DESIGN_FIELD_LABELS.playerExperience, value: playerExperience.length > 78 ? playerExperience.slice(0, 77) + "…" : playerExperience });
+  const review = normalizeReview(node?.design?.review);
+  if (review.outcome !== "pending" && preview.length < max) preview.push({ field: "review", label: "Review", value: review.outcome === "approved" ? "Approved" : review.outcome === "rejected" ? "Rejected" : "Changes requested" });
+  const delivery = normalizeDelivery(node?.design?.delivery);
+  if (delivery.milestone && preview.length < max) preview.push({ field: "milestone", label: "Milestone", value: delivery.milestone });
+  const analyticsCount = normalizeAnalyticsEvents(node?.design?.analyticsEvents).length;
+  if (analyticsCount && preview.length < max) preview.push({ field: "analytics", label: "Analytics", value: `${analyticsCount} event${analyticsCount > 1 ? "s" : ""}` });
+  const abTests = abTestProgress(node);
+  if (abTests.total && preview.length < max) preview.push({ field: "ab-tests", label: "A/B test", value: `${abTests.total} test${abTests.total > 1 ? "s" : ""}${abTests.running ? " · Running" : ""}` });
+  const liveOps = normalizeLiveOps(node?.design?.liveOps);
+  if (hasLiveOps(liveOps) && preview.length < max) preview.push({ field: "live-ops", label: "Live ops", value: liveOps.status === "paused" ? "Paused" : liveOps.status === "rolled-back" ? "Rolled back" : liveOps.rolloutPercent ? `${liveOps.status === "running" ? "Live" : liveOps.status === "full" ? "Full" : "Planned"} · ${liveOps.rolloutPercent}%` : liveOps.status === "running" ? "Live" : liveOps.status === "full" ? "Full rollout" : "Planned" });
+  const postLaunch = normalizePostLaunchReview(node?.design?.postLaunchReview);
+  if (hasPostLaunchReview(postLaunch) && preview.length < max) preview.push({ field: "post-launch", label: "Post-launch", value: postLaunch.status === "healthy" ? "Healthy" : postLaunch.status === "needs-iteration" ? "Needs iteration" : postLaunch.status === "sunset" ? "Sunset" : "Pending" });
+  return preview.slice(0, max);
 }
 
 export function gameDesignMarkdown(board, options = {}) {
-  const lines = [`# ${board.name}`, ""];
+  const lines = [`# ${board.name}`, "", `**Export version:** ${exportVersion(board)}`, ""];
+  const handoffTeam = TEAM_HANDOFF_TEAMS.find((team) => team.id === options.team) || null;
   const selectedNodeIds = Array.isArray(options.nodeIds) ? new Set(options.nodeIds.map((id) => String(id))) : null;
   const nodes = (board.nodes || []).filter((node) => !selectedNodeIds || selectedNodeIds.has(String(node.id)));
   const brief = normalizeGameDesignBrief(board.gameDesignBrief);
@@ -370,7 +673,80 @@ export function gameDesignMarkdown(board, options = {}) {
       lines.push("");
     }
     const technicalNotes = normalizeTechnicalNotes(node.design?.technicalNotes);
-    if (technicalNotes) lines.push("**Technical notes**", "", technicalNotes, "");
+    const playerExperience = String(node.design?.playerExperience || "").trim();
+    if (playerExperience) lines.push(`**${DESIGN_FIELD_LABELS.playerExperience}**`, "", playerExperience, "");
+    if (!handoffTeam || handoffTeam.id === "dev") {
+      if (technicalNotes) lines.push("**Technical notes**", "", technicalNotes, "");
+    }
+    const delivery = normalizeDelivery(node.design?.delivery);
+    if (hasDelivery(delivery)) {
+      const fields = [["Milestone", delivery.milestone], ["Assignee", delivery.assignee], ["Deadline", delivery.deadline], [delivery.blockerLevel === "blocked" ? "Blocker" : "Risk", delivery.blocker]];
+      lines.push("**Delivery**", "");
+      for (const [label, value] of fields) if (value) lines.push(`- **${label}:** ${value}`);
+      lines.push("");
+    }
+    const analyticsEvents = normalizeAnalyticsEvents(node.design?.analyticsEvents);
+    if (analyticsEvents.length) {
+      lines.push("**Analytics events**", "");
+      analyticsEvents.forEach((event) => {
+        const details = [["Trigger", event.trigger], ["Properties", event.properties], ["KPI", event.kpi], ["Owner", event.owner]].filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`).join(" · ");
+        lines.push(`- **${event.eventName}**${details ? ` — ${details}` : ""}`);
+      });
+      lines.push("");
+    }
+    const abTests = normalizeABTests(node.design?.abTests);
+    if (abTests.length) {
+      lines.push("**A/B test hypotheses**", "");
+      abTests.forEach((item) => {
+        const status = { draft: "Draft", running: "Running", concluded: "Concluded", rejected: "Rejected" }[item.status];
+        const details = [["Control", item.control], ["Variant", item.variant], ["Primary metric", item.primaryMetric], ["Success criteria", item.successCriteria], ["Segment", item.segment], ["Status", status]].filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`).join(" · ");
+        lines.push(`- **${item.hypothesis}**${details ? ` — ${details}` : ""}`);
+      });
+      lines.push("");
+    }
+    const liveOps = normalizeLiveOps(node.design?.liveOps);
+    if (hasLiveOps(liveOps)) {
+      const status = { planned: "Planned", running: "Running", paused: "Paused", full: "Full rollout", "rolled-back": "Rolled back" }[liveOps.status];
+      const fields = [["Version", liveOps.version], ["Feature flag", liveOps.featureFlag], ["Rollout", liveOps.rolloutPercent && `${liveOps.rolloutPercent}%`], ["Audience", liveOps.audience], ["Status", status], ["Tuning notes", liveOps.tuningNotes], ["Rollback plan", liveOps.rollbackPlan]];
+      lines.push("**Live tuning & rollout**", "");
+      for (const [label, value] of fields) if (value) lines.push(`- **${label}:** ${value}`);
+      lines.push("");
+    }
+    const postLaunch = normalizePostLaunchReview(node.design?.postLaunchReview, board.nodes);
+    if (hasPostLaunchReview(postLaunch)) {
+      const status = { pending: "Pending", healthy: "Healthy", "needs-iteration": "Needs iteration", sunset: "Sunset" }[postLaunch.status];
+      const refs = postLaunch.cardIds.map((id) => nodeById.get(id)?.title).filter(Boolean).join(", ");
+      const fields = [["Status", status], ["Outcome", postLaunch.outcome], ["Actual metrics", postLaunch.actualMetrics], ["Learnings", postLaunch.learnings], ["Next decision", postLaunch.nextDecision], ["Owner", postLaunch.owner], ["Review date", postLaunch.reviewDate], ["Related cards", refs]];
+      lines.push("**Post-launch review**", "");
+      for (const [label, value] of fields) if (value) lines.push(`- **${label}:** ${value}`);
+      lines.push("");
+    }
+    const followUps = normalizeFollowUpTasks(node.design?.followUpTasks, board.nodes);
+    if (followUps.length) {
+      lines.push("**Follow-up tasks**", "");
+      followUps.forEach((task) => {
+        const refs = task.cardIds.map((id) => nodeById.get(id)?.title).filter(Boolean).join(", ");
+        const details = [["Owner", task.owner], ["Deadline", task.deadline], ["Cards", refs]].filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`).join(" · ");
+        lines.push(`- [${task.done ? "x" : " "}] ${task.text}${details ? ` — ${details}` : ""}`);
+      }); lines.push("");
+    }
+    if (handoffTeam) {
+      const handoff = normalizeTeamHandoff(node.design?.teamHandoff)[handoffTeam.id];
+      const status = handoff.status === "handed-off" ? "Đã bàn giao" : handoff.status === "ready" ? "Sẵn sàng bàn giao" : "Bản nháp";
+      const meta = [["Trạng thái", status], ["Người nhận", handoff.owner], ["Ngày bàn giao", handoff.handedOffAt]];
+      const fields = handoffTeam.id === "dev" ? [["Ghi chú bàn giao", handoff.notes]] : [["Brief", handoff.brief], ["Requirements", handoff.requirements], ["Reference", handoff.references], ["Format", handoff.format], ["Naming convention", handoff.naming]];
+      if (meta.some(([, value]) => value) || fields.some(([, value]) => value)) {
+        lines.push(`**${handoffTeam.label} handoff**`, "");
+        for (const [label, value] of [...meta, ...fields]) if (value) lines.push(`- **${label}:** ${value}`);
+        lines.push("");
+      }
+    }
+    const review = normalizeReview(node.design?.review);
+    if (review.outcome !== "pending" || review.comments.length) {
+      lines.push("**Review**", "", ...[`- **Outcome:** ${review.outcome}`, review.reviewer && `- **Reviewer:** ${review.reviewer}`, review.date && `- **Date:** ${review.date}`].filter(Boolean));
+      review.comments.filter((item) => !item.resolved).forEach((item) => lines.push(`- [ ] ${item.text}${item.author ? ` — ${item.author}` : ""}`));
+      lines.push("");
+    }
     if (node.type === "playtest") {
       const session = normalizePlaytestSession(node.design?.playtestSession, board.nodes);
       if (hasPlaytestSession(session)) {
