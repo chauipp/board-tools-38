@@ -28,11 +28,11 @@ Theo dõi phạm vi và tiến độ phát triển board Game Design. Các mục
 ### Phase 2 — Relationships và workflow
 
 - [x] Loại quan hệ `depends on`, `unlocks`, `replaces`, `conflicts with`
-- [ ] Dependency graph và cảnh báo vòng lặp
+- [x] Dependency graph và cảnh báo vòng lặp
 - [x] Workflow Draft → Review → Ready for dev → In dev → Testing → Done
-- [ ] Reviewer, ngày review, comment yêu cầu chỉnh sửa
+- [x] Reviewer, ngày review, comment yêu cầu chỉnh sửa
 - [x] Definition of Done checklist
-- [ ] Roadmap, milestone, deadline, assignee và blocker
+- [x] Roadmap, milestone, deadline, assignee và blocker
 
 **Hoàn thành phase khi:** team biết card liên quan với nhau ra sao, ai đang xử lý và điều kiện nào để hoàn tất.
 
@@ -42,8 +42,9 @@ Theo dõi phạm vi và tiến độ phát triển board Game Design. Các mục
 - [x] Test objective, hypothesis, build/version và nhóm người chơi
 - [x] Observations, metrics, feedback và problems found
 - [x] Decision log: lý do, phương án, evidence, người quyết định, ngày quyết định
+- [x] Decision timeline tổng hợp theo board, mở lại card nguồn
 - [x] Liên kết playtest/decision với mechanic/level/skill qua card reference
-- [ ] Follow-up task riêng
+- [x] Follow-up task riêng
 - [ ] So sánh nhiều session và xem lịch sử theo version
 
 **Hoàn thành phase khi:** mỗi thay đổi thiết kế đều truy được từ feedback/evidence đến quyết định cuối cùng.
@@ -52,35 +53,36 @@ Theo dõi phạm vi và tiến độ phát triển board Game Design. Các mục
 
 - [x] Balance sheet riêng
 - [x] Chỉ số tùy biến cho damage, HP, armor, cooldown, duration, cost, reward
-- [ ] XP, level progression, drop rate và currency flow template
+- [x] XP, level progression, drop rate và currency flow template
 - [x] Công thức có biến đầu vào và tính toán tự động
-- [ ] So sánh trước/sau và cảnh báo giá trị bất thường
-- [ ] Liên kết balance sheet với card
+- [x] Cảnh báo giá trị bất thường
+- [x] Liên kết balance sheet với card
 
 **Hoàn thành phase khi:** GD có thể tune hệ thống bằng dữ liệu và nhìn thấy tác động của thay đổi.
 
 ### Phase 5 — Handoff cho dev, art và audio
 
 - [x] Export Markdown cơ bản
-- [ ] Export theo nhóm card hoặc loại card
-- [ ] Chế độ Dev handoff
-- [ ] Acceptance criteria, technical notes, edge cases và dependencies trong handoff
-- [ ] Art brief, animation/VFX/UI asset requirements
-- [ ] Audio/SFX/music requirements
-- [ ] Asset status, reference, format và naming convention
-- [ ] Đánh dấu phần đã handoff
+- [x] Export theo nhóm card được chọn
+- [x] Export theo loại card
+- [x] Chế độ handoff cho Dev / Art / Audio
+- [x] Acceptance criteria, technical notes, edge cases và dependencies trong handoff Dev
+- [x] Art brief và asset requirements
+- [x] Audio/SFX/music brief và requirements
+- [x] Asset status, reference, format và naming convention
+- [x] Đánh dấu phần đã handoff
 
 **Hoàn thành phase khi:** dev, art và audio nhận được tài liệu đủ rõ để triển khai mà không phải hỏi lại những thông tin cơ bản.
 
 ### Phase 6 — Analytics, live game và báo cáo
 
-- [ ] Analytics events, KPI, funnel, retention và economy metrics
-- [ ] A/B test hypothesis
-- [ ] Live tuning notes, version rollout và feature flags
-- [ ] Post-launch review
+- [x] Analytics events và KPI trên từng card; funnel/retention/economy dashboard để phase sau
+- [x] A/B test hypothesis
+- [x] Live tuning notes, version rollout và feature flags
+- [x] Post-launch review
 - [ ] GDD tổng hợp, feature spec, mechanics catalogue, character bible
 - [ ] Level/economy/playtest/decision/dev handoff report
-- [ ] Preview phạm vi xuất và PDF/Markdown/JSON có version number
+- [x] Preview phạm vi xuất và Markdown/JSON có version number; PDF để phase print riêng
 
 **Hoàn thành phase khi:** board hỗ trợ vòng đời feature từ ý tưởng đến sau phát hành.
 
@@ -88,7 +90,7 @@ Theo dõi phạm vi và tiến độ phát triển board Game Design. Các mục
 
 - [x] Dock chỉnh sửa cố định 275px, bulk edit dọc, inspector GD và preview card
 - [ ] Collapse/expand section và pin section hay dùng
-- [ ] Quick edit, duplicate template và tạo card liên quan nhanh
+- [x] Tạo card liên quan nhanh và nhân bản card/spec độc lập
 - [ ] Tạo dependency bằng kéo thả
 - [ ] Keyboard shortcuts và command palette
 - [ ] Empty state hướng dẫn người mới
@@ -128,7 +130,7 @@ Theo dõi phạm vi và tiến độ phát triển board Game Design. Các mục
 - [ ] Game loop cấp nhỏ và cấp lớn
 - [ ] Progression map
 - [ ] Content dependency map
-- [ ] Feature roadmap
+- [x] Feature roadmap (milestone trên card)
 
 ## 3. Spec cho từng loại nội dung
 
@@ -137,13 +139,13 @@ Theo dõi phạm vi và tiến độ phát triển board Game Design. Các mục
 - [x] Edge cases và dependencies
 - [x] Owner và priority
 - [x] Acceptance criteria
-- [ ] Player experience / cảm xúc mong muốn
+- [x] Player experience / cảm xúc mong muốn
 - [x] Examples / tình huống mẫu
 - [x] Failure states
 - [x] Tuning parameters
-- [ ] Technical notes cho dev
-- [ ] Art/audio requirements
-- [ ] Analytics events cần tracking
+- [x] Technical notes cho dev
+- [x] Art/audio requirements
+- [x] Analytics events cần tracking
 
 ## 4. Quan hệ giữa các thành phần
 
@@ -153,22 +155,23 @@ Theo dõi phạm vi và tiến độ phát triển board Game Design. Các mục
 - [x] Quan hệ `replaces`
 - [x] Quan hệ `conflicts with`
 - [ ] Liên kết Mechanic ↔ Skill/Unit/Level/Quest/UI
-- [ ] Dependency graph
-- [ ] Cảnh báo dependency bị thiếu hoặc tạo vòng lặp
+- [x] Dependency graph
+- [x] Cảnh báo dependency bị thiếu hoặc tạo vòng lặp
 
 ## 5. Trạng thái và workflow
 
 - [x] Status cơ bản, priority, owner
 - [x] Draft
 - [x] Review
-- [ ] Approved
+- [x] Approved
 - [x] Ready for dev
 - [x] In dev
 - [x] Testing
 - [x] Done
-- [ ] Rejected / Archived
-- [ ] Người review và ngày review
-- [ ] Comment yêu cầu chỉnh sửa
+- [x] Rejected
+- [x] Archived (status mặc định cho board GD mới)
+- [x] Người review và ngày review
+- [x] Comment yêu cầu chỉnh sửa
 - [ ] Definition of Done checklist
 
 ## 6. Balance và economy
@@ -177,11 +180,11 @@ Theo dõi phạm vi và tiến độ phát triển board Game Design. Các mục
 - [x] Damage / HP / Armor (qua chỉ số tùy biến)
 - [x] Cooldown / duration (qua chỉ số tùy biến)
 - [x] Cost / reward (qua chỉ số tùy biến)
-- [ ] XP / level progression
-- [ ] Drop rate và currency flow
+- [x] XP / level progression
+- [x] Drop rate và currency flow
 - [x] Công thức có biến đầu vào và tính toán tự động
 - [ ] So sánh trước/sau khi chỉnh
-- [ ] Cảnh báo giá trị bất thường
+- [x] Cảnh báo giá trị bất thường
 - [ ] Import/export CSV
 - [x] Liên kết bảng balance với card
 
@@ -211,46 +214,46 @@ Theo dõi phạm vi và tiến độ phát triển board Game Design. Các mục
 ## 9. Handoff cho dev
 
 - [x] Export Markdown
-- [ ] Export theo nhóm card được chọn
-- [ ] Export theo loại card
-- [ ] Chế độ Dev handoff
-- [ ] Tách rõ Design / Art / Audio / Engineering tasks
+- [x] Export theo nhóm card được chọn
+- [x] Export theo loại card
+- [x] Chế độ Dev handoff
+- [x] Tách rõ Design / Art / Audio / Engineering tasks
 - [x] Acceptance criteria dạng checklist
-- [ ] Technical notes và edge cases nổi bật
-- [ ] Dependencies tự động trong tài liệu
+- [x] Technical notes và edge cases nổi bật
+- [x] Dependencies tự động trong tài liệu
 - [ ] Link ngược từ tài liệu về board
-- [ ] Export JSON/CSV
-- [ ] Template handoff riêng cho từng team
-- [ ] Đánh dấu phần đã handoff
+- [x] Export JSON có metadata/version (CSV để phase balance riêng)
+- [x] Template handoff riêng cho từng team
+- [x] Đánh dấu phần đã handoff
 
 ## 10. Handoff cho Art và Audio
 
-- [ ] Art brief
-- [ ] Concept reference
-- [ ] Animation và VFX requirements
-- [ ] UI asset requirements
-- [ ] Audio/SFX và music requirements
-- [ ] Asset status
-- [ ] Link file/reference
-- [ ] Kích thước, format và naming convention
+- [x] Art brief
+- [x] Concept reference
+- [x] Animation và VFX requirements
+- [x] UI asset requirements
+- [x] Audio/SFX và music requirements
+- [x] Asset status
+- [x] Link file/reference
+- [x] Kích thước, format và naming convention
 
 ## 11. Analytics và live game
 
-- [ ] Event cần tracking
-- [ ] KPI liên quan
+- [x] Event cần tracking
+- [x] KPI liên quan
 - [ ] Funnel và retention impact
 - [ ] Economy metrics
-- [ ] A/B test hypothesis
-- [ ] Live tuning notes
-- [ ] Version rollout và feature flag
-- [ ] Post-launch review
+- [x] A/B test hypothesis
+- [x] Live tuning notes
+- [x] Version rollout và feature flag
+- [x] Post-launch review
 
 ## 12. Quản lý project
 
-- [ ] Roadmap và milestone
-- [ ] Sprint và deadline
+- [x] Roadmap và milestone (theo card)
+- [x] Sprint và deadline (deadline theo card)
 - [ ] Estimate
-- [ ] Risk và blocker
+- [x] Risk và blocker
 - [ ] Assignee
 - [ ] Link task tracker
 - [ ] Board view theo milestone, owner và status
