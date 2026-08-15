@@ -150,6 +150,63 @@ test("payload Game Design có loại thẻ và phần spec đi qua", () => {
   assert.equal(validateBoardPayload(body), null);
 });
 
+test("player experience hợp lệ đi qua, sai kiểu hoặc quá dài bị chặn", () => {
+  const body = { ...good(), kind: "game-design", nodes: [{ id: 1, x: 0, y: 0, title: "Combat", design: { playerExperience: "Căng thẳng công bằng" } }] };
+  assert.equal(validateBoardPayload(body), null);
+  body.nodes[0].design.playerExperience = 2; assert.match(validateBoardPayload(body), /playerExperience/);
+  body.nodes[0].design.playerExperience = "x".repeat(2001); assert.match(validateBoardPayload(body), /playerExperience/);
+});
+
+test("delivery hợp lệ đi qua, ngày hoặc mức blocker hỏng bị chặn", () => {
+  const body = { ...good(), kind: "game-design", nodes: [{ id: 1, x: 0, y: 0, title: "Combat", design: { delivery: { milestone: "Vertical slice", assignee: "Linh", deadline: "2026-09-15", blocker: "Chờ animation", blockerLevel: "blocked" } } }] };
+  assert.equal(validateBoardPayload(body), null);
+  body.nodes[0].design.delivery.deadline = "15/09/2026";
+  assert.match(validateBoardPayload(body), /delivery\.deadline/);
+  body.nodes[0].design.delivery.deadline = "2026-09-15"; body.nodes[0].design.delivery.blockerLevel = "urgent";
+  assert.match(validateBoardPayload(body), /delivery\.blockerLevel/);
+});
+
+test("analytics events hợp lệ đi qua, event thiếu tên hoặc quá nhiều bị chặn", () => {
+  const body = { ...good(), kind: "game-design", nodes: [{ id: 1, x: 0, y: 0, title: "Combat", design: { analyticsEvents: [{ id: "event-1", eventName: "dash_used", trigger: "Khi dash", properties: "distance", kpi: "Usage", owner: "Linh" }] } }] };
+  assert.equal(validateBoardPayload(body), null);
+  body.nodes[0].design.analyticsEvents[0].eventName = "";
+  assert.match(validateBoardPayload(body), /analyticsEvents\.eventName/);
+  body.nodes[0].design.analyticsEvents = Array.from({ length: 21 }, (_, index) => ({ id: `e-${index}`, eventName: "event", trigger: "", properties: "", kpi: "", owner: "" }));
+  assert.match(validateBoardPayload(body), /analyticsEvents/);
+});
+
+test("A/B test hypothesis hợp lệ đi qua, hypothesis/status sai bị chặn", () => {
+  const item = { id: "ab-1", hypothesis: "Variant tăng usage", control: "1.0s", variant: "0.7s", primaryMetric: "usage", successCriteria: "+5%", segment: "new", status: "running" };
+  const body = { ...good(), kind: "game-design", nodes: [{ id: 1, x: 0, y: 0, title: "Combat", design: { abTests: [item] } }] };
+  assert.equal(validateBoardPayload(body), null);
+  item.hypothesis = ""; assert.match(validateBoardPayload(body), /abTests\.hypothesis/);
+  item.hypothesis = "Variant tăng usage"; item.status = "live"; assert.match(validateBoardPayload(body), /abTests\.status/);
+});
+
+test("live ops hợp lệ đi qua, percent/status sai bị chặn", () => {
+  const liveOps = { tuningNotes: "Giảm cooldown", version: "1.4.0", featureFlag: "dash_v2", rolloutPercent: "25", audience: "new", status: "running", rollbackPlan: "Tắt flag" };
+  const body = { ...good(), kind: "game-design", nodes: [{ id: 1, x: 0, y: 0, title: "Dash", design: { liveOps } }] };
+  assert.equal(validateBoardPayload(body), null);
+  liveOps.rolloutPercent = "101"; assert.match(validateBoardPayload(body), /liveOps\.rolloutPercent/);
+  liveOps.rolloutPercent = "25"; liveOps.status = "live"; assert.match(validateBoardPayload(body), /liveOps\.status/);
+});
+
+test("post-launch review hợp lệ đi qua, date/status/reference sai bị chặn", () => {
+  const review = { outcome: "Tốt", actualMetrics: "D1 +4%", learnings: "Onboarding", nextDecision: "Giữ", owner: "Linh", reviewDate: "2026-08-13", status: "healthy", cardIds: ["2"] };
+  const body = { ...good(), kind: "game-design", nodes: [{ id: 1, x: 0, y: 0, title: "Dash", design: { postLaunchReview: review } }, { id: 2, x: 1, y: 1, title: "Quest" }] };
+  assert.equal(validateBoardPayload(body), null);
+  review.reviewDate = "13/08/2026"; assert.match(validateBoardPayload(body), /postLaunchReview\.reviewDate/);
+  review.reviewDate = "2026-08-13"; review.status = "good"; assert.match(validateBoardPayload(body), /postLaunchReview\.status/);
+});
+
+test("follow-up tasks hợp lệ đi qua, deadline/reference sai bị chặn", () => {
+  const task = { id: "f-1", text: "Sửa cooldown", owner: "Linh", deadline: "2026-09-15", done: false, cardIds: ["2"] };
+  const body = { ...good(), kind: "game-design", nodes: [{ id: 1, x: 0, y: 0, title: "Combat", design: { followUpTasks: [task] } }, { id: 2, x: 1, y: 1, title: "Playtest" }] };
+  assert.equal(validateBoardPayload(body), null);
+  task.deadline = "15/09/2026"; assert.match(validateBoardPayload(body), /followUpTasks\.deadline/);
+  task.deadline = "2026-09-15"; task.cardIds = ["gone"]; assert.match(validateBoardPayload(body), /followUpTasks\.cardIds/);
+});
+
 test("Examples, Failure States và Tuning Parameters hợp lệ đi qua", () => {
   const body = { ...good(), kind: "game-design" };
   body.nodes[0].design = {
@@ -168,6 +225,27 @@ test("technicalNotes hợp lệ đi qua, sai kiểu hoặc quá dài bị chặn
   assert.match(validateBoardPayload(valid), /technicalNotes/);
   valid.nodes[0].design.technicalNotes = "x".repeat(2001);
   assert.match(validateBoardPayload(valid), /technicalNotes/);
+});
+
+test("Team handoff hợp lệ đi qua, sai status hoặc field bị chặn", () => {
+  const body = { ...good(), kind: "game-design" };
+  body.nodes[0].design = { teamHandoff: {
+    dev: { status: "ready", owner: "Nam", handedOffAt: "", notes: "Làm state" },
+    art: { status: "handed-off", owner: "Hoa", handedOffAt: "2026-08-12", brief: "Icon", requirements: "PNG", references: "ref", format: "PNG", naming: "ui_dash" },
+    audio: { status: "draft", owner: "", handedOffAt: "", brief: "Whoosh", requirements: "WAV", references: "", format: "WAV", naming: "sfx_dash" }
+  } };
+  assert.equal(validateBoardPayload(body), null);
+  body.nodes[0].design.teamHandoff.dev.status = "sent";
+  assert.match(validateBoardPayload(body), /teamHandoff\.dev\.status/);
+  body.nodes[0].design.teamHandoff.dev.status = "draft";
+  body.nodes[0].design.teamHandoff.art.format = 1;
+  assert.match(validateBoardPayload(body), /teamHandoff\.art\.format/);
+});
+
+test("Review hợp lệ đi qua, outcome/comment sai bị chặn", () => {
+  const body = { ...good(), kind: "game-design", nodes: [{ id: 1, design: { review: { reviewer: "Linh", date: "2026-08-12", outcome: "changes-requested", comments: [{ id: "c-1", text: "Sửa", author: "GD", resolved: false }] } } }] };
+  assert.equal(validateBoardPayload(body), null); body.nodes[0].design.review.outcome = "approved-now"; assert.match(validateBoardPayload(body), /review metadata/);
+  body.nodes[0].design.review.outcome = "approved"; body.nodes[0].design.review.comments[0].resolved = "yes"; assert.match(validateBoardPayload(body), /review.comment/);
 });
 
 test("Playtest session và Decision log hợp lệ đi qua", () => {
