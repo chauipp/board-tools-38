@@ -36,6 +36,13 @@ export const GAME_DESIGN_TECHNICAL_NOTES_LIMIT = 2000;
 export const GAME_DESIGN_PLAYTEST_LIMITS = { text: 4000, references: 100 };
 export const GAME_DESIGN_DECISION_LIMITS = { entries: 30, text: 4000, id: 120, references: 100 };
 export const GAME_DESIGN_BALANCE_LIMITS = { metrics: 100, text: 4000, id: 120, references: 100 };
+export const GAME_DESIGN_HANDOFF_LIMITS = { text: 4000 };
+export const GAME_DESIGN_REVIEW_LIMITS = { comments: 20, text: 4000, id: 120 };
+export const GAME_DESIGN_DELIVERY_LIMITS = { text: 4000 };
+export const GAME_DESIGN_ANALYTICS_LIMITS = { events: 20, text: 4000 };
+export const GAME_DESIGN_AB_TEST_LIMITS = { tests: 20, text: 4000, id: 120 };
+export const GAME_DESIGN_LIVE_OPS_LIMITS = { text: 4000 };
+export const GAME_DESIGN_POST_LAUNCH_LIMITS = { text: 4000, references: 100 };
 
 const BOARD_KINDS = new Set(["idea", "game-design"]);
 const RELATION_IDS = new Set(["depends-on", "unlocks", "replaces", "conflicts-with"]);
@@ -196,6 +203,96 @@ function validateGameDesignBalance(value, nodes) {
   return null;
 }
 
+function validateTeamHandoff(value) {
+  if (value === undefined) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "teamHandoff không hợp lệ";
+  const configs = {
+    dev: ["notes"], art: ["brief", "requirements", "references", "format", "naming"], audio: ["brief", "requirements", "references", "format", "naming"]
+  };
+  for (const [team, fields] of Object.entries(configs)) {
+    const item = value[team];
+    if (!item || typeof item !== "object" || Array.isArray(item)) return `teamHandoff.${team} không hợp lệ`;
+    if (!["draft", "ready", "handed-off"].includes(item.status)) return `teamHandoff.${team}.status không hợp lệ`;
+    for (const field of ["owner", "handedOffAt", ...fields]) {
+      if (typeof item[field] !== "string" || item[field].length > GAME_DESIGN_HANDOFF_LIMITS.text) return `teamHandoff.${team}.${field} không hợp lệ`;
+    }
+  }
+  return null;
+}
+function validateReview(value) {
+  if (value === undefined) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "review không hợp lệ";
+  if (typeof value.reviewer !== "string" || value.reviewer.length > 4000 || typeof value.date !== "string" || value.date.length > 4000 || !["pending", "approved", "changes-requested", "rejected"].includes(value.outcome)) return "review metadata không hợp lệ";
+  if (!Array.isArray(value.comments) || value.comments.length > GAME_DESIGN_REVIEW_LIMITS.comments) return "review.comments không hợp lệ";
+  const ids = new Set();
+  for (const item of value.comments) {
+    if (!item || typeof item !== "object" || typeof item.id !== "string" || !item.id.trim() || ids.has(item.id) || typeof item.text !== "string" || !item.text.trim() || item.text.length > GAME_DESIGN_REVIEW_LIMITS.text || typeof item.author !== "string" || item.author.length > GAME_DESIGN_REVIEW_LIMITS.text || typeof item.resolved !== "boolean") return "review.comment không hợp lệ";
+    ids.add(item.id);
+  }
+  return null;
+}
+function validateDelivery(value) {
+  if (value === undefined) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "delivery không hợp lệ";
+  for (const field of ["milestone", "assignee", "deadline", "blocker"]) if (typeof value[field] !== "string" || value[field].length > GAME_DESIGN_DELIVERY_LIMITS.text) return `delivery.${field} không hợp lệ`;
+  if (value.deadline && !/^\d{4}-\d{2}-\d{2}$/.test(value.deadline)) return "delivery.deadline không hợp lệ";
+  if (!["none", "risk", "blocked"].includes(value.blockerLevel)) return "delivery.blockerLevel không hợp lệ";
+  return null;
+}
+function validateAnalyticsEvents(value) {
+  if (value === undefined) return null;
+  if (!Array.isArray(value) || value.length > GAME_DESIGN_ANALYTICS_LIMITS.events) return "analyticsEvents không hợp lệ";
+  const ids = new Set();
+  for (const event of value) {
+    if (!event || typeof event !== "object" || Array.isArray(event) || typeof event.id !== "string" || !event.id.trim() || ids.has(event.id)) return "analyticsEvents.id không hợp lệ";
+    ids.add(event.id);
+    for (const field of ["eventName", "trigger", "properties", "kpi", "owner"]) if (typeof event[field] !== "string" || event[field].length > GAME_DESIGN_ANALYTICS_LIMITS.text || (field === "eventName" && !event[field].trim())) return `analyticsEvents.${field} không hợp lệ`;
+  }
+  return null;
+}
+function validateABTests(value) {
+  if (value === undefined) return null;
+  if (!Array.isArray(value) || value.length > GAME_DESIGN_AB_TEST_LIMITS.tests) return "abTests không hợp lệ";
+  const ids = new Set();
+  for (const item of value) {
+    if (!item || typeof item !== "object" || Array.isArray(item) || typeof item.id !== "string" || !item.id.trim() || item.id.length > GAME_DESIGN_AB_TEST_LIMITS.id || ids.has(item.id)) return "abTests.id không hợp lệ";
+    ids.add(item.id);
+    for (const field of ["hypothesis", "control", "variant", "primaryMetric", "successCriteria", "segment"]) if (typeof item[field] !== "string" || item[field].length > GAME_DESIGN_AB_TEST_LIMITS.text || (field === "hypothesis" && !item[field].trim())) return `abTests.${field} không hợp lệ`;
+    if (!["draft", "running", "concluded", "rejected"].includes(item.status)) return "abTests.status không hợp lệ";
+  }
+  return null;
+}
+function validateLiveOps(value) {
+  if (value === undefined) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "liveOps không hợp lệ";
+  for (const field of ["tuningNotes", "version", "featureFlag", "rolloutPercent", "audience", "rollbackPlan"]) if (typeof value[field] !== "string" || value[field].length > GAME_DESIGN_LIVE_OPS_LIMITS.text) return `liveOps.${field} không hợp lệ`;
+  if (value.rolloutPercent && !/^(0|[1-9]\d?|100)$/.test(value.rolloutPercent)) return "liveOps.rolloutPercent không hợp lệ";
+  if (!["planned", "running", "paused", "full", "rolled-back"].includes(value.status)) return "liveOps.status không hợp lệ";
+  return null;
+}
+function validatePostLaunchReview(value, nodeIds) {
+  if (value === undefined) return null;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "postLaunchReview không hợp lệ";
+  for (const field of ["outcome", "actualMetrics", "learnings", "nextDecision", "owner", "reviewDate"]) if (typeof value[field] !== "string" || value[field].length > GAME_DESIGN_POST_LAUNCH_LIMITS.text) return `postLaunchReview.${field} không hợp lệ`;
+  if (value.reviewDate && !/^\d{4}-\d{2}-\d{2}$/.test(value.reviewDate)) return "postLaunchReview.reviewDate không hợp lệ";
+  if (!["pending", "healthy", "needs-iteration", "sunset"].includes(value.status)) return "postLaunchReview.status không hợp lệ";
+  return validateCardReferences(value.cardIds, "postLaunchReview", nodeIds, GAME_DESIGN_POST_LAUNCH_LIMITS.references);
+}
+function validateFollowUpTasks(value, nodeIds) {
+  if (value === undefined) return null;
+  if (!Array.isArray(value) || value.length > 20) return "followUpTasks không hợp lệ";
+  const ids = new Set();
+  for (const task of value) {
+    if (!task || typeof task !== "object" || Array.isArray(task) || typeof task.id !== "string" || !task.id.trim() || ids.has(task.id)) return "followUpTasks.id không hợp lệ";
+    ids.add(task.id);
+    for (const field of ["text", "owner", "deadline"]) if (typeof task[field] !== "string" || task[field].length > 4000 || (field === "text" && !task[field].trim())) return `followUpTasks.${field} không hợp lệ`;
+    if (task.deadline && !/^\d{4}-\d{2}-\d{2}$/.test(task.deadline)) return "followUpTasks.deadline không hợp lệ";
+    if (typeof task.done !== "boolean") return "followUpTasks.done không hợp lệ";
+    const invalidRefs = validateCardReferences(task.cardIds, "followUpTasks", nodeIds, 100); if (invalidRefs) return invalidRefs;
+  }
+  return null;
+}
+
 export function normalizeGameDesignFlow(flow) {
   if (flow === undefined || flow === null) return flow;
   if (!flow || typeof flow !== "object" || Array.isArray(flow)) return flow;
@@ -262,6 +359,7 @@ export function validateBoardPayload(body) {
   }
 
   for (const node of body.nodes || []) {
+    const nodeIds = new Set((body.nodes || []).map((item) => String(item?.id)));
     const geo = checkGeometry(node, "node");
     if (geo) return geo;
     if (typeof node.title === "string" && node.title.length > BOARD_LIMITS.titleLen) {
@@ -279,7 +377,23 @@ export function validateBoardPayload(body) {
     if (node.design?.technicalNotes !== undefined && (typeof node.design.technicalNotes !== "string" || node.design.technicalNotes.length > GAME_DESIGN_TECHNICAL_NOTES_LIMIT)) {
       return "technicalNotes không hợp lệ";
     }
-    const nodeIds = new Set((body.nodes || []).map((item) => String(item?.id)));
+    if (node.design?.playerExperience !== undefined && (typeof node.design.playerExperience !== "string" || node.design.playerExperience.length > GAME_DESIGN_TECHNICAL_NOTES_LIMIT)) return "playerExperience không hợp lệ";
+    const invalidTeamHandoff = validateTeamHandoff(node.design?.teamHandoff);
+    if (invalidTeamHandoff) return invalidTeamHandoff;
+    const invalidReview = validateReview(node.design?.review);
+    if (invalidReview) return invalidReview;
+    const invalidDelivery = validateDelivery(node.design?.delivery);
+    if (invalidDelivery) return invalidDelivery;
+    const invalidAnalytics = validateAnalyticsEvents(node.design?.analyticsEvents);
+    if (invalidAnalytics) return invalidAnalytics;
+    const invalidABTests = validateABTests(node.design?.abTests);
+    if (invalidABTests) return invalidABTests;
+    const invalidLiveOps = validateLiveOps(node.design?.liveOps);
+    if (invalidLiveOps) return invalidLiveOps;
+    const invalidPostLaunch = validatePostLaunchReview(node.design?.postLaunchReview, nodeIds);
+    if (invalidPostLaunch) return invalidPostLaunch;
+    const invalidFollowUps = validateFollowUpTasks(node.design?.followUpTasks, nodeIds);
+    if (invalidFollowUps) return invalidFollowUps;
     const invalidPlaytest = validatePlaytestSession(node.design?.playtestSession, nodeIds);
     if (invalidPlaytest) return invalidPlaytest;
     const invalidDecisionLog = validateDecisionLog(node.design?.decisionLog, nodeIds);

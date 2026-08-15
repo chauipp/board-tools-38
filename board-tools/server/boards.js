@@ -33,6 +33,7 @@ const GAME_DESIGN_STATUSES = [
   { id: 4, name: "In dev", color: "st-parked" },
   { id: 5, name: "Testing", color: "st-rejected" },
   { id: 6, name: "Done", color: "st-done" }
+  , { id: 7, name: "Approved", color: "st-done" }, { id: 8, name: "Rejected", color: "st-rejected" }, { id: 9, name: "Archived", color: "st-parked" }
 ];
 
 const router = Router();
@@ -171,7 +172,7 @@ router.post("/", createBoardLimiter, async (req, res) => {
       ownerEmail: email,
       members: [],
       statuses: (kind === "game-design" ? GAME_DESIGN_STATUSES : DEFAULT_STATUSES).map((s) => ({ ...s })),
-      nextStatusId: 7
+      nextStatusId: kind === "game-design" ? 9 : 7
     });
     res.status(201).json({ id: String(board._id) });
   } catch (e) {
