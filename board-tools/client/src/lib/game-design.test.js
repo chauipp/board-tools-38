@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BALANCE_TEMPLATES, acceptanceProgress, abTestProgress, appendBalanceTemplate, balanceMetricsForCard, balanceWarnings, createGameDesignNode, createRelatedGameDesignCard, decisionTimeline, dependencyAnalysis, duplicateGameDesignCard, emptyDecisionLog, emptyDelivery, emptyGameDesignBalance, emptyGameDesignBrief, emptyGameDesignDetails, emptyGameDesignFlow, emptyLiveOps, emptyPlaytestSession, emptyPostLaunchReview, emptyReview, emptyTeamHandoff, exportPackage, exportVersion, evaluateBalanceFormula, followUpProgress, gameDesignMarkdown, gameDesignPreview, gameDesignType, hasDelivery, hasGameDesignBrief, hasGameDesignFlow, hasLiveOps, hasPlaytestSession, hasPostLaunchReview, normalizeABTests, normalizeAcceptanceCriteria, normalizeAnalyticsEvents, normalizeDecisionLog, normalizeDelivery, normalizeFollowUpTasks, normalizeGameDesignBalance, normalizeGameDesignBrief, normalizeGameDesignDetails, normalizeGameDesignFlow, normalizeLiveOps, normalizePlaytestSession, normalizePostLaunchReview, normalizeReview, normalizeTeamHandoff, normalizeTechnicalNotes, relationDefinition } from "./game-design.js";
+import { BALANCE_TEMPLATES, acceptanceProgress, abTestProgress, appendBalanceTemplate, balanceCurveTable, balanceMetricsForCard, balanceWarnings, createGameDesignNode, createRelatedGameDesignCard, decisionTimeline, dependencyAnalysis, dependencyImpact, duplicateGameDesignCard, emptyDecisionLog, emptyDelivery, emptyGameDesignBalance, emptyGameDesignBrief, emptyGameDesignDetails, emptyGameDesignFlow, emptyLiveOps, emptyPlaytestSession, emptyPostLaunchReview, emptyReview, emptyTeamHandoff, exportPackage, exportVersion, evaluateBalanceFormula, followUpProgress, gameDesignMarkdown, gameDesignPreview, gameDesignReport, gameDesignReportNodeIds, gameDesignType, hasDelivery, hasGameDesignBrief, hasGameDesignFlow, hasLiveOps, hasPlaytestSession, hasPostLaunchReview, normalizeABTests, normalizeAcceptanceCriteria, normalizeAnalyticsEvents, normalizeDecisionLog, normalizeDelivery, normalizeFollowUpTasks, normalizeGameDesignBalance, normalizeGameDesignBrief, normalizeGameDesignDetails, normalizeGameDesignFlow, normalizeLiveOps, normalizePlaytestSession, normalizePostLaunchReview, normalizeReview, normalizeTeamHandoff, normalizeTechnicalNotes, playtestComparison, relationDefinition } from "./game-design.js";
 
 test("chuẩn hóa brief rỗng, cắt khoảng trắng và bỏ stage thiếu title", () => {
   assert.deepEqual(emptyGameDesignBrief(), { genre: "", targetAudience: "", playerFantasy: "", playerJourney: [] });
@@ -138,6 +138,21 @@ test("export package có version ổn định và Markdown ghi version", () => {
   assert.match(gameDesignMarkdown(board), /\*\*Export version:\*\* 2026-08-13T10:20:30.000Z/);
 });
 
+test("report scope chỉ lấy đúng card theo mục đích và report có marker", () => {
+  const board = {
+    name: "Combat", updatedAt: "2026-08-15T10:00:00.000Z", nodes: [
+      { id: 1, title: "Dash", type: "mechanic", design: { decisionLog: [{ decision: "Giữ i-frame" }], delivery: { milestone: "Slice" } } },
+      { id: 2, title: "Arena", type: "quest-level", design: {} },
+      { id: 3, title: "PT 01", type: "playtest", design: { playtestSession: { objective: "Dash" } } },
+      { id: 4, title: "Potion", type: "skill-item", design: {} }
+    ], edges: [], gameDesignBalance: { metrics: [{ key: "damage", name: "Damage", value: "10", cardIds: ["1"] }] }
+  };
+  assert.deepEqual(gameDesignReportNodeIds(board, "mechanics"), [1, 4]);
+  assert.deepEqual(gameDesignReportNodeIds(board, "level-economy"), [1, 2]);
+  assert.deepEqual(gameDesignReportNodeIds(board, "playtest-decisions"), [1, 3]);
+  assert.match(gameDesignReport(board, "playtest-decisions"), /<!-- Report: playtest-decisions -->[\s\S]*Dash[\s\S]*PT 01/);
+});
+
 test("tạo nhanh card GD liên quan đặt cạnh nguồn và có dây relation", () => {
   const board = { nextNodeId: 8, nextEdgeId: 4, nodes: [{ id: 7, x: 100, y: 200 }], edges: [] };
   const next = createRelatedGameDesignCard(board, 7, "ui-ux", "unlocks");
@@ -213,12 +228,21 @@ test("Markdown xuất evidence Playtest và Decision log", () => {
 });
 
 test("Balance sheet chuẩn hóa, tính công thức không dùng eval và xuất Markdown", () => {
-  assert.deepEqual(emptyGameDesignBalance(), { metrics: [] });
-  assert.deepEqual(normalizeGameDesignBalance({ metrics: [{ key: " Damage! ", name: " Sát thương ", value: "10", cardIds: [1, "gone"] }, { key: "damage", name: "Trùng", value: "2", cardIds: [] }] }, [{ id: 1 }]), { metrics: [{ id: "metric-1", key: "damage", name: "Sát thương", value: "10", min: "", max: "", unit: "", formula: "", cardIds: ["1"] }] });
+  assert.deepEqual(emptyGameDesignBalance(), { metrics: [], curves: [] });
+  assert.deepEqual(normalizeGameDesignBalance({ metrics: [{ key: " Damage! ", name: " Sát thương ", value: "10", cardIds: [1, "gone"] }, { key: "damage", name: "Trùng", value: "2", cardIds: [] }] }, [{ id: 1 }]), { metrics: [{ id: "metric-1", key: "damage", name: "Sát thương", value: "10", min: "", max: "", unit: "", formula: "", cardIds: ["1"] }], curves: [] });
   assert.deepEqual(evaluateBalanceFormula("damage * 1.2 + 2", { damage: 10 }), { value: 14, error: "" });
   assert.match(evaluateBalanceFormula("damage; alert(1)", { damage: 10 }).error, /chỉ nhận/);
   const md = gameDesignMarkdown({ name: "Combat", nodes: [{ id: 1, title: "Dash", type: "mechanic", design: {} }], gameDesignBalance: { metrics: [{ id: "m-1", key: "damage", name: "Sát thương", value: "10", min: "1", max: "20", unit: "HP", formula: "damage * 1.2", cardIds: ["1"] }] } });
   assert.match(md, /## Balance Sheet/); assert.match(md, /\*\*Sát thương\*\* \(damage\): 12/); assert.match(md, /Cards: Dash/);
+});
+
+test("Progression curve chuẩn hóa, tạo bảng linear/exponential và được xuất", () => {
+  const balance = normalizeGameDesignBalance({ metrics: [{ id: "m-1", key: "xp", name: "XP", value: "", min: "", max: "", unit: "XP", formula: "", cardIds: [] }], curves: [{ id: "c-1", name: " Level XP ", metricKey: "XP!", start: "100", end: "500", steps: "3", mode: "linear" }] });
+  assert.deepEqual(balance.curves, [{ id: "c-1", name: "Level XP", metricKey: "xp", start: "100", end: "500", steps: 3, mode: "linear" }]);
+  assert.deepEqual(balanceCurveTable(balance.curves[0]), { rows: [{ step: 1, value: 100 }, { step: 2, value: 300 }, { step: 3, value: 500 }], error: "" });
+  assert.deepEqual(balanceCurveTable({ start: "10", end: "90", steps: 3, mode: "exponential" }).rows.map((row) => row.value), [10, 30, 90]);
+  assert.match(balanceCurveTable({ start: "0", end: "90", steps: 3, mode: "exponential" }).error, /lớn hơn 0/);
+  assert.match(gameDesignMarkdown({ name: "Progression", nodes: [], gameDesignBalance: balance }), /Progression Curves/);
 });
 
 test("balanceMetricsForCard chỉ trả metric gắn với card đích", () => {
@@ -254,6 +278,25 @@ test("dependency analysis chỉ theo depends-on, báo blocker và vòng lặp", 
   assert.deepEqual([...analysis.cycleEdgeIds], [1, 2, 3]); assert.equal(analysis.cycleNodeIds.has("2"), true);
   const done = dependencyAnalysis({ ...board, nodes: [{ id: 1, statusId: 9 }, { id: 2, statusId: 9 }], edges: [{ id: 1, from: 1, to: 2, relation: "depends-on" }] });
   assert.equal(done.blockedNodeIds.size, 0);
+});
+
+test("dependency impact đi hết hai chiều và chỉ báo milestone/delivery risk downstream", () => {
+  const board = { statuses: [{ id: 1, name: "Done" }], nodes: [
+    { id: 1, design: {} }, { id: 2, design: {} },
+    { id: 3, design: { delivery: { milestone: "Vertical slice", blocker: "Waiting art", blockerLevel: "blocked", deadline: "2020-01-01" } } },
+    { id: 4, statusId: 1, design: { delivery: { milestone: "Launch", blocker: "", blockerLevel: "none", deadline: "" } } }
+  ], edges: [{ from: 2, to: 1, relation: "depends-on" }, { from: 3, to: 2, relation: "depends-on" }, { from: 4, to: 3, relation: "depends-on" }] };
+  const impact = dependencyImpact(board, 2);
+  assert.deepEqual(impact.upstreamIds, ["1"]);
+  assert.deepEqual(impact.downstreamIds, ["3", "4"]);
+  assert.deepEqual(impact.milestoneIds, ["3", "4"]);
+  assert.deepEqual(impact.riskIds, ["3", "4"]);
+  assert.deepEqual(dependencyImpact(board, "missing"), { rootId: "missing", upstreamIds: [], downstreamIds: [], milestoneIds: [], riskIds: [], hasCycle: false });
+});
+
+test("playtest comparison chỉ lấy session có dữ liệu và xếp ngày mới trước", () => {
+  const rows = playtestComparison([{ id: 1, title: "Old", type: "playtest", design: { playtestSession: { objective: "A", testDate: "2026-01-01" } } }, { id: 2, title: "New", type: "playtest", design: { playtestSession: { objective: "B", testDate: "2026-02-01" } } }, { id: 3, type: "playtest", design: {} }]);
+  assert.deepEqual(rows.map((row) => row.title), ["New", "Old"]);
 });
 
 test("Markdown chỉ xuất section details có dữ liệu", () => {

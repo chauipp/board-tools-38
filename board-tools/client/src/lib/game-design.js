@@ -44,6 +44,34 @@ export function exportPackage(board, exportedAt = new Date().toISOString()) {
   return { format: "game-design-board-export/v1", exportedAt, boardName: String(board?.name || "Untitled").trim() || "Untitled", boardKind: board?.kind || "game-design", version: exportVersion(board), board };
 }
 
+export const GAME_DESIGN_REPORTS = [
+  { id: "gdd", label: "GDD tổng hợp", description: "Context, flow, balance và toàn bộ game design cards." },
+  { id: "mechanics", label: "Mechanics catalogue", description: "Mechanic, character/unit và skill/item." },
+  { id: "level-economy", label: "Level & economy", description: "Quest/level và các card được liên kết từ balance sheet." },
+  { id: "playtest-decisions", label: "Playtest & decisions", description: "Playtest sessions cùng các card có decision log." },
+  { id: "delivery", label: "Delivery report", description: "Các card có milestone, blocker hoặc follow-up task." }
+];
+
+export function gameDesignReportNodeIds(board, reportId) {
+  const nodes = Array.isArray(board?.nodes) ? board.nodes : [];
+  if (reportId === "gdd") return null;
+  if (reportId === "mechanics") return nodes.filter((node) => ["mechanic", "character", "skill-item"].includes(node.type)).map((node) => node.id);
+  if (reportId === "level-economy") {
+    const balanceIds = normalizeGameDesignBalance(board?.gameDesignBalance, nodes).metrics.flatMap((metric) => metric.cardIds);
+    return nodes.filter((node) => node.type === "quest-level" || balanceIds.includes(String(node.id))).map((node) => node.id);
+  }
+  if (reportId === "playtest-decisions") return nodes.filter((node) => node.type === "playtest" || normalizeDecisionLog(node.design?.decisionLog, nodes).length > 0).map((node) => node.id);
+  if (reportId === "delivery") return nodes.filter((node) => hasDelivery(node.design?.delivery) || normalizeFollowUpTasks(node.design?.followUpTasks, nodes).length > 0).map((node) => node.id);
+  return [];
+}
+
+export function gameDesignReport(board, reportId = "gdd") {
+  const report = GAME_DESIGN_REPORTS.find((item) => item.id === reportId) || GAME_DESIGN_REPORTS[0];
+  const nodeIds = gameDesignReportNodeIds(board, report.id);
+  const markdown = gameDesignMarkdown({ ...board, name: `${board?.name || "Untitled"} — ${report.label}` }, nodeIds ? { nodeIds } : {});
+  return `<!-- Report: ${report.id} -->\n\n${markdown}`;
+}
+
 const RELATION_IDS = new Set(RELATION_OPTIONS.map((item) => item.id));
 
 export function emptyGameDesignBrief() {
@@ -79,7 +107,7 @@ export function emptyGameDesignFlow() {
   return { playerLoop: [], progressionMap: [] };
 }
 
-export function emptyGameDesignBalance() { return { metrics: [] }; }
+export function emptyGameDesignBalance() { return { metrics: [], curves: [] }; }
 
 export function emptyDelivery() { return { milestone: "", assignee: "", deadline: "", blocker: "", blockerLevel: "none" }; }
 
@@ -225,19 +253,40 @@ export function appendBalanceTemplate(balance, templateId, nodes) {
     id: globalThis.crypto?.randomUUID?.() || `metric-${Date.now()}-${index + 1}`,
     ...item, cardIds: []
   }));
-  return { metrics: [...current.metrics, ...added] };
+  return { ...current, metrics: [...current.metrics, ...added] };
 }
 
 export function normalizeGameDesignBalance(value, nodes) {
   const balance = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const nodeIds = Array.isArray(nodes) ? new Set(nodes.map((node) => String(node?.id))) : null;
   const used = new Set();
+  const metrics = (Array.isArray(balance.metrics) ? balance.metrics : []).filter((item) => item && typeof item === "object" && !Array.isArray(item)).map((item, index) => {
+    const key = typeof item.key === "string" ? item.key.trim().toLowerCase().replace(/[^a-z0-9_]/g, "") : "";
+    return { id: typeof item.id === "string" && item.id.trim() ? item.id.trim() : `metric-${index + 1}`, key, name: typeof item.name === "string" ? item.name.trim() : "", value: typeof item.value === "string" ? item.value.trim() : "", min: typeof item.min === "string" ? item.min.trim() : "", max: typeof item.max === "string" ? item.max.trim() : "", unit: typeof item.unit === "string" ? item.unit.trim() : "", formula: typeof item.formula === "string" ? item.formula.trim() : "", cardIds: Array.isArray(item.cardIds) ? item.cardIds.map((id) => String(id).trim()).filter((id, i, ids) => id && ids.indexOf(id) === i && (!nodeIds || nodeIds.has(id))) : [] };
+  }).filter((item) => item.key && item.name && !used.has(item.key) && (used.add(item.key) || true)).slice(0, 100);
+  const metricKeys = new Set(metrics.map((item) => item.key));
+  const curveIds = new Set();
   return {
-    metrics: (Array.isArray(balance.metrics) ? balance.metrics : []).filter((item) => item && typeof item === "object" && !Array.isArray(item)).map((item, index) => {
-      const key = typeof item.key === "string" ? item.key.trim().toLowerCase().replace(/[^a-z0-9_]/g, "") : "";
-      return { id: typeof item.id === "string" && item.id.trim() ? item.id.trim() : `metric-${index + 1}`, key, name: typeof item.name === "string" ? item.name.trim() : "", value: typeof item.value === "string" ? item.value.trim() : "", min: typeof item.min === "string" ? item.min.trim() : "", max: typeof item.max === "string" ? item.max.trim() : "", unit: typeof item.unit === "string" ? item.unit.trim() : "", formula: typeof item.formula === "string" ? item.formula.trim() : "", cardIds: Array.isArray(item.cardIds) ? item.cardIds.map((id) => String(id).trim()).filter((id, i, ids) => id && ids.indexOf(id) === i && (!nodeIds || nodeIds.has(id))) : [] };
-    }).filter((item) => item.key && item.name && !used.has(item.key) && (used.add(item.key) || true)).slice(0, 100)
+    metrics,
+    curves: (Array.isArray(balance.curves) ? balance.curves : []).filter((item) => item && typeof item === "object" && !Array.isArray(item)).map((item, index) => {
+      const id = typeof item.id === "string" && item.id.trim() ? item.id.trim() : `curve-${index + 1}`;
+      const metricKey = typeof item.metricKey === "string" ? item.metricKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, "") : "";
+      const steps = Math.max(2, Math.min(200, Number.parseInt(item.steps, 10) || 2));
+      return { id, name: typeof item.name === "string" ? item.name.trim() : "", metricKey, start: typeof item.start === "string" ? item.start.trim() : "", end: typeof item.end === "string" ? item.end.trim() : "", steps, mode: item.mode === "exponential" ? "exponential" : "linear" };
+    }).filter((item) => item.name && metricKeys.has(item.metricKey) && !curveIds.has(item.id) && (curveIds.add(item.id) || true)).slice(0, 30)
   };
+}
+
+export function balanceCurveTable(curve) {
+  const start = Number(curve?.start), end = Number(curve?.end), steps = Number(curve?.steps);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || !Number.isInteger(steps) || steps < 2) return { rows: [], error: "Nhập điểm đầu, điểm cuối và ít nhất 2 mốc hợp lệ." };
+  if (curve?.mode === "exponential" && (start <= 0 || end <= 0)) return { rows: [], error: "Curve mũ cần điểm đầu và điểm cuối lớn hơn 0." };
+  const rows = Array.from({ length: steps }, (_, index) => {
+    const t = index / (steps - 1);
+    const value = curve?.mode === "exponential" ? start * ((end / start) ** t) : start + (end - start) * t;
+    return { step: index + 1, value: Number(value.toFixed(3)) };
+  });
+  return { rows, error: "" };
 }
 
 export function balanceMetricsForCard(balance, cardId, nodes) {
@@ -279,6 +328,19 @@ export function balanceWarnings(metric, variables = {}) {
     const isRate = metric?.unit === "%" || /_rate$/.test(metric?.key || "");
     if (isRate && (calculated.value < 0 || calculated.value > 100)) warnings.push("Drop rate nên nằm trong khoảng 0–100%.");
   }
+  return warnings;
+}
+
+export function balanceHealth(balance, nodes) {
+  const metrics = normalizeGameDesignBalance(balance, nodes).metrics;
+  const vars = Object.fromEntries(metrics.map((item) => [item.key, item.value]));
+  const valueOf = (item) => Number(item.formula ? evaluateBalanceFormula(item.formula, vars).value : item.value);
+  const rates = metrics.filter((item) => item.unit === "%" || /_rate$/.test(item.key)).map(valueOf).filter(Number.isFinite);
+  const warnings = [];
+  if (rates.length >= 2) { const total = rates.reduce((sum, value) => sum + value, 0); if (Math.abs(total - 100) > 0.01) warnings.push(`Tổng ${rates.length} drop/rate là ${total}%, không phải 100%.`); }
+  const earned = metrics.filter((item) => /(earned|income|reward|source)/.test(item.key)).map(valueOf).filter(Number.isFinite).reduce((a, b) => a + b, 0);
+  const spent = metrics.filter((item) => /(spent|cost|sink)/.test(item.key)).map(valueOf).filter(Number.isFinite).reduce((a, b) => a + b, 0);
+  if (earned || spent) warnings.push(`Economy flow ước tính: ${earned - spent >= 0 ? "+" : ""}${earned - spent} mỗi lượt (${earned} vào / ${spent} ra).`);
   return warnings;
 }
 
@@ -499,6 +561,37 @@ export function dependencyAnalysis(board) {
   return { prerequisites, dependents, blockedNodeIds, cycleNodeIds, cycleEdgeIds, chainFrom };
 }
 
+export function playtestComparison(nodes) {
+  return (Array.isArray(nodes) ? nodes : []).filter((node) => node.type === "playtest").map((node) => {
+    const session = normalizePlaytestSession(node.design?.playtestSession, nodes);
+    return { nodeId: node.id, title: node.title || `Thẻ ${node.id}`, ...session };
+  }).filter((session) => hasPlaytestSession(session)).sort((a, b) => (b.testDate || "").localeCompare(a.testDate || ""));
+}
+
+export function dependencyImpact(board, cardId) {
+  const analysis = dependencyAnalysis(board);
+  const rootId = String(cardId ?? "");
+  if (!analysis.prerequisites.has(rootId)) return { rootId, upstreamIds: [], downstreamIds: [], milestoneIds: [], riskIds: [], hasCycle: false };
+  function walk(source) {
+    const seen = new Set(), queue = [...(source.get(rootId) || [])];
+    while (queue.length) {
+      const id = queue.shift();
+      if (seen.has(id) || id === rootId) continue;
+      seen.add(id); queue.push(...(source.get(id) || []));
+    }
+    return [...seen];
+  }
+  const upstreamIds = walk(analysis.prerequisites), downstreamIds = walk(analysis.dependents);
+  const nodeById = new Map((board?.nodes || []).map((node) => [String(node.id), node]));
+  const today = new Date().toISOString().slice(0, 10);
+  const milestoneIds = downstreamIds.filter((id) => hasDelivery(nodeById.get(id)?.design?.delivery) && normalizeDelivery(nodeById.get(id)?.design?.delivery).milestone);
+  const riskIds = downstreamIds.filter((id) => {
+    const delivery = normalizeDelivery(nodeById.get(id)?.design?.delivery);
+    return analysis.blockedNodeIds.has(id) || delivery.blockerLevel !== "none" || Boolean(delivery.deadline && delivery.deadline < today);
+  });
+  return { rootId, upstreamIds, downstreamIds, milestoneIds, riskIds, hasCycle: analysis.cycleNodeIds.has(rootId) };
+}
+
 export function gameDesignType(type) {
   return GAME_DESIGN_TYPES.find((item) => item.id === type) || GAME_DESIGN_TYPES[2];
 }
@@ -634,6 +727,15 @@ export function gameDesignMarkdown(board, options = {}) {
       const extras = [metric.unit, metric.min && `Min ${metric.min}`, metric.max && `Max ${metric.max}`, metric.formula && `Formula: ${metric.formula}`, metric.cardIds.map((id) => nodeById.get(id)?.title).filter(Boolean).join(", ") && `Cards: ${metric.cardIds.map((id) => nodeById.get(id)?.title).filter(Boolean).join(", ")}`].filter(Boolean).join(" · ");
       lines.push(`- **${metric.name}** (${metric.key}): ${value ?? ""}${extras ? ` — ${extras}` : ""}`);
     }); lines.push("");
+    if (balance.curves.length) {
+      lines.push("**Progression Curves**", "");
+      balance.curves.forEach((curve) => {
+        const table = balanceCurveTable(curve);
+        const range = table.error ? `Lỗi: ${table.error}` : `${curve.start} → ${curve.end} · ${curve.steps} mốc · ${curve.mode}`;
+        lines.push(`- **${curve.name}** (${curve.metricKey}): ${range}`);
+      });
+      lines.push("");
+    }
   }
   lines.push("## Game Design", "");
   for (const node of nodes) {

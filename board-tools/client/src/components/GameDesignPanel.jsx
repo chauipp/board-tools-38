@@ -164,7 +164,7 @@ function BalanceLinksSection({ balance, node, nodes, collapsed, onToggle, onOpen
   </section>;
 }
 
-export default function GameDesignPanel({ node, nodes, balance, canEdit, onSave, onClose, onOpenBalance, onCreateRelated, onDuplicate, outsideRef }) {
+export default function GameDesignPanel({ node, nodes, balance, canEdit, onSave, onClose, onOpenBalance, onOpenImpact, onCreateRelated, onDuplicate, outsideRef }) {
   const [title, setTitle] = useState(node.title);
   const [desc, setDesc] = useState(node.desc || "");
   const [design, setDesign] = useState({ ...(node.design || {}) });
@@ -208,7 +208,7 @@ export default function GameDesignPanel({ node, nodes, balance, canEdit, onSave,
 
   return (
     <div className="gd-panel" ref={panelRef}>
-      <div className="gd-panel-head"><div><span className="gd-kicker">{template.label}</span><h2>Chi tiết thiết kế</h2></div><button className="btn ghost icon" onClick={onClose}>×</button></div>
+      <div className="gd-panel-head"><div><span className="gd-kicker">{template.label}</span><h2>Chi tiết thiết kế</h2></div><div className="gd-panel-actions">{onOpenImpact && <button className="btn ghost" type="button" onClick={onOpenImpact}>Impact</button>}<button className="btn ghost icon" onClick={onClose}>×</button></div></div>
       <label>Tên thẻ<input value={title} onChange={(e) => { setTitle(e.target.value); setDirty(true); }} disabled={!canEdit} /></label>
       <label>Tóm tắt<textarea value={desc} onChange={(e) => { setDesc(e.target.value); setDirty(true); }} disabled={!canEdit} rows={2} /></label>
       {template.fields.map((field) => (

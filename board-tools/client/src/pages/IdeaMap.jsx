@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { getBoard, saveBoard } from "../lib/api.js";
+import { createBoardSnapshot, getBoard, listBoardSnapshots, restoreBoardSnapshot, saveBoard } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import { useSkin } from "../lib/useSkin.js";
 import {
@@ -32,6 +32,11 @@ import GameDesignFlowPanel from "../components/GameDesignFlowPanel.jsx";
 import DevHandoffPanel from "../components/DevHandoffPanel.jsx";
 import GameDesignBalancePanel from "../components/GameDesignBalancePanel.jsx";
 import DecisionTimelinePanel from "../components/DecisionTimelinePanel.jsx";
+import BoardSnapshotsPanel from "../components/BoardSnapshotsPanel.jsx";
+import GameDesignInsightsPanel from "../components/GameDesignInsightsPanel.jsx";
+import GameDesignReportsPanel from "../components/GameDesignReportsPanel.jsx";
+import GameDesignImpactPanel from "../components/GameDesignImpactPanel.jsx";
+import PlaytestComparisonPanel from "../components/PlaytestComparisonPanel.jsx";
 import EdgeLayer from "../components/EdgeLayer.jsx";
 import PeerLayer from "../components/PeerLayer.jsx";
 import ToolRail from "../components/ToolRail.jsx";
@@ -398,6 +403,14 @@ export default function IdeaMap() {
   const [handoffOpen, setHandoffOpen] = useState(false);
   const [balanceOpen, setBalanceOpen] = useState(false);
   const [decisionTimelineOpen, setDecisionTimelineOpen] = useState(false);
+  const [snapshotsOpen, setSnapshotsOpen] = useState(false);
+  const [snapshots, setSnapshots] = useState([]);
+  const [snapshotsLoading, setSnapshotsLoading] = useState(false);
+  const [insightsOpen, setInsightsOpen] = useState(false);
+  const [reportsOpen, setReportsOpen] = useState(false);
+  const [impactOpen, setImpactOpen] = useState(false);
+  const [impactCardId, setImpactCardId] = useState(null);
+  const [playtestsOpen, setPlaytestsOpen] = useState(false);
   const [initialCardParam] = useState(() => new URLSearchParams(window.location.search).get("card"));
 
   const { user, logout } = useAuth();
@@ -1027,6 +1040,48 @@ export default function IdeaMap() {
   function saveDebounced(next) {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => saveNow(next), 500);
+  }
+
+  async function openSnapshots() {
+    setSnapshotsOpen(true);
+    setSnapshotsLoading(true);
+    try {
+      const result = await listBoardSnapshots(boardId);
+      setSnapshots(result.snapshots || []);
+    } catch {
+      setSaveError(true);
+    } finally {
+      setSnapshotsLoading(false);
+    }
+  }
+
+  async function createSnapshot(label) {
+    try {
+      const result = await createBoardSnapshot(boardId, label);
+      setSnapshots((current) => [result.snapshot, ...current].slice(0, 30));
+      setSaveError(null);
+    } catch (error) {
+      setSaveError(true);
+      throw error;
+    }
+  }
+
+  async function restoreSnapshot(snapshotId) {
+    try {
+      const result = await restoreBoardSnapshot(boardId, snapshotId);
+      const restored = normalizeGameDesignBoard({ ...result.board, view: boardRef.current?.view });
+      setBoard(restored);
+      boardRef.current = restored;
+      serverBaseRef.current = restored;
+      lastUpdatedAtRef.current = restored.updatedAt;
+      setPast([]);
+      setFuture([]);
+      inkLive.reconcile(restored);
+      setSaveError(null);
+    } catch (error) {
+      setSaveError(true);
+      throw error;
+    }
   }
 
   const MAX_HISTORY = 50;
@@ -4242,6 +4297,7 @@ export default function IdeaMap() {
             <button className="btn ghost" onClick={() => { setIoMode("export"); setIoText(JSON.stringify(board.kind === "game-design" ? exportPackage({ ...board, name: boardName }) : board, null, 2)); setIoOpen(true); }}><Trans>Xuất JSON</Trans></button>
             <button className="btn ghost" onClick={exportVersionedJson}><Trans>Tải JSON</Trans></button>
             <button className="btn ghost" data-mutating onClick={() => { setIoMode("import"); setIoText(""); setIoOpen(true); }}><Trans>Nhập JSON</Trans></button>
+            <button className="btn ghost" onClick={openSnapshots}>Snapshots</button>
             {/* Dung lượng PDF đứng cùng nhóm "dữ liệu" với Xuất/Nhập JSON, không
                 đứng cùng nhóm "cách xem" — nó nói về thứ đang chiếm chỗ trên
                 kho, chứ không đổi gì trên màn hình. */}
@@ -4288,6 +4344,10 @@ export default function IdeaMap() {
 
           {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (handoffOpen ? " active" : "")} title="Mở Team handoff" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setDecisionTimelineOpen(false); setHandoffOpen(true); }}>Handoff</button>}
           {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (decisionTimelineOpen ? " active" : "")} title="Mở Decision timeline" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(true); }}>Decisions</button>}
+          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (insightsOpen ? " active" : "")} title="Mở Game Design insights" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setInsightsOpen(true); }}>Insights</button>}
+          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (impactOpen ? " active" : "")} title="Mở dependency impact map" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setInsightsOpen(false); setReportsOpen(false); setImpactCardId(null); setImpactOpen(true); }}>Impact</button>}
+          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (playtestsOpen ? " active" : "")} onClick={() => { setDesignEditId(null); setPlaytestsOpen(true); }}>Playtests</button>}
+          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (reportsOpen ? " active" : "")} title="Mở Report Center" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setReportsOpen(true); }}>Reports</button>}
 
           <button
             type="button"
@@ -5061,16 +5121,21 @@ export default function IdeaMap() {
 
         {/* Dock bên phải là chỗ DUY NHẤT cho mọi thao tác làm đổi dữ liệu: spec
             của thẻ GD và batch edit của mọi loại board cùng sống ở đây. */}
-        {(briefOpen || flowOpen || balanceOpen || handoffOpen || decisionTimelineOpen || designEditId != null || selectedEdgeIds.size >= 1 || selectedIds.size + selectedGroupIds.size >= 2 || selectedGroupIds.size >= 1 || selectedDrawingIds.size >= 1) && (
+        {(briefOpen || flowOpen || balanceOpen || handoffOpen || decisionTimelineOpen || snapshotsOpen || insightsOpen || reportsOpen || impactOpen || playtestsOpen || designEditId != null || selectedEdgeIds.size >= 1 || selectedIds.size + selectedGroupIds.size >= 2 || selectedGroupIds.size >= 1 || selectedDrawingIds.size >= 1) && (
           <aside className="edit-dock" ref={editDockRef}>
             {briefOpen && board.kind === "game-design" && <GameDesignBriefPanel brief={board.gameDesignBrief} canEdit={role !== "viewer"} onSave={saveGameDesignBrief} onClose={() => setBriefOpen(false)} outsideRef={editDockRef} />}
             {flowOpen && board.kind === "game-design" && <GameDesignFlowPanel flow={board.gameDesignFlow} nodes={board.nodes} canEdit={role !== "viewer"} onSave={saveGameDesignFlow} onClose={() => setFlowOpen(false)} outsideRef={editDockRef} />}
             {balanceOpen && board.kind === "game-design" && <GameDesignBalancePanel balance={board.gameDesignBalance} nodes={board.nodes} canEdit={role !== "viewer"} onSave={saveGameDesignBalance} onClose={() => setBalanceOpen(false)} outsideRef={editDockRef} />}
             {handoffOpen && board.kind === "game-design" && <DevHandoffPanel board={board} boardName={boardName} selectedIds={selectedIds} onClose={() => setHandoffOpen(false)} outsideRef={editDockRef} />}
             {decisionTimelineOpen && board.kind === "game-design" && <DecisionTimelinePanel nodes={board.nodes} onOpenCard={(id) => { setDecisionTimelineOpen(false); setDesignEditId(id); }} onClose={() => setDecisionTimelineOpen(false)} outsideRef={editDockRef} />}
+            {snapshotsOpen && <BoardSnapshotsPanel snapshots={snapshots} loading={snapshotsLoading} canEdit={role !== "viewer"} onCreate={createSnapshot} onRestore={restoreSnapshot} onClose={() => setSnapshotsOpen(false)} outsideRef={editDockRef} />}
+            {insightsOpen && board.kind === "game-design" && <GameDesignInsightsPanel nodes={board.nodes} onOpenCard={(id) => { setInsightsOpen(false); setDesignEditId(id); }} onClose={() => setInsightsOpen(false)} outsideRef={editDockRef} />}
+            {impactOpen && board.kind === "game-design" && <GameDesignImpactPanel board={board} initialCardId={impactCardId} onOpenCard={(id) => { setImpactOpen(false); setDesignEditId(id); }} onClose={() => setImpactOpen(false)} outsideRef={editDockRef} />}
+            {playtestsOpen && board.kind === "game-design" && <PlaytestComparisonPanel nodes={board.nodes} onOpenCard={(id) => { setPlaytestsOpen(false); setDesignEditId(id); }} onClose={() => setPlaytestsOpen(false)} outsideRef={editDockRef} />}
+            {reportsOpen && board.kind === "game-design" && <GameDesignReportsPanel board={board} boardName={boardName} onClose={() => setReportsOpen(false)} outsideRef={editDockRef} />}
             {designEditId != null && board.kind === "game-design" && (() => {
               const node = board.nodes.find((n) => n.id === designEditId);
-              return node ? <GameDesignPanel node={node} nodes={board.nodes} balance={board.gameDesignBalance} canEdit={role !== "viewer"} onSave={saveDesignNode} onDuplicate={() => duplicateDesignNode(node.id)} onCreateRelated={(type, relation) => createRelatedDesignNode(node.id, type, relation)} onClose={() => setDesignEditId(null)} onOpenBalance={() => { setDesignEditId(null); setBalanceOpen(true); }} outsideRef={editDockRef} /> : null;
+              return node ? <GameDesignPanel node={node} nodes={board.nodes} balance={board.gameDesignBalance} canEdit={role !== "viewer"} onSave={saveDesignNode} onDuplicate={() => duplicateDesignNode(node.id)} onCreateRelated={(type, relation) => createRelatedDesignNode(node.id, type, relation)} onClose={() => setDesignEditId(null)} onOpenBalance={() => { setDesignEditId(null); setBalanceOpen(true); }} onOpenImpact={() => { setDesignEditId(null); setImpactCardId(node.id); setImpactOpen(true); }} outsideRef={editDockRef} /> : null;
             })()}
             {board.kind === "game-design" && selectedEdgeIds.size === 1 && (() => {
               const edge = board.edges.find((item) => item.id === [...selectedEdgeIds][0]);

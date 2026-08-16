@@ -1570,6 +1570,7 @@
    sửa có cùng vị trí và bulk bar có thể dùng song song. */
 .gd-panel { position: relative; z-index: auto; width: auto; min-height: 0; flex: 0 0 auto; overflow: visible; padding: 4px; }
 .gd-panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 12px; }
+.gd-panel-actions { display: flex; align-items: center; gap: 6px; }
 .gd-panel h2 { margin: 2px 0 0; font-size: 19px; }
 .gd-kicker, .gd-card-type { color: var(--accent); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .gd-panel label { display: grid; gap: 5px; margin: 12px 0; font-size: 12px; font-weight: 650; }
@@ -1662,6 +1663,28 @@
 .dependency-chain { display: grid; gap: 4px; color: var(--ink-dim); font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
 .dependency-chain strong { color: var(--ink); font-size: 12px; }
 .dependency-warning { margin: 0; padding: 7px; color: #8e3d28; background: color-mix(in srgb, #e06d4f 14%, transparent); border-left: 3px solid #c75335; border-radius: 3px; font-size: 11px; line-height: 1.4; }
+.snapshot-panel { width: min(360px, calc(100vw - 28px)); }
+.snapshot-create { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin: 12px 0; }
+.snapshot-create input { min-width: 0; }
+.snapshot-list { display: grid; gap: 8px; max-height: min(55vh, 480px); overflow: auto; }
+.snapshot-item { display: grid; grid-template-columns: 1fr auto; gap: 3px 10px; padding: 9px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); }
+.snapshot-item strong { overflow-wrap: anywhere; }
+.snapshot-item span, .snapshot-item small { color: var(--ink-dim); font-size: 11px; }
+.snapshot-item small { grid-column: 1; }
+.snapshot-item button { grid-column: 2; grid-row: 1 / span 3; align-self: center; }
+.gd-insights-panel, .gd-impact-panel { width: min(390px, calc(100vw - 28px)); }
+.gd-insight-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 7px; margin: 12px 0; }
+.gd-insight-grid > div { display: grid; gap: 2px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface-2); }
+.gd-impact-summary { grid-template-columns: repeat(2, 1fr); }
+.gd-insight-grid strong { font-size: 19px; }
+.gd-insight-grid span { color: var(--ink-dim); font-size: 10px; line-height: 1.2; }
+.gd-insight-list { display: grid; gap: 5px; margin-top: 14px; }
+.gd-insight-list h3 { margin: 0; font-size: 12px; }
+.gd-insight-item { display: grid; gap: 2px; width: 100%; padding: 7px; text-align: left; color: inherit; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-2); cursor: pointer; }
+.gd-insight-item:hover { border-color: var(--accent); }
+.gd-insight-item span { color: var(--ink-dim); font-size: 11px; overflow-wrap: anywhere; }
+.board-template-picker { display: grid; gap: 6px; margin: 14px 0; font-size: 13px; font-weight: 700; }
+.board-template-picker select { width: 100%; }
 .gd-save { width: 100%; margin-top: 8px; }
 .gd-brief-trigger { min-height: 32px; white-space: nowrap; font-size: 12px; }
 .gd-handoff-panel { padding: 4px; }
@@ -1676,6 +1699,15 @@
 .gd-balance-result { color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .gd-balance-error { color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
 .gd-balance-warning { color: #9b6400; background: color-mix(in srgb, #f0b429 16%, transparent); border: 1px solid color-mix(in srgb, #f0b429 40%, transparent); }
+.gd-balance-curves { display: grid; gap: 8px; padding: 9px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface-2); }
+.gd-balance-curves h3 { margin: 2px 0 0; font-size: 14px; }
+.gd-curve-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.gd-curve-fields label { margin: 0; }
+.gd-curve-table-wrap { max-height: 210px; overflow: auto; border: 1px solid var(--line); border-radius: 5px; }
+.gd-curve-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.gd-curve-table th, .gd-curve-table td { padding: 5px 7px; text-align: left; border-bottom: 1px solid var(--line); }
+.gd-curve-table th { position: sticky; top: 0; background: var(--surface); color: var(--ink-dim); }
+.gd-curve-table tr:last-child td { border-bottom: 0; }
 .gd-handoff-panel label { display: grid; gap: 5px; margin: 12px 0; font-size: 12px; font-weight: 650; }
 .gd-handoff-panel select, .gd-handoff-preview { width: 100%; box-sizing: border-box; padding: 7px 8px; color: var(--ink); background: var(--surface-2); border: 1px solid var(--line); border-radius: 5px; font: inherit; }
 .gd-handoff-preview { resize: vertical; line-height: 1.4; }

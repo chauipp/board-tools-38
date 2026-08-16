@@ -35,7 +35,7 @@ export const GAME_DESIGN_DETAIL_LIMITS = { text: 1000, id: 120, examples: 20, fa
 export const GAME_DESIGN_TECHNICAL_NOTES_LIMIT = 2000;
 export const GAME_DESIGN_PLAYTEST_LIMITS = { text: 4000, references: 100 };
 export const GAME_DESIGN_DECISION_LIMITS = { entries: 30, text: 4000, id: 120, references: 100 };
-export const GAME_DESIGN_BALANCE_LIMITS = { metrics: 100, text: 4000, id: 120, references: 100 };
+export const GAME_DESIGN_BALANCE_LIMITS = { metrics: 100, curves: 30, curveSteps: 200, text: 4000, id: 120, references: 100 };
 export const GAME_DESIGN_HANDOFF_LIMITS = { text: 4000 };
 export const GAME_DESIGN_REVIEW_LIMITS = { comments: 20, text: 4000, id: 120 };
 export const GAME_DESIGN_DELIVERY_LIMITS = { text: 4000 };
@@ -192,13 +192,18 @@ function validateDecisionLog(value, nodeIds) {
 
 function validateGameDesignBalance(value, nodes) {
   if (value === undefined || value === null) return null;
-  if (!value || typeof value !== "object" || Array.isArray(value) || !Array.isArray(value.metrics) || value.metrics.length > GAME_DESIGN_BALANCE_LIMITS.metrics) return "gameDesignBalance không hợp lệ";
+  if (!value || typeof value !== "object" || Array.isArray(value) || !Array.isArray(value.metrics) || value.metrics.length > GAME_DESIGN_BALANCE_LIMITS.metrics || (value.curves !== undefined && (!Array.isArray(value.curves) || value.curves.length > GAME_DESIGN_BALANCE_LIMITS.curves))) return "gameDesignBalance không hợp lệ";
   const keys = new Set(), ids = new Set(), nodeIds = new Set((nodes || []).map((node) => String(node?.id)));
   for (const item of value.metrics) {
     if (!item || typeof item !== "object" || Array.isArray(item) || typeof item.id !== "string" || !item.id.trim() || ids.has(item.id) || typeof item.key !== "string" || !/^[a-z][a-z0-9_]*$/.test(item.key) || keys.has(item.key)) return "gameDesignBalance.metric không hợp lệ";
     ids.add(item.id); keys.add(item.key);
     for (const field of ["name", "value", "min", "max", "unit", "formula"]) if (typeof item[field] !== "string" || item[field].length > GAME_DESIGN_BALANCE_LIMITS.text || (field === "name" && !item[field].trim())) return `gameDesignBalance.${field} không hợp lệ`;
     const invalid = validateCardReferences(item.cardIds, "gameDesignBalance", nodeIds, GAME_DESIGN_BALANCE_LIMITS.references); if (invalid) return invalid;
+  }
+  const curveIds = new Set();
+  for (const curve of value.curves || []) {
+    if (!curve || typeof curve !== "object" || Array.isArray(curve) || typeof curve.id !== "string" || !curve.id.trim() || curveIds.has(curve.id) || typeof curve.name !== "string" || !curve.name.trim() || typeof curve.metricKey !== "string" || !keys.has(curve.metricKey) || typeof curve.start !== "string" || typeof curve.end !== "string" || curve.start.length > GAME_DESIGN_BALANCE_LIMITS.text || curve.end.length > GAME_DESIGN_BALANCE_LIMITS.text || !Number.isInteger(curve.steps) || curve.steps < 2 || curve.steps > GAME_DESIGN_BALANCE_LIMITS.curveSteps || !["linear", "exponential"].includes(curve.mode)) return "gameDesignBalance.curve không hợp lệ";
+    curveIds.add(curve.id);
   }
   return null;
 }

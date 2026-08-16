@@ -70,6 +70,25 @@ const boardSchema = new mongoose.Schema(
 
 export const Board = mongoose.model("Board", boardSchema);
 
+// Snapshot tách collection thay vì nhét vào Board: mỗi snapshot có thể chứa cả
+// ảnh base64 trong nodes[], nên để chúng trong document board sẽ rất dễ chạm
+// giới hạn 16 MB của Mongo. 30 snapshot vẫn đủ cho một vòng review/iteration,
+// còn board hiện tại luôn chỉ phải đọc đúng một document.
+const boardSnapshotSchema = new mongoose.Schema(
+  {
+    boardId: { type: mongoose.Schema.Types.ObjectId, required: true, index: true },
+    label: { type: String, default: "", trim: true, maxlength: 160 },
+    createdBy: { type: String, required: true, lowercase: true, trim: true },
+    board: { type: Object, required: true },
+    createdAt: { type: Date, default: Date.now, index: true }
+  },
+  { minimize: false, versionKey: false }
+);
+
+boardSnapshotSchema.index({ boardId: 1, createdAt: -1 });
+
+export const BoardSnapshot = mongoose.model("BoardSnapshot", boardSnapshotSchema);
+
 // Một dòng cho mỗi PDF đã đẩy lên kho. Bytes thật nằm ở Cloudflare R2 (hoặc ở
 // server/uploads/pdf khi chạy local); collection này chỉ là sổ sách để biết
 // đang chiếm bao nhiêu dung lượng và file nào không còn thẻ nào trỏ tới.

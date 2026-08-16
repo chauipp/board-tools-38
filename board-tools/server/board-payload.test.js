@@ -276,6 +276,15 @@ test("Balance sheet hợp lệ đi qua, sai key/reference bị chặn", () => {
   assert.match(validateBoardPayload(body), /gameDesignBalance\.cardIds/);
 });
 
+test("Balance progression curve hợp lệ đi qua, sai metric hoặc số mốc bị chặn", () => {
+  const body = { ...good(), kind: "game-design", gameDesignBalance: { metrics: [{ id: "metric-1", key: "xp", name: "XP", value: "", min: "", max: "", unit: "XP", formula: "", cardIds: [] }], curves: [{ id: "curve-1", name: "XP level", metricKey: "xp", start: "100", end: "1000", steps: 10, mode: "exponential" }] } };
+  assert.equal(validateBoardPayload(body), null);
+  body.gameDesignBalance.curves[0].metricKey = "gone";
+  assert.match(validateBoardPayload(body), /gameDesignBalance\.curve/);
+  body.gameDesignBalance.curves[0].metricKey = "xp"; body.gameDesignBalance.curves[0].steps = 1;
+  assert.match(validateBoardPayload(body), /gameDesignBalance\.curve/);
+});
+
 test("detail collections sai hình dạng hoặc vượt giới hạn bị chặn", () => {
   const body = { ...good(), kind: "game-design" };
   body.nodes[0].design = { examples: [{ id: "example-1", title: "", scenario: "", expectedResult: "" }] };

@@ -24,11 +24,11 @@ export async function listBoards() {
   return res.json();
 }
 
-export async function createBoard(name, kind = "idea") {
+export async function createBoard(name, kind = "idea", template = "") {
   const res = await fetch("/api/boards", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name, kind })
+    body: JSON.stringify({ name, kind, template })
   });
   checkAuthExpired(res);
   // Lấy mã lỗi thật của server thay vì gộp hết vào một mã: hai trường hợp
@@ -68,6 +68,34 @@ export async function saveBoard(boardId, state, clientId, baseUpdatedAt) {
     throw err;
   }
   if (!res.ok) throw apiError("BOARD_SAVE_FAILED");
+  return res.json();
+}
+
+export async function listBoardSnapshots(boardId) {
+  const res = await fetch(`/api/boards/${boardId}/snapshots`);
+  checkAuthExpired(res);
+  if (!res.ok) throw apiError("SNAPSHOTS_LOAD_FAILED");
+  return res.json();
+}
+
+export async function createBoardSnapshot(boardId, label = "") {
+  const res = await fetch(`/api/boards/${boardId}/snapshots`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ label })
+  });
+  checkAuthExpired(res);
+  if (res.status === 403) throw apiError("READ_ONLY");
+  if (!res.ok) throw apiError("SNAPSHOT_CREATE_FAILED");
+  return res.json();
+}
+
+export async function restoreBoardSnapshot(boardId, snapshotId) {
+  const res = await fetch(`/api/boards/${boardId}/snapshots/${snapshotId}/restore`, { method: "POST" });
+  checkAuthExpired(res);
+  if (res.status === 403) throw apiError("READ_ONLY");
+  if (res.status === 404) throw apiError("SNAPSHOT_NOT_FOUND");
+  if (!res.ok) throw apiError("SNAPSHOT_RESTORE_FAILED");
   return res.json();
 }
 
