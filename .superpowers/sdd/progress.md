@@ -387,3 +387,41 @@ FINAL W1 whole-branch review (opus, 1886574..03a92fb): 3 IMPORTANT found, ALL FI
   query, first-frame clone size, dead setEditingId(null), edge-layer fixed-size (overflow
   visible so non-issue).
 WAVE 1 COMPLETE.
+
+============================================================
+# SDD Progress — Wave 2 organize & content (feature/idea-map-wave-2)
+Plan: docs/superpowers/plans/2026-07-25-idea-map-wave2-organize.md
+Spec: docs/superpowers/specs/2026-07-25-idea-map-wave2-organize-design.md
+Base: main @ 81303aa (wave 1 merged & pushed). Same standing rules as wave 1
+(node --test pure libs only, lingui, dev servers hot, browser testing = controller/user).
+Task order: T1->T2, T3->T5, T4 independent.
+
+## Tasks
+Base before W2-Task 1: 0ac98f4
+W2-Task 1: complete (commit 43017cf, review clean — spec ✅, Approved, no issues).
+  Both tests hand-traced; overlap no-dedupe structural; byStatus deterministic.
+Base before W2-Task 2: 43017cf
+W2-Task 2: complete (commit b0b0012, review clean — spec ✅, Approved).
+  zoomToNodes refactor byte-identical math, F-shortcut parity proven; jumpToCard avoids
+  stale-closure; historical:false on jumpToGroup; .po exactly 4 new pairs; bottom:60px.
+  Minors: ids.includes O(n·m); buildOutline unmemoized per-render while open (fine at scale).
+Base before W2-Task 3: b0b0012
+W2-Task 3: complete (commit edfd151, review clean — spec ✅, Approved, no issues).
+Base before W2-Task 4: edfd151
+W2-Task 4: complete (commit e92729f, review clean — spec ✅, Approved, no issues).
+  XSS surface checked (https?:// prefix only, no dangerouslySetInnerHTML anywhere);
+  edge cases traced (empty desc, trailing URL); dim-card link inertness = consistent.
+Base before W2-Task 5: e92729f
+W2-Task 5: complete (commit 8f0f6e8, review clean — spec ✅, Approved, no issues).
+  Id math cross-checked vs duplicateNodes/createNode; z-index audit (95 highest); .po parsed
+  with lingui's own parser (104/104, multiline placeholder valid).
+ALL 5 WAVE-2 TASKS COMPLETE. Final whole-branch review next.
+FINAL W2 whole-branch review (opus, 81303aa..8f0f6e8): 1 IMPORTANT + 2 minors, ALL FIXED
+  (7db341a wheel-scroll guard .outline-panel/.io-drawer — panel now scrollable, latent
+  io-drawer hijack also cured; 7f34a64 exit focus on quick capture; 156437c container-level
+  Escape in capture modal). Re-verified by same reviewer: correct, no new holes — READY YES.
+  Remaining manual visual check (controller/user): line-clamp of MdLite block children in
+  .desc (-webkit-box + block divs — cross-engine reliability).
+  Ship minors: ids.includes O(n·m); buildOutline unmemoized (watch for jank on big boards);
+  a&&b empty-title edge lines; estH=90 capture overlap; search matches raw ** markers.
+WAVE 2 COMPLETE.

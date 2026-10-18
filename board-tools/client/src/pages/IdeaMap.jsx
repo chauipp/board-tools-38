@@ -11,6 +11,9 @@ import ColorMenu from "../components/ColorMenu.jsx";
 import FrameBox from "../components/FrameBox.jsx";
 import { nodesInFrame, edgeEndpoint, edgesMatch, rectForEndpoint, clipToRect } from "../lib/board-geometry.js";
 import { computeSnap } from "../lib/snap.js";
+import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
+import { gridLayout } from "../lib/layout.js";
+import { parseDesc } from "../lib/mdlite.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -37,9 +40,12 @@ export default function IdeaMap() {
   const [filterStatus, setFilterStatus] = useState({});
   const [filterTags, setFilterTags] = useState({});
   const [search, setSearch] = useState("");
+  const [outlineOpen, setOutlineOpen] = useState(false);
   const [ioOpen, setIoOpen] = useState(false);
   const [ioMode, setIoMode] = useState("export");
   const [ioText, setIoText] = useState("");
+  const [captureOpen, setCaptureOpen] = useState(false);
+  const [captureText, setCaptureText] = useState("");
   const [isPanning, setIsPanning] = useState(false);
   const [past, setPast] = useState([]);
   const [future, setFuture] = useState([]);
@@ -84,6 +90,7 @@ export default function IdeaMap() {
     const el = viewportRef.current;
     if (!el) return;
     function wheelHandler(e) {
+      if (e.target.closest(".outline-panel, .io-drawer")) return;
       e.preventDefault();
       const current = boardRef.current;
       if (!current) return;
@@ -1008,10 +1015,27 @@ export default function IdeaMap() {
     });
   }
 
-  function zoomToSelection() {
-    const targets = selectedIds.size > 0
-      ? board.nodes.filter((n) => selectedIds.has(n.id))
-      : board.nodes;
+  function tidySelection() {
+    if (selectedIds.size < 2) return;
+    const selected = board.nodes
+      .filter((n) => selectedIds.has(n.id))
+      .sort((a, b) => (a.y - b.y) || (a.x - b.x));       // thứ tự đọc
+    const items = selected.map((n) => ({ id: n.id, ...frameCardSize(n.id) }));
+    const origin = {
+      x: Math.min(...selected.map((n) => n.x)),
+      y: Math.min(...selected.map((n) => n.y))
+    };
+    const cols = Math.ceil(Math.sqrt(items.length));
+    const pos = gridLayout(items, origin, cols);
+    commitAndSave({
+      ...board,
+      nodes: board.nodes.map((n) => (pos.has(n.id) ? { ...n, ...pos.get(n.id) } : n))
+    });
+  }
+
+  function zoomToNodes(ids) {
+    if (!ids || ids.length === 0) return;
+    const targets = board.nodes.filter((n) => ids.includes(n.id));
     if (targets.length === 0) return;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     targets.forEach((n) => {
@@ -1032,6 +1056,42 @@ export default function IdeaMap() {
         panY: -(minY - pad) * scale + (rect.height - bboxH * scale) / 2
       }
     }, { historical: false });
+  }
+
+  function zoomToSelection() {
+    zoomToNodes(selectedIds.size > 0 ? Array.from(selectedIds) : board.nodes.map((n) => n.id));
+  }
+
+  function jumpToCard(id) {
+    setSelectedIds(new Set([id]));
+    zoomToNodes([id]);
+  }
+
+  function jumpToGroup(group) {
+    const rect = viewportRef.current.getBoundingClientRect();
+    const pad = 60;
+    const bboxW = group.w + pad * 2, bboxH = group.h + pad * 2;
+    let scale = Math.min(rect.width / bboxW, rect.height / bboxH, MAX_SCALE);
+    scale = Math.max(scale, MIN_SCALE);
+    commitAndSave({
+      ...board,
+      view: {
+        scale,
+        panX: -(group.x - pad) * scale + (rect.width - bboxW * scale) / 2,
+        panY: -(group.y - pad) * scale + (rect.height - bboxH * scale) / 2
+      }
+    }, { historical: false });
+  }
+
+  function exportMarkdown() {
+    const md = outlineToMarkdown(board, frameCardSize, { other: t`Khác`, links: t`Liên kết` });
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "idea-map.md";
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   function nudgeSelection(dx, dy) {
@@ -1062,6 +1122,35 @@ export default function IdeaMap() {
     } catch (e) {
       alert(t`JSON không hợp lệ — kiểm tra lại nội dung đã dán.`);
     }
+  }
+
+  function confirmCapture() {
+    const titles = captureText.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (titles.length === 0) { setCaptureOpen(false); return; }
+    setFocusId(null);
+    const rect = viewportRef.current.getBoundingClientRect();
+    const cx = (rect.width / 2 - board.view.panX) / board.view.scale;
+    const cy = (rect.height / 2 - board.view.panY) / board.view.scale;
+    const estH = 90;
+    const cols = Math.ceil(Math.sqrt(titles.length));
+    const items = titles.map((_, i) => ({ id: i, w: CARD_W, h: estH }));
+    const gridW = cols * (CARD_W + 24) - 24;
+    const rows = Math.ceil(titles.length / cols);
+    const gridH = rows * (estH + 24) - 24;
+    const pos = gridLayout(items, { x: Math.round(cx - gridW / 2), y: Math.round(cy - gridH / 2) }, cols);
+    let nextId = board.nextNodeId;
+    const newNodes = titles.map((title, i) => ({
+      id: nextId + i,
+      title,
+      desc: "",
+      tagId: null,
+      statusId: board.statuses[0]?.id ?? null,
+      x: pos.get(i).x,
+      y: pos.get(i).y
+    }));
+    commitAndSave({ ...board, nodes: [...board.nodes, ...newNodes], nextNodeId: nextId + titles.length });
+    setCaptureOpen(false);
+    setCaptureText("");
   }
 
   const hasNoStatus = board.nodes.some((n) => n.statusId == null);
@@ -1152,6 +1241,7 @@ export default function IdeaMap() {
         <Link to="/" className="btn ghost"><Trans>← Trang chủ</Trans></Link>
         <button className="btn" onClick={handleAddClick}><Trans>+ Ý tưởng</Trans></button>
         <button className="btn ghost" onClick={createGroup}><Trans>+ Khung</Trans></button>
+        <button className="btn ghost" onClick={() => setCaptureOpen(true)}><Trans>Nhập nhanh</Trans></button>
         <button className="btn ghost icon" onClick={undo} disabled={past.length === 0} title={t`Hoàn tác (Ctrl+Z)`}>↶</button>
         <button className="btn ghost icon" onClick={redo} disabled={future.length === 0} title={t`Làm lại (Ctrl+Shift+Z)`}>↷</button>
         <button
@@ -1167,6 +1257,7 @@ export default function IdeaMap() {
         {saveError && <span style={{ fontSize: 11, color: "var(--danger)" }}><Trans>Không lưu được lên server.</Trans></span>}
         <button className="btn ghost" onClick={() => { setIoMode("export"); setIoText(JSON.stringify(board, null, 2)); setIoOpen(true); }}><Trans>Xuất JSON</Trans></button>
         <button className="btn ghost" onClick={() => { setIoMode("import"); setIoText(""); setIoOpen(true); }}><Trans>Nhập JSON</Trans></button>
+        <button className={"btn ghost toggle" + (outlineOpen ? " active" : "")} onClick={() => setOutlineOpen((v) => !v)}><Trans>Mục lục</Trans></button>
         <LocaleToggle />
         <button className="btn ghost icon" onClick={toggleTheme} title={t`Đổi giao diện sáng/tối`}>◐</button>
       </div>
@@ -1360,6 +1451,50 @@ export default function IdeaMap() {
           <button onClick={fitToView} style={{ width: "auto", padding: "0 8px", fontSize: 11 }}><Trans>Vừa khung</Trans></button>
         </div>
 
+        {outlineOpen && (() => {
+          const outline = buildOutline(board, frameCardSize);
+          const nodeById = new Map(board.nodes.map((n) => [n.id, n]));
+          const row = (id) => {
+            const n = nodeById.get(id);
+            if (!n) return null;
+            const s = statusById(board, n.statusId);
+            return (
+              <button key={id} className="op-row" onClick={() => jumpToCard(id)}>
+                <span className="dot" style={{ background: s ? colorVar(s.color) : "transparent" }}></span>
+                <span className="op-title">{n.title}</span>
+              </button>
+            );
+          };
+          return (
+            <div className="outline-panel" onMouseDown={(e) => e.stopPropagation()}>
+              <div className="op-head">
+                <span className="op-count mono">{board.nodes.length}</span>
+                <button className="btn ghost small" onClick={exportMarkdown}><Trans>Xuất MD</Trans></button>
+                <button className="op-close" onClick={() => setOutlineOpen(false)}>×</button>
+              </div>
+              <div className="op-body">
+                {outline.frames.map(({ group, nodeIds }) => (
+                  <div key={"g" + group.id} className="op-section">
+                    <button className="op-section-title" onClick={() => jumpToGroup(group)}>
+                      {group.title} <span className="mono op-n">{nodeIds.length}</span>
+                    </button>
+                    {nodeIds.map(row)}
+                  </div>
+                ))}
+                {Array.from(outline.byStatus.entries()).map(([key, ids]) => (
+                  <div key={"s" + key} className="op-section">
+                    <div className="op-section-title static">
+                      {key === "none" ? t`Khác` : (statusById(board, key)?.name ?? t`Khác`)}
+                      {" "}<span className="mono op-n">{ids.length}</span>
+                    </div>
+                    {ids.map(row)}
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
+
         {selectedIds.size >= 2 && (
           <div className="bulk-bar" onMouseDown={(e) => e.stopPropagation()}>
             <span className="bb-count mono"><Trans>{selectedIds.size} thẻ</Trans></span>
@@ -1379,6 +1514,7 @@ export default function IdeaMap() {
                 <button key={token} className="be-swatch" style={{ background: colorVar(token) }} onClick={() => applyToSelection({ color: token })} title={token} />
               ))}
             </div>
+            <button className="bb-clear" onClick={tidySelection}><Trans>Xếp gọn</Trans></button>
             <button className="bb-clear" onClick={() => setSelectedIds(new Set())}><Trans>Bỏ chọn</Trans></button>
           </div>
         )}
@@ -1474,7 +1610,56 @@ export default function IdeaMap() {
           onClose={() => setBadgeUI(null)}
         />
       )}
+
+      {captureOpen && (
+        <div className="capture-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setCaptureOpen(false); }}>
+          <div
+            className="capture-modal"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") { e.stopPropagation(); setCaptureOpen(false); }
+            }}
+          >
+            <div className="cm-note"><Trans>Mỗi dòng một ý tưởng — xác nhận để tạo hàng loạt thẻ.</Trans></div>
+            <textarea
+              autoFocus
+              value={captureText}
+              onChange={(e) => setCaptureText(e.target.value)}
+              onKeyDown={(e) => {
+                if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); confirmCapture(); }
+              }}
+              placeholder={t`Ý tưởng 1\nÝ tưởng 2\n…`}
+            />
+            <div className="cm-actions">
+              <button className="btn small" onClick={confirmCapture}><Trans>Tạo thẻ</Trans></button>
+              <button className="btn ghost small" onClick={() => setCaptureOpen(false)}><Trans>Hủy</Trans></button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function MdLite({ text }) {
+  const blocks = parseDesc(text);
+  const renderInline = (tokens) => tokens.map((tk, i) => {
+    if (tk.type === "bold") return <strong key={i}>{tk.value}</strong>;
+    if (tk.type === "link") {
+      return (
+        <a key={i} href={tk.value} target="_blank" rel="noopener noreferrer"
+           onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
+          {tk.value}
+        </a>
+      );
+    }
+    return tk.value;
+  });
+  return (
+    <>
+      {blocks.map((b, i) => b.type === "bullet"
+        ? <div key={i} className="md-bullet">{renderInline(b.inline)}</div>
+        : <div key={i}>{renderInline(b.inline)}</div>)}
+    </>
   );
 }
 
@@ -1554,7 +1739,7 @@ function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selec
       <div className="card-top">
         <div className="title">{node.title}</div>
       </div>
-      <div className="desc">{node.desc}</div>
+      <div className="desc">{node.desc ? <MdLite text={node.desc} /> : null}</div>
       <div className="meta-row">
         {(() => {
           const s = statusById(board, node.statusId);
