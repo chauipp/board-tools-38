@@ -3,6 +3,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PEN_COLORS, PEN_WIDTHS, PEN_DEFAULT, penVar, loadPenPrefs, savePenPrefs } from "./pen.js";
 import { SHAPE_KINDS } from "./shape.js";
+import { TEXT_SIZES } from "./text-el.js";
 
 // localStorage giả: chỉ cần getItem/setItem, không cần cả Storage API.
 function fakeStorage(initial) {
@@ -18,6 +19,7 @@ test("PEN_DEFAULT phải nằm trong danh sách hợp lệ", () => {
   assert.ok(PEN_WIDTHS.includes(PEN_DEFAULT.w));
   assert.ok(SHAPE_KINDS.includes(PEN_DEFAULT.kind));
   assert.equal(PEN_DEFAULT.fill, false);
+  assert.ok(TEXT_SIZES.includes(PEN_DEFAULT.size));
   assert.equal(PEN_COLORS.length, 7);
   assert.deepEqual(PEN_WIDTHS, [2, 4, 8]);
 });
@@ -45,24 +47,33 @@ test("loadPenPrefs: giá trị lạ lùi về mặc định theo từng phần",
   assert.deepEqual(loadPenPrefs(onlyWidthBad), { ...PEN_DEFAULT, color: "pen-blue" });
 });
 
+// Cỡ chữ hỏng không được kéo theo màu và độ dày nét — chúng là ba lựa chọn độc
+// lập nằm chung một object chỉ vì khu 4 là một khối duy nhất.
+test("loadPenPrefs: cỡ chữ lạ chỉ lùi phần của nó", () => {
+  for (const bad of [999, "20", null, 0]) {
+    const s = fakeStorage({ "ideamap.pen": JSON.stringify({ color: "pen-blue", w: 8, size: bad }) });
+    assert.deepEqual(loadPenPrefs(s), { ...PEN_DEFAULT, color: "pen-blue", w: 8 }, String(bad));
+  }
+});
+
 // Một `kind` bị bỏ khỏi bảng chọn, hoặc `fill` bị ghi sai kiểu, không được làm
 // mất luôn màu và độ dày người dùng đang dùng.
 test("loadPenPrefs: kind lạ và fill sai kiểu chỉ lùi phần của chúng", () => {
   const s = fakeStorage({
     "ideamap.pen": JSON.stringify({ color: "pen-blue", w: 8, kind: "star", fill: "yes" })
   });
-  assert.deepEqual(loadPenPrefs(s), { color: "pen-blue", w: 8, kind: PEN_DEFAULT.kind, fill: false });
+  assert.deepEqual(loadPenPrefs(s), { color: "pen-blue", w: 8, kind: PEN_DEFAULT.kind, fill: false, size: PEN_DEFAULT.size });
 });
 
 test("loadPenPrefs: prefs cũ chỉ có color/w vẫn đọc được, kind/fill lấy mặc định", () => {
   const s = fakeStorage({ "ideamap.pen": JSON.stringify({ color: "pen-green", w: 2 }) });
-  assert.deepEqual(loadPenPrefs(s), { color: "pen-green", w: 2, kind: PEN_DEFAULT.kind, fill: false });
+  assert.deepEqual(loadPenPrefs(s), { color: "pen-green", w: 2, kind: PEN_DEFAULT.kind, fill: false, size: PEN_DEFAULT.size });
 });
 
 test("savePenPrefs rồi loadPenPrefs trả lại đúng giá trị", () => {
   const s = fakeStorage();
-  savePenPrefs(s, { color: "pen-green", w: 8, kind: "ellipse", fill: true });
-  assert.deepEqual(loadPenPrefs(s), { color: "pen-green", w: 8, kind: "ellipse", fill: true });
+  savePenPrefs(s, { color: "pen-green", w: 8, kind: "ellipse", fill: true, size: 30 });
+  assert.deepEqual(loadPenPrefs(s), { color: "pen-green", w: 8, kind: "ellipse", fill: true, size: 30 });
 });
 
 // Hết quota hoặc chế độ riêng tư — mất lựa chọn bút không đáng làm sập app.

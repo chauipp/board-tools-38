@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { paletteCss, applyColorTo, removePaletteColor } from "./palette.js";
+import { paletteCss, applyColorTo, applyColorToMany, removePaletteColor } from "./palette.js";
 
 function makeBoard() {
   return {
@@ -40,6 +40,41 @@ test("applyColorTo ghi màu đúng thực thể, không đụng thực thể kh�
 test("applyColorTo với kind lạ → trả board nguyên vẹn", () => {
   const b = makeBoard();
   assert.equal(applyColorTo(b, { kind: "group", id: 1 }, "pal-1"), b);
+});
+
+test("applyColorToMany tô mọi thẻ trong tập, chừa thẻ ngoài tập", () => {
+  const next = applyColorToMany(makeBoard(), "node", [10, 11], "pal-2");
+  assert.equal(next.nodes.find((n) => n.id === 10).color, "pal-2");
+  assert.equal(next.nodes.find((n) => n.id === 11).color, "pal-2");
+  assert.equal(next.edges.find((e) => e.id === 20).color, "pal-1", "dây không bị đụng");
+});
+
+test("applyColorToMany nhận cả Set và mảng", () => {
+  const fromSet = applyColorToMany(makeBoard(), "node", new Set([11]), "pal-2");
+  assert.equal(fromSet.nodes.find((n) => n.id === 11).color, "pal-2");
+  assert.equal(fromSet.nodes.find((n) => n.id === 10).color, "pal-1");
+});
+
+test("applyColorToMany trên dây dùng đúng tập dây", () => {
+  const next = applyColorToMany(makeBoard(), "edge", [20, 21], "dot-3");
+  assert.equal(next.edges.find((e) => e.id === 20).color, "dot-3");
+  assert.equal(next.edges.find((e) => e.id === 21).color, "dot-3");
+  assert.equal(next.nodes.find((n) => n.id === 10).color, "pal-1", "thẻ không bị đụng");
+});
+
+// badge (status/tag) là định nghĩa dùng chung cho cả bảng, không phải đối tượng
+// chọn được — không có "vùng chọn badge" nào để áp, nên đường này phải trả board
+// nguyên vẹn thay vì âm thầm đổi màu một badge.
+test("applyColorToMany với kind badge hoặc lạ → board nguyên vẹn", () => {
+  const b = makeBoard();
+  assert.equal(applyColorToMany(b, "status", [30], "pal-2"), b);
+  assert.equal(applyColorToMany(b, "tag", [40], "pal-2"), b);
+  assert.equal(applyColorToMany(b, "group", [1], "pal-2"), b);
+});
+
+test("applyColorToMany với tập rỗng → board nguyên vẹn", () => {
+  const b = makeBoard();
+  assert.equal(applyColorToMany(b, "node", [], "pal-2"), b);
 });
 
 test("removePaletteColor gỡ token khỏi mọi chỗ đang dùng", () => {

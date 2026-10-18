@@ -1,22 +1,15 @@
-// DOM-dependent (Image/canvas/URL.createObjectURL) — no node --test coverage, kept tiny.
-export function compressImage(file, maxW = 480, quality = 0.8) {
+// DOM-dependent (FileReader) — no node --test coverage, kept tiny.
+
+// Đọc nguyên xi file ảnh thành data URL: KHÔNG vẽ lại qua canvas, không nén lại.
+// Bản cũ (compressImage) hạ về 480px rồi mã hoá lại JPEG chất lượng 0.8 trên nền
+// trắng — ảnh dán vào bị mờ hẳn so với ảnh gốc, ảnh PNG mất luôn phần trong suốt,
+// và phóng to lên là vỡ vì dữ liệu 480px không còn gì để mà phóng. Đọc thẳng
+// bytes gốc thì dán vào chất lượng nào ra đúng chất lượng đó, PNG vẫn là PNG.
+export function readImageFile(file) {
   return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const scale = Math.min(1, maxW / img.naturalWidth);
-      const w = Math.round(img.naturalWidth * scale);
-      const h = Math.round(img.naturalHeight * scale);
-      const canvas = document.createElement("canvas");
-      canvas.width = w; canvas.height = h;
-      const ctx = canvas.getContext("2d");
-      ctx.fillStyle = "#fff";
-      ctx.fillRect(0, 0, w, h);
-      ctx.drawImage(img, 0, 0, w, h);
-      URL.revokeObjectURL(url);
-      resolve(canvas.toDataURL("image/jpeg", quality));
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("bad image")); };
-    img.src = url;
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("bad image"));
+    reader.readAsDataURL(file);
   });
 }

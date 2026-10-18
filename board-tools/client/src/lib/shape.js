@@ -5,6 +5,7 @@
 // phải danh sách điểm như nét bút.
 
 import { polylineHitBy, pointInPolygon } from "./stroke.js";
+import { textHitBy } from "./text-el.js";
 
 export const SHAPE_KINDS = ["rect", "ellipse", "line", "arrow", "triangle", "diamond"];
 
@@ -149,6 +150,16 @@ export function drawingsHitBy(drawings, point, radius) {
 
     if (kind === "pen") {
       if (polylineHitBy(pts, point, limit)) out.push(d.id);
+      continue;
+    }
+    // Text đi nhánh riêng, và cố ý dùng `radius` chứ KHÔNG dùng `limit`: `limit`
+    // đã cộng d.w/2 vì với nét bút và hình khối, `w` là độ dày nét — nét càng
+    // dày càng dễ chạm. Với text, `w` là BỀ RỘNG HỘP CHỮ. Dùng `limit` ở đây thì
+    // một dòng chữ dài 400 đơn vị sẽ có vùng chạm phình thêm 200 đơn vị ra mọi
+    // phía. Đây là cái giá của việc để hai loại vật thể khác hẳn nhau dùng chung
+    // một mảng `drawings`, và chỗ này là nơi phải trả.
+    if (kind === "text") {
+      if (textHitBy(d, point, radius)) out.push(d.id);
       continue;
     }
     const outline = shapeOutline(kind, pts);

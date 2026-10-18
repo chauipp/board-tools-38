@@ -2,12 +2,14 @@ import { useRef, useState } from "react";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { BADGE_PALETTE, colorVar } from "../lib/badges.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
+import { usePopoverPosition } from "../lib/usePopoverPosition.js";
 
 export default function BadgeEditor({ x, y, initialName, initialColor, submitLabel, onSubmit, onClose, onDelete }) {
   const { t } = useLingui();
   const [name, setName] = useState(initialName || "");
   const [color, setColor] = useState(initialColor || BADGE_PALETTE[0]);
   const ref = useRef(null);
+  const pos = usePopoverPosition(ref, x, y);
   useCloseOnOutside(ref, onClose);
 
   function submit() {
@@ -17,7 +19,7 @@ export default function BadgeEditor({ x, y, initialName, initialColor, submitLab
   }
 
   return (
-    <div className="badge-editor" ref={ref} style={{ left: x, top: y }} onMouseDown={(e) => e.stopPropagation()}>
+    <div className="badge-editor" ref={ref} style={pos} onMouseDown={(e) => e.stopPropagation()}>
       <input
         className="be-name"
         type="text"

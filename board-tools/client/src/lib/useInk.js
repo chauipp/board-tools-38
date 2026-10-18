@@ -68,6 +68,11 @@ export function useInk({ tool, penPrefs, boardRef, viewportRef, onStrokeDone, on
     const board = boardRef.current;
     if (!viewportEl || !board) return;
 
+    // Tool text KHÔNG đi qua đây: nó không có lượt kéo nào để theo dõi, ô nhập
+    // do IdeaMap dựng. Thiếu chốt này thì nhánh `else` cuối hàm — nhánh bút —
+    // nhận luôn cú bấm và vẽ ra một nét bút vô hình một điểm.
+    if (tool === "text") return;
+
     const start = toCanvas(e, viewportEl, board.view);
 
     if (tool === "eraser") {

@@ -21,6 +21,26 @@
   --pen-red: #A43F32; --pen-orange: #9C5A22; --pen-yellow: #8A6D14;
   --pen-green: #3C7A5A; --pen-blue: #35618A; --pen-purple: #6B5B8A;
   --pen-mono: #24261D;
+
+  /* Nền sa bàn đi qua biến RIÊNG chứ không dùng thẳng --bg: preset nền của
+     board (data-bg) chỉ được đổi nền sa bàn, không được kéo theo nền hover của
+     thanh menu — chỗ đó cũng đang dùng var(--bg). */
+  --board-bg: var(--bg);
+  --board-grid: var(--line);
+
+  /* Hình dạng vật thể trên canvas — KHÔNG phải màu. Tách riêng vì skin
+     (data-skin) gán lại cả khối này, còn theme sáng/tối thì không đụng: ba khối
+     màu bên dưới (@media dark, [data-theme=…]) cố tình không lặp lại nó. */
+  --card-radius: 6px;
+  --card-border-w: 1px;
+  --frame-radius: 10px;
+  --frame-border-w: 2px;
+  --pill-radius: 999px;
+  --edge-w: 1.6px;
+  --edge-w-hot: 2.4px;
+  --canvas-font: "IBM Plex Sans", Arial, "Liberation Sans", "Helvetica Neue", sans-serif;
+  --canvas-font-scale: 1;
+  --grid-size: 26px;
 }
 @media (prefers-color-scheme: dark) {
   :root {

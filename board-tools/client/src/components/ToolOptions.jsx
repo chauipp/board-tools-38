@@ -1,6 +1,10 @@
 import { useLingui } from "@lingui/react/macro";
 import { PEN_COLORS, PEN_WIDTHS, penVar } from "../lib/pen.js";
+import { LASER_WIDTHS } from "../lib/laser.js";
 import { SHAPE_KINDS, SHAPE_CLOSED } from "../lib/shape.js";
+import { TEXT_SIZES } from "../lib/text-el.js";
+import { CARD_LEVELS } from "../lib/card-levels.js";
+import CardLevelIcon from "./CardLevelIcon.jsx";
 
 // Icon của bảng chọn hình: vẽ ĐÚNG hình mà nút đó tạo ra, không dùng chữ hay
 // emoji — theo currentColor nên tự đúng ở nền sáng và nền tối.
@@ -13,10 +17,120 @@ const SHAPE_ICON = {
   diamond: <path d="M 10 3 L 17 10 L 10 17 L 3 10 Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
 };
 
-export default function ToolOptions({ tool, prefs, onPrefs }) {
+// Nhãn của từng bậc thẻ. Cố ý KHÔNG gom vào lib/card-levels.js: macro `t` cần
+// binding từ useLingui() ngay trong component, còn lib là code thuần không React.
+// Menu chuột phải giữ một bản riêng của bảng này, cùng lý do.
+function levelLabels(t) {
+  return {
+    1: t`Bậc 1 — thẻ gốc`,
+    2: t`Bậc 2 — thẻ chính`,
+    3: t`Bậc 3 — thẻ thường`,
+    4: t`Bậc 4 — thẻ phụ`,
+    5: t`Bậc 5 — ghi chú`
+  };
+}
+
+export default function ToolOptions({ tool, prefs, onPrefs, level, onLevel }) {
   const { t } = useLingui();
-  // Cục gôm không có tuỳ chọn nào, và mode Chuột thì IdeaMap không render
-  // component này — nên chỉ còn hai trường hợp phải vẽ.
+
+  // `tool` ở đây là "việc đang chọn" chứ không riêng tool vẽ: ở mode Đặt thì nó
+  // là "node" / "group". Khu 4 là một khối duy nhất cho mọi mode — nếu tách
+  // thành hai component thì hai khối .tool-options cùng tồn tại được, và cái
+  // sau sẽ nằm đè lên cái trước ở đúng toạ độ left: 66px.
+  if (tool === "node") {
+    const LEVEL_LABEL = levelLabels(t);
+    return (
+      <div className="tool-options" onMouseDown={(e) => e.stopPropagation()}>
+        {CARD_LEVELS.map((lv) => (
+          <button
+            key={lv}
+            type="button"
+            className={"tool-btn level-pick" + (level === lv ? " on" : "")}
+            title={LEVEL_LABEL[lv]}
+            onClick={() => onLevel(lv)}
+          ><CardLevelIcon level={lv} /></button>
+        ))}
+      </div>
+    );
+  }
+
+  // Text: ba cỡ chữ + bảy màu bút. KHÔNG có độ dày nét (chữ không có nét dày
+  // mảnh) và không có bảng sáu hình. Trả sớm, trước nhánh bút/hình khối bên
+  // dưới, để khỏi phải rắc `tool === "text"` vào từng khối một.
+  if (tool === "text") {
+    const SIZE_LABEL = { 14: t`Chữ nhỏ`, 20: t`Chữ vừa`, 30: t`Chữ lớn` };
+    return (
+      <div className="tool-options" onMouseDown={(e) => e.stopPropagation()}>
+        {/* Ba nút cỡ chữ xếp MỘT CỘT, không dùng .tool-grid: lưới đó 2 cột, ba
+            nút sẽ thành hàng 2 + hàng 1 lệch hẳn sang trái. Đây cũng là lý do
+            ba nút độ dày nét của bút không nằm trong lưới. */}
+        {TEXT_SIZES.map((size) => (
+          <button
+            key={size}
+            type="button"
+            className={"tool-btn text-size" + (prefs.size === size ? " on" : "")}
+            title={SIZE_LABEL[size]}
+            onClick={() => onPrefs({ ...prefs, size })}
+          >
+            {/* Cỡ chữ trên nút tỉ lệ với cỡ thật, nhưng thu nhỏ lại cho vừa ô
+                34px — nút phải đọc ra được "cái nào to hơn cái nào". */}
+            <span style={{ fontSize: Math.round(size * 0.55), lineHeight: 1 }}>A</span>
+          </button>
+        ))}
+        <div className="tool-sep" />
+        <div className="tool-grid">
+          {PEN_COLORS.map((token) => (
+            <button
+              key={token}
+              type="button"
+              className={"pen-swatch" + (prefs.color === token ? " on" : "")}
+              style={{ background: penVar(token) }}
+              title={t`Màu chữ`}
+              onClick={() => onPrefs({ ...prefs, color: token })}
+            />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // Laser: bảy màu + ba độ đậm. Dùng lại đúng bảng màu của bút (người dùng đã
+  // quen nó) nhưng độ đậm là bảng RIÊNG — đơn vị khác hẳn: pixel màn hình chứ
+  // không phải đơn vị canvas, vì vệt laser không được dày lên khi phóng to.
+  // KHÔNG có bảng hình và không có chế độ tô: laser không tạo ra hình nào.
+  if (tool === "laser") {
+    return (
+      <div className="tool-options" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="tool-grid">
+          {PEN_COLORS.map((token) => (
+            <button
+              key={token}
+              type="button"
+              className={"pen-swatch" + (prefs.color === token ? " on" : "")}
+              style={{ background: penVar(token) }}
+              title={t`Màu laser`}
+              onClick={() => onPrefs({ ...prefs, color: token })}
+            />
+          ))}
+        </div>
+        <div className="tool-sep" />
+        {LASER_WIDTHS.map((w) => (
+          <button
+            key={w}
+            type="button"
+            className={"tool-btn pen-width" + (prefs.w === w ? " on" : "")}
+            title={t`Độ đậm vệt`}
+            onClick={() => onPrefs({ ...prefs, w })}
+          >
+            <span className="bar" style={{ height: w }} />
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  // Cục gôm và nút vẽ khung không có tuỳ chọn nào, và mode Chuột thì IdeaMap
+  // không render component này — nên chỉ còn hai trường hợp phải vẽ.
   if (tool !== "pen" && tool !== "shape") return null;
   const isShape = tool === "shape";
   const canFill = isShape && SHAPE_CLOSED.has(prefs.kind);

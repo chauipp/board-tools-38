@@ -1,6 +1,7 @@
 import { memo, useEffect, useState } from "react";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { colorVar, contrastInk } from "../lib/badges.js";
+import { cardLevel } from "../lib/card-levels.js";
 import { parseDesc } from "../lib/mdlite.js";
 
 // Phân tích markdown rút gọn của mô tả là việc thuần tuý theo `text`; bọc memo
@@ -66,9 +67,19 @@ function IdeaCard({
   if (dropTarget) classNames.push("drop-target");
   if (selected) classNames.push("selected");
   if (flash) classNames.push("flash");
+  // Màu thẻ tô NỀN chứ không còn là vạch viền trái. Giá trị thật do CSS trộn ra
+  // từ --tint (xem .idea-card.tinted), nên một token màu tự cho ra nền đúng ở
+  // cả hai theme.
+  if (node.color) classNames.push("tinted");
+  const tintStyle = node.color ? { "--tint": colorVar(node.color) } : null;
   if (node.shape === "ellipse") classNames.push("shape-ellipse");
   if (node.dashed) classNames.push("border-dashed");
-  if (node.isRoot) classNames.push("is-root");
+  // Bậc 5 mặc định viền đứt, nên chọn "viền liền" ở menu chuột phải phải có một
+  // class riêng để đè lại — `dashed: false` mà không có class thì không có gì
+  // thắng được `.idea-card.lv-5 { border-style: dashed }`.
+  else if (node.dashed === false) classNames.push("border-solid");
+  const level = cardLevel(node);
+  classNames.push(`lv-${level}`);
 
   function handleEditKeyDown(e) {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
@@ -91,8 +102,9 @@ function IdeaCard({
       <div
         className={classNames.join(" ")}
         data-id={node.id}
+        data-wob={node.id % 4}
         ref={setEl}
-        style={{ left: node.x, top: node.y, ...(node.w ? { width: node.w } : {}) }}
+        style={{ left: node.x, top: node.y, ...(node.w ? { width: node.w } : {}), ...tintStyle }}
         onMouseDown={(e) => e.stopPropagation()}
       >
         <div className="edit-form">
@@ -123,11 +135,15 @@ function IdeaCard({
     <div
       className={classNames.join(" ")}
       data-id={node.id}
+      // Bốn kiểu viền méo của skin vẽ tay, chọn theo id chứ không theo chỉ số
+      // trong mảng: chỉ số đổi khi xoá một thẻ khác, và thẻ này sẽ đột nhiên méo
+      // sang kiểu khác dù chẳng ai đụng vào nó.
+      data-wob={node.id % 4}
       ref={setEl}
       style={{
         left: node.x, top: node.y,
         ...(node.w ? { width: node.w } : {}),
-        ...(node.color ? { borderLeftColor: colorVar(node.color), borderLeftWidth: 4 } : {})
+        ...tintStyle
       }}
       onMouseDown={(e) => h.mouseDown(e, node.id)}
       onClick={() => h.click(node.id)}
@@ -138,7 +154,7 @@ function IdeaCard({
       {/* Nút nằm cùng hàng với tiêu đề, không absolute: absolute thì tiêu đề dài
           chạy xuống dưới ngôi sao và bị đè. Tiêu đề co lại, nút giữ nguyên. */}
       <div className="card-top">
-        {node.isRoot && <span className="root-badge" title={t`Thẻ gốc`}>👑</span>}
+        {level === 1 && <span className="root-badge" title={t`Thẻ gốc`}>👑</span>}
         {node.locked && <span className="lock-badge">🔒</span>}
         <div className="title">{node.title}</div>
         <div className="card-actions">
