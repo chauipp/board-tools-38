@@ -22,7 +22,7 @@ Phạm vi thay đổi cần test:
 Khởi động nếu chưa có server:
 
 ```bash
-cd "board-tools/server"
+cd "server"
 PORT=3345 PUBLIC_MODE=true npm run dev
 
 cd "../client"

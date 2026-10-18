@@ -1,5 +1,5 @@
 // Chạy một lần, thủ công, sau khi Task 1-3 đã deploy:
-//   cd board-tools/server && node scripts/migrate-to-boards.mjs
+//   cd server && node scripts/migrate-to-boards.mjs
 // Chuyển IdeaBoard singleton cũ (collection "ideaboards") thành Board đầu
 // tiên, owner = chaupt2823@gmail.com. Idempotent: nếu đã có Board nào rồi
 // thì dừng ngay, không tạo trùng.

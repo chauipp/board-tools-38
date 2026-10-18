@@ -334,11 +334,11 @@ const MAX_LIVE_LASER_NUMBERS = 120;
 const MIN_LIVE_LASER_FADE = 100;
 const MAX_LIVE_LASER_FADE = 10000;
 
-// Bản sao TAY của SHAPE_KINDS trong board-tools/client/src/lib/shape.js, cộng
+// Bản sao TAY của SHAPE_KINDS trong client/src/lib/shape.js, cộng
 // "pen". Server không import được lib của client. Thêm một kind mới thì phải
 // sửa cả hai chỗ — client sẽ vẽ được nhưng server sẽ chặn gói nếu quên.
 const LIVE_INK_KINDS = new Set(["pen", "rect", "ellipse", "line", "arrow", "triangle", "diamond", "quad", "text"]);
-// Bản sao TAY của SHAPE_CLOSED trong board-tools/client/src/lib/shape.js — cũng
+// Bản sao TAY của SHAPE_CLOSED trong client/src/lib/shape.js — cũng
 // vì server không import được lib client, cũng phải sửa hai chỗ nếu đổi.
 // Chỉ bốn hình ĐÓNG mới có vùng trong để tô. Client không bao giờ gắn `fill`
 // cho line/arrow, nên nếu server chấp thì một gói {kind:"arrow", fill:true} làm
@@ -349,7 +349,7 @@ const LIVE_INK_BOX_NUMBERS = 4;
 // Hình có dạng ĐỈNH THẬT thì pts dài hơn 4 số. Hộp bao chỉ tả được hình "chuẩn"
 // (tam giác cân, chữ nhật thẳng trục), mà hình nhận ra từ nét vẽ tay — hoặc hình
 // vừa bị kéo tay cầm đỉnh — thì đủ loại: tam giác vuông/tù/bè, hình bình hành,
-// hình thang. Xem ghi chú đầu board-tools/client/src/lib/shape.js.
+// hình thang. Xem ghi chú đầu client/src/lib/shape.js.
 //
 // Đây là bản sao TAY của VERTEX_NUMBERS ở đó, cùng lý do với LIVE_INK_KINDS:
 // server không import được lib của client. Thêm một hình N đỉnh mới thì phải sửa

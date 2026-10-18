@@ -6,7 +6,7 @@ Con trỏ ở một panel/dock nổi trên canvas nhưng lăn chuột lại làm
 
 ## Cách làm đúng
 
-Trong `board-tools/client/src/pages/IdeaMap.jsx`, thêm selector của panel vào guard đầu `wheelHandler` trước `e.preventDefault()`:
+Trong `client/src/pages/IdeaMap.jsx`, thêm selector của panel vào guard đầu `wheelHandler` trước `e.preventDefault()`:
 
 ```js
 if (e.target.closest(".outline-panel, .io-drawer, .tree-panel, .edit-dock")) return;

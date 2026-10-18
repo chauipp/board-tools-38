@@ -1,4 +1,4 @@
-// board-tools/client/src/lib/stroke.test.js
+// client/src/lib/stroke.test.js
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { simplifyStroke, strokePath, polylineHitBy, pointInPolygon } from "./stroke.js";

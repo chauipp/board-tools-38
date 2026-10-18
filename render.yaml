@@ -1,6 +1,6 @@
 # Render Blueprint — must live at the repo root so Render auto-detects it.
-# The app lives in board-tools/, so rootDir points Render there; the build/start
-# commands are then relative to board-tools/.
+# The app lives at the repository root; build/start commands target the client
+# and server workspaces directly.
 #
 # Deploy: Render dashboard -> New -> Blueprint -> pick this repo -> set the
 # MONGODB_URI secret (Atlas connection string) -> Apply. Render builds the
@@ -14,7 +14,7 @@ services:
     name: board-tools
     runtime: node
     plan: free
-    rootDir: board-tools
+    rootDir: .
     buildCommand: cd client && npm install && npm run build && cd ../server && npm install
     startCommand: cd server && npm start
     envVars:

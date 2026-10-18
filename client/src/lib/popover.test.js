@@ -1,4 +1,4 @@
-// board-tools/client/src/lib/popover.test.js
+// client/src/lib/popover.test.js
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { clampPopover, POPOVER_MARGIN as M } from "./popover.js";

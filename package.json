@@ -1,0 +1,12 @@
+{
+  "name": "board-tools",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "test:client": "npm --prefix client test",
+    "build:client": "npm --prefix client run build",
+    "test:smoke": "npm --prefix client run test:smoke",
+    "test:server": "npm --prefix server test",
+    "test": "npm run test:client && npm run test:server"
+  }
+}

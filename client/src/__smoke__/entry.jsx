@@ -641,7 +641,7 @@ export async function run(log) {
   // assertion `includes("2300")` ngay trên — nếu bị NỐI thì shapePath đọc 4 số
   // ĐẦU là hộp CŨ [2000,100,2100,200], chuỗi d sẽ không có "2300". Việc chốt độ
   // dài `pts` phải đúng 4 số (không phình lên 6/8) là việc của unit test
-  // `mergeInkPacket` trong board-tools/client/src/lib/ink-live.test.js, không
+  // `mergeInkPacket` trong client/src/lib/ink-live.test.js, không
   // phải của smoke test này.
 
   // Cửa sổ mất focus GIỮA nét rồi quay lại: không được sinh nét rác.
