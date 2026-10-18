@@ -8,9 +8,18 @@ import { PEN_COLORS } from "./pen.js";
 // Vì không ghi dữ liệu nên người CHỈ XEM cũng được dùng — khác hẳn bút, cục
 // gôm, hình khối và text (xem chốt viewer ở server/index.js).
 
-// Một điểm sống 900ms rồi rụng khỏi ĐUÔI vệt. Ngắn hơn thì vệt cụt ngủn, không
-// kịp nhìn theo; dài hơn thì lia con trỏ một vòng là màn hình đầy vạch.
-export const LASER_FADE_MS = 900;
+// Một điểm sống bao lâu rồi rụng khỏi ĐUÔI vệt. 900ms là mặc định: ngắn hơn thì
+// vệt cụt ngủn, không kịp nhìn theo; dài hơn thì lia con trỏ một vòng là màn hình
+// đầy vạch. Nhưng "vừa" là bao nhiêu thì tuỳ việc — chỉ vào một chữ thì vệt ngắn
+// cho gọn, còn khoanh một vùng lớn rồi nói về nó thì vệt phải sống đủ lâu để cả
+// đường khoanh cùng hiện ra một lúc. Nên đây là con số người dùng đổi được ở khu
+// 4 (thanh trượt), trong biên độ dưới đây.
+export const LASER_FADE_DEFAULT = 900;
+export const LASER_FADE_MIN = 300;
+export const LASER_FADE_MAX = 4000;
+// Bước của thanh trượt. Cũng là bước làm tròn của sanitizeLaserFade, nên mọi giá
+// trị đi trong hệ đều là số tròn trăm — kể cả giá trị đến từ mạng.
+export const LASER_FADE_STEP = 100;
 
 // Trần số điểm. Ở nhịp chuột 120Hz và LASER_MIN_DIST bên dưới thì một vệt thật
 // hiếm khi quá 60 điểm; trần này là lưới an toàn cho trường hợp lia rất nhanh
@@ -33,9 +42,18 @@ export const LASER_WIDTHS = [5, 8, 12];
 // Màu dùng chung hệ token với bút (PEN_COLORS) thay vì bịa một bảng riêng: nó
 // đã có sẵn bảy màu hợp cả nền sáng lẫn nền tối, và người dùng đã quen bảng đó
 // ở khu 4 của bút.
-export const LASER_DEFAULT = { color: "pen-red", w: 8 };
+export const LASER_DEFAULT = { color: "pen-red", w: 8, fade: LASER_FADE_DEFAULT };
 
 const KEY = "ideamap.laser";
+
+// Thời gian tan: kẹp vào biên độ rồi làm tròn về bước của thanh trượt. Khác màu
+// và độ đậm ở chỗ nó là một DẢI liên tục, không phải một bảng giá trị — nên
+// không lọc được bằng `includes` như hai thứ kia.
+export function sanitizeLaserFade(v) {
+  if (!Number.isFinite(v)) return LASER_FADE_DEFAULT;
+  const step = Math.round(v / LASER_FADE_STEP) * LASER_FADE_STEP;
+  return Math.min(LASER_FADE_MAX, Math.max(LASER_FADE_MIN, step));
+}
 
 // Khoá localStorage RIÊNG, không nhét vào object của pen.js: hai thứ có đơn vị
 // độ dày khác nhau (pixel màn hình vs đơn vị canvas), nên dùng chung một `w` là
@@ -51,13 +69,14 @@ export function loadLaserPrefs(storage) {
   // Lọc từng key: một giá trị hỏng không được làm mất luôn giá trị còn lại.
   return {
     color: PEN_COLORS.includes(saved.color) ? saved.color : LASER_DEFAULT.color,
-    w: LASER_WIDTHS.includes(saved.w) ? saved.w : LASER_DEFAULT.w
+    w: LASER_WIDTHS.includes(saved.w) ? saved.w : LASER_DEFAULT.w,
+    fade: sanitizeLaserFade(saved.fade)
   };
 }
 
 export function saveLaserPrefs(storage, prefs) {
   try {
-    storage.setItem(KEY, JSON.stringify({ color: prefs.color, w: prefs.w }));
+    storage.setItem(KEY, JSON.stringify({ color: prefs.color, w: prefs.w, fade: prefs.fade }));
   } catch {
     // Hết quota hoặc chế độ riêng tư — mất lựa chọn laser, không đáng làm sập app.
   }
@@ -67,10 +86,14 @@ export function saveLaserPrefs(storage, prefs) {
 // đây mới biết được đâu là token màu THẬT và đâu là bề rộng có trong bảng.
 // Không lọc thì một client lỗi gửi w = 63 là vệt của họ phủ ngang màn hình mọi
 // người, và một token màu lạ làm vệt mất màu hẳn (var(--gì-đó) không tồn tại).
-export function sanitizeLaserStyle(color, w) {
+export function sanitizeLaserStyle(color, w, fade) {
   return {
     color: PEN_COLORS.includes(color) ? color : LASER_DEFAULT.color,
-    w: LASER_WIDTHS.includes(w) ? w : LASER_DEFAULT.w
+    w: LASER_WIDTHS.includes(w) ? w : LASER_DEFAULT.w,
+    // Thời gian tan đi theo VỆT, không phải theo bảng: nó là lựa chọn của người
+    // đang chỉ, nên vệt của họ tan đúng nhịp họ đặt trên màn hình mọi người. Gói
+    // cũ (client chưa cập nhật) không mang field này → về mặc định.
+    fade: sanitizeLaserFade(fade)
   };
 }
 
@@ -90,8 +113,11 @@ export function pushLaserPoint(pts, x, y, now) {
 // Trả về CHÍNH mảng cũ khi không có gì rụng: vòng lặp rAF gọi hàm này 60
 // lần/giây cho từng vệt, và LaserLayer dựa vào phép so tham chiếu để biết có
 // cần vẽ lại hay không.
-export function trimLaserTrail(pts, now) {
-  const cut = now - LASER_FADE_MS;
+//
+// `fade` là của TỪNG VỆT (xem sanitizeLaserStyle), nên hai người đặt hai thời
+// gian khác nhau thì hai vệt tan theo hai nhịp khác nhau trên cùng màn hình.
+export function trimLaserTrail(pts, now, fade = LASER_FADE_DEFAULT) {
+  const cut = now - sanitizeLaserFade(fade);
   let i = 0;
   while (i < pts.length && pts[i].t <= cut) i++;
   return i === 0 ? pts : pts.slice(i);

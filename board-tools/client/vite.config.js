@@ -10,17 +10,17 @@ export default defineConfig({
     lingui()
   ],
   server: {
-    port: 5173,
+    port: 7155,
     proxy: {
-      "/api": "http://localhost:3001",
-      "/socket.io": { target: "http://localhost:3001", ws: true }
+      "/api": "http://localhost:3345",
+      "/socket.io": { target: "http://localhost:3345", ws: true }
     }
   },
   preview: {
     port: 4173,
     proxy: {
-      "/api": "http://localhost:3001",
-      "/socket.io": { target: "http://localhost:3001", ws: true }
+      "/api": "http://localhost:3345",
+      "/socket.io": { target: "http://localhost:3345", ws: true }
     }
   }
 });

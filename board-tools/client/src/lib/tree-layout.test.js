@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildTree, edgeKey, treeLayout, carryGroupMembers } from "./tree-layout.js";
+import { buildTree, edgeKey, treeLayout, carryGroupMembers, splitBranches } from "./tree-layout.js";
 
 test("edgeKey ghép kind và id thành khoá chuỗi", () => {
   assert.equal(edgeKey("node", 3), "node:3");
@@ -300,6 +300,143 @@ test("carryGroupMembers: thẻ ngoài khung không bị ảnh hưởng", () => {
   const pos = new Map([[edgeKey("group", 5), { x: 100, y: 100 }]]);
   const extra = carryGroupMembers(pos, [group], [node], CENTER_SIZE);
   assert.equal(extra.size, 0);
+});
+
+test("splitBranches: một hướng thì giữ nguyên cả hàng con", () => {
+  assert.deepEqual(splitBranches(["a", "b", "c"], () => 1, 1), [["a", "b", "c"]]);
+});
+
+test("splitBranches: nhánh nặng và nhánh nhẹ chia về hai phía cho cân", () => {
+  // Trọng số 10, 1, 1: nhánh 10 một mình một phía, hai nhánh nhỏ gom phía kia.
+  const w = { a: 10, b: 1, c: 1 };
+  assert.deepEqual(splitBranches(["a", "b", "c"], (k) => w[k], 2), [["a"], ["b", "c"]]);
+});
+
+test("splitBranches: trong mỗi phía vẫn giữ đúng thứ tự nối dây", () => {
+  const w = { a: 1, b: 5, c: 1, d: 5 };
+  // b và d (nặng 5) chia mỗi phía một cái, a và c (nhẹ) lấp vào; trong từng phía
+  // thứ tự chạy lại theo chỉ số ban đầu chứ không theo thứ tự được chia.
+  const [one, two] = splitBranches(["a", "b", "c", "d"], (k) => w[k], 2);
+  assert.deepEqual(one, ["a", "b"]);
+  assert.deepEqual(two, ["c", "d"]);
+});
+
+test("splitBranches: bốn hướng nhưng chỉ hai nhánh thì hai phía rỗng", () => {
+  assert.deepEqual(splitBranches(["a", "b"], () => 1, 4), [["a"], ["b"], [], []]);
+});
+
+test("treeLayout: hai hướng lên+xuống tách cây ra hai phía của gốc", () => {
+  const pos = treeLayout({
+    edges: [E(1, 2), E(1, 3)], rootKey: "node:1",
+    rootPos: { x: 0, y: 0 }, sizeOf: SIZE, directions: ["down", "up"]
+  });
+  assert.deepEqual(pos.get("node:1"), { x: 0, y: 0 });
+  // Mỗi phía một con, nên con nằm thẳng trên/dưới gốc chứ không lệch sang bên.
+  assert.deepEqual(pos.get("node:2"), { x: 0, y: 110 });
+  assert.deepEqual(pos.get("node:3"), { x: 0, y: -110 });
+});
+
+test("treeLayout: hai hướng thì con cháu đi theo đúng phía của nhánh mình", () => {
+  // 1 → (2, 3); 2 → 4; 3 → 5. Cháu phải cùng phía với cha nó.
+  const pos = treeLayout({
+    edges: [E(1, 2), E(1, 3), E(2, 4), E(3, 5)], rootKey: "node:1",
+    rootPos: { x: 0, y: 0 }, sizeOf: SIZE, directions: ["down", "up"]
+  });
+  assert.equal(Math.sign(pos.get("node:4").y), Math.sign(pos.get("node:2").y));
+  assert.equal(Math.sign(pos.get("node:5").y), Math.sign(pos.get("node:3").y));
+  assert.equal(Math.abs(pos.get("node:4").y), 220);
+  assert.equal(Math.abs(pos.get("node:5").y), 220);
+});
+
+test("treeLayout: hai hướng cân theo bề rộng nhánh, không cắt theo số lượng", () => {
+  // 1 → (2, 3, 4); nhánh 2 có ba con nên nặng hơn hẳn → đi một mình một phía.
+  const pos = treeLayout({
+    edges: [E(1, 2), E(1, 3), E(1, 4), E(2, 5), E(2, 6), E(2, 7)], rootKey: "node:1",
+    rootPos: { x: 0, y: 0 }, sizeOf: SIZE, directions: ["down", "up"]
+  });
+  const side = (k) => Math.sign(pos.get(k).y);
+  assert.notEqual(side("node:2"), side("node:3"));
+  assert.equal(side("node:3"), side("node:4"));
+});
+
+test("treeLayout: trộn trục dọc và ngang cũng chạy, gốc vẫn đứng yên", () => {
+  const pos = treeLayout({
+    edges: [E(1, 2), E(1, 3)], rootKey: "node:1",
+    rootPos: { x: 40, y: 60 }, sizeOf: SIZE, directions: ["up", "right"]
+  });
+  assert.deepEqual(pos.get("node:1"), { x: 40, y: 60 });
+  assert.equal(pos.size, 3);
+  const away = Array.from(pos.entries()).filter(([k]) => k !== "node:1");
+  assert.equal(away.some(([, p]) => p.y < 60), true);   // một nhánh đi lên
+  assert.equal(away.some(([, p]) => p.x > 40), true);   // nhánh kia sang phải
+});
+
+test("treeLayout: bốn hướng cùng lúc thì mỗi nhánh một phía", () => {
+  const pos = treeLayout({
+    edges: [E(1, 2), E(1, 3), E(1, 4), E(1, 5)], rootKey: "node:1",
+    rootPos: { x: 0, y: 0 }, sizeOf: SIZE, directions: ["down", "up", "right", "left"]
+  });
+  assert.equal(pos.size, 5);
+  const spots = ["node:2", "node:3", "node:4", "node:5"].map((k) => pos.get(k));
+  assert.equal(spots.filter((p) => p.y > 0).length, 1);
+  assert.equal(spots.filter((p) => p.y < 0).length, 1);
+  assert.equal(spots.filter((p) => p.x > 0).length, 1);
+  assert.equal(spots.filter((p) => p.x < 0).length, 1);
+});
+
+test("treeLayout: gap.depth quyết định khoảng cách giữa các cấp", () => {
+  const pos = treeLayout({
+    edges: [E(1, 2), E(2, 3)], rootKey: "node:1",
+    rootPos: { x: 0, y: 0 }, sizeOf: SIZE, direction: "down", gap: { depth: 200 }
+  });
+  assert.equal(pos.get("node:2").y, 240);   // 40 (cao thẻ) + 200
+  assert.equal(pos.get("node:3").y, 480);
+});
+
+test("treeLayout: gap.leaf chỉ nới hai lá kề nhau, không đụng khoảng cách nhánh", () => {
+  // 1 → (2, 3); 2 → (4, 5). Thẻ 4,5 là lá kề nhau; 2 và 3 không phải cả hai đều lá.
+  const args = {
+    edges: [E(1, 2), E(1, 3), E(2, 4), E(2, 5)], rootKey: "node:1",
+    rootPos: { x: 0, y: 0 }, sizeOf: SIZE, direction: "down"
+  };
+  const tight = treeLayout({ ...args, gap: { breadth: 40, leaf: 10 } });
+  const loose = treeLayout({ ...args, gap: { breadth: 40, leaf: 100 } });
+  assert.equal(tight.get("node:5").x - tight.get("node:4").x, 110);   // 100 + 10
+  assert.equal(loose.get("node:5").x - loose.get("node:4").x, 200);   // 100 + 100
+});
+
+test("treeLayout: gap.leaf không truyền thì bằng gap.breadth", () => {
+  const args = {
+    edges: [E(1, 2), E(1, 3)], rootKey: "node:1",
+    rootPos: { x: 0, y: 0 }, sizeOf: SIZE, direction: "down"
+  };
+  const a = treeLayout({ ...args, gap: { breadth: 50 } });
+  const b = treeLayout({ ...args, gap: { breadth: 50, leaf: 50 } });
+  assert.deepEqual(a.get("node:3"), b.get("node:3"));
+});
+
+test("treeLayout: nhiều hướng, thẻ vẫn không chồng nhau", () => {
+  const edges = [
+    E(1, 2), E(1, 3), E(1, 4), E(1, 5),
+    E(2, 6), E(2, 7), E(3, 8), E(4, 9), E(4, 10), E(6, 11)
+  ];
+  [["down", "up"], ["right", "left"], ["down", "up", "right", "left"]].forEach((directions) => {
+    const pos = treeLayout({
+      edges, rootKey: "node:1", rootPos: { x: 0, y: 0 }, sizeOf: SIZE, directions,
+      gap: { depth: 80, breadth: 40, leaf: 20 }
+    });
+    assert.equal(pos.size, 11, directions.join("+"));
+    const rects = Array.from(pos.entries()).map(([key, p]) => ({ key, ...p, ...SIZE() }));
+    for (let i = 0; i < rects.length; i++) {
+      for (let j = i + 1; j < rects.length; j++) {
+        const a = rects[i], b = rects[j];
+        const overlap =
+          a.x < b.x + b.w && b.x < a.x + a.w &&
+          a.y < b.y + b.h && b.y < a.y + a.h;
+        assert.equal(overlap, false, `${directions.join("+")}: ${a.key} chồng ${b.key}`);
+      }
+    }
+  });
 });
 
 test("treeLayout: cây nhiều tầng nhiều nhánh không có hai thẻ nào chồng nhau", () => {

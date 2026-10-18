@@ -43,7 +43,12 @@ export function buildTree(edges, rootKey) {
 // Xếp cây trên hai trục trừu tượng rồi mới đổ ra x/y: "depth" là tầng (số bước
 // từ gốc), "breadth" là chỗ đứng trong hàng anh em. Nhờ vậy một cách tính dùng
 // được cho cả bốn hướng, chỉ khác nhau ở bước ánh xạ cuối.
+export const TREE_DIRECTIONS = ["down", "up", "right", "left"];
 const DEFAULT_GAP = { depth: 70, breadth: 28 };
+
+function isVertical(direction) {
+  return direction === "down" || direction === "up";
+}
 
 // Hướng dọc thì bề ngang thẻ nằm trên trục breadth, chiều cao nằm trên trục
 // depth; hướng ngang thì đổi vai.
@@ -53,10 +58,72 @@ function axisSize(size, vertical) {
     : { breadth: size.h, depth: size.w };
 }
 
-export function treeLayout({ edges, rootKey, rootPos, sizeOf, direction, gap }) {
-  const g = { ...DEFAULT_GAP, ...(gap || {}) };
-  const vertical = direction === "down" || direction === "up";
-  const { order, children } = buildTree(edges, rootKey);
+// Khoảng cách giữa hai anh em kề nhau. Hai LÁ kề nhau dùng trị riêng: hàng cuối
+// cùng của cây thường là chỗ muốn bó sát lại (hoặc nới ra) mà không kéo theo
+// khoảng cách giữa các nhánh lớn phía trên.
+function siblingGap(a, b, children, g) {
+  const leaf = (k) => (children.get(k) || []).length === 0;
+  return leaf(a) && leaf(b) ? g.leaf : g.breadth;
+}
+
+// Bề rộng một hàng anh em = tổng span của từng đứa + các khe giữa chúng.
+function rowSpan(kids, span, children, g) {
+  let total = 0;
+  kids.forEach((k, i) => {
+    if (i > 0) total += siblingGap(kids[i - 1], k, children, g);
+    total += span.get(k);
+  });
+  return total;
+}
+
+// Bề rộng nhánh tính từ dưới lên: lá chiếm đúng cỡ của nó, thẻ có con chiếm
+// phần lớn hơn giữa (cỡ chính nó) và (bề rộng hàng con) — nên nhánh ít con
+// không chiếm chỗ thừa. `order` là thứ tự BFS nên duyệt ngược là từ lá lên.
+function spansOf(order, children, breadthSize, g) {
+  const span = new Map();
+  for (let i = order.length - 1; i >= 0; i--) {
+    const key = order[i];
+    const kids = children.get(key) || [];
+    const own = breadthSize(key);
+    span.set(key, kids.length === 0 ? own : Math.max(own, rowSpan(kids, span, children, g)));
+  }
+  return span;
+}
+
+// Cây con chỉ gồm gốc + đúng những nhánh được giao cho một hướng. Bản đồ children
+// giữ nguyên cho các tầng dưới, chỉ hàng con của gốc bị thay.
+function branchOf(rootKey, children, kids) {
+  const sub = new Map(children);
+  sub.set(rootKey, kids);
+  const order = [rootKey];
+  for (let i = 0; i < order.length; i++) {
+    (sub.get(order[i]) || []).forEach((k) => order.push(k));
+  }
+  return { order, children: sub };
+}
+
+// Chia các nhánh con của gốc về từng hướng sao cho hai (ba, bốn) phía nặng ngang
+// nhau: nhánh to chia trước, luôn rơi vào phía đang nhẹ nhất. Trong mỗi phía
+// vẫn giữ đúng thứ tự nối dây ban đầu, nên nhìn vẫn đoán được đâu là nhánh nào.
+export function splitBranches(kids, weightOf, count) {
+  if (count <= 1) return [kids.slice()];
+  const picks = Array.from({ length: count }, () => []);
+  const load = new Array(count).fill(0);
+  kids
+    .map((k, i) => i)
+    .sort((a, b) => (weightOf(kids[b]) - weightOf(kids[a])) || (a - b))
+    .forEach((i) => {
+      let at = 0;
+      for (let j = 1; j < count; j++) if (load[j] < load[at]) at = j;
+      picks[at].push(i);
+      load[at] += weightOf(kids[i]);
+    });
+  return picks.map((list) => list.sort((a, b) => a - b).map((i) => kids[i]));
+}
+
+// Toạ độ trên hệ quy chiếu riêng của một hướng (gốc chưa dịch về chỗ thật).
+function layoutBranch({ order, children, sizeOf, rootKey, direction, g }) {
+  const vertical = isVertical(direction);
   const size = new Map(order.map((key) => [key, axisSize(sizeOf(key), vertical)]));
 
   // Tầng: mọi thẻ cùng tầng dùng chung một mốc depth, mốc sau = mốc trước +
@@ -76,18 +143,7 @@ export function treeLayout({ edges, rootKey, rootPos, sizeOf, direction, gap }) 
     depthStart[d] = depthStart[d - 1] + thickest[d - 1] + g.depth;
   }
 
-  // Bề rộng nhánh tính từ dưới lên: lá chiếm đúng cỡ của nó, thẻ có con chiếm
-  // phần lớn hơn giữa (cỡ chính nó) và (tổng các nhánh con + gap) — nên nhánh
-  // ít con không chiếm chỗ thừa.
-  const span = new Map();
-  for (let i = order.length - 1; i >= 0; i--) {
-    const key = order[i];
-    const kids = children.get(key) || [];
-    const own = size.get(key).breadth;
-    if (kids.length === 0) { span.set(key, own); continue; }
-    const kidsSpan = kids.reduce((sum, k) => sum + span.get(k), 0) + g.breadth * (kids.length - 1);
-    span.set(key, Math.max(own, kidsSpan));
-  }
+  const span = spansOf(order, children, (key) => size.get(key).breadth, g);
 
   // Rải theo trục breadth từ trên xuống: mỗi thẻ nằm giữa khoảng đã cấp cho
   // nhánh của nó, các con chia nhau khoảng đó theo đúng span của từng đứa.
@@ -98,14 +154,15 @@ export function treeLayout({ edges, rootKey, rootPos, sizeOf, direction, gap }) 
     breadthOf.set(key, start + (mine - own) / 2);
     const kids = children.get(key) || [];
     if (kids.length === 0) return;
-    const kidsSpan = kids.reduce((sum, k) => sum + span.get(k), 0) + g.breadth * (kids.length - 1);
-    let at = start + (mine - kidsSpan) / 2;   // cha to hơn con: con dồn vào giữa
-    kids.forEach((k) => { place(k, at); at += span.get(k) + g.breadth; });
+    let at = start + (mine - rowSpan(kids, span, children, g)) / 2;  // cha to hơn con: con dồn vào giữa
+    kids.forEach((k, i) => {
+      if (i > 0) at += siblingGap(kids[i - 1], k, children, g);
+      place(k, at);
+      at += span.get(k);
+    });
   }
   place(rootKey, 0);
 
-  // Đổ hai trục ra x/y theo hướng, rồi dịch cả cây một lần sao cho gốc rơi đúng
-  // chỗ nó đang đứng — người dùng thấy gốc bất động, cây mọc ra quanh nó.
   const sign = direction === "up" || direction === "left" ? -1 : 1;
   const raw = new Map();
   order.forEach((key) => {
@@ -113,11 +170,45 @@ export function treeLayout({ edges, rootKey, rootPos, sizeOf, direction, gap }) 
     const d = depthStart[depthOf.get(key)] * sign;
     raw.set(key, vertical ? { x: b, y: d } : { x: d, y: b });
   });
-  const rootRaw = raw.get(rootKey);
-  const dx = rootPos.x - rootRaw.x, dy = rootPos.y - rootRaw.y;
-  const positions = new Map();
-  raw.forEach((p, key) => {
-    positions.set(key, { x: Math.round(p.x + dx), y: Math.round(p.y + dy) });
+  return raw;
+}
+
+// `directions` là danh sách hướng (1–4). Nhiều hướng thì các nhánh con của gốc
+// được chia về từng hướng, mỗi phía chạy đúng một lần thuật toán trên, và gốc
+// là điểm neo chung của mọi phía — đó là hình sao/mindmap toả ra hai bên.
+// `direction` (số ít) vẫn nhận được, coi như danh sách một phần tử.
+export function treeLayout({ edges, rootKey, rootPos, sizeOf, direction, directions, gap }) {
+  const g = { ...DEFAULT_GAP, ...(gap || {}) };
+  if (g.leaf == null) g.leaf = g.breadth;
+  const dirs = (directions && directions.length ? directions : [direction || "down"])
+    .filter((d) => TREE_DIRECTIONS.includes(d));
+  const dirList = dirs.length ? dirs : ["down"];
+
+  const { order, children } = buildTree(edges, rootKey);
+  const positions = new Map([[rootKey, { x: Math.round(rootPos.x), y: Math.round(rootPos.y) }]]);
+  const rootKids = children.get(rootKey) || [];
+  if (rootKids.length === 0) return positions;
+
+  // Cân theo bề rộng thật của nhánh, đo trên trục breadth của hướng ĐẦU TIÊN —
+  // hai hướng đối nhau (lên/xuống, trái/phải) dùng chung trục nên đo thế là
+  // chính xác; trường hợp trộn trục (lên + phải) thì đây là ước lượng.
+  const weightVertical = isVertical(dirList[0]);
+  const weight = spansOf(order, children, (key) => axisSize(sizeOf(key), weightVertical).breadth, g);
+  const buckets = splitBranches(rootKids, (key) => weight.get(key), dirList.length);
+
+  dirList.forEach((dir, i) => {
+    const kids = buckets[i];
+    if (!kids || kids.length === 0) return;
+    const branch = branchOf(rootKey, children, kids);
+    const raw = layoutBranch({ ...branch, sizeOf, rootKey, direction: dir, g });
+    // Dịch cả phía này một lần sao cho gốc rơi đúng chỗ nó đang đứng — người
+    // dùng thấy gốc bất động, cây mọc ra quanh nó.
+    const rootRaw = raw.get(rootKey);
+    const dx = rootPos.x - rootRaw.x, dy = rootPos.y - rootRaw.y;
+    raw.forEach((p, key) => {
+      if (key === rootKey) return;
+      positions.set(key, { x: Math.round(p.x + dx), y: Math.round(p.y + dy) });
+    });
   });
   return positions;
 }

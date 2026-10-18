@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  LASER_FADE_MS, LASER_MAX_POINTS, LASER_MIN_DIST, LASER_WIDTHS, LASER_DEFAULT,
+  LASER_FADE_DEFAULT, LASER_FADE_MIN, LASER_FADE_MAX, LASER_FADE_STEP,
+  LASER_MAX_POINTS, LASER_MIN_DIST, LASER_WIDTHS, LASER_DEFAULT,
   pushLaserPoint, trimLaserTrail, laserOutline,
-  loadLaserPrefs, saveLaserPrefs, sanitizeLaserStyle
+  loadLaserPrefs, saveLaserPrefs, sanitizeLaserStyle, sanitizeLaserFade
 } from "./laser.js";
 import { PEN_COLORS, PEN_WIDTHS } from "./pen.js";
 
@@ -59,13 +60,13 @@ test("trimLaserTrail: chưa điểm nào hết hạn thì trả về CHÍNH mả
 
 test("trimLaserTrail: điểm quá hạn rụng khỏi đuôi vệt", () => {
   const pts = [{ x: 0, y: 0, t: 1000 }, { x: 5, y: 0, t: 1500 }, { x: 9, y: 0, t: 1900 }];
-  const kept = trimLaserTrail(pts, 1000 + LASER_FADE_MS + 1);
+  const kept = trimLaserTrail(pts, 1000 + LASER_FADE_DEFAULT + 1);
   assert.deepEqual(kept.map((p) => p.t), [1500, 1900]);
 });
 
 test("trimLaserTrail: hết hạn hết thì rỗng — đây là cách vệt tự biến mất", () => {
   const pts = [{ x: 0, y: 0, t: 1000 }, { x: 5, y: 0, t: 1010 }];
-  assert.deepEqual(trimLaserTrail(pts, 1010 + LASER_FADE_MS + 1), []);
+  assert.deepEqual(trimLaserTrail(pts, 1010 + LASER_FADE_DEFAULT + 1), []);
 });
 
 test("laserOutline: dưới 2 điểm thì không có hình", () => {
@@ -123,25 +124,25 @@ test("loadLaserPrefs: JSON hỏng không làm sập, về mặc định", () => 
 
 test("loadLaserPrefs: một giá trị hỏng không kéo theo giá trị còn lại", () => {
   const s = fakeStorage({ "ideamap.laser": JSON.stringify({ color: "pen-blue", w: 999 }) });
-  assert.deepEqual(loadLaserPrefs(s), { color: "pen-blue", w: LASER_DEFAULT.w });
+  assert.deepEqual(loadLaserPrefs(s), { color: "pen-blue", w: LASER_DEFAULT.w, fade: LASER_FADE_DEFAULT });
 });
 
 test("saveLaserPrefs → loadLaserPrefs giữ nguyên lựa chọn", () => {
   const s = fakeStorage();
-  saveLaserPrefs(s, { color: "pen-green", w: LASER_WIDTHS[2] });
-  assert.deepEqual(loadLaserPrefs(s), { color: "pen-green", w: LASER_WIDTHS[2] });
+  saveLaserPrefs(s, { color: "pen-green", w: LASER_WIDTHS[2], fade: 2500 });
+  assert.deepEqual(loadLaserPrefs(s), { color: "pen-green", w: LASER_WIDTHS[2], fade: 2500 });
 });
 
 test("laser và bút lưu ở HAI khoá khác nhau", () => {
   const s = fakeStorage();
-  saveLaserPrefs(s, { color: "pen-blue", w: LASER_WIDTHS[0] });
+  saveLaserPrefs(s, { color: "pen-blue", w: LASER_WIDTHS[0], fade: LASER_FADE_DEFAULT });
   // Nếu hai thứ dùng chung khoá thì đổi độ đậm laser sẽ đổi luôn độ dày nét bút.
   assert.deepEqual(Object.keys(s.dump()), ["ideamap.laser"]);
 });
 
 test("sanitizeLaserStyle: gói từ mạng mang token màu lạ → về mặc định", () => {
   // Không lọc thì vệt thành var(--gì-đó) không tồn tại, tức mất màu hẳn.
-  assert.deepEqual(sanitizeLaserStyle("red; }", 8), LASER_DEFAULT);
+  assert.deepEqual(sanitizeLaserStyle("red; }", 8, LASER_FADE_DEFAULT), LASER_DEFAULT);
 });
 
 test("sanitizeLaserStyle: gói từ mạng mang w ngoài bảng → về mặc định", () => {
@@ -152,5 +153,36 @@ test("sanitizeLaserStyle: gói từ mạng mang w ngoài bảng → về mặc �
 });
 
 test("sanitizeLaserStyle: giá trị hợp lệ đi qua nguyên vẹn", () => {
-  assert.deepEqual(sanitizeLaserStyle("pen-purple", LASER_WIDTHS[2]), { color: "pen-purple", w: LASER_WIDTHS[2] });
+  assert.deepEqual(
+    sanitizeLaserStyle("pen-purple", LASER_WIDTHS[2], 1500),
+    { color: "pen-purple", w: LASER_WIDTHS[2], fade: 1500 }
+  );
+});
+
+// ── Thời gian tan: một DẢI liên tục, không phải một bảng giá trị ─────────────
+
+test("sanitizeLaserFade: kẹp vào biên độ", () => {
+  assert.equal(sanitizeLaserFade(10), LASER_FADE_MIN);
+  assert.equal(sanitizeLaserFade(999999), LASER_FADE_MAX);
+});
+
+test("sanitizeLaserFade: làm tròn về bước của thanh trượt", () => {
+  assert.equal(sanitizeLaserFade(1234), 1200);
+  assert.equal(sanitizeLaserFade(1250), 1300);
+  assert.equal(sanitizeLaserFade(LASER_FADE_DEFAULT) % LASER_FADE_STEP, 0);
+});
+
+test("sanitizeLaserFade: số rác / thiếu field → về mặc định", () => {
+  // Client bản cũ không gửi field này; chặn gói thì vệt của họ mất hẳn với cả
+  // phòng, nên phải lùi về mặc định.
+  assert.equal(sanitizeLaserFade(undefined), LASER_FADE_DEFAULT);
+  assert.equal(sanitizeLaserFade(NaN), LASER_FADE_DEFAULT);
+  assert.equal(sanitizeLaserFade("2000"), LASER_FADE_DEFAULT);
+});
+
+test("trimLaserTrail: fade của TỪNG vệt quyết định, không phải một hằng số chung", () => {
+  const pts = [{ x: 0, y: 0, t: 1000 }, { x: 5, y: 0, t: 1000 }];
+  // Cùng một vệt, cùng một mốc `now`: vệt đặt 400ms đã tan, vệt đặt 3000ms chưa.
+  assert.deepEqual(trimLaserTrail(pts, 1500, 400), []);
+  assert.equal(trimLaserTrail(pts, 1500, 3000), pts);
 });

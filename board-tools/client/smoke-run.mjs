@@ -86,19 +86,50 @@ globalThis.__hitAt = (el) => { hitTarget = el; };
 
 globalThis.__board = board;
 globalThis.__puts = [];
+
+// Bản mà "server" đang giữ — chính là thân của lần PUT được nhận gần nhất. Cần
+// nó để dựng được một cú 409 THẬT: bản server trả về lúc va chạm phải là bản
+// nền của client CỘNG thay đổi của người kia, chứ không phải bản client vừa gửi
+// (bản đó đã chứa sẵn thay đổi của client, dùng nó thì bài kiểm tự đúng).
+let lastAccepted = structuredClone(board);
+let pendingConflict = null;
+// __conflictOnce(mutate): cú PUT KẾ TIẾP bị từ chối 409, kèm bản server đã được
+// `mutate` sửa — đúng cảnh "có người lưu chen vào giữa".
+globalThis.__conflictOnce = (mutate) => { pendingConflict = mutate; };
+
 globalThis.fetch = async (url, opts = {}) => {
   const method = opts.method || "GET";
   if (url.includes("/api/auth/me")) return json({ user: { name: "Tôi", email: "toi@example.com" } });
   if (url.includes("/api/boards/b1") && method === "GET") return json(board);
   if (url.includes("/api/boards/b1") && method === "PUT") {
-    globalThis.__puts.push(JSON.parse(opts.body));
+    const body = JSON.parse(opts.body);
+    globalThis.__puts.push(body);
+    if (pendingConflict) {
+      const mutate = pendingConflict;
+      pendingConflict = null;
+      const server = mutate(structuredClone(lastAccepted));
+      // Cùng hình dạng với server thật (boardPayload trong server/boards.js):
+      // không có id/name/role/view.
+      delete server.id; delete server.name; delete server.role; delete server.view;
+      delete server.clientId; delete server.baseUpdatedAt;
+      server.updatedAt = new Date().toISOString();
+      lastAccepted = structuredClone(server);
+      return { ok: false, status: 409, json: async () => ({ error: "conflict", board: server }) };
+    }
+    lastAccepted = structuredClone(body);
     return json({ ok: true, updatedAt: new Date().toISOString() });
   }
   return json({});
 };
 function json(body) { return { ok: true, status: 200, json: async () => body }; }
 
-setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process.exit(2); }, 60000).unref();
+// Chốt chặn "có gì đó treo", không phải hạn mức hiệu năng. Cả bộ hiện chạy chừng
+// 62 giây, và phần lớn con số đó là CHỜ THẬT chứ không phải tính toán: mấy cử chỉ
+// giữ tay (bắt hình, khép nét gấp khúc) mỗi lần chốt là 900ms đồng hồ treo, mà
+// một nét gấp khúc bốn cạnh thì chốt bốn lần. Để gấp đôi thời gian thật: rộng để
+// máy chậm không báo động giả, mà vẫn đủ chặt để một vòng lặp vô hạn lộ ra trong
+// vòng hai phút thay vì treo mãi.
+setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process.exit(2); }, 120000).unref();
 
 // Bẫy CSS-vs-attribute của hình khối (Task 5): nếu rule `.ink-layer path`
 // khai lại `fill` thì trong SVG, CSS thắng presentation attribute, nên mọi
@@ -142,16 +173,16 @@ setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process
   // chọn hình bị cắt khỏi panel 62px. Lỗi thuần layout + cascade: jsdom không
   // tính cả hai thứ đó, nên chỉ đọc thứ tự trong file mới chốt được.
   const iBtn = css.indexOf(".tool-btn {");
-  const iPick = css.search(/^\.shape-pick,\s*\.fill-pick\s*\{/m);
+  const iPick = css.search(/^\.shape-pick,\s*\.fill-pick,\s*\.dash-pick,\s*\.erase-pick\s*\{/m);
   if (iBtn < 0 || iPick < 0) {
-    console.log("\n❌ SMOKE FAIL: không tìm thấy rule `.tool-btn` hoặc `.shape-pick, .fill-pick` trong idea-map.css — rule bị đổi tên thì bài kiểm thứ tự nguồn này vô nghĩa mà vẫn xanh");
+    console.log("\n❌ SMOKE FAIL: không tìm thấy rule `.tool-btn` hoặc `.shape-pick, .fill-pick, .dash-pick, .erase-pick` trong idea-map.css — rule bị đổi tên, hoặc có nút MỚI trong .tool-grid chưa được thêm vào rule thu 22px; cả hai đều làm bài kiểm thứ tự nguồn này vô nghĩa mà vẫn xanh");
     process.exit(1);
   }
   if (iPick < iBtn) {
-    console.log("\n❌ SMOKE FAIL: `.shape-pick, .fill-pick` đứng TRƯỚC `.tool-btn` trong idea-map.css — cùng độ đặc hiệu một class nên `.tool-btn { width: 34px }` sẽ đè mất bề rộng 22px, và cột phải của bảng chọn hình ở khu 4 bị cắt khỏi panel");
+    console.log("\n❌ SMOKE FAIL: `.shape-pick, .fill-pick, .dash-pick, .erase-pick` đứng TRƯỚC `.tool-btn` trong idea-map.css — cùng độ đặc hiệu một class nên `.tool-btn { width: 34px }` sẽ đè mất bề rộng 22px, và cột phải của bảng chọn hình ở khu 4 bị cắt khỏi panel");
     process.exit(1);
   }
-  console.log("  ·", "CSS: `.shape-pick/.fill-pick` đứng sau `.tool-btn` (đúng — cùng độ đặc hiệu thì thứ tự nguồn quyết định)");
+  console.log("  ·", "CSS: `.shape-pick/.fill-pick/.dash-pick/.erase-pick` đứng sau `.tool-btn` (đúng — cùng độ đặc hiệu thì thứ tự nguồn quyết định)");
 
   // Thanh công cụ chia thành khung rời: bao ngoài .tool-rail bỏ pointer-events
   // để khoảng hở giữa hai khung không nuốt cú bấm xuống canvas, và .tool-group
@@ -176,6 +207,26 @@ setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process
     process.exit(1);
   }
   console.log("  ·", "CSS: `.tool-group` bật lại pointer-events và mang mặt kính (nền/viền/đổ bóng)");
+
+  // Cùng loại "chỉ đọc được từ nguồn" như mấy bài CSS trên, nhưng lý do khác:
+  // đây là bài kiểm HIỆU NĂNG, mà hiệu năng thì jsdom không đo được — nó không
+  // có layout, không có paint, và một component thiếu memo vẫn cho ra đúng cây
+  // DOM ấy, chỉ tốn thêm thời gian. Không có bài kiểm nào ở tầng DOM bắt được.
+  //
+  // Vì sao đáng canh: InkLayer render lại ở MỌI khung hình trong lúc có người vẽ
+  // (`draft` đổi mỗi nhịp chuột của mình, `liveStrokes` đổi mỗi gói của người
+  // khác). Nếu Stroke/TextEl không memo thì mỗi lượt đó dựng lại chuỗi `d` cho
+  // TOÀN BỘ nét đã lưu — đo được 28.8µs cho một nét bút 120 điểm, tức 500 nét
+  // ngốn 14.4ms/khung hình trên ngân sách 16.7ms. Bỏ memo đi là bảng vẽ nhiều
+  // nét giật đúng lúc đang vẽ, mà mọi test khác vẫn xanh.
+  const ink = fs.readFileSync(new URL("./src/components/InkLayer.jsx", import.meta.url), "utf8");
+  for (const name of ["Stroke", "TextEl"]) {
+    if (!new RegExp(`const ${name}\\s*=\\s*memo\\(`).test(ink)) {
+      console.log(`\n❌ SMOKE FAIL: \`${name}\` trong InkLayer.jsx không còn bọc memo() — cả lớp vẽ render lại mỗi khung hình lúc đang vẽ, nên mọi nét đã lưu sẽ dựng lại chuỗi path ở từng khung (28.8µs/nét bút; 500 nét = 14.4ms trên ngân sách 16.7ms). jsdom không đo được hiệu năng nên không bài kiểm DOM nào bắt được lỗi này`);
+      process.exit(1);
+    }
+  }
+  console.log("  ·", "InkLayer: Stroke và TextEl đều bọc memo (nét đã lưu không dựng lại path ở mỗi khung hình lúc đang vẽ)");
 }
 
 const { run } = await import("./smoke-dist/smoke.js");

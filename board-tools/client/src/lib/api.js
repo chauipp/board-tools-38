@@ -31,7 +31,10 @@ export async function createBoard(name) {
     body: JSON.stringify({ name })
   });
   checkAuthExpired(res);
-  if (!res.ok) throw apiError("BOARD_CREATE_FAILED");
+  // Lấy mã lỗi thật của server thay vì gộp hết vào một mã: hai trường hợp
+  // board_limit_reached và too_many_boards cần câu chữ khác nhau, và khác hẳn
+  // với "server chết".
+  if (!res.ok) throw apiError(await parseErrorCode(res, "BOARD_CREATE_FAILED"));
   return res.json();
 }
 
@@ -43,16 +46,27 @@ export async function getBoard(boardId) {
   return res.json();
 }
 
-export async function saveBoard(boardId, state, clientId) {
+// `baseUpdatedAt` = mốc của bản mà `state` được dựng lên từ đó. Server so nó với
+// mốc hiện có và trả 409 nếu đã có người lưu chen vào giữa — không có nó thì cú
+// PUT này lặng lẽ xoá sổ thay đổi của người kia. Bỏ trống là tắt chốt (luồng
+// "Nhập JSON" cố ý thay cả bảng).
+export async function saveBoard(boardId, state, clientId, baseUpdatedAt) {
   // Camera (pan/zoom) không còn là dữ liệu đồng bộ — xem lib/camera.js.
   const { view, ...rest } = state;
   const res = await fetch(`/api/boards/${boardId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...rest, clientId })
+    body: JSON.stringify({ ...rest, clientId, baseUpdatedAt: baseUpdatedAt ?? undefined })
   });
   checkAuthExpired(res);
   if (res.status === 403) throw apiError("READ_ONLY");
+  if (res.status === 409) {
+    // Bản mới nhất của server đi kèm luôn trong thân lỗi, để chỗ gọi ghép thay
+    // đổi của mình lên đó mà không phải tải lại board lần nữa.
+    const err = apiError("CONFLICT");
+    try { err.board = (await res.json()).board; } catch { err.board = null; }
+    throw err;
+  }
   if (!res.ok) throw apiError("BOARD_SAVE_FAILED");
   return res.json();
 }
@@ -109,11 +123,18 @@ export async function getCalculator() {
   return res.json();
 }
 
-export async function saveCalculator(state) {
+// `savedAt` là mốc lúc người dùng sửa, không phải lúc gửi đi: server dùng nó để
+// bỏ những cú ghi đã lỗi thời, nên nó phải nói về thời điểm SINH RA thay đổi.
+export async function saveCalculator(state, savedAt = Date.now()) {
   const res = await fetch("/api/calculator", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(state)
+    body: JSON.stringify({
+      budget: state.budget,
+      nextStatId: state.nextStatId,
+      stats: state.stats,
+      savedAt
+    })
   });
   checkAuthExpired(res);
   if (!res.ok) throw apiError("CALC_SAVE_FAILED");

@@ -1,0 +1,5 @@
+# Công cụ chạy máy local, không phải mã nguồn của dự án.
+# .claude/ chứa settings.local.json (quyền riêng từng máy) và worktrees/ —
+# worktrees là bản sao cả repo, commit vào đây là repo lồng repo.
+.claude/
+.playwright-mcp/

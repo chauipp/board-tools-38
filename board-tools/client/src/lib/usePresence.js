@@ -8,6 +8,11 @@ const CURSOR_THROTTLE_MS = 50;
 // đảm tập chọn CUỐI luôn tới nơi.
 const SELECTION_THROTTLE_MS = 120;
 const EDGE_DRAFT_THROTTLE_MS = 50;
+// Camera của người đang bị ghim. Cùng nhịp với con trỏ: dưới 50ms thì người xem
+// cũng không phân biệt được, mà "đuôi" của throttle bảo đảm vị trí camera CUỐI
+// luôn tới nơi — bỏ mất nó là màn hình người xem dừng lệch đi một quãng và nằm
+// đó cho tới lần người kia động vào camera tiếp theo.
+const VIEW_THROTTLE_MS = 50;
 const EMPTY_PEERS = new Map();
 
 export function cursorColor(email) {
@@ -94,9 +99,17 @@ export function usePresence(user, boardId) {
     }, EDGE_DRAFT_THROTTLE_MS);
   }
 
+  const sendViewRef = useRef(null);
+  if (!sendViewRef.current) {
+    sendViewRef.current = trailingThrottle((view) => {
+      socketRef.current?.emit("view:update", view);
+    }, VIEW_THROTTLE_MS);
+  }
+
   useEffect(() => () => {
     sendSelectionRef.current?.cancel();
     sendEdgeDraftRef.current?.cancel();
+    sendViewRef.current?.cancel();
   }, []);
 
   // useCallback (không phải hàm thường): IdeaMap.jsx dùng sendSelection trong
@@ -104,8 +117,16 @@ export function usePresence(user, boardId) {
   // render, effect đó chạy lại mỗi render thay vì chỉ khi selectedIds đổi.
   const sendSelection = useCallback((ids) => { sendSelectionRef.current(ids); }, []);
   const sendEdgeDraft = useCallback((draft) => { sendEdgeDraftRef.current(draft); }, []);
+  const sendView = useCallback((view) => { sendViewRef.current(view); }, []);
 
-  return { sendCursor, sendSelection, sendEdgeDraft, socket };
+  // KHÔNG throttle: bấm ghim/bỏ ghim là một cú bấm, và gói này quyết định server
+  // có bật kênh view:update hay không — trễ nó là người xem ngồi trước màn hình
+  // đứng im mà không hiểu vì sao.
+  const sendFollow = useCallback((targetId) => {
+    socketRef.current?.emit("follow:update", { targetId: targetId ?? null });
+  }, []);
+
+  return { sendCursor, sendSelection, sendEdgeDraft, sendView, sendFollow, socket };
 }
 
 // Danh sách người đang cùng xem board. Tách khỏi usePresence để component nào
@@ -151,12 +172,24 @@ export function usePeers(socket) {
         return new Map(prev).set(socketId, { ...p, edgeDraft });
       });
     }
+    // Ai đang ghim màn hình ai. Chỉ đổi lúc có người bấm nút — khác hẳn
+    // `view:update` (20 lần/giây), thứ cố ý KHÔNG vào state ở đây mà được
+    // useFollow đọc thẳng vào ref: nhịp camera mà lọt vào state peer thì mỗi
+    // gói lại kéo PresenceBar và PeerLayer render lại.
+    function onFollow({ socketId, followingId }) {
+      setPeers((prev) => {
+        const p = prev.get(socketId);
+        if (!p || p.followingId === followingId) return prev;
+        return new Map(prev).set(socketId, { ...p, followingId });
+      });
+    }
     socket.on("presence:sync", onSync);
     socket.on("presence:join", onJoin);
     socket.on("presence:leave", onLeave);
     socket.on("cursor:move", onCursor);
     socket.on("selection:update", onSelection);
     socket.on("edge-draft:update", onEdgeDraft);
+    socket.on("follow:update", onFollow);
     return () => {
       socket.off("presence:sync", onSync);
       socket.off("presence:join", onJoin);
@@ -164,6 +197,7 @@ export function usePeers(socket) {
       socket.off("cursor:move", onCursor);
       socket.off("selection:update", onSelection);
       socket.off("edge-draft:update", onEdgeDraft);
+      socket.off("follow:update", onFollow);
       setPeers(EMPTY_PEERS);
     };
   }, [socket]);

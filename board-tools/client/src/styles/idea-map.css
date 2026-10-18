@@ -5,6 +5,17 @@
    Xem docs/superpowers/specs/2026-07-28-idea-map-hud-islands-design.md */
 .shell { position: relative; height: 100vh; overflow: hidden; }
 
+/* KHÔNG bôi đen được, trừ ô nhập liệu. Đây là lớp thứ hai của cùng một luật đã
+   khai bằng JS (xem blockNativeDefault trong IdeaMap.jsx) — giữ cả hai vì chúng
+   chặn hai đường khác nhau: JS bắt cú BẮT ĐẦU bôi đen bằng chuột, còn CSS bắt
+   cả những đường không đi qua chuột, Ctrl+A là cái rõ nhất. Thiếu dòng CSS thì
+   Ctrl+A bôi đen sạch mọi chữ trên bảng và trình duyệt bật thanh công cụ
+   chọn-chữ của nó đè lên. */
+.shell { user-select: none; -webkit-user-select: none; }
+.shell input, .shell textarea, .shell [contenteditable="true"] {
+  user-select: text; -webkit-user-select: text;
+}
+
 /* Mặt kính của đảo cố ý TRÙNG với .tool-group (nền, viền, bo góc, đổ bóng): rail
    trái và các đảo phải đọc ra là cùng một họ vật thể nổi trên bàn vẽ, không phải
    hai thứ khác nhau tình cờ đứng cạnh nhau.
@@ -110,6 +121,25 @@
 .menubar-row { display: flex; gap: 6px; }
 .menubar-row .btn { width: auto; flex: 1; text-align: center; }
 
+/* Dung lượng kho PDF trong menu. Là số ĐỌC chứ không phải nút bấm, nên cố tình
+   không có nền, không viền, không đổi màu khi rê chuột — nếu trông giống mục
+   menu thì người ta sẽ bấm vào và chờ một cái gì đó xảy ra. */
+.pdf-usage { padding: 4px 2px 2px; font-size: 12px; color: var(--ink-dim); }
+.pdf-usage-row { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+.pdf-usage-bar {
+  margin-top: 4px; height: 4px; border-radius: 2px; overflow: hidden;
+  background: var(--line);
+}
+.pdf-usage-bar i { display: block; height: 100%; background: var(--accent); transition: width .2s; }
+/* Qua ngưỡng cảnh báo mới đổi màu. Tô đỏ suốt thì lúc thật sự sắp đầy không còn
+   gì để báo thêm. */
+.pdf-usage .hot { color: var(--danger); }
+.pdf-usage .hot .pdf-usage-bar i { background: var(--danger); }
+.pdf-usage-note { margin-top: 3px; line-height: 1.35; }
+/* Kho chung là dòng phụ: người ta chạm trần riêng trước, nên trần chung chỉ cần
+   ở đó cho biết, không cần thanh tiến độ giành lấy sự chú ý. */
+.pdf-usage-sub { margin-top: 6px; opacity: 0.75; font-size: 11px; }
+
 /* Ruột của đảo nội dung: các panel đang bật xếp cạnh nhau, hết chỗ mới xuống
    dòng. Nhiều panel bật cùng lúc thì chúng dính liền một dải, nên mỗi panel phải
    tự xưng tên bằng .filter-title — trước đây phân biệt được nhờ mỗi panel một
@@ -150,8 +180,12 @@
 .presence-peers { display: flex; align-items: center; }
 /* Chồng mép nhau như xếp bài — 5-6 người vẫn gọn trong một hàng filter đã chật. */
 .presence-peers .presence-avatar { margin-right: -7px; }
-.presence-peers .presence-avatar:last-child { margin-right: 0; }
+/* Bám vào .presence-peer chứ không .presence-avatar:last-child: mỗi avatar giờ
+   nằm trong một bọc riêng (chỗ neo cho menu ghim), nên nó LUÔN là con cuối của
+   bọc đó và quy tắc cũ sẽ khớp với mọi người thay vì đúng người cuối hàng. */
+.presence-peers .presence-peer:last-child .presence-avatar { margin-right: 0; }
 .presence-peers .presence-avatar:hover { z-index: 2; transform: translateY(-1px); }
+.presence-peer { position: relative; display: flex; }
 
 .presence-avatar {
   position: relative; flex-shrink: 0;
@@ -178,7 +212,63 @@
 }
 .presence-menu-name { font-size: 12px; font-weight: 600; }
 .presence-menu-email { font-size: 10.5px; color: var(--ink-dim); word-break: break-all; }
+.presence-menu-note { font-size: 10.5px; color: var(--accent); }
 .presence-menu .btn { margin-top: 6px; width: 100%; text-align: center; }
+/* Avatar đầu hàng nằm sát mép trái của đảo; menu neo phải sẽ chui ra ngoài màn
+   hình khi đảo bị dồn sang trái, nên menu của peer neo TRÁI. */
+.peer-menu { right: auto; left: 0; min-width: 168px; }
+.peer-menu .btn { margin-top: 4px; }
+
+/* GHIM MÀN HÌNH ------------------------------------------------------------ */
+
+/* Người mình đang bám: vòng đặc màu của họ, phân biệt với box-shadow nền
+   --surface mà mọi avatar đều có. */
+.presence-avatar.following { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--peer-color); }
+/* Người đang bám mình: chấm nhỏ góc dưới phải. Nhẹ hơn hẳn vòng ở trên vì đây
+   là thông tin nền, không phải trạng thái do mình chọn. */
+.presence-avatar.watching-me::after {
+  content: ""; position: absolute; right: -1px; bottom: -1px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); border: 1.5px solid var(--surface);
+}
+
+.watched-chip {
+  border: 1px solid var(--accent); border-radius: 999px; padding: 3px 9px;
+  font-size: 10.5px; color: var(--accent); white-space: nowrap;
+}
+
+/* Viền quanh TOÀN màn hình lúc đang bám. position: fixed và pointer-events: none
+   — nó phủ lên mọi thứ nên không được ăn một cú bấm nào; riêng cái chip bên
+   trong bật lại pointer-events để bấm "Bỏ ghim" được. */
+.follow-frame {
+  /* 60: trên các đảo HUD (50) để viền không bị chúng cắt, nhưng dưới menu và
+     modal (90) — hộp thoại mở ra phải che được cái chip này, không phải ngược
+     lại. */
+  position: fixed; inset: 0; z-index: 60; pointer-events: none;
+  border: 3px solid var(--peer-color);
+  display: flex; justify-content: center; align-items: flex-end;
+}
+.follow-chip {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 14px; padding: 5px 6px 5px 12px;
+  border-radius: 999px; font-size: 11.5px;
+  background: var(--peer-color); color: var(--accent-ink);
+  box-shadow: var(--shadow);
+}
+.follow-chip .btn {
+  border-color: var(--accent-ink); color: var(--accent-ink);
+  padding: 3px 10px; font-size: 10.5px;
+}
+.follow-chip .btn:hover { background: var(--accent-ink); color: var(--peer-color); }
+
+/* Đang chờ server ừ: viền ĐỨT, cố ý khác hẳn viền đặc lúc đã bám. Người dùng
+   phải phân biệt được "đang kết nối" với "đã xong" chỉ bằng liếc mắt — nếu hai
+   trạng thái vẽ giống nhau thì một cú ghim chết lặng lại trông y như thành công. */
+.follow-frame.pending { border-style: dashed; opacity: 0.75; }
+/* Không ghim được: KHÔNG có viền (camera vẫn là của mình), chỉ một dòng báo. */
+.follow-frame.error { border: none; }
+.follow-frame.error .follow-chip { background: var(--danger); color: #fff; padding: 6px 14px; }
 
 .chip-toggle {
   display: inline-flex; align-items: center; gap: 5px;
@@ -220,6 +310,12 @@
 :root[data-bg="slate"], :root[data-theme="light"][data-bg="slate"] { --board-bg: #E4E6E4; --board-grid: rgba(28,34,36,0.17); }
 :root[data-bg="mint"],  :root[data-theme="light"][data-bg="mint"]  { --board-bg: #E2EDE6; --board-grid: rgba(20,50,35,0.17); }
 :root[data-bg="blush"], :root[data-theme="light"][data-bg="blush"] { --board-bg: #F1E6E4; --board-grid: rgba(60,25,20,0.15); }
+:root[data-bg="sky"],   :root[data-theme="light"][data-bg="sky"]   { --board-bg: #E0E9F5; --board-grid: rgba(18,42,74,0.17); }
+:root[data-bg="sand"],  :root[data-theme="light"][data-bg="sand"]  { --board-bg: #F2E6C9; --board-grid: rgba(74,54,16,0.18); }
+:root[data-bg="lavender"], :root[data-theme="light"][data-bg="lavender"] { --board-bg: #EAE5F4; --board-grid: rgba(48,32,74,0.16); }
+/* Bản vẽ kỹ thuật: nền vẫn sáng để bút mực đậm còn đọc được, chất "giấy can"
+   đến từ LƯỚI — đậm gấp đôi các preset khác và ngả xanh. */
+:root[data-bg="blueprint"], :root[data-theme="light"][data-bg="blueprint"] { --board-bg: #DBE6F3; --board-grid: rgba(22,66,120,0.30); }
 
 @media (prefers-color-scheme: dark) {
   :root[data-bg="paper"] { --board-bg: #241F16; --board-grid: rgba(236,231,210,0.13); }
@@ -227,12 +323,32 @@
   :root[data-bg="slate"] { --board-bg: #1B1E1F; --board-grid: rgba(230,238,240,0.11); }
   :root[data-bg="mint"]  { --board-bg: #141F19; --board-grid: rgba(210,240,225,0.11); }
   :root[data-bg="blush"] { --board-bg: #221715; --board-grid: rgba(245,220,215,0.11); }
+  :root[data-bg="sky"]   { --board-bg: #151C27; --board-grid: rgba(214,230,250,0.11); }
+  :root[data-bg="sand"]  { --board-bg: #241E12; --board-grid: rgba(248,235,205,0.12); }
+  :root[data-bg="lavender"] { --board-bg: #1D1826; --board-grid: rgba(230,220,250,0.11); }
+  :root[data-bg="blueprint"] { --board-bg: #0E1F35; --board-grid: rgba(126,178,240,0.22); }
 }
 :root[data-theme="dark"][data-bg="paper"] { --board-bg: #241F16; --board-grid: rgba(236,231,210,0.13); }
 :root[data-theme="dark"][data-bg="white"] { --board-bg: #141414; --board-grid: rgba(255,255,255,0.10); }
 :root[data-theme="dark"][data-bg="slate"] { --board-bg: #1B1E1F; --board-grid: rgba(230,238,240,0.11); }
 :root[data-theme="dark"][data-bg="mint"]  { --board-bg: #141F19; --board-grid: rgba(210,240,225,0.11); }
 :root[data-theme="dark"][data-bg="blush"] { --board-bg: #221715; --board-grid: rgba(245,220,215,0.11); }
+:root[data-theme="dark"][data-bg="sky"]   { --board-bg: #151C27; --board-grid: rgba(214,230,250,0.11); }
+:root[data-theme="dark"][data-bg="sand"]  { --board-bg: #241E12; --board-grid: rgba(248,235,205,0.12); }
+:root[data-theme="dark"][data-bg="lavender"] { --board-bg: #1D1826; --board-grid: rgba(230,220,250,0.11); }
+:root[data-theme="dark"][data-bg="blueprint"] { --board-bg: #0E1F35; --board-grid: rgba(126,178,240,0.22); }
+
+/* ─── Kiểu lưới (board.grid) ──────────────────────────────────────────────
+   Trục thứ hai của nền, độc lập với màu: mọi preset màu ở trên đều dùng được
+   với cả ba kiểu lưới. Nền sa bàn được ghép từ `var(--board-pattern)` (khai ở
+   index.css) nên chỗ này chỉ cần gán lại MỘT biến — không lặp lại câu
+   `background:` của .viewport, và không phải nhân ba nó cho skin vẽ tay. */
+:root[data-grid="lines"] {
+  --board-pattern:
+    linear-gradient(var(--grid-ink) 1px, transparent 1px) 0 0 / var(--grid-size) var(--grid-size),
+    linear-gradient(90deg, var(--grid-ink) 1px, transparent 1px) 0 0 / var(--grid-size) var(--grid-size);
+}
+:root[data-grid="plain"] { --board-pattern: none; }
 
 /* ─── Bộ màu (board.pack) ─────────────────────────────────────────────────
    Chỉ gán lại 8 token --dot-*. Thẻ / nhãn / dây lưu TÊN token ("dot-3") chứ
@@ -259,11 +375,24 @@
   --dot-1: #2E3A47; --dot-2: #3D4C5C; --dot-3: #4C5E71; --dot-4: #5B7086;
   --dot-5: #6B829B; --dot-6: #7C94AC; --dot-7: #8EA5BC; --dot-8: #A2B6CA;
 }
+/* Đất: tám sắc đất nung / rêu / đá, cùng độ chói thấp nên không màu nào nhảy
+   ra trước — hợp bảng đọc lâu và hợp cả với nền Giấy kraft lẫn Cát. */
+:root[data-pack="earth"] {
+  --dot-1: #9C6B44; --dot-2: #A85340; --dot-3: #77853F; --dot-4: #C08A2E;
+  --dot-5: #B05A26; --dot-6: #5F7A55; --dot-7: #8A6156; --dot-8: #4E7278;
+}
+/* Neon: bộ chói nhất, dựng cho bảng nền tối. Vàng và xanh lá đã hạ một nấc so
+   với neon "thật" — ở nguyên #FFEE00 thì trên nền sáng chữ trên thẻ không đọc
+   được nữa, mà bộ màu phải dùng được ở CẢ hai giao diện. */
+:root[data-pack="neon"] {
+  --dot-1: #1F7AFF; --dot-2: #A93BFF; --dot-3: #00B863; --dot-4: #E8B400;
+  --dot-5: #FF6A00; --dot-6: #57C400; --dot-7: #FF2D78; --dot-8: #00BFD0;
+}
 
 /* inset: 0 chứ không phải flex: 1 — canvas chiếm trọn cửa sổ, chrome nổi đè lên. */
 .viewport {
   position: absolute; inset: 0; overflow: hidden; cursor: default;
-  background: radial-gradient(var(--board-grid) 1px, transparent 1px) 0 0 / var(--grid-size) var(--grid-size), var(--board-bg);
+  background: var(--board-pattern), var(--board-bg);
 }
 .viewport.panning { cursor: grabbing; }
 /* will-change: giữ .canvas trên một lớp compositor riêng, nên lia/thu phóng
@@ -471,6 +600,17 @@
   opacity: 0; transition: opacity 0.12s ease;
 }
 .idea-card:hover .img-resize { opacity: 0.9; }
+.idea-card .card-pdf-wrap {
+  position: relative; margin-top: 7px; height: var(--pdf-h, 500px);
+  overflow: hidden; border: 1px solid var(--line); border-radius: 5px; background: #fff;
+}
+.idea-card .card-pdf { display: block; width: 100%; height: 100%; border: 0; background: #fff; }
+.idea-card .pdf-resize {
+  position: absolute; right: 2px; bottom: 2px; width: 16px; height: 16px;
+  cursor: nwse-resize; border-right: 3px solid var(--accent); border-bottom: 3px solid var(--accent);
+  border-radius: 0 0 3px 0; opacity: 0; transition: opacity 0.12s ease;
+}
+.idea-card:hover .pdf-resize { opacity: 0.95; }
 .idea-card .desc {
   font-size: 11px; color: var(--ink-dim); margin-top: 5px; line-height: 1.35;
   display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
@@ -532,6 +672,37 @@
 .zoom-ctrl button:hover { background: var(--surface-2); }
 .zoom-ctrl .pct { font-size: 11px; width: 44px; text-align: center; color: var(--ink-dim); }
 .zoom-ctrl .sep { width: 1px; height: 18px; background: var(--line); }
+.zoom-ctrl button.on { color: var(--accent); }
+
+/* Bản đồ thu nhỏ: đảo riêng ngồi ngay trên nút zoom (30px cao + 12px mép + 8px
+   khe = 50px). Cùng mặt kính với .island và .zoom-ctrl — nó là chrome nổi trên
+   bàn vẽ, không phải một phần của bàn vẽ. */
+.minimap {
+  position: absolute; right: 12px; bottom: 50px; z-index: 50;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: var(--shadow); padding: 4px; line-height: 0;
+}
+.minimap svg { display: block; cursor: pointer; }
+/* Nút ẩn nằm đè góc trên phải của bản đồ, chỉ hiện khi rê chuột vào: lúc đang
+   dùng thì mọi pixel của cái hộp 176px này đều là nội dung. */
+.minimap .mini-close {
+  position: absolute; top: 2px; right: 2px; z-index: 1;
+  width: 16px; height: 16px; padding: 0; line-height: 1;
+  background: var(--surface); border: none; border-radius: 4px;
+  color: var(--ink-dim); font-size: 13px; cursor: pointer; opacity: 0;
+}
+.minimap:hover .mini-close { opacity: 1; }
+.minimap .mini-close:hover { color: var(--ink); background: var(--surface-2); }
+
+.minimap .mini-frame { fill: none; stroke: var(--line); stroke-width: 1; stroke-dasharray: 3 2; }
+.minimap .mini-ink { fill: var(--ink-dim); opacity: 0.22; }
+.minimap .mini-node { fill: var(--ink-dim); opacity: 0.55; }
+/* Ô "đang xem ở đây": viền màu nhấn, ruột hơi sáng lên. Không tô đặc — nó nằm
+   ĐÈ lên các thẻ, tô đặc là che mất chính thứ cần nhìn. */
+.minimap .mini-view {
+  fill: var(--accent); fill-opacity: 0.12;
+  stroke: var(--accent); stroke-width: 1.2;
+}
 
 /* Thanh giữa đáy, nút zoom góc phải: thanh dài ra là đè lên nút zoom. Chừa 200px
    mỗi bên (nút zoom rộng ~180) rồi cho xuống dòng thay vì đè. Căn giữa bằng dải
@@ -602,6 +773,63 @@
 .outline-panel .op-row:hover { background: var(--surface-2); }
 .outline-panel .op-row .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
 .outline-panel .op-row .op-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Bảng Xếp cây: dock bên phải, cùng khuôn với .outline-panel (cùng mép, cùng bo
+   góc, cùng né đảo người ở góc trên phải) — hai bảng phải đọc ra là một họ.
+   Hẹp hơn mục lục 20px vì ruột chỉ có nút và thanh trượt, không có danh sách
+   tên thẻ dài. */
+.tree-panel {
+  position: absolute; top: 58px; right: 12px; width: 220px;
+  max-height: calc(100vh - 130px);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: var(--shadow); z-index: 46; display: flex; flex-direction: column;
+}
+/* Mục lục đang mở thì hai bảng cùng neo mép phải sẽ chồng lên nhau: bảng cây né
+   sang trái đúng bề ngang mục lục (240) + khe 12. */
+.tree-panel.shifted { right: 264px; }
+.tree-panel .tp-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-bottom: 1px solid var(--line);
+}
+.tree-panel .tp-title { font-size: 11.5px; font-weight: 600; flex: 1; }
+.tree-panel .tp-body { overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 12px; }
+.tree-panel .tp-root {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px;
+}
+.tree-panel .tp-root-name {
+  font-size: 11.5px; flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tree-panel .tp-count { font-size: 10px; color: var(--ink-dim); flex-shrink: 0; }
+.tree-panel .tp-section { display: flex; flex-direction: column; gap: 7px; }
+.tree-panel .tp-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.tree-panel .tp-hint { font-size: 10px; line-height: 1.4; color: var(--ink-dim); }
+.tree-panel .tp-dirs { display: flex; gap: 6px; }
+/* Cùng dáng .em-icon-btn của menu chuột phải, nhưng ở đây trạng thái "on" là
+   thật (hướng đang bật) chứ không phải nháy một cái rồi thôi. */
+.tree-panel .tp-dir {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: 6px; border-radius: 4px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--ink-dim); cursor: pointer;
+}
+.tree-panel .tp-dir:hover { color: var(--ink); border-color: var(--ink-dim); }
+.tree-panel .tp-dir.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tree-panel .tp-slider { display: flex; flex-direction: column; gap: 3px; }
+.tree-panel .tp-slider-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  font-size: 11px; color: var(--ink);
+}
+.tree-panel .tp-slider-head .mono { font-size: 10px; color: var(--ink-dim); }
+.tree-panel .tp-slider input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+.tree-panel .tp-reset { align-self: flex-start; }
+
+/* Lối vào bảng nằm ngay dưới bốn nút mũi tên trong menu chuột phải, nên phải
+   tách khỏi hàng nút một chút để không dính thành một khối. */
+.ctx-menu .cm-item.tp-open { margin-top: 2px; }
 
 /* Đảo to và đảo người là hai khối tuyệt đối ở hai góc trên: màn hẹp thì ô tìm
    bung ra có thể đẩy đảo to chạm đảo người. Thu ô tìm lại trước khi tới mức đó. */
@@ -710,6 +938,10 @@
 .bg-swatch[data-bg="slate"] { background: #E4E6E4; }
 .bg-swatch[data-bg="mint"]  { background: #E2EDE6; }
 .bg-swatch[data-bg="blush"] { background: #F1E6E4; }
+.bg-swatch[data-bg="sky"]   { background: #E0E9F5; }
+.bg-swatch[data-bg="sand"]  { background: #F2E6C9; }
+.bg-swatch[data-bg="lavender"] { background: #EAE5F4; }
+.bg-swatch[data-bg="blueprint"] { background: #DBE6F3; }
 /* Nền tối: nút phải cho thấy màu nó sẽ RA, không phải màu của bản sáng. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) .bg-swatch[data-bg="paper"] { background: #241F16; }
@@ -717,17 +949,49 @@
   :root:not([data-theme="light"]) .bg-swatch[data-bg="slate"] { background: #1B1E1F; }
   :root:not([data-theme="light"]) .bg-swatch[data-bg="mint"]  { background: #141F19; }
   :root:not([data-theme="light"]) .bg-swatch[data-bg="blush"] { background: #221715; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="sky"]   { background: #151C27; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="sand"]  { background: #241E12; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="lavender"] { background: #1D1826; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="blueprint"] { background: #0E1F35; }
 }
 :root[data-theme="dark"] .bg-swatch[data-bg="paper"] { background: #241F16; }
 :root[data-theme="dark"] .bg-swatch[data-bg="white"] { background: #141414; }
 :root[data-theme="dark"] .bg-swatch[data-bg="slate"] { background: #1B1E1F; }
 :root[data-theme="dark"] .bg-swatch[data-bg="mint"]  { background: #141F19; }
 :root[data-theme="dark"] .bg-swatch[data-bg="blush"] { background: #221715; }
+:root[data-theme="dark"] .bg-swatch[data-bg="sky"]   { background: #151C27; }
+:root[data-theme="dark"] .bg-swatch[data-bg="sand"]  { background: #241E12; }
+:root[data-theme="dark"] .bg-swatch[data-bg="lavender"] { background: #1D1826; }
+:root[data-theme="dark"] .bg-swatch[data-bg="blueprint"] { background: #0E1F35; }
 /* "Theo giao diện": nửa sáng nửa tối, đọc ra ngay là "không chọn màu nào". */
 .bg-swatch.bg-none { background: linear-gradient(135deg, var(--surface) 50%, var(--ink) 50%); }
 .bg-swatch:hover { border-color: var(--ink); }
 .bg-swatch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
 .bg-swatch:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Nút kiểu lưới mang chính cái lưới nó đại diện, thu nhỏ lại — nhãn chữ
+   ("chấm" / "ô" / "trơn") mất nhiều chỗ hơn mà vẫn phải đoán. Bước lưới ở đây
+   là 6px cố định, không dùng --grid-size: nút chỉ 22px, kẻ theo bước thật của
+   sa bàn thì cả nút chỉ còn đúng một vạch. */
+.grid-swatch {
+  width: 22px; height: 22px; border-radius: 5px; padding: 0; flex-shrink: 0;
+  border: 1px solid var(--line); cursor: pointer;
+  background-color: var(--surface);
+  background-position: 1px 1px;
+  background-size: 6px 6px;
+}
+.grid-swatch[data-grid="dots"] {
+  background-image: radial-gradient(color-mix(in srgb, var(--ink) 45%, transparent) 1px, transparent 1px);
+}
+.grid-swatch[data-grid="lines"] {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--ink) 45%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--ink) 45%, transparent) 1px, transparent 1px);
+}
+.grid-swatch[data-grid="plain"] { background-image: none; }
+.grid-swatch:hover { border-color: var(--ink); }
+.grid-swatch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+.grid-swatch:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .badge-editor.pal-editor { width: 150px; }
 .badge-editor .pal-input {
@@ -829,6 +1093,7 @@
    liệt kê từng cái — thêm đảo mới về sau tự được giấu theo. */
 .shell.presenting .island, .shell.presenting .hud-bottom,
 .shell.presenting .zoom-ctrl, .shell.presenting .outline-panel,
+.shell.presenting .tree-panel, .shell.presenting .minimap,
 .shell.presenting .focus-banner, .shell.presenting .bulk-bar,
 .shell.presenting .empty-hint { display: none; }
 
@@ -973,8 +1238,18 @@
    .tool-btn đè mất, track của .tool-grid bị min-content đội lên 34px, và cột
    phải của bảng chọn hình bị cắt khỏi panel — lỗi này smoke test không thấy
    được vì jsdom không tính cascade lẫn layout. */
-.shape-pick, .fill-pick { width: 22px; height: 22px; }
-.shape-pick svg, .fill-pick svg { display: block; }
+.shape-pick, .fill-pick, .dash-pick, .erase-pick { width: 22px; height: 22px; }
+.shape-pick svg, .fill-pick svg, .dash-pick svg, .erase-pick svg { display: block; }
+
+/* Ba nút cỡ cục tẩy: một vòng tròn rỗng to dần, đúng thứ nó tạo ra — cùng luật
+   với .pen-width (một vạch dày dần) ngay trên. Vòng RỖNG chứ không phải chấm
+   đặc, vì cục tẩy là một cái vùng chứ không phải một cục mực. Xếp một cột như
+   .pen-width, không vào .tool-grid: lưới 2 cột thì ba nút thành hàng 2 + hàng 1
+   lệch hẳn sang trái. */
+.erase-width .dot {
+  display: block; border-radius: 50%;
+  border: 1.5px solid currentColor;
+}
 
 /* Nút chọn bậc thẻ xếp MỘT cột (không dùng .tool-grid): icon của nó rộng 30px,
    nhét hai cột vào 48px vùng nội dung thì hình thẻ bé tới mức không phân biệt
@@ -993,6 +1268,19 @@
 .pen-swatch.on { border-color: var(--ink); }
 .pen-width { display: flex; align-items: center; justify-content: center; height: 22px; }
 .pen-width .bar { width: 22px; border-radius: 99px; background: currentColor; }
+
+/* Thanh trượt của khu 4 (thời gian tan của vệt laser). Vùng nội dung chỉ rộng
+   48px — xem phép tính ở .tool-options — nên thanh phải khai đúng bề rộng đó và
+   KHÔNG được có margin ngang, không thì trục x mọc thanh cuộn.
+   accent-color lo cả tay cầm lẫn phần đã tô của rãnh ở mọi trình duyệt hiện đại;
+   viết tay ::-webkit-slider-thumb chỉ để đổi màu là ba khối CSS cho một việc mà
+   một dòng làm được. */
+.tool-range-wrap { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.tool-range {
+  width: 48px; height: 14px; margin: 0; padding: 0;
+  accent-color: var(--accent); cursor: pointer;
+}
+.tool-range-val { font-size: 10px; color: var(--ink-dim); line-height: 1; }
 
 /* Nút cỡ chữ: chữ "A" ba kích thước. Cố ý KHÔNG dùng var(--canvas-font) — nút
    công cụ là vỏ giao diện, phải đứng yên khi bật skin vẽ tay, cùng lý do icon
@@ -1017,11 +1305,18 @@
 .ink-layer path { stroke-linecap: round; stroke-linejoin: round; }
 .ink-layer path.erasing { opacity: 0.25; }
 
-/* Đây là TOÀN BỘ phần "skin cho text": chữ trên bảng đi qua --canvas-font nên
-   bật skin vẽ tay là nó thành chữ viết tay, không cần một dòng JS nào.
-   `white-space: pre` giữ khoảng trắng người dùng gõ — SVG mặc định gộp chúng. */
+/* `white-space: pre` giữ khoảng trắng người dùng gõ — SVG mặc định gộp chúng. */
 .ink-layer text { font-family: var(--canvas-font); white-space: pre; }
 .ink-layer text.erasing { opacity: 0.25; }
+
+/* Viền "đang chọn" của nét bút / hình khối / chữ. Nét đứt + màu nhấn, cùng ngôn
+   ngữ với viền chọn của thẻ; `vector-effect` để viền giữ đúng 1px ở mọi mức
+   zoom — nó là chỉ báo giao diện, không phải mực trên bảng (nét vẽ thì ngược
+   lại, cố ý dày ra khi phóng to). */
+.ink-layer .ink-selected {
+  fill: none; stroke: var(--accent); stroke-width: 1.5;
+  stroke-dasharray: 5 4; vector-effect: non-scaling-stroke;
+}
 
 /* Ô nhập text: dựng để TRÙNG KHÍT với chữ sẽ vẽ ra. Gõ xong mà chữ nhảy chỗ
    hoặc đổi cỡ là mất hẳn cảm giác "gõ thẳng lên bảng", nên mọi thứ trình duyệt
@@ -1040,6 +1335,101 @@
    ngang qua trên một thẻ vẫn ra nét chứ không bị thẻ ăn mất chuột. z-index 8
    nằm dưới .tool-rail (30) nên thanh công cụ vẫn bấm được. */
 .ink-capture { position: absolute; inset: 0; z-index: 8; cursor: crosshair; }
+
+/* HỘP BAO VÙNG CHỌN — nằm trong .canvas nên bám theo bảng khi lia/phóng.
+   pointer-events: none là điều kiện sống của cả thiết kế này: hộp trùm lên cả
+   cụm, mà cụm thì đầy thẻ bấm được, chip bấm được, ô sửa tiêu đề. Bắt chuột ở
+   đây là chôn hết chúng. Cú kéo trong lòng hộp do handleViewportMouseDown bắt
+   (nó chỉ chạy khi cú bấm rơi xuống nền canvas, tức đúng chỗ TRỐNG).
+   z-index 12 và đó là con số PHẢI có: bốn tay cầm là con của khối này, mà khối
+   có z-index thì nó thành một stacking context — con không leo ra ngoài được
+   nữa. Thẻ khi rê chuột lên nhảy lên z-index 10 (.idea-card:hover), nên nếu để
+   khối ở 6 thì đúng cái thẻ nằm ở góc sẽ che mất tay cầm ngay lúc tay đưa tới
+   đó, và tay cầm không bao giờ bấm được.
+   Cái giá: nền tô của khối phủ lên mặt thẻ. Nên nó chỉ 6% — đủ đọc ra một vùng,
+   không đủ làm mờ chữ trên thẻ. */
+.selection-box {
+  position: absolute; z-index: 12; pointer-events: none;
+  border: 1px dashed var(--accent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+/* Sắp thả màu vào cả cụm: tô rõ hơn hẳn, cùng ngôn ngữ với viền "sắp thả vào
+   đây" của thẻ. */
+.selection-box.drop {
+  border-style: solid;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+/* Bốn tay cầm co giãn. Bật lại pointer-events — chúng là thứ DUY NHẤT trong hộp
+   cướp chuột, và chỉ ở đúng bốn ô nhỏ ngoài rìa.
+   Cỡ và vị trí do JS bù trừ zoom (transform: scale(1/view.scale)), nên ở đây chỉ
+   khai cỡ danh nghĩa. */
+.selection-handle {
+  position: absolute; pointer-events: auto;
+  width: 12px; height: 12px; margin: 0;
+  background: var(--surface); border: 2px solid var(--accent); border-radius: 3px;
+  box-shadow: var(--shadow);
+}
+.selection-handle.nw, .selection-handle.se { cursor: nwse-resize; }
+.selection-handle.ne, .selection-handle.sw { cursor: nesw-resize; }
+
+/* TAY CẦM SỬA HÌNH — hiện khi chọn đúng một hình khối. Khác tay cầm của hộp bao
+   vùng chọn ở chỗ nó KHÔNG nằm trong một khối bao nào, nên phải tự khai z-index:
+   13 để nổi trên cả hộp bao (12) và trên thẻ khi rê chuột (10) — hình vẽ hoàn
+   toàn có thể nằm đè lên một cái thẻ.
+   VUÔNG = góc (kéo đặt lại một đỉnh), TRÒN = cạnh (kéo dời trọn một cạnh). Hai
+   việc khác nhau thì phải khác hình, không thể chỉ khác chỗ đứng — người dùng
+   không đếm được đâu là góc đâu là trung điểm trên một tam giác nghiêng. */
+.shape-handle {
+  position: absolute; z-index: 13; pointer-events: auto; cursor: grab;
+  width: 11px; height: 11px;
+  background: var(--surface); border: 2px solid var(--accent); border-radius: 2px;
+  box-shadow: var(--shadow);
+}
+.shape-handle.edge {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent); border-color: var(--surface);
+}
+.shape-handle:active { cursor: grabbing; }
+
+/* Vòng báo "đang giữ tay, sắp bắt hình" (lib/recognize.js). position: fixed nên
+   toạ độ là toạ độ MÀN HÌNH: nó bám ngón tay, không bám bảng — bảng có bị lia
+   giữa lúc đó thì vòng vẫn đứng đúng dưới con trỏ.
+   pointer-events: none là bắt buộc: nó nằm ĐÚNG dưới con trỏ trong lúc đang vẽ,
+   ăn mất chuột là nét vẽ đứt ngay giữa.
+   Thời gian chạy do JS truyền vào qua --snap-hold, lấy từ cùng hằng số mà useInk
+   đang đếm — xem ghi chú ở chỗ render trong IdeaMap.jsx. */
+.snap-hint {
+  position: fixed; z-index: 60; pointer-events: none;
+  width: 26px; height: 26px; margin: -13px 0 0 -13px;
+  border: 2px solid var(--accent); border-radius: 50%;
+  animation: snap-hint-fill var(--snap-hold, 1000ms) linear forwards;
+}
+/* Vòng nhỏ mờ nở dần ra thành vòng rõ: đọc ra được "đang đếm, sắp xong" mà không
+   cần đến conic-gradient hay hai lớp SVG. */
+@keyframes snap-hint-fill {
+  from { opacity: 0.2; transform: scale(0.45); }
+  to { opacity: 0.95; transform: scale(1); }
+}
+/* Cùng vòng đó nhưng là cử chỉ TẨY (giữ tay trên một nét có sẵn). Màu nguy hiểm
+   chứ không phải màu accent: hai việc kết thúc rất khác nhau — một cái tạo ra
+   hình, một cái xoá mất một nét — nên chúng không được trông giống nhau. Nét
+   sắp mất đồng thời mờ đi (.ink-layer .erasing), nên có hai tín hiệu cùng lúc. */
+.snap-hint.erase { border-color: var(--danger); }
+
+/* Cùng vòng đó nhưng là cử chỉ ĐỔI BÚT ↔ CỤC GÔM (giữ tay ở chỗ trống). Nét đứt
+   chứ không phải màu thứ ba: hai màu kia đã mang nghĩa rõ ("sắp tạo ra" và "sắp
+   xoá mất"), còn việc này không tạo cũng không xoá gì cả — nó chỉ đổi thứ đang
+   cầm trên tay, nên nó phải khác Ở DẠNG chứ không chỉ khác ở sắc độ. */
+.snap-hint.swap { border-color: var(--ink-dim); border-style: dashed; }
+
+/* Cùng vòng đó nhưng là cử chỉ KHÉP HÌNH: đầu nét gấp khúc đã dính về điểm xuất
+   phát, giữ thêm một nhịp là cả vòng thành hình. Vẫn màu accent vì việc sắp xảy
+   ra vẫn là "sắp tạo ra một hình" — khác ở chỗ nó ĐẶC RUỘT, đọc ra được ngay là
+   "chỗ này khép lại" chứ không phải "cái nét này nắn lại". Vòng này cũng là thứ
+   duy nhất báo cho người dùng biết đầu nét đã dính, nên nó không được lẫn với
+   ba vòng kia. */
+.snap-hint.close { background: color-mix(in srgb, var(--accent) 35%, transparent); }
 
 /* Mode Đặt: cùng vai trò và cùng z-index với .ink-capture — bấm trúng một thẻ
    có sẵn vẫn phải ra thẻ mới ở đúng chỗ đó, chứ không phải chọn thẻ cũ.
@@ -1129,8 +1519,7 @@
 :root[data-skin="sketch"] .idea-card:hover {
   box-shadow: var(--card-shadow), 3px 5px 10px rgba(0,0,0,0.13);
 }
-/* Lưới chấm mờ hẳn đi: nền giấy vẽ tay mà chấm đều tăm tắp thì lộ ngay là máy kẻ. */
-:root[data-skin="sketch"] .viewport {
-  background: radial-gradient(color-mix(in srgb, var(--board-grid) 55%, transparent) 1px, transparent 1px)
-              0 0 / var(--grid-size) var(--grid-size), var(--board-bg);
-}
+/* Lưới mờ hẳn đi: nền giấy vẽ tay mà kẻ đều tăm tắp thì lộ ngay là máy kẻ. Đổi
+   MỰC của lưới chứ không đổi hình nó, nên cả ba kiểu lưới (chấm / ô / trơn)
+   đều tự nhạt theo mà không phải viết lại từng cái. */
+:root[data-skin="sketch"] { --grid-ink: color-mix(in srgb, var(--board-grid) 55%, transparent); }

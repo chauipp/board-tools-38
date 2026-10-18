@@ -1,7 +1,7 @@
 // game-tools/client/src/lib/pen.test.js
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { PEN_COLORS, PEN_WIDTHS, PEN_DEFAULT, penVar, loadPenPrefs, savePenPrefs } from "./pen.js";
+import { PEN_COLORS, PEN_WIDTHS, PEN_DEFAULT, penVar, loadPenPrefs, savePenPrefs, dashArray } from "./pen.js";
 import { SHAPE_KINDS } from "./shape.js";
 import { TEXT_SIZES } from "./text-el.js";
 
@@ -62,18 +62,99 @@ test("loadPenPrefs: kind lạ và fill sai kiểu chỉ lùi phần của chúng
   const s = fakeStorage({
     "ideamap.pen": JSON.stringify({ color: "pen-blue", w: 8, kind: "star", fill: "yes" })
   });
-  assert.deepEqual(loadPenPrefs(s), { color: "pen-blue", w: 8, kind: PEN_DEFAULT.kind, fill: false, size: PEN_DEFAULT.size });
+  assert.deepEqual(loadPenPrefs(s), { color: "pen-blue", w: 8, kind: PEN_DEFAULT.kind, fill: false, size: PEN_DEFAULT.size, snap: true, scratch: true, dashed: false, erase: PEN_DEFAULT.erase, ew: PEN_DEFAULT.ew });
 });
 
 test("loadPenPrefs: prefs cũ chỉ có color/w vẫn đọc được, kind/fill lấy mặc định", () => {
   const s = fakeStorage({ "ideamap.pen": JSON.stringify({ color: "pen-green", w: 2 }) });
-  assert.deepEqual(loadPenPrefs(s), { color: "pen-green", w: 2, kind: PEN_DEFAULT.kind, fill: false, size: PEN_DEFAULT.size });
+  assert.deepEqual(loadPenPrefs(s), { color: "pen-green", w: 2, kind: PEN_DEFAULT.kind, fill: false, size: PEN_DEFAULT.size, snap: true, scratch: true, dashed: false, erase: PEN_DEFAULT.erase, ew: PEN_DEFAULT.ew });
 });
 
 test("savePenPrefs rồi loadPenPrefs trả lại đúng giá trị", () => {
   const s = fakeStorage();
-  savePenPrefs(s, { color: "pen-green", w: 8, kind: "ellipse", fill: true, size: 30 });
-  assert.deepEqual(loadPenPrefs(s), { color: "pen-green", w: 8, kind: "ellipse", fill: true, size: 30 });
+  savePenPrefs(s, { color: "pen-green", w: 8, kind: "ellipse", fill: true, size: 30, snap: false, scratch: false, dashed: true, erase: "part", ew: 56 });
+  assert.deepEqual(loadPenPrefs(s), { color: "pen-green", w: 8, kind: "ellipse", fill: true, size: 30, snap: false, scratch: false, dashed: true, erase: "part", ew: 56 });
+});
+
+// Cục gôm có bộ nhớ RIÊNG, và `ew` cố ý không dùng chung ô với `w`: gộp lại thì
+// đổi cỡ cục tẩy sẽ lặng lẽ đổi luôn độ dày cây bút.
+test("loadPenPrefs: kiểu tẩy và cỡ tẩy lạ thì lùi về mặc định, không kéo theo cái khác", () => {
+  const s = fakeStorage({
+    "ideamap.pen": JSON.stringify({ color: "pen-blue", w: 8, erase: "vaporize", ew: 999 })
+  });
+  const got = loadPenPrefs(s);
+  assert.equal(got.erase, PEN_DEFAULT.erase);
+  assert.equal(got.ew, PEN_DEFAULT.ew);
+  assert.equal(got.color, "pen-blue");
+  assert.equal(got.w, 8);
+});
+
+// Prefs lưu từ TRƯỚC khi cục gôm có hai kiểu: phải ra kiểu "cả nét" — đúng hành
+// vi mà những người dùng đó đang quen — chứ không phải kiểu cắt theo độ rộng.
+test("loadPenPrefs: prefs cũ không có field erase thì tẩy CẢ NÉT", () => {
+  const s = fakeStorage({ "ideamap.pen": JSON.stringify({ color: "pen-blue", w: 8 }) });
+  assert.equal(loadPenPrefs(s).erase, "stroke");
+});
+
+// Prefs lưu từ TRƯỚC khi có "giữ tay để bắt hình" không có field `snap`, mà mặc
+// định của nó là BẬT — đọc bằng `=== true` sẽ tắt tính năng cho đúng những người
+// đã dùng app lâu nhất.
+test("loadPenPrefs: prefs cũ không có field snap thì snap vẫn BẬT", () => {
+  const s = fakeStorage({ "ideamap.pen": JSON.stringify({ color: "pen-blue", w: 8 }) });
+  assert.equal(loadPenPrefs(s).snap, true);
+});
+
+test("loadPenPrefs: chỉ đúng false mới là tắt, giá trị rác thì coi như bật", () => {
+  const off = fakeStorage({ "ideamap.pen": JSON.stringify({ snap: false }) });
+  assert.equal(loadPenPrefs(off).snap, false);
+  const junk = fakeStorage({ "ideamap.pen": JSON.stringify({ snap: "no" }) });
+  assert.equal(loadPenPrefs(junk).snap, true);
+});
+
+// Prefs lưu từ TRƯỚC khi có nét đứt không có field `dashed`, mà mặc định của nó
+// là TẮT — ngược hẳn với `snap` ngay trên, nên phải có test riêng.
+test("loadPenPrefs: prefs cũ không có field dashed thì là nét LIỀN", () => {
+  const s = fakeStorage({ "ideamap.pen": JSON.stringify({ color: "pen-blue", w: 8 }) });
+  assert.equal(loadPenPrefs(s).dashed, false);
+});
+
+test("loadPenPrefs: chỉ đúng true mới là nét đứt, giá trị rác thì là nét liền", () => {
+  const on = fakeStorage({ "ideamap.pen": JSON.stringify({ dashed: true }) });
+  assert.equal(loadPenPrefs(on).dashed, true);
+  const junk = fakeStorage({ "ideamap.pen": JSON.stringify({ dashed: "yes" }) });
+  assert.equal(loadPenPrefs(junk).dashed, false);
+});
+
+// Nhịp đứt phải tỉ lệ với độ dày nét: đây là toàn bộ lý do dashArray tồn tại
+// thay vì một chuỗi cố định. Nét dày gấp bốn thì vạch và khoảng hở cũng phải
+// gấp bốn, nếu không thì ở nét dày các vạch chạm nhau thành đường gần liền.
+test("dashArray: nhịp đứt tỉ lệ thẳng với độ dày nét", () => {
+  const [d2, g2] = dashArray(2).split(" ").map(Number);
+  const [d8, g8] = dashArray(8).split(" ").map(Number);
+  assert.equal(d8, d2 * 4);
+  assert.equal(g8, g2 * 4);
+});
+
+// Khoảng hở phải RỘNG HƠN vạch trong con số thô, vì .ink-layer path có
+// stroke-linecap: round: mỗi vạch tự dài thêm w/2 ở mỗi đầu, ăn vào khoảng hở
+// đúng một lượt w. Bù xong thì mắt thấy vạch dài hơn hở — nhưng con số phải
+// ngược lại. Test này canh đúng phép bù đó, thứ dễ bị "sửa cho hợp lý" nhất.
+test("dashArray: con số thô có khoảng hở rộng hơn vạch, để bù đầu tròn", () => {
+  for (const w of PEN_WIDTHS) {
+    const [dash, gap] = dashArray(w).split(" ").map(Number);
+    assert.ok(gap > dash, `w=${w}: hở ${gap} phải rộng hơn vạch ${dash}`);
+    // Sau khi cộng lại phần đầu tròn (w), vạch nhìn thấy phải dài hơn hở.
+    assert.ok(dash + w > gap - w, `w=${w}: vạch nhìn thấy phải dài hơn hở`);
+  }
+});
+
+// Độ dày 0 hay rác không được sinh ra "0 0" — dasharray đó làm nét BIẾN MẤT
+// hoàn toàn trên một số trình duyệt, chứ không phải hiện ra nét liền.
+test("dashArray: độ dày rác vẫn ra nhịp dùng được, không ra 0", () => {
+  for (const bad of [0, -5, undefined, null, NaN, "abc"]) {
+    const [dash, gap] = dashArray(bad).split(" ").map(Number);
+    assert.ok(dash > 0 && gap > 0, String(bad));
+  }
 });
 
 // Hết quota hoặc chế độ riêng tư — mất lựa chọn bút không đáng làm sập app.
