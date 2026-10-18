@@ -17,7 +17,8 @@ import { computeSnap } from "../lib/snap.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout, layerLayout } from "../lib/layout.js";
 import { parseDesc } from "../lib/mdlite.js";
-import { getUserName } from "../lib/user.js";
+import { useAuth } from "../context/AuthContext.jsx";
+import { usePresence, cursorColor } from "../lib/usePresence.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 import { compressImage } from "../lib/image-utils.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
@@ -72,6 +73,8 @@ export default function IdeaMap() {
   const [badgeUI, setBadgeUI] = useState(null); // { mode: "create"|"edit", kind, def?, x, y }
   const [colorMenu, setColorMenu] = useState(null); // { kind: "card"|"group", id, x, y }
   const [edgeMenu, setEdgeMenu] = useState(null); // { id, x, y } | null
+  const [hoveredEdgeId, setHoveredEdgeId] = useState(null);
+  const [edgeDrag, setEdgeDrag] = useState(null); // { edgeId, end: "from"|"to", fixedKind, fixedId, x, y } | null
   const [commentsFor, setCommentsFor] = useState(null); // { id, x, y } | null
   const [editingGroupTitleId, setEditingGroupTitleId] = useState(null);
   const [focusId, setFocusId] = useState(null);
@@ -79,6 +82,9 @@ export default function IdeaMap() {
   const [presentIndex, setPresentIndex] = useState(null); // null = không trình chiếu
   const [initialCardParam] = useState(() => new URLSearchParams(window.location.search).get("card"));
   const [, bump] = useState(0);
+
+  const { user } = useAuth();
+  const { peers: presencePeers, sendCursor } = usePresence(user);
 
   const viewportRef = useRef(null);
   const fbDockRef = useRef(null);
@@ -361,7 +367,16 @@ export default function IdeaMap() {
     return <div style={{ padding: 40, color: "var(--ink-dim)" }}><Trans>Đang tải…</Trans></div>;
   }
 
-  const currentUser = window.localStorage.getItem("idea-map-user");
+  const currentUser = user.name;
+
+  function handlePresenceMouseMove(e) {
+    const rect = viewportRef.current.getBoundingClientRect();
+    const view = boardRef.current.view;
+    sendCursor(
+      (e.clientX - rect.left - view.panX) / view.scale,
+      (e.clientY - rect.top - view.panY) / view.scale
+    );
+  }
 
   function entityAtPoint(clientX, clientY) {
     const el = document.elementFromPoint(clientX, clientY);
@@ -808,6 +823,46 @@ export default function IdeaMap() {
       setDropTargetId(null);
       const t = targetAt(ev.clientX, ev.clientY);
       if (t) toggleEdge(group.id, "group", t.id, t.kind);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  // Cầm một đầu dây có sẵn và kéo sang thẻ/khung khác để đổi hướng nối. Khung
+  // (group) là điểm đến hợp lệ y hệt thẻ — cả hai đi qua entityAtPoint chung.
+  function handleEdgeEndpointMouseDown(e, edge, end) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setEdgeMenu(null);
+    const rect = viewportRef.current.getBoundingClientRect();
+    const fixedKind = end === "from" ? (edge.toKind || "node") : (edge.fromKind || "node");
+    const fixedId = end === "from" ? edge.to : edge.from;
+
+    function toCanvas(clientX, clientY) {
+      const view = boardRef.current.view;
+      return { x: (clientX - rect.left - view.panX) / view.scale, y: (clientY - rect.top - view.panY) / view.scale };
+    }
+    function targetAt(clientX, clientY) {
+      const t = entityAtPoint(clientX, clientY);
+      if (!t) return null;
+      if (t.id === fixedId && t.kind === fixedKind) return null;
+      return t;
+    }
+
+    function onMove(ev) {
+      const p = toCanvas(ev.clientX, ev.clientY);
+      setEdgeDrag({ edgeId: edge.id, end, fixedKind, fixedId, x: p.x, y: p.y });
+      const t = targetAt(ev.clientX, ev.clientY);
+      setDropTargetId(t ? { id: t.id, kind: t.kind } : null);
+    }
+    function onUp(ev) {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setEdgeDrag(null);
+      setDropTargetId(null);
+      const t = targetAt(ev.clientX, ev.clientY);
+      if (t) updateEdge(edge.id, end === "from" ? { from: t.id, fromKind: t.kind } : { to: t.id, toKind: t.kind });
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -1484,25 +1539,22 @@ export default function IdeaMap() {
   }
 
   function toggleFavorite(nodeId) {
-    const user = getUserName(window.localStorage, () => window.prompt(t`Tên của bạn (hiện cạnh ⭐ và comment):`));
-    if (!user) return;
     commitAndSave({
       ...board,
       nodes: board.nodes.map((n) => {
         if (n.id !== nodeId) return n;
         const favs = n.favorites ?? [];
-        return { ...n, favorites: favs.includes(user) ? favs.filter((f) => f !== user) : [...favs, user] };
+        return { ...n, favorites: favs.includes(currentUser) ? favs.filter((f) => f !== currentUser) : [...favs, currentUser] };
       })
     });
   }
 
   function addComment(nodeId, text) {
-    const user = getUserName(window.localStorage, () => window.prompt(t`Tên của bạn (hiện cạnh ⭐ và comment):`));
-    if (!user || !text.trim()) return false;
+    if (!text.trim()) return false;
     commitAndSave({
       ...board,
       nodes: board.nodes.map((n) => (n.id === nodeId
-        ? { ...n, comments: [...(n.comments ?? []), { text: text.trim(), author: user, at: new Date().toISOString() }] }
+        ? { ...n, comments: [...(n.comments ?? []), { text: text.trim(), author: currentUser, at: new Date().toISOString() }] }
         : n))
     });
     return true;
@@ -1794,6 +1846,7 @@ export default function IdeaMap() {
         onDoubleClick={handleViewportDoubleClick}
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleViewportImageDrop}
+        onMouseMove={handlePresenceMouseMove}
       >
         <div
           className="canvas"
@@ -1826,13 +1879,19 @@ export default function IdeaMap() {
               </marker>
             </defs>
             {board.edges.map((edge) => {
+              if (edgeDrag && edgeDrag.edgeId === edge.id) return null;
               const r1 = rectForEndpoint(edge.fromKind || "node", edge.from, board.nodes, board.groups, frameCardSize);
               const r2 = rectForEndpoint(edge.toKind || "node", edge.to, board.nodes, board.groups, frameCardSize);
               if (!r1 || !r2) return null;
               const p1 = clipToRect(r1.cx, r1.cy, r1.w, r1.h, r2.cx, r2.cy);
               const p2 = clipToRect(r2.cx, r2.cy, r2.w, r2.h, r1.cx, r1.cy);
+              const hot = hoveredEdgeId === edge.id;
               return (
-                <g key={edge.id}>
+                <g
+                  key={edge.id}
+                  onMouseEnter={() => setHoveredEdgeId(edge.id)}
+                  onMouseLeave={() => setHoveredEdgeId((id) => (id === edge.id ? null : id))}
+                >
                   <line
                     className="hit"
                     data-edge-id={edge.id}
@@ -1840,7 +1899,7 @@ export default function IdeaMap() {
                     onClick={(e) => { setColorMenu(null); setCommentsFor(null); setEdgeMenu({ id: edge.id, x: e.clientX, y: e.clientY }); }}
                   />
                   <line
-                    className="visible"
+                    className={"visible" + (hot ? " hot" : "")}
                     x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                     style={edge.color ? { stroke: colorVar(edge.color) } : undefined}
                     strokeDasharray={edge.style === "dashed" ? "6 5" : undefined}
@@ -1859,6 +1918,11 @@ export default function IdeaMap() {
               const from = edgeEndpoint(linkDraft.fromKind || "node", linkDraft.fromId, board.nodes, board.groups, frameCardSize);
               if (!from) return null;
               return <line className="draft" x1={from.x} y1={from.y} x2={linkDraft.x} y2={linkDraft.y} />;
+            })()}
+            {edgeDrag && (() => {
+              const fixed = edgeEndpoint(edgeDrag.fixedKind, edgeDrag.fixedId, board.nodes, board.groups, frameCardSize);
+              if (!fixed) return null;
+              return <line className="draft" x1={fixed.x} y1={fixed.y} x2={edgeDrag.x} y2={edgeDrag.y} />;
             })()}
           </svg>
 
@@ -1890,6 +1954,50 @@ export default function IdeaMap() {
               onImageResize={(e) => handleImageResizeMouseDown(e, node)}
             />
           ))}
+
+          {Array.from(presencePeers.values()).map((peer) => (
+            <div
+              key={peer.socketId}
+              className="peer-cursor"
+              style={{ left: peer.x, top: peer.y, "--peer-color": cursorColor(peer.email) }}
+            >
+              <svg viewBox="0 0 20 20" width="16" height="16">
+                <path d="M2 2 L18 9 L10 11 L8 18 Z" fill="var(--peer-color)" stroke="var(--bg)" strokeWidth="1" />
+              </svg>
+              <span className="peer-cursor-label" style={{ background: "var(--peer-color)" }}>{peer.name}</span>
+            </div>
+          ))}
+
+          {/* Tay cầm nổi trên cùng, tách khỏi .edge-layer: đầu dây thường trùng
+              đúng chỗ connector-zone của thẻ (cả hai đều ở tâm cạnh), và thẻ
+              luôn vẽ sau .edge-layer nên connector-zone sẽ che tay cầm nếu để
+              chung lớp — chuột sẽ trúng connector-zone thay vì tay cầm. */}
+          {hoveredEdgeId != null && !edgeDrag && (() => {
+            const edge = board.edges.find((e) => e.id === hoveredEdgeId);
+            if (!edge) return null;
+            const r1 = rectForEndpoint(edge.fromKind || "node", edge.from, board.nodes, board.groups, frameCardSize);
+            const r2 = rectForEndpoint(edge.toKind || "node", edge.to, board.nodes, board.groups, frameCardSize);
+            if (!r1 || !r2) return null;
+            const p1 = clipToRect(r1.cx, r1.cy, r1.w, r1.h, r2.cx, r2.cy);
+            const p2 = clipToRect(r2.cx, r2.cy, r2.w, r2.h, r1.cx, r1.cy);
+            return (
+              <svg
+                className="edge-handle-layer"
+                onMouseLeave={() => setHoveredEdgeId((id) => (id === edge.id ? null : id))}
+              >
+                <circle
+                  className="edge-handle" cx={p1.x} cy={p1.y} r={6}
+                  onMouseEnter={() => setHoveredEdgeId(edge.id)}
+                  onMouseDown={(e) => handleEdgeEndpointMouseDown(e, edge, "from")}
+                />
+                <circle
+                  className="edge-handle" cx={p2.x} cy={p2.y} r={6}
+                  onMouseEnter={() => setHoveredEdgeId(edge.id)}
+                  onMouseDown={(e) => handleEdgeEndpointMouseDown(e, edge, "to")}
+                />
+              </svg>
+            );
+          })()}
         </div>
 
         {board.nodes.length === 0 && (

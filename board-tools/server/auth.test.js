@@ -1,0 +1,46 @@
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import {
+  isEmailAllowed,
+  signSession,
+  verifySession,
+  parseSessionFromCookieHeader,
+  SESSION_COOKIE_NAME
+} from "./auth.js";
+
+before(() => {
+  process.env.SESSION_SECRET = "test-secret";
+});
+
+test("isEmailAllowed: denies everyone when ALLOWED_EMAILS is unset", () => {
+  delete process.env.ALLOWED_EMAILS;
+  assert.equal(isEmailAllowed("anyone@gmail.com"), false);
+});
+
+test("isEmailAllowed: matches case-insensitively against the list", () => {
+  process.env.ALLOWED_EMAILS = "Alice@Gmail.com, bob@gmail.com";
+  assert.equal(isEmailAllowed("alice@gmail.com"), true);
+  assert.equal(isEmailAllowed("BOB@GMAIL.COM"), true);
+  assert.equal(isEmailAllowed("carol@gmail.com"), false);
+});
+
+test("signSession/verifySession round-trip preserves user fields", () => {
+  const token = signSession({ email: "a@b.com", name: "A B", picture: "http://x/p.png" });
+  const decoded = verifySession(token);
+  assert.deepEqual(decoded, { email: "a@b.com", name: "A B", picture: "http://x/p.png" });
+});
+
+test("verifySession returns null for a garbage token", () => {
+  assert.equal(verifySession("not-a-jwt"), null);
+});
+
+test("parseSessionFromCookieHeader finds the session cookie among others", () => {
+  const token = signSession({ email: "a@b.com", name: "A B", picture: null });
+  const header = `theme-pref=dark; ${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; other=1`;
+  assert.deepEqual(parseSessionFromCookieHeader(header), { email: "a@b.com", name: "A B", picture: null });
+});
+
+test("parseSessionFromCookieHeader returns null when the cookie is absent", () => {
+  assert.equal(parseSessionFromCookieHeader("theme-pref=dark"), null);
+  assert.equal(parseSessionFromCookieHeader(undefined), null);
+});
