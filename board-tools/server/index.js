@@ -25,10 +25,12 @@ const ideaBoardSchema = new mongoose.Schema(
     singleton: { type: String, default: "main", unique: true },
     nodes: { type: Array, default: [] },
     edges: { type: Array, default: [] },
+    groups: { type: Array, default: [] },
     statuses: { type: Array, default: undefined },
     tags: { type: Array, default: undefined },
     nextNodeId: { type: Number, default: 1 },
     nextEdgeId: { type: Number, default: 1 },
+    nextGroupId: { type: Number, default: 1 },
     nextStatusId: { type: Number, default: 1 },
     nextTagId: { type: Number, default: 1 },
     view: { type: Object, default: () => ({ panX: 0, panY: 0, scale: 1 }) }
@@ -69,6 +71,7 @@ const defaultIdeas = {
     { id: 1, from: 1, to: 2 },
     { id: 2, from: 1, to: 3 }
   ],
+  groups: [],
   statuses: DEFAULT_STATUSES,
   tags: [
     { id: 1, name: "Cơ chế", color: "dot-1" },
@@ -77,6 +80,7 @@ const defaultIdeas = {
   ],
   nextNodeId: 5,
   nextEdgeId: 3,
+  nextGroupId: 1,
   nextStatusId: 6,
   nextTagId: 4,
   view: { panX: 60, panY: 60, scale: 1 }
@@ -186,10 +190,10 @@ app.get("/api/ideas", async (req, res) => {
 
 app.put("/api/ideas", async (req, res) => {
   try {
-    const { nodes, edges, statuses, tags, nextNodeId, nextEdgeId, nextStatusId, nextTagId, view } = req.body;
+    const { nodes, edges, groups, statuses, tags, nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, view } = req.body;
     await IdeaBoard.findOneAndUpdate(
       { singleton: "main" },
-      { nodes, edges, statuses, tags, nextNodeId, nextEdgeId, nextStatusId, nextTagId, view },
+      { nodes, edges, groups, statuses, tags, nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, view },
       { upsert: true }
     );
     res.json({ ok: true });

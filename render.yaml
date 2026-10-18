@@ -1,0 +1,26 @@
+# Render Blueprint — must live at the repo root so Render auto-detects it.
+# The app lives in game-tools/, so rootDir points Render there; the build/start
+# commands are then relative to game-tools/.
+#
+# Deploy: Render dashboard -> New -> Blueprint -> pick this repo -> set the
+# MONGODB_URI secret (Atlas connection string) -> Apply. Render builds the
+# client, installs the server, and the server serves both the API and the
+# built client on one free web service URL.
+#
+# Also required in MongoDB Atlas: Network Access -> allow 0.0.0.0/0 (Render's
+# free tier has no static outbound IP).
+services:
+  - type: web
+    name: game-tools
+    runtime: node
+    plan: free
+    rootDir: game-tools
+    buildCommand: cd client && npm install && npm run build && cd ../server && npm install
+    startCommand: cd server && npm start
+    envVars:
+      - key: MONGODB_URI
+        sync: false
+      # Node 22+ required: @lingui/cli imports fs.globSync, which does not
+      # exist before Node 22 (build fails on 20 with a node:fs SyntaxError).
+      - key: NODE_VERSION
+        value: 22.11.0

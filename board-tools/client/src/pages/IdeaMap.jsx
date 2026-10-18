@@ -7,6 +7,9 @@ import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
 import LoadError from "../components/LoadError.jsx";
 import LocaleToggle from "../components/LocaleToggle.jsx";
 import BadgeEditor from "../components/BadgeEditor.jsx";
+import ColorMenu from "../components/ColorMenu.jsx";
+import FrameBox from "../components/FrameBox.jsx";
+import { nodesInFrame, edgeEndpoint, edgesMatch } from "../lib/board-geometry.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -45,12 +48,15 @@ export default function IdeaMap() {
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [marquee, setMarquee] = useState(null);
   const [badgeUI, setBadgeUI] = useState(null); // { mode: "create"|"edit", kind, def?, x, y }
+  const [colorMenu, setColorMenu] = useState(null); // { kind: "card"|"group", id, x, y }
+  const [editingGroupTitleId, setEditingGroupTitleId] = useState(null);
   const [, bump] = useState(0);
 
   const viewportRef = useRef(null);
   const canvasRef = useRef(null);
   const saveTimerRef = useRef(null);
   const boardRef = useRef(null);
+  const suppressContextMenuRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -75,20 +81,25 @@ export default function IdeaMap() {
       e.preventDefault();
       const current = boardRef.current;
       if (!current) return;
-      if (e.ctrlKey || e.metaKey) {
-        const factor = Math.pow(1.0015, -e.deltaY);
-        const next = computeZoom(current, el.getBoundingClientRect(), e.clientX, e.clientY, factor);
+      // Lăn chuột = thu phóng tại vị trí con trỏ. Giữ Shift để lia ngang/dọc
+      // (hữu ích cho trackpad hoặc khi muốn cuộn thay vì zoom).
+      if (e.shiftKey) {
+        const next = { ...current, view: { ...current.view, panX: current.view.panX - e.deltaX, panY: current.view.panY - e.deltaY } };
         setBoard(next);
         saveDebounced(next);
       } else {
-        const next = { ...current, view: { ...current.view, panX: current.view.panX - e.deltaX, panY: current.view.panY - e.deltaY } };
+        const factor = Math.pow(1.0015, -e.deltaY);
+        const next = computeZoom(current, el.getBoundingClientRect(), e.clientX, e.clientY, factor);
         setBoard(next);
         saveDebounced(next);
       }
     }
     el.addEventListener("wheel", wheelHandler, { passive: false });
     return () => el.removeEventListener("wheel", wheelHandler);
-  }, []);
+    // Re-chạy khi board tải xong: lúc mount đầu board còn null nên viewport
+    // chưa render (return "Đang tải…"), viewportRef.current == null và listener
+    // sẽ không được gắn nếu chỉ phụ thuộc [].
+  }, [board != null]);
 
   function saveNow(next) {
     saveIdeas(next).then(() => setSaveError(null)).catch(() => setSaveError(true));
@@ -155,6 +166,15 @@ export default function IdeaMap() {
     return <div style={{ padding: 40, color: "var(--ink-dim)" }}><Trans>Đang tải…</Trans></div>;
   }
 
+  function entityAtPoint(clientX, clientY) {
+    const el = document.elementFromPoint(clientX, clientY);
+    const card = el && el.closest(".idea-card");
+    if (card) return { id: Number(card.getAttribute("data-id")), kind: "node" };
+    const frame = el && el.closest(".frame-box");
+    if (frame) return { id: Number(frame.getAttribute("data-group-id")), kind: "group" };
+    return null;
+  }
+
   function passesFilter(node) {
     const statusKeys = Object.keys(filterStatus).filter((k) => filterStatus[k]);
     if (statusKeys.length) {
@@ -189,6 +209,149 @@ export default function IdeaMap() {
     createNode(cx - CARD_W / 2, cy - 40);
   }
 
+  function frameCardSize(nodeId) {
+    const card = canvasRef.current && canvasRef.current.querySelector(`.idea-card[data-id="${nodeId}"]`);
+    return { w: card ? card.offsetWidth : CARD_W, h: card ? card.offsetHeight : 110 };
+  }
+
+  function createGroup() {
+    const rect = viewportRef.current.getBoundingClientRect();
+    const w = 480, h = 320;
+    const cx = (rect.width / 2 - board.view.panX) / board.view.scale;
+    const cy = (rect.height / 2 - board.view.panY) / board.view.scale;
+    const id = board.nextGroupId;
+    const group = { id, title: t`Khung mới`, x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), w, h, color: null };
+    commitAndSave({ ...board, groups: [...board.groups, group], nextGroupId: id + 1 });
+  }
+
+  function groupSelectedCards() {
+    const PAD = 28, TITLE_ROOM = 20;
+    const ids = Array.from(selectedIds);
+    if (ids.length < 2) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    ids.forEach((id) => {
+      const n = board.nodes.find((nn) => nn.id === id);
+      if (!n) return;
+      const { w, h } = frameCardSize(id);
+      minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + w); maxY = Math.max(maxY, n.y + h);
+    });
+    if (minX === Infinity) return;
+    const id = board.nextGroupId;
+    const group = {
+      id, title: t`Khung mới`, color: null,
+      x: Math.round(minX - PAD), y: Math.round(minY - PAD - TITLE_ROOM),
+      w: Math.round(maxX - minX + PAD * 2), h: Math.round(maxY - minY + PAD * 2 + TITLE_ROOM)
+    };
+    setColorMenu(null);
+    commitAndSave({ ...board, groups: [...board.groups, group], nextGroupId: id + 1 });
+  }
+
+  function handleGroupMouseDown(e, group) {
+    if (e.button === 2) { e.stopPropagation(); startPan(e); return; }
+    if (e.button !== 0) return;
+    e.stopPropagation();
+
+    const startX = e.clientX, startY = e.clientY;
+    const scale = board.view.scale;
+    const boardBeforeDrag = board;
+    const memberIds = nodesInFrame(board.nodes, group, frameCardSize);
+    const startGroupPos = { x: group.x, y: group.y };
+    const startNodePositions = new Map(
+      memberIds.map((id) => {
+        const n = board.nodes.find((nn) => nn.id === id);
+        return [id, { x: n.x, y: n.y }];
+      })
+    );
+    let latest = board;
+    let moved = false;
+
+    function onMove(ev) {
+      const dx = (ev.clientX - startX) / scale;
+      const dy = (ev.clientY - startY) / scale;
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
+      setBoard((prev) => {
+        const next = {
+          ...prev,
+          groups: prev.groups.map((g) => (g.id === group.id
+            ? { ...g, x: Math.round(startGroupPos.x + dx), y: Math.round(startGroupPos.y + dy) }
+            : g)),
+          nodes: prev.nodes.map((n) => {
+            const start = startNodePositions.get(n.id);
+            if (!start) return n;
+            return { ...n, x: Math.round(start.x + dx), y: Math.round(start.y + dy) };
+          })
+        };
+        latest = next;
+        return next;
+      });
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (moved) recordHistory(boardBeforeDrag);
+      saveNow(latest);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  function handleGroupResizeMouseDown(e, group) {
+    e.preventDefault();
+    const startX = e.clientX, startY = e.clientY;
+    const scale = board.view.scale;
+    const boardBeforeDrag = board;
+    const startW = group.w, startH = group.h;
+    const MIN_W = 160, MIN_H = 120;
+    let latest = board;
+    let moved = false;
+
+    function onMove(ev) {
+      const dx = (ev.clientX - startX) / scale;
+      const dy = (ev.clientY - startY) / scale;
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
+      setBoard((prev) => {
+        const next = {
+          ...prev,
+          groups: prev.groups.map((g) => (g.id === group.id
+            ? { ...g, w: Math.max(MIN_W, Math.round(startW + dx)), h: Math.max(MIN_H, Math.round(startH + dy)) }
+            : g))
+        };
+        latest = next;
+        return next;
+      });
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (moved) recordHistory(boardBeforeDrag);
+      saveNow(latest);
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  function saveGroupTitle(groupId, title) {
+    setEditingGroupTitleId(null);
+    commitAndSave({ ...board, groups: board.groups.map((g) => (g.id === groupId ? { ...g, title: title.trim() || t`Khung` } : g)) });
+  }
+
+  function deleteGroup(id) {
+    commitAndSave({
+      ...board,
+      groups: board.groups.filter((g) => g.id !== id),
+      edges: board.edges.filter((e) => !(
+        (e.from === id && (e.fromKind || "node") === "group") ||
+        (e.to === id && (e.toKind || "node") === "group")
+      ))
+    });
+  }
+
+  function applyGroupColor(groupId, color) {
+    commitAndSave({ ...board, groups: board.groups.map((g) => (g.id === groupId ? { ...g, color } : g)) });
+    setColorMenu(null);
+  }
+
   function handleViewportDoubleClick(e) {
     if (e.target !== viewportRef.current && e.target !== canvasRef.current) return;
     const rect = viewportRef.current.getBoundingClientRect();
@@ -197,7 +360,10 @@ export default function IdeaMap() {
     createNode(cx - CARD_W / 2, cy - 40);
   }
 
-  function handleViewportContextMenu(e) {
+  // Suppress the browser's native context menu across the whole page, so
+  // right-click is free for our own gestures (chip → badge editor, drag to
+  // pan). Text inputs keep the native menu so Copy/Paste still works there.
+  function handlePageContextMenu(e) {
     const tag = (e.target.tagName || "").toUpperCase();
     if (tag === "INPUT" || tag === "TEXTAREA" || e.target.isContentEditable) return;
     e.preventDefault();
@@ -294,32 +460,67 @@ export default function IdeaMap() {
       const view = boardRef.current.view;
       return { x: (clientX - rect.left - view.panX) / view.scale, y: (clientY - rect.top - view.panY) / view.scale };
     }
-    function targetCardIdAt(clientX, clientY) {
-      const el = document.elementFromPoint(clientX, clientY);
-      const card = el && el.closest(".idea-card");
-      if (!card) return null;
-      const id = Number(card.getAttribute("data-id"));
-      return id === node.id ? null : id;
+    function targetAt(clientX, clientY) {
+      const t = entityAtPoint(clientX, clientY);
+      if (!t) return null;
+      if (t.kind === "node" && t.id === node.id) return null;
+      return t;
     }
 
     function onMove(ev) {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
       if (!dragging) return;
       const p = toCanvas(ev.clientX, ev.clientY);
-      setLinkDraft({ fromId: node.id, x: p.x, y: p.y });
-      setDropTargetId(targetCardIdAt(ev.clientX, ev.clientY));
+      setLinkDraft({ fromId: node.id, fromKind: "node", x: p.x, y: p.y });
+      const t = targetAt(ev.clientX, ev.clientY);
+      setDropTargetId(t ? { id: t.id, kind: t.kind } : null);
     }
     function onUp(ev) {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
       if (dragging) {
         setLinkDraft(null);
-        const targetId = targetCardIdAt(ev.clientX, ev.clientY);
+        const t = targetAt(ev.clientX, ev.clientY);
         setDropTargetId(null);
-        if (targetId !== null) toggleEdge(node.id, targetId);
+        if (t) toggleEdge(node.id, "node", t.id, t.kind);
       } else {
         createLinkedNode(node.id, direction);
       }
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
+  function handleGroupConnectorMouseDown(e, group) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const rect = viewportRef.current.getBoundingClientRect();
+
+    function toCanvas(clientX, clientY) {
+      const view = boardRef.current.view;
+      return { x: (clientX - rect.left - view.panX) / view.scale, y: (clientY - rect.top - view.panY) / view.scale };
+    }
+    function targetAt(clientX, clientY) {
+      const t = entityAtPoint(clientX, clientY);
+      if (!t) return null;
+      if (t.kind === "group" && t.id === group.id) return null;
+      return t;
+    }
+
+    function onMove(ev) {
+      const p = toCanvas(ev.clientX, ev.clientY);
+      setLinkDraft({ fromId: group.id, fromKind: "group", x: p.x, y: p.y });
+      const t = targetAt(ev.clientX, ev.clientY);
+      setDropTargetId(t ? { id: t.id, kind: t.kind } : null);
+    }
+    function onUp(ev) {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      setLinkDraft(null);
+      setDropTargetId(null);
+      const t = targetAt(ev.clientX, ev.clientY);
+      if (t) toggleEdge(group.id, "group", t.id, t.kind);
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -354,7 +555,8 @@ export default function IdeaMap() {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
       if (!dragging) return;
       setChipDrag({ kind, value, x: ev.clientX, y: ev.clientY });
-      setDropTargetId(targetCardIdAt(ev.clientX, ev.clientY));
+      const id = targetCardIdAt(ev.clientX, ev.clientY);
+      setDropTargetId(id != null ? { id, kind: "node" } : null);
     }
     function onUp(ev) {
       window.removeEventListener("mousemove", onMove);
@@ -373,7 +575,10 @@ export default function IdeaMap() {
     commitAndSave({
       ...board,
       nodes: board.nodes.filter((n) => n.id !== id),
-      edges: board.edges.filter((e) => e.from !== id && e.to !== id)
+      edges: board.edges.filter((e) => !(
+        (e.from === id && (e.fromKind || "node") === "node") ||
+        (e.to === id && (e.toKind || "node") === "node")
+      ))
     });
   }
 
@@ -382,12 +587,13 @@ export default function IdeaMap() {
     commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, ...fields } : n)) });
   }
 
-  function toggleEdge(a, b) {
-    const existing = board.edges.find((e) => (e.from === a && e.to === b) || (e.from === b && e.to === a));
+  function toggleEdge(a, aKind, b, bKind) {
+    const existing = board.edges.find((e) => edgesMatch(e, a, aKind, b, bKind));
     if (existing) {
       commitAndSave({ ...board, edges: board.edges.filter((e) => e.id !== existing.id) });
     } else {
-      commitAndSave({ ...board, edges: [...board.edges, { id: board.nextEdgeId, from: a, to: b }], nextEdgeId: board.nextEdgeId + 1 });
+      const edge = { id: board.nextEdgeId, from: a, fromKind: aKind, to: b, toKind: bKind };
+      commitAndSave({ ...board, edges: [...board.edges, edge], nextEdgeId: board.nextEdgeId + 1 });
     }
   }
 
@@ -395,7 +601,7 @@ export default function IdeaMap() {
     if (!linkMode) return;
     if (pendingSource === null) setPendingSource(node.id);
     else if (pendingSource === node.id) setPendingSource(null);
-    else { toggleEdge(pendingSource, node.id); setPendingSource(null); }
+    else { toggleEdge(pendingSource, "node", node.id, "node"); setPendingSource(null); }
   }
 
   function handleNodeMouseDown(e, node) {
@@ -518,6 +724,8 @@ export default function IdeaMap() {
       if (dragging) {
         setIsPanning(false);
         saveNow(latest);
+        suppressContextMenuRef.current = true;
+        setTimeout(() => { suppressContextMenuRef.current = false; }, 0);
       }
     }
     window.addEventListener("mousemove", onMove);
@@ -568,6 +776,8 @@ export default function IdeaMap() {
     try {
       const parsed = JSON.parse(ioText);
       if (!parsed.nodes || !parsed.edges || !parsed.view) throw new Error("bad shape");
+      if (!Array.isArray(parsed.groups)) parsed.groups = [];
+      if (typeof parsed.nextGroupId !== "number") parsed.nextGroupId = 1;
       commitAndSave(parsed);
       setIoOpen(false);
     } catch (e) {
@@ -593,6 +803,18 @@ export default function IdeaMap() {
     e.preventDefault();
     e.stopPropagation();
     setBadgeUI({ mode: "edit", kind, def, x: e.clientX, y: e.clientY });
+  }
+
+  function openColorMenu(e, kind, id) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (suppressContextMenuRef.current) { suppressContextMenuRef.current = false; return; }
+    setColorMenu({ kind, id, x: e.clientX, y: e.clientY });
+  }
+
+  function applyNodeColor(nodeId, color) {
+    commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, color } : n)) });
+    setColorMenu(null);
   }
 
   function openBadgeCreate(e, kind) {
@@ -642,7 +864,7 @@ export default function IdeaMap() {
   }
 
   return (
-    <div className="shell">
+    <div className="shell" onContextMenu={handlePageContextMenu}>
       <div className="topbar">
         <div>
           <div className="eyebrow"><Trans>Bản đồ ý tưởng</Trans></div>
@@ -650,6 +872,7 @@ export default function IdeaMap() {
         </div>
         <Link to="/" className="btn ghost"><Trans>← Trang chủ</Trans></Link>
         <button className="btn" onClick={handleAddClick}><Trans>+ Ý tưởng</Trans></button>
+        <button className="btn ghost" onClick={createGroup}><Trans>+ Khung</Trans></button>
         <button className="btn ghost icon" onClick={undo} disabled={past.length === 0} title={t`Hoàn tác (Ctrl+Z)`}>↶</button>
         <button className="btn ghost icon" onClick={redo} disabled={future.length === 0} title={t`Làm lại (Ctrl+Shift+Z)`}>↷</button>
         <button
@@ -755,7 +978,6 @@ export default function IdeaMap() {
         ref={viewportRef}
         onMouseDown={handleViewportMouseDown}
         onDoubleClick={handleViewportDoubleClick}
-        onContextMenu={handleViewportContextMenu}
       >
         <div
           className="canvas"
@@ -765,34 +987,42 @@ export default function IdeaMap() {
           {marquee && (
             <div className="marquee-box" style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h }} />
           )}
+          {board.groups.map((group) => (
+            <FrameBox
+              key={group.id}
+              group={group}
+              editingTitle={editingGroupTitleId === group.id}
+              onMouseDown={(e) => handleGroupMouseDown(e, group)}
+              onResizeMouseDown={(e) => handleGroupResizeMouseDown(e, group)}
+              onContextMenu={(e) => openColorMenu(e, "group", group.id)}
+              onTitleDoubleClick={() => setEditingGroupTitleId(group.id)}
+              onTitleSave={(title) => saveGroupTitle(group.id, title)}
+              onTitleCancel={() => setEditingGroupTitleId(null)}
+              onDelete={() => deleteGroup(group.id)}
+              onConnectorMouseDown={(e) => handleGroupConnectorMouseDown(e, group)}
+              dropTarget={!!dropTargetId && dropTargetId.kind === "group" && dropTargetId.id === group.id}
+            />
+          ))}
           <svg className="edge-layer">
             {board.edges.map((edge) => {
-              const a = board.nodes.find((n) => n.id === edge.from);
-              const b = board.nodes.find((n) => n.id === edge.to);
-              if (!a || !b) return null;
-              const cardA = canvasRef.current && canvasRef.current.querySelector(`.idea-card[data-id="${a.id}"]`);
-              const cardB = canvasRef.current && canvasRef.current.querySelector(`.idea-card[data-id="${b.id}"]`);
-              const aw = cardA ? cardA.offsetWidth : CARD_W, ah = cardA ? cardA.offsetHeight : 100;
-              const bw = cardB ? cardB.offsetWidth : CARD_W, bh = cardB ? cardB.offsetHeight : 100;
-              const x1 = a.x + aw / 2, y1 = a.y + ah / 2;
-              const x2 = b.x + bw / 2, y2 = b.y + bh / 2;
+              const p1 = edgeEndpoint(edge.fromKind || "node", edge.from, board.nodes, board.groups, frameCardSize);
+              const p2 = edgeEndpoint(edge.toKind || "node", edge.to, board.nodes, board.groups, frameCardSize);
+              if (!p1 || !p2) return null;
               return (
                 <g key={edge.id}>
                   <line
                     className="hit"
-                    x1={x1} y1={y1} x2={x2} y2={y2}
+                    x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                     onClick={() => commitAndSave({ ...board, edges: board.edges.filter((e) => e.id !== edge.id) })}
                   />
-                  <line className="visible" x1={x1} y1={y1} x2={x2} y2={y2} />
+                  <line className="visible" x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} />
                 </g>
               );
             })}
             {linkDraft && (() => {
-              const a = board.nodes.find((n) => n.id === linkDraft.fromId);
-              if (!a) return null;
-              const cardA = canvasRef.current && canvasRef.current.querySelector(`.idea-card[data-id="${a.id}"]`);
-              const aw = cardA ? cardA.offsetWidth : CARD_W, ah = cardA ? cardA.offsetHeight : 100;
-              return <line className="draft" x1={a.x + aw / 2} y1={a.y + ah / 2} x2={linkDraft.x} y2={linkDraft.y} />;
+              const from = edgeEndpoint(linkDraft.fromKind || "node", linkDraft.fromId, board.nodes, board.groups, frameCardSize);
+              if (!from) return null;
+              return <line className="draft" x1={from.x} y1={from.y} x2={linkDraft.x} y2={linkDraft.y} />;
             })()}
           </svg>
 
@@ -804,10 +1034,11 @@ export default function IdeaMap() {
               editing={editingId === node.id}
               dimmed={!passesFilter(node)}
               linkPending={linkMode && pendingSource === node.id}
-              dropTarget={dropTargetId === node.id}
+              dropTarget={!!dropTargetId && dropTargetId.kind === "node" && dropTargetId.id === node.id}
               selected={selectedIds.has(node.id)}
               onMouseDown={(e) => handleNodeMouseDown(e, node)}
               onClick={() => handleCardClick(node)}
+              onContextMenu={(e) => openColorMenu(e, "card", node.id)}
               onConnectorMouseDown={(e, direction) => handleConnectorMouseDown(e, node, direction)}
               onEdit={() => setEditingId(node.id)}
               onDelete={() => deleteNode(node.id)}
@@ -865,6 +1096,36 @@ export default function IdeaMap() {
         </div>
       )}
 
+      {colorMenu && colorMenu.kind === "card" && (() => {
+        const node = board.nodes.find((n) => n.id === colorMenu.id);
+        if (!node) return null;
+        return (
+          <ColorMenu
+            x={colorMenu.x}
+            y={colorMenu.y}
+            color={node.color ?? null}
+            onPick={(color) => applyNodeColor(node.id, color)}
+            onEdit={() => { setColorMenu(null); setEditingId(node.id); }}
+            onGroup={selectedIds.size >= 2 && selectedIds.has(node.id) ? groupSelectedCards : undefined}
+            onClose={() => setColorMenu(null)}
+          />
+        );
+      })()}
+
+      {colorMenu && colorMenu.kind === "group" && (() => {
+        const group = board.groups.find((g) => g.id === colorMenu.id);
+        if (!group) return null;
+        return (
+          <ColorMenu
+            x={colorMenu.x}
+            y={colorMenu.y}
+            color={group.color ?? null}
+            onPick={(color) => applyGroupColor(group.id, color)}
+            onClose={() => setColorMenu(null)}
+          />
+        );
+      })()}
+
       {badgeUI && badgeUI.mode === "create" && (
         <BadgeEditor
           key={badgeUI.mode + "-" + (badgeUI.def?.id ?? "new")}
@@ -894,7 +1155,7 @@ export default function IdeaMap() {
   );
 }
 
-function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selected, onMouseDown, onClick, onConnectorMouseDown, onEdit, onDelete, onSave, onCancel }) {
+function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selected, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onSave, onCancel }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(node.title);
   const [desc, setDesc] = useState(node.desc);
@@ -943,9 +1204,13 @@ function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selec
     <div
       className={classNames.join(" ")}
       data-id={node.id}
-      style={{ left: node.x, top: node.y }}
+      style={{
+        left: node.x, top: node.y,
+        ...(node.color ? { borderLeftColor: colorVar(node.color), borderLeftWidth: 4 } : {})
+      }}
       onMouseDown={onMouseDown}
       onClick={onClick}
+      onContextMenu={onContextMenu}
     >
       <div className="card-actions">
         <button className="icon-btn" title={t`Sửa`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(); }}>✎</button>
