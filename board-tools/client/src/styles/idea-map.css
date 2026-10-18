@@ -1,0 +1,100 @@
+.shell { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+.topbar {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  padding: 10px 16px; border-bottom: 3px solid var(--ink); background: var(--surface);
+  flex-shrink: 0;
+}
+.search-box input {
+  background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
+  padding: 7px 10px; font-size: 12px; width: 180px;
+}
+.spacer { flex: 1 1 auto; min-width: 8px; }
+
+.filterbar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px 16px; border-bottom: 1px solid var(--line); background: var(--surface);
+  flex-shrink: 0;
+}
+.filterbar .fb-label { font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-dim); margin-right: 2px; }
+.chip-toggle {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px;
+  font-size: 11px; cursor: pointer; background: var(--bg); color: var(--ink-dim);
+}
+.chip-toggle .dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.chip-toggle.on { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.chip-toggle.on .dot { filter: brightness(1.4); }
+
+.viewport {
+  position: relative; flex: 1 1 auto; overflow: hidden; cursor: grab;
+  background: radial-gradient(var(--line) 1px, transparent 1px) 0 0 / 26px 26px, var(--bg);
+}
+.viewport.panning { cursor: grabbing; }
+.canvas { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
+.edge-layer { position: absolute; left: 0; top: 0; width: 4200px; height: 3200px; overflow: visible; pointer-events: none; }
+.edge-layer .hit { stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
+.edge-layer .visible { stroke: var(--ink-dim); stroke-width: 1.6; opacity: 0.6; }
+
+.idea-card {
+  position: absolute; width: 210px;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 6px;
+  box-shadow: var(--shadow); padding: 10px 10px 9px; cursor: grab; user-select: none;
+}
+.idea-card.link-pending { outline: 2px solid var(--accent); outline-offset: 2px; }
+.idea-card.dim { opacity: 0.22; pointer-events: none; }
+.idea-card .card-top { display: flex; justify-content: space-between; gap: 6px; align-items: flex-start; }
+.idea-card .title { font-size: 13px; line-height: 1.2; }
+.idea-card .card-actions { display: flex; gap: 3px; flex-shrink: 0; position: absolute; top: 8px; right: 8px; }
+.idea-card .icon-btn { background: none; border: none; cursor: pointer; font-size: 12px; color: var(--ink-dim); padding: 1px 3px; line-height: 1; }
+.idea-card .icon-btn:hover { color: var(--ink); }
+.idea-card .desc {
+  font-size: 11px; color: var(--ink-dim); margin-top: 5px; line-height: 1.35;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+.idea-card .meta-row { display: flex; align-items: center; gap: 6px; margin-top: 7px; flex-wrap: wrap; }
+.tag-pill {
+  display: inline-flex; align-items: center; gap: 4px; font-size: 9.5px;
+  padding: 2px 7px 2px 5px; border-radius: 999px; background: var(--bg); color: var(--ink-dim);
+  border: 1px solid var(--line);
+}
+.tag-pill .dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+.status-pill { font-size: 9px; letter-spacing: 0.05em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; color: #fff; white-space: nowrap; }
+
+.edit-form { display: flex; flex-direction: column; gap: 5px; cursor: default; }
+.edit-form input[type="text"], .edit-form textarea, .edit-form select {
+  width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 3px; padding: 4px 5px; font-size: 11px;
+}
+.edit-form textarea { resize: vertical; height: 50px; }
+.edit-form .edit-row { display: flex; gap: 5px; }
+.edit-form .edit-row > * { flex: 1; min-width: 0; }
+.edit-form .edit-actions { display: flex; gap: 5px; margin-top: 2px; }
+.edit-form .edit-actions button { flex: 1; font-size: 10.5px; padding: 4px; border-radius: 3px; cursor: pointer; }
+.edit-form .save-btn { background: var(--accent); color: var(--accent-ink); border: none; }
+.edit-form .cancel-btn { background: transparent; color: var(--ink-dim); border: 1px solid var(--line); }
+
+.empty-hint {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  color: var(--ink-dim); font-size: 13px; text-align: center; pointer-events: none; width: 280px;
+}
+
+.zoom-ctrl {
+  position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); overflow: hidden;
+}
+.zoom-ctrl button { background: none; border: none; color: var(--ink); width: 30px; height: 30px; cursor: pointer; font-size: 15px; }
+.zoom-ctrl button:hover { background: var(--surface-2); }
+.zoom-ctrl .pct { font-size: 11px; width: 44px; text-align: center; color: var(--ink-dim); }
+.zoom-ctrl .sep { width: 1px; height: 18px; background: var(--line); }
+
+.io-drawer {
+  position: absolute; right: 14px; top: 14px; width: 320px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px; box-shadow: var(--shadow); padding: 10px; z-index: 30;
+}
+.io-drawer textarea { width: 100%; height: 160px; font-size: 10.5px; background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 6px; color: var(--ink); }
+.io-drawer .io-actions { display: flex; gap: 6px; margin-top: 6px; }
+.io-drawer .note { font-size: 10.5px; color: var(--ink-dim); margin-bottom: 6px; }
+
+@media (max-width: 640px) {
+  .search-box input { width: 120px; }
+}
