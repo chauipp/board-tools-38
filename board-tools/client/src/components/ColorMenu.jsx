@@ -15,8 +15,16 @@ function BorderSolidIcon() {
 function BorderDashedIcon() {
   return <svg viewBox="0 0 20 14" width="20" height="14"><rect x="2" y="2" width="16" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6" strokeDasharray="3 2.4" /></svg>;
 }
+// Mũi tên chỉ hướng cây sẽ mọc ra, không phải nút trạng thái — bấm là chạy luôn.
+function ArrowIcon({ rotate }) {
+  return (
+    <svg viewBox="0 0 20 14" width="20" height="14" style={{ transform: `rotate(${rotate}deg)` }}>
+      <path d="M10 2 L10 11 M6 7.5 L10 11.5 L14 7.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  );
+}
 
-export default function ColorMenu({ x, y, color, count = 1, onPick, onEdit, onGroup, onTidy, onFocus, onDuplicate, onComments, onCopyLink, onDelete, onClose, locked, onToggleLock, shape, onSetShape, dashed, onSetDashed, isRoot, onToggleRoot }) {
+export default function ColorMenu({ x, y, color, count = 1, onPick, onEdit, onGroup, onTidy, onFocus, onDuplicate, onComments, onCopyLink, onDelete, onClose, locked, onToggleLock, shape, onSetShape, dashed, onSetDashed, isRoot, onToggleRoot, onArrangeTree }) {
   const { t } = useLingui();
   const ref = useRef(null);
   useCloseOnOutside(ref, onClose);
@@ -74,6 +82,24 @@ export default function ColorMenu({ x, y, color, count = 1, onPick, onEdit, onGr
             </button>
             <button className={"em-icon-btn" + (dashed ? " on" : "")} onClick={() => !dashed && onSetDashed(true)} title={t`Viền nét đứt`}>
               <BorderDashedIcon />
+            </button>
+          </div>
+        </div>
+      )}
+      {onArrangeTree && (
+        <div className="em-section">
+          <div className="em-toggle-group">
+            <button className="em-icon-btn" onClick={() => onArrangeTree("down")} title={t`Xếp cây xuống dưới`}>
+              <ArrowIcon rotate={0} />
+            </button>
+            <button className="em-icon-btn" onClick={() => onArrangeTree("up")} title={t`Xếp cây lên trên`}>
+              <ArrowIcon rotate={180} />
+            </button>
+            <button className="em-icon-btn" onClick={() => onArrangeTree("right")} title={t`Xếp cây sang phải`}>
+              <ArrowIcon rotate={-90} />
+            </button>
+            <button className="em-icon-btn" onClick={() => onArrangeTree("left")} title={t`Xếp cây sang trái`}>
+              <ArrowIcon rotate={90} />
             </button>
           </div>
         </div>

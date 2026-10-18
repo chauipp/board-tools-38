@@ -3,7 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { getBoard, saveBoard } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
-import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
+import { BADGE_PALETTE, colorVar, contrastInk, statusById, tagById } from "../lib/badges.js";
 import { paletteCss, applyColorTo, removePaletteColor } from "../lib/palette.js";
 import { loadLayouts, saveLayouts } from "../lib/dock.js";
 import DockPanel from "../components/DockPanel.jsx";
@@ -17,6 +17,7 @@ import { nodesInFrame, edgeEndpoint, edgesMatch, rectForEndpoint, clipToRect, se
 import { computeSnap } from "../lib/snap.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout, layerLayout } from "../lib/layout.js";
+import { treeLayout, edgeKey, carryGroupMembers } from "../lib/tree-layout.js";
 import { parseDesc } from "../lib/mdlite.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { usePresence, cursorColor } from "../lib/usePresence.js";
@@ -111,6 +112,7 @@ export default function IdeaMap() {
   const [editingGroupTitleId, setEditingGroupTitleId] = useState(null);
   const [focusId, setFocusId] = useState(null);
   const [flashId, setFlashId] = useState(null);
+  const [matchIdx, setMatchIdx] = useState(-1);
   const [presentIndex, setPresentIndex] = useState(null); // null = không trình chiếu
   const [initialCardParam] = useState(() => new URLSearchParams(window.location.search).get("card"));
   const [, bump] = useState(0);
@@ -232,6 +234,8 @@ export default function IdeaMap() {
     zoomToNodes([id]);
     setTimeout(() => setFlashId(null), 1600);
   }, [board != null]);
+
+  useEffect(() => { setMatchIdx(-1); }, [search]);
 
   useEffect(() => {
     if (!board) return;
@@ -546,7 +550,7 @@ export default function IdeaMap() {
 
   function createNode(x, y) {
     const id = board.nextNodeId;
-    const node = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: board.statuses[0]?.id ?? null, x: Math.round(x), y: Math.round(y) };
+    const node = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: null, x: Math.round(x), y: Math.round(y) };
     const next = { ...board, nodes: [...board.nodes, node], nextNodeId: id + 1 };
     setEditingId(id);
     commitAndSave(next);
@@ -849,7 +853,7 @@ export default function IdeaMap() {
     }
 
     const id = base.nextNodeId;
-    const newNode = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: base.statuses[0]?.id ?? null, x: Math.round(x), y: Math.round(y) };
+    const newNode = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: null, x: Math.round(x), y: Math.round(y) };
     const next = {
       ...base,
       nodes: [...base.nodes, newNode],
@@ -1443,6 +1447,56 @@ export default function IdeaMap() {
     });
   }
 
+  // Xếp lại thẻ gốc + toàn bộ con cháu nối với nó thành hình cây. Gốc đứng yên
+  // làm điểm neo; thẻ khoá giữ chỗ nhưng con cháu nó vẫn xếp quanh đúng chỗ đó.
+  function arrangeAsTree(rootKind, rootId, direction) {
+    if (role === "viewer") return;
+    const nodeById = new Map(board.nodes.map((n) => [n.id, n]));
+    const groupById = new Map(board.groups.map((g) => [g.id, g]));
+    const rootKey = edgeKey(rootKind, rootId);
+    const root = rootKind === "group" ? groupById.get(rootId) : nodeById.get(rootId);
+    if (!root) return;
+
+    function sizeOf(key) {
+      const [kind, rawId] = key.split(":");
+      const id = Number(rawId);
+      if (kind === "group") {
+        const g = groupById.get(id);
+        return g ? { w: g.w, h: g.h } : { w: CARD_W, h: 110 };
+      }
+      return frameCardSize(id);
+    }
+
+    // Lên/xuống dùng chiều cao thẻ (nhỏ) làm khoảng cách tầng nên nhìn chật hơn
+    // trái/phải (dùng chiều rộng thẻ) — nới thêm cho hai hướng dọc. Breadth
+    // cũng nới rộng hơn mặc định để dây nối không bị đè lên thẻ khác đứng gần
+    // (thẻ ngoài cây không bị dịch nên có thể nằm sát vị trí mới của cây).
+    const gap = {
+      breadth: 56,
+      depth: direction === "down" || direction === "up" ? 110 : 70
+    };
+    const pos = treeLayout({
+      edges: board.edges, rootKey, rootPos: { x: root.x, y: root.y }, sizeOf, direction, gap
+    });
+    if (pos.size < 2) return;                 // gốc trơ trọi: không có gì để xếp
+
+    // Khung nào trong cây bị dời thì thẻ nằm trong khung đó (không có dây nối
+    // riêng) phải dời theo, không thì rớt ra ngoài khung.
+    const carried = carryGroupMembers(pos, board.groups, board.nodes, frameCardSize);
+
+    function moved(kind, item) {
+      const p = pos.get(edgeKey(kind, item.id)) || (kind === "node" ? carried.get(item.id) : null);
+      if (!p || item.locked) return item;     // thẻ khoá vẫn tính vào cây, chỉ không dời
+      return { ...item, x: p.x, y: p.y };
+    }
+    setColorMenu(null);
+    commitAndSave({
+      ...board,
+      nodes: board.nodes.map((n) => moved("node", n)),
+      groups: board.groups.map((g) => moved("group", g))
+    });
+  }
+
   function zoomToNodes(ids) {
     if (!ids || ids.length === 0) return;
     const targets = board.nodes.filter((n) => ids.includes(n.id));
@@ -1475,6 +1529,8 @@ export default function IdeaMap() {
   function jumpToCard(id) {
     setSelectedIds(new Set([id]));
     zoomToNodes([id]);
+    setFlashId(id);
+    setTimeout(() => setFlashId((cur) => (cur === id ? null : cur)), 1600);
   }
 
   function jumpToGroup(group) {
@@ -1610,7 +1666,7 @@ export default function IdeaMap() {
       title,
       desc: "",
       tagId: null,
-      statusId: board.statuses[0]?.id ?? null,
+      statusId: null,
       x: pos.get(i).x,
       y: pos.get(i).y
     }));
@@ -1626,7 +1682,17 @@ export default function IdeaMap() {
     Object.values(filterTags).filter(Boolean).length +
     (filterFav ? 1 : 0) +
     (search.trim() ? 1 : 0);
-  const matchCount = board.nodes.filter(passesFilter).length;
+  const matches = board.nodes.filter(passesFilter).sort((a, b) => a.y - b.y || a.x - b.x);
+  const matchCount = matches.length;
+
+  function goToMatch(delta) {
+    if (matches.length === 0) return;
+    const next = matchIdx < 0
+      ? (delta > 0 ? 0 : matches.length - 1)
+      : (matchIdx + delta + matches.length) % matches.length;
+    setMatchIdx(next);
+    jumpToCard(matches[next].id);
+  }
 
   function togglePanel(key) {
     setPanels((prev) => ({ ...prev, [key]: !prev[key] }));
@@ -1867,7 +1933,22 @@ export default function IdeaMap() {
         </button>
 
         <div className="search-box">
-          <input type="text" placeholder={t`Tìm theo tên/mô tả…`} value={search} onChange={(e) => setSearch(e.target.value)} />
+          <input
+            type="text"
+            placeholder={t`Tìm theo tên/mô tả…`}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") { e.preventDefault(); goToMatch(e.shiftKey ? -1 : 1); }
+            }}
+          />
+          {search.trim() && (
+            <>
+              <span className="search-count mono">{matches.length ? matchIdx + 1 : 0}/{matches.length}</span>
+              <button type="button" className="btn ghost icon" title={t`Kết quả trước (Shift+Enter)`} onClick={() => goToMatch(-1)}>↑</button>
+              <button type="button" className="btn ghost icon" title={t`Kết quả sau (Enter)`} onClick={() => goToMatch(1)}>↓</button>
+            </>
+          )}
         </div>
         <div className="spacer" />
         {saveError && <span style={{ fontSize: 11, color: "var(--danger)" }}><Trans>Không lưu được lên server.</Trans></span>}
@@ -2414,6 +2495,7 @@ export default function IdeaMap() {
             onSetDashed={one((dashed) => applyNodeDashed(node.id, dashed))}
             isRoot={multi ? false : !!node.isRoot}
             onToggleRoot={one(() => toggleNodeRoot(node.id))}
+            onArrangeTree={one((direction) => arrangeAsTree("node", node.id, direction))}
           />
         );
       })()}
@@ -2430,6 +2512,7 @@ export default function IdeaMap() {
             onClose={() => setColorMenu(null)}
             locked={group.locked ?? false}
             onToggleLock={() => toggleGroupLock(group.id)}
+            onArrangeTree={(direction) => arrangeAsTree("group", group.id, direction)}
           />
         );
       })()}
@@ -2859,7 +2942,7 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
       <div className="meta-row">
         {(() => {
           const s = statusById(board, node.statusId);
-          return s ? <span className="status-pill" data-badge-kind="status" data-badge-id={s.id} style={{ background: colorVar(s.color) }}>{s.name}</span> : null;
+          return s ? <span className="status-pill" data-badge-kind="status" data-badge-id={s.id} style={{ background: colorVar(s.color), color: contrastInk(s.color) }}>{s.name}</span> : null;
         })()}
         {(() => {
           const tg = tagById(board, node.tagId);
