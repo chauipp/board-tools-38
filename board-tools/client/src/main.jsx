@@ -1,6 +1,6 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route, useParams } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useParams, useLocation } from "react-router-dom";
 import { I18nProvider } from "@lingui/react";
 import { Trans } from "@lingui/react/macro";
 import { i18n } from "./lib/i18n.js";
@@ -41,6 +41,15 @@ function IdentityChip() {
   );
 }
 
+// Trang bản đồ ý tưởng có PresenceBar riêng trên thanh filter, đã gồm avatar
+// và nút Đăng xuất — chip góc dưới trái ở đó là thừa và còn đè lên canvas.
+// Phải nằm trong BrowserRouter mới đọc được đường dẫn hiện tại.
+function GlobalIdentityChip() {
+  const { pathname } = useLocation();
+  if (/^\/idea-map\/[^/]+$/.test(pathname)) return null;
+  return <IdentityChip />;
+}
+
 // Đổi :boardId mà element khớp vẫn là một, react-router v6 KHÔNG unmount — nó
 // chỉ re-render. IdeaMap giữ past/future/selectedIds/presentIndex là state cục
 // bộ, nên nếu không remount thì undo sau khi chuyển board sẽ ghi nội dung board
@@ -54,12 +63,7 @@ function AuthGate({ children }) {
   const { user, loading } = useAuth();
   if (loading) return null;
   if (!user) return <LoginGate />;
-  return (
-    <>
-      <IdentityChip />
-      {children}
-    </>
-  );
+  return children;
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(
@@ -68,6 +72,7 @@ ReactDOM.createRoot(document.getElementById("root")).render(
       <AuthProvider>
         <AuthGate>
           <BrowserRouter>
+            <GlobalIdentityChip />
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/idea-map" element={<BoardList />} />

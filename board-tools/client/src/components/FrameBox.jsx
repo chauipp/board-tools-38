@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useLingui } from "@lingui/react/macro";
 import { colorVar } from "../lib/badges.js";
 
-export default function FrameBox({
-  group, editingTitle, dropTarget, onMouseDown, onResizeMouseDown, onContextMenu,
-  onTitleDoubleClick, onTitleSave, onTitleCancel, onDelete, onConnectorMouseDown
-}) {
+// Cùng lý do như IdeaCard: `h` là object hành động có định danh ổn định, nhờ
+// vậy memo() mới chặn được việc mọi khung vẽ lại theo mỗi nhịp kéo/con trỏ.
+function FrameBox({ group, editingTitle, dropTarget, h }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(group.title);
   const doneRef = useRef(false);
@@ -22,14 +21,14 @@ export default function FrameBox({
         left: group.x, top: group.y, width: group.w, height: group.h,
         borderColor: group.color ? colorVar(group.color) : undefined
       }}
-      onMouseDown={onMouseDown}
-      onContextMenu={onContextMenu}
+      onMouseDown={(e) => h.mouseDown(e, group.id)}
+      onContextMenu={(e) => h.contextMenu(e, group.id)}
     >
       <button
         className="icon-btn frame-delete"
         title={t`Xoá khung`}
         onMouseDown={(e) => e.stopPropagation()}
-        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        onClick={(e) => { e.stopPropagation(); h.remove(group.id); }}
       >
         ×
       </button>
@@ -40,26 +39,28 @@ export default function FrameBox({
           value={title}
           onMouseDown={(e) => e.stopPropagation()}
           onChange={(e) => setTitle(e.target.value)}
-          onBlur={() => { if (!doneRef.current) onTitleSave(title); }}
+          onBlur={() => { if (!doneRef.current) h.saveTitle(group.id, title); }}
           onKeyDown={(e) => {
-            if (e.key === "Enter") { doneRef.current = true; onTitleSave(title); }
-            if (e.key === "Escape") { doneRef.current = true; onTitleCancel(); }
+            if (e.key === "Enter") { doneRef.current = true; h.saveTitle(group.id, title); }
+            if (e.key === "Escape") { doneRef.current = true; h.cancelTitle(); }
           }}
         />
       ) : (
-        <span className="frame-title" onDoubleClick={() => onTitleDoubleClick()}>
+        <span className="frame-title" onDoubleClick={() => h.editTitle(group.id)}>
           {group.title || t`Khung`}
         </span>
       )}
       {group.locked && <span className="lock-badge frame-lock">🔒</span>}
       <div
         className="frame-resize-handle"
-        onMouseDown={(e) => { e.stopPropagation(); onResizeMouseDown(e); }}
+        onMouseDown={(e) => { e.stopPropagation(); h.resizeMouseDown(e, group.id); }}
       />
-      <span className="connector-zone top" onMouseDown={onConnectorMouseDown} onClick={(e) => e.stopPropagation()}><span className="connector-dot">+</span></span>
-      <span className="connector-zone right" onMouseDown={onConnectorMouseDown} onClick={(e) => e.stopPropagation()}><span className="connector-dot">+</span></span>
-      <span className="connector-zone bottom" onMouseDown={onConnectorMouseDown} onClick={(e) => e.stopPropagation()}><span className="connector-dot">+</span></span>
-      <span className="connector-zone left" onMouseDown={onConnectorMouseDown} onClick={(e) => e.stopPropagation()}><span className="connector-dot">+</span></span>
+      <span className="connector-zone top" onMouseDown={(e) => h.connectorMouseDown(e, group.id)} onClick={(e) => e.stopPropagation()}><span className="connector-dot">+</span></span>
+      <span className="connector-zone right" onMouseDown={(e) => h.connectorMouseDown(e, group.id)} onClick={(e) => e.stopPropagation()}><span className="connector-dot">+</span></span>
+      <span className="connector-zone bottom" onMouseDown={(e) => h.connectorMouseDown(e, group.id)} onClick={(e) => e.stopPropagation()}><span className="connector-dot">+</span></span>
+      <span className="connector-zone left" onMouseDown={(e) => h.connectorMouseDown(e, group.id)} onClick={(e) => e.stopPropagation()}><span className="connector-dot">+</span></span>
     </div>
   );
 }
+
+export default memo(FrameBox);

@@ -1,35 +1,50 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { getBoard, saveBoard } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
-import { BADGE_PALETTE, colorVar, contrastInk, statusById, tagById } from "../lib/badges.js";
+import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
 import { paletteCss, applyColorTo, removePaletteColor } from "../lib/palette.js";
 import { loadLayouts, saveLayouts } from "../lib/dock.js";
 import DockPanel from "../components/DockPanel.jsx";
 import LoadError from "../components/LoadError.jsx";
 import LocaleToggle from "../components/LocaleToggle.jsx";
 import InviteModal from "../components/InviteModal.jsx";
+import PresenceBar from "../components/PresenceBar.jsx";
 import BadgeEditor from "../components/BadgeEditor.jsx";
 import ColorMenu from "../components/ColorMenu.jsx";
 import FrameBox from "../components/FrameBox.jsx";
-import { nodesInFrame, edgeEndpoint, edgesMatch, rectForEndpoint, clipToRect, segmentIntersectsRect } from "../lib/board-geometry.js";
+import IdeaCard from "../components/IdeaCard.jsx";
+import EdgeLayer from "../components/EdgeLayer.jsx";
+import PeerLayer from "../components/PeerLayer.jsx";
+import ToolRail from "../components/ToolRail.jsx";
+import ToolOptions from "../components/ToolOptions.jsx";
+import { nodesInFrame, edgesMatch, rectForEndpoint, clipToRect, segmentIntersectsRect } from "../lib/board-geometry.js";
 import { computeSnap } from "../lib/snap.js";
+import { placeLinkedNode, parentNodeId } from "../lib/place-node.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout, layerLayout } from "../lib/layout.js";
 import { treeLayout, edgeKey, carryGroupMembers } from "../lib/tree-layout.js";
-import { parseDesc } from "../lib/mdlite.js";
 import { useAuth } from "../context/AuthContext.jsx";
-import { usePresence, cursorColor } from "../lib/usePresence.js";
+import { usePresence } from "../lib/usePresence.js";
 import { useLiveSync, applyGeomOverlay } from "../lib/useLiveSync.js";
+import { useCardSizes } from "../lib/card-sizes.js";
+import { rafThrottle } from "../lib/raf-throttle.js";
+import { replaceIdSet } from "../lib/selection.js";
 import { loadCamera, saveCamera } from "../lib/camera.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 import { compressImage } from "../lib/image-utils.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
+import { loadPenPrefs, savePenPrefs } from "../lib/pen.js";
+import InkLayer from "../components/InkLayer.jsx";
+import { useInk } from "../lib/useInk.js";
+import { useInkLive } from "../lib/useInkLive.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
 const MIN_SCALE = 0.3, MAX_SCALE = 2.4;
+const EMPTY_ARRAY = [];
+const EMPTY_MAP = new Map();
 
 // Menu thanh công cụ kiểu VSCode: một nhãn, bấm mở danh sách hành động liên
 // quan — gom 10+ nút rời rạc trên .topbar thành vài cụm, đỡ rối mắt.
@@ -97,6 +112,12 @@ export default function IdeaMap() {
   // đóng. Chỉ giữ trong state — không lưu qua reload.
   const [panels, setPanels] = useState({ status: true, tag: true, palette: false });
   const [layouts, setLayouts] = useState(() => loadLayouts(window.localStorage));
+  // mode: "select" (thao tác thẻ như cũ) | "draw" (vẽ lên bảng).
+  // KHÔNG nhớ qua lần mở sau: mở board ra mà con trỏ đang là cây bút là điều
+  // gây bất ngờ vô cớ. Riêng màu bút và độ dày thì nhớ.
+  const [mode, setMode] = useState("select");
+  const [tool, setTool] = useState("pen");
+  const [penPrefs, setPenPrefs] = useState(() => loadPenPrefs(window.localStorage));
   const [paletteUI, setPaletteUI] = useState(null); // { mode: "create"|"edit", id?, hex, x, y } | null
   const [colorDrag, setColorDrag] = useState(null); // { token, x, y } | null
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -112,21 +133,27 @@ export default function IdeaMap() {
   const [editingGroupTitleId, setEditingGroupTitleId] = useState(null);
   const [focusId, setFocusId] = useState(null);
   const [flashId, setFlashId] = useState(null);
+  const [spotlightPeerId, setSpotlightPeerId] = useState(null);
   const [matchIdx, setMatchIdx] = useState(-1);
   const [presentIndex, setPresentIndex] = useState(null); // null = không trình chiếu
   const [initialCardParam] = useState(() => new URLSearchParams(window.location.search).get("card"));
-  const [, bump] = useState(0);
 
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const { boardId } = useParams();
   const [role, setRole] = useState(null);
   const [boardName, setBoardName] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
-  const { peers: presencePeers, sendCursor, sendSelection, sendEdgeDraft, socket } = usePresence(user, boardId);
+  const { sendCursor, sendSelection, sendEdgeDraft, socket } = usePresence(user, boardId);
+  const inkLive = useInkLive(socket);
+  // Kích thước thẻ đo bằng ResizeObserver thay cho querySelector + offsetWidth
+  // tại chỗ (xem lib/card-sizes.js). `frameCardSize` giữ nguyên tên cũ vì nó là
+  // tham số `sizeOf` của rất nhiều hàm hình học.
+  const { cardSize: frameCardSize, observeCard } = useCardSizes();
 
   const viewportRef = useRef(null);
   const fbDockRef = useRef(null);
   const canvasRef = useRef(null);
+  const searchInputRef = useRef(null);
   const saveTimerRef = useRef(null);
   const boardRef = useRef(null);
   // Listener "paste" gắn-một-lần (deps: []) đóng gói `role` lúc mount, khi đó
@@ -145,6 +172,13 @@ export default function IdeaMap() {
   const spacePanRef = useRef(false);
   const pendingJumpRef = useRef(null);
   const prePresentViewRef = useRef(null);
+
+  const ink = useInk({
+    tool, penPrefs, boardRef, viewportRef,
+    onStrokeDone: commitStroke,
+    onEraseDone: commitErase,
+    live: inkLive
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -167,7 +201,7 @@ export default function IdeaMap() {
         const camera = loadCamera(window.localStorage, boardId);
         // Board cũ chưa có palette → mặc định rỗng, để mọi chỗ đọc board.palette
         // không phải ?? [] khắp nơi.
-        setBoard({ palette: [], nextPaletteId: 1, ...boardData, ...(camera ? { view: camera } : {}) });
+        setBoard({ palette: [], nextPaletteId: 1, drawings: [], nextDrawingId: 1, ...boardData, ...(camera ? { view: camera } : {}) });
       })
       .catch((e) => { if (!cancelled) setLoadError(e.code || "UNKNOWN"); });
     return () => { cancelled = true; };
@@ -180,6 +214,8 @@ export default function IdeaMap() {
     return () => clearTimeout(id);
   }, [layouts]);
 
+  useEffect(() => { savePenPrefs(window.localStorage, penPrefs); }, [penPrefs]);
+
   // Camera đổi từ nhiều chỗ (lăn chuột, kéo nền, zoom vừa khung, thoát trình
   // chiếu). Lưu ở một effect theo board.view — rải saveCamera vào từng handler
   // thì sót, mà `view` cũng không còn được PUT lên server nữa (api.js bỏ nó).
@@ -190,7 +226,11 @@ export default function IdeaMap() {
     return () => clearTimeout(id);
   }, [board?.view, boardId]);
 
-  useEffect(() => { boardRef.current = board; }, [board]);
+  // Gán ngay trong lúc render, không qua useEffect: các handler kéo đọc
+  // boardRef.current để biết trạng thái MỚI NHẤT, mà effect thì chạy sau khi
+  // render xong — có một khoảng ref còn giữ board của lượt trước, đủ để một
+  // phép tính kéo hoặc một gói realtime lấy nhầm toạ độ cũ.
+  boardRef.current = board;
   useEffect(() => { roleRef.current = role; }, [role]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
   useEffect(() => { editingIdRef.current = editingId; }, [editingId]);
@@ -205,7 +245,127 @@ export default function IdeaMap() {
     sendEdgeDraft(draft);
   }, [linkDraft, edgeDrag, sendEdgeDraft]);
 
-  const { geomOverlay, textOverlay, sendLiveText } = useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, setBoard);
+  // Overlay nào đã được board thật bắt kịp phải bỏ NGAY. Giữ lại nghĩa là tiếp
+  // tục vẽ một bản tạm đè lên dữ liệu thật vừa nhận — nét nhấp nháy.
+  const applyRemoteBoard = useCallback((next) => {
+    setBoard(next);
+    inkLive.reconcile(next);
+  }, [inkLive.reconcile]);
+
+  const { geomOverlay, textOverlay, sendLiveText, publishGeom, finishGeom } =
+    useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, applyRemoteBoard);
+
+  // Toạ độ dùng để VẼ: board thật + vị trí tạm của người khác đang kéo. Mọi thứ
+  // hiển thị (thẻ, khung, dây, tay cầm dây) phải đọc từ đây, còn handler tương
+  // tác vẫn đọc `board` gốc — nếu không, phép tính kéo sẽ lấy vị trí tạm của
+  // người khác làm mốc.
+  const liveNodes = useMemo(
+    () => (board ? applyGeomOverlay(board.nodes, geomOverlay, "node:") : EMPTY_ARRAY),
+    [board, geomOverlay]
+  );
+  const liveGroups = useMemo(
+    () => (board ? applyGeomOverlay(board.groups, geomOverlay, "group:") : EMPTY_ARRAY),
+    [board, geomOverlay]
+  );
+  // Chỉ mục tra cứu O(1) cho lớp dây và lớp peer. Trước đây mỗi đầu dây quét
+  // lại cả mảng thẻ ở mỗi lần render: bảng 150 cạnh × 100 thẻ là 30.000 phép so
+  // sánh cho một khung hình, nhân với 60 khung hình mỗi giây lúc kéo.
+  const nodeById = useMemo(() => new Map(liveNodes.map((n) => [n.id, n])), [liveNodes]);
+  const groupById = useMemo(() => new Map(liveGroups.map((g) => [g.id, g])), [liveGroups]);
+  const statusDefById = useMemo(
+    () => (board ? new Map(board.statuses.map((s) => [s.id, s])) : EMPTY_MAP),
+    [board?.statuses]
+  );
+  const tagDefById = useMemo(
+    () => (board ? new Map(board.tags.map((tg) => [tg.id, tg])) : EMPTY_MAP),
+    [board?.tags]
+  );
+  const paletteStyle = useMemo(() => paletteCss(board?.palette ?? EMPTY_ARRAY), [board?.palette]);
+
+  // Bộ lọc dựng MỘT lần cho mỗi lần đổi điều kiện, thay vì tính lại
+  // Object.keys(...).filter(...) bên trong mỗi thẻ ở mỗi lần render.
+  const passesFilter = useMemo(() => {
+    const statusKeys = Object.keys(filterStatus).filter((k) => filterStatus[k]);
+    const tagKeys = Object.keys(filterTags).filter((k) => filterTags[k]);
+    const q = search.trim().toLowerCase();
+    return function passes(node) {
+      if (statusKeys.length && !filterStatus[node.statusId == null ? "none" : String(node.statusId)]) return false;
+      if (tagKeys.length && !filterTags[node.tagId == null ? "none" : String(node.tagId)]) return false;
+      if (filterFav && !(node.favorites?.length > 0)) return false;
+      if (q && (node.title + " " + node.desc).toLowerCase().indexOf(q) === -1) return false;
+      return true;
+    };
+  }, [filterStatus, filterTags, filterFav, search]);
+
+  const focusSet = useMemo(() => {
+    if (!board || focusId == null || !board.nodes.some((n) => n.id === focusId)) return null;
+    // BFS ≤2 hop trên edge node↔node (bỏ qua edge dính group)
+    const adj = new Map();
+    board.edges.forEach((e) => {
+      if ((e.fromKind || "node") !== "node" || (e.toKind || "node") !== "node") return;
+      if (!adj.has(e.from)) adj.set(e.from, []);
+      if (!adj.has(e.to)) adj.set(e.to, []);
+      adj.get(e.from).push(e.to);
+      adj.get(e.to).push(e.from);
+    });
+    const seen = new Set([focusId]);
+    let frontier = [focusId];
+    for (let hop = 0; hop < 2; hop++) {
+      const nextFrontier = [];
+      frontier.forEach((id) => (adj.get(id) || []).forEach((nb) => {
+        if (!seen.has(nb)) { seen.add(nb); nextFrontier.push(nb); }
+      }));
+      frontier = nextFrontier;
+    }
+    return seen;
+  }, [board?.nodes, board?.edges, focusId]);
+
+  const matches = useMemo(
+    () => (board ? board.nodes.filter(passesFilter).sort((a, b) => a.y - b.y || a.x - b.x) : EMPTY_ARRAY),
+    [board?.nodes, passesFilter]
+  );
+
+  // Điều kiện để React.memo trên IdeaCard/FrameBox/EdgeLayer có tác dụng: prop
+  // hàm phải giữ nguyên định danh giữa các lần render. Các hàm xử lý thật thì
+  // được định nghĩa lại ở mỗi lần render (chúng đóng gói `board`, `selectedIds`
+  // …), nên ta cất bản mới nhất vào một ref và cho component nhận một lớp vỏ
+  // bất biến gọi xuyên qua ref. Không có lớp vỏ này, kéo MỘT thẻ vẫn dựng lại
+  // toàn bộ thẻ, khung và dây trên bảng ở từng khung hình.
+  const actionsRef = useRef({});
+  const cardHandlers = useMemo(() => ({
+    mouseDown: (e, id) => actionsRef.current.nodeMouseDown(e, id),
+    click: (id) => actionsRef.current.cardClick(id),
+    contextMenu: (e, id) => actionsRef.current.openColorMenu(e, "card", id),
+    connectorMouseDown: (e, id, direction) => actionsRef.current.connectorMouseDown(e, id, direction),
+    edit: (id) => setEditingId(id),
+    cancelEdit: () => setEditingId(null),
+    remove: (id) => actionsRef.current.deleteNode(id),
+    toggleFavorite: (id) => actionsRef.current.toggleFavorite(id),
+    openComments: (e, id) => actionsRef.current.openComments(e, id),
+    liveText: (id, field, value) => actionsRef.current.liveText(id, field, value),
+    save: (id, fields) => actionsRef.current.saveNodeEdit(id, fields),
+    saveAndNext: (id, fields) => actionsRef.current.saveNodeEditAndNext(id, fields),
+    dropImage: (e, id) => actionsRef.current.dropImage(e, id),
+    removeImage: (id) => actionsRef.current.removeImage(id),
+    imageResize: (e, id) => actionsRef.current.imageResize(e, id)
+  }), []);
+  const groupHandlers = useMemo(() => ({
+    mouseDown: (e, id) => actionsRef.current.groupMouseDown(e, id),
+    contextMenu: (e, id) => actionsRef.current.openColorMenu(e, "group", id),
+    remove: (id) => actionsRef.current.deleteGroup(id),
+    editTitle: (id) => setEditingGroupTitleId(id),
+    cancelTitle: () => setEditingGroupTitleId(null),
+    saveTitle: (id, title) => actionsRef.current.saveGroupTitle(id, title),
+    resizeMouseDown: (e, id) => actionsRef.current.groupResizeMouseDown(e, id),
+    connectorMouseDown: (e, id) => actionsRef.current.groupConnectorMouseDown(e, id)
+  }), []);
+  const onEdgeEnter = useMemo(() => (id) => setHoveredEdgeId(id), []);
+  const onEdgeLeave = useMemo(() => (id) => setHoveredEdgeId((cur) => (cur === id ? null : cur)), []);
+  const onEdgeClick = useMemo(() => (e, id) => {
+    setColorMenu(null);
+    setCommentsFor(null);
+    setEdgeMenu({ id, x: e.clientX, y: e.clientY });
+  }, []);
 
   // Chip danh tính được render ở AuthGate, ngoài `.shell`, nên selector
   // `.shell.presenting` không với tới được. Đánh dấu trên body để ẩn nó khi
@@ -236,12 +396,6 @@ export default function IdeaMap() {
   }, [board != null]);
 
   useEffect(() => { setMatchIdx(-1); }, [search]);
-
-  useEffect(() => {
-    if (!board) return;
-    const id = requestAnimationFrame(() => bump((x) => x + 1));
-    return () => cancelAnimationFrame(id);
-  }, [board]);
 
   useEffect(() => {
     const el = viewportRef.current;
@@ -361,6 +515,14 @@ export default function IdeaMap() {
       // được (saveNow chặn) nhưng vẫn làm thẻ nhảy trên màn hình rồi biến mất
       // khi tải lại — nên chặn thẳng ở đây.
       if (e.ctrlKey || e.metaKey) {
+        // Ctrl+F chỉ dời con trỏ vào ô tìm kiếm, không ghi gì — người chỉ xem
+        // vẫn phải dùng được, nên xử lý TRƯỚC guard viewer bên dưới.
+        if (key === "f") {
+          e.preventDefault();
+          const el = searchInputRef.current;
+          if (el) { el.focus(); el.select(); }
+          return;
+        }
         if (role === "viewer") return;
         if (key === "z" && e.shiftKey) { e.preventDefault(); redo(); }
         else if (key === "z") { e.preventDefault(); undo(); }
@@ -374,7 +536,8 @@ export default function IdeaMap() {
         deleteSelection();
       }
       else if (key === "escape") {
-        if (colorMenu) setColorMenu(null);
+        if (mode === "draw") setMode("select");
+        else if (colorMenu) setColorMenu(null);
         else if (badgeUI) setBadgeUI(null);
         else if (edgeMenu) setEdgeMenu(null);
         else if (commentsFor) setCommentsFor(null);
@@ -382,7 +545,29 @@ export default function IdeaMap() {
         else if (focusId != null) setFocusId(null);
         else if (selectedIds.size > 0 || selectedEdgeIds.size > 0) { setSelectedIds(new Set()); setSelectedEdgeIds(new Set()); }
       }
-      else if (key === "n") { if (role === "viewer") return; e.preventDefault(); handleAddClick(); }
+      // Enter trên thẻ đang chọn = tạo thẻ con bên phải, Shift+Enter = tạo thẻ
+      // cùng cấp bên dưới. Handler đã thoát sớm khi con trỏ nằm trong
+      // input/textarea, nên thẻ đang mở ô sửa không rơi vào đây.
+      else if (key === "enter") {
+        if (role === "viewer") return;
+        if (editingId != null || selectedIds.size !== 1) return;
+        if (colorMenu || badgeUI || edgeMenu || commentsFor) return;
+        e.preventDefault();
+        const [id] = selectedIds;
+        if (e.shiftKey) createSiblingNode(id);
+        else createLinkedNode(id, "right");
+      }
+      else if (key === "n") {
+        if (role === "viewer") return;
+        e.preventDefault();
+        if (e.shiftKey) handleAddRootClick();
+        else handleAddClick();
+      }
+      // v chỉ đổi mode, không ghi gì — người chỉ xem vẫn dùng được.
+      else if (key === "v") { e.preventDefault(); setMode("select"); }
+      else if (key === "b") { if (role === "viewer") return; e.preventDefault(); enterMode("draw"); setTool("pen"); }
+      else if (key === "e") { if (role === "viewer") return; e.preventDefault(); enterMode("draw"); setTool("eraser"); }
+      else if (key === "l") { if (role === "viewer") return; e.preventDefault(); toggleLinkMode(); }
       // `f` (vừa khung theo lựa chọn) chỉ đổi view — người chỉ xem vẫn dùng được.
       else if (key === "f") { e.preventDefault(); zoomToSelection(); }
       else if (key === "arrowleft") { if (role === "viewer") return; e.preventDefault(); nudgeSelection(e.shiftKey ? -10 : -1, 0); }
@@ -392,7 +577,7 @@ export default function IdeaMap() {
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [board, past, future, selectedIds, selectedEdgeIds, linkMode, colorMenu, badgeUI, edgeMenu, commentsFor, focusId, presentIndex, role]);
+  }, [board, past, future, selectedIds, selectedEdgeIds, linkMode, colorMenu, badgeUI, edgeMenu, commentsFor, focusId, presentIndex, role, editingId, mode]);
 
   useEffect(() => {
     function down(e) {
@@ -476,13 +661,6 @@ export default function IdeaMap() {
 
   const currentUser = user.name;
 
-  // Toạ độ dùng để VẼ: board thật + vị trí tạm của người khác đang kéo. Mọi
-  // thứ hiển thị (thẻ, khung, dây, tay cầm dây) phải đọc từ đây, còn handler
-  // tương tác vẫn đọc `board` gốc — nếu không, phép tính kéo sẽ lấy vị trí
-  // tạm của người khác làm mốc.
-  const liveNodes = applyGeomOverlay(board.nodes, geomOverlay, "node:");
-  const liveGroups = applyGeomOverlay(board.groups, geomOverlay, "group:");
-
   function handlePresenceMouseMove(e) {
     sendCursor(() => {
       const rect = viewportRef.current.getBoundingClientRect();
@@ -503,70 +681,16 @@ export default function IdeaMap() {
     return null;
   }
 
-  function passesFilter(node) {
-    const statusKeys = Object.keys(filterStatus).filter((k) => filterStatus[k]);
-    if (statusKeys.length) {
-      const key = node.statusId == null ? "none" : String(node.statusId);
-      if (!filterStatus[key]) return false;
-    }
-    const tagKeys = Object.keys(filterTags).filter((k) => filterTags[k]);
-    if (tagKeys.length) {
-      const key = node.tagId == null ? "none" : String(node.tagId);
-      if (!filterTags[key]) return false;
-    }
-    if (filterFav && !(node.favorites?.length > 0)) return false;
-    const q = search.trim().toLowerCase();
-    if (q) {
-      const hay = (node.title + " " + node.desc).toLowerCase();
-      if (hay.indexOf(q) === -1) return false;
-    }
-    return true;
-  }
-
-  function computeFocusSet(rootId) {
-    // BFS ≤2 hop trên edge node↔node (bỏ qua edge dính group)
-    const adj = new Map();
-    board.edges.forEach((e) => {
-      if ((e.fromKind || "node") !== "node" || (e.toKind || "node") !== "node") return;
-      if (!adj.has(e.from)) adj.set(e.from, []);
-      if (!adj.has(e.to)) adj.set(e.to, []);
-      adj.get(e.from).push(e.to);
-      adj.get(e.to).push(e.from);
-    });
-    const seen = new Set([rootId]);
-    let frontier = [rootId];
-    for (let hop = 0; hop < 2; hop++) {
-      const nextFrontier = [];
-      frontier.forEach((id) => (adj.get(id) || []).forEach((nb) => {
-        if (!seen.has(nb)) { seen.add(nb); nextFrontier.push(nb); }
-      }));
-      frontier = nextFrontier;
-    }
-    return seen;
-  }
-  const focusSet = focusId != null && board.nodes.some((n) => n.id === focusId)
-    ? computeFocusSet(focusId)
-    : null;
-
-  function createNode(x, y) {
+  function createNode(x, y, extra) {
     const id = board.nextNodeId;
-    const node = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: null, x: Math.round(x), y: Math.round(y) };
+    const node = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: null, x: Math.round(x), y: Math.round(y), ...extra };
     const next = { ...board, nodes: [...board.nodes, node], nextNodeId: id + 1 };
     setEditingId(id);
     commitAndSave(next);
   }
 
-  function handleAddClick() {
-    const rect = viewportRef.current.getBoundingClientRect();
-    const cx = (rect.width / 2 - board.view.panX) / board.view.scale;
-    const cy = (rect.height / 2 - board.view.panY) / board.view.scale;
-    createNode(cx - CARD_W / 2, cy - 40);
-  }
-
-  function frameCardSize(nodeId) {
-    const card = canvasRef.current && canvasRef.current.querySelector(`.idea-card[data-id="${nodeId}"]`);
-    return { w: card ? card.offsetWidth : CARD_W, h: card ? card.offsetHeight : 110 };
-  }
+  function handleAddClick() { addCenteredNode(null); }
+  function handleAddRootClick() { addCenteredNode({ isRoot: true }); }
 
   function createGroup() {
     const rect = viewportRef.current.getBoundingClientRect();
@@ -576,6 +700,81 @@ export default function IdeaMap() {
     const id = board.nextGroupId;
     const group = { id, title: t`Khung mới`, x: Math.round(cx - w / 2), y: Math.round(cy - h / 2), w, h, color: null };
     commitAndSave({ ...board, groups: [...board.groups, group], nextGroupId: id + 1 });
+  }
+
+  // Trả về id đã cấp để useInk gửi kèm vào gói live `done` — người xem cần id
+  // thật mới đối chiếu được overlay với board:update sắp về.
+  //
+  // Cùng kỷ luật refs-only như applyImageToNode (xem ghi chú ở đó): finish()
+  // trong useInk.js gắn listener "mouseup" vào window NGAY LÚC mousedown, nên
+  // closure của nó giữ commitStroke/commitErase của lượt render tại thời điểm
+  // đó. Vẽ một nét mất vài giây; nếu board:update của người khác về TRONG lúc
+  // đang vẽ, `board` đóng gói sẽ là bản cũ — build `next` từ nó rồi PUT cả bản
+  // cũ sẽ đè mất thay đổi của người kia, cả cục bộ, cả trên server, cả trên
+  // màn hình họ khi gói phát lại về tới. Phải đọc boardRef.current, và không
+  // dùng commitAndSave được vì nó tự gọi recordHistory(board) — cùng vấn đề
+  // đóng gói cũ; nên trình tự ghi lịch sử/lưu được lặp lại thủ công.
+  function commitStroke(stroke) {
+    const current = boardRef.current;
+    // Không có board thì không có gì để commit — nhưng vẫn phải trả về một id
+    // hợp lệ cho useInk gọi live?.endStroke(drawingId): endStroke đã chịu được
+    // id null/undefined (`drawingId ?? null`), nên trả undefined ở đây là an
+    // toàn, không làm useInk hay useInkLive vỡ.
+    if (!current) return undefined;
+    const id = current.nextDrawingId;
+    const next = {
+      ...current,
+      drawings: [...current.drawings, { id, ...stroke }],
+      nextDrawingId: id + 1
+    };
+    recordHistory(current);
+    setBoard(next);
+    boardRef.current = next;
+    saveNow(next);
+    return id;
+  }
+
+  function commitErase(ids) {
+    const current = boardRef.current;
+    if (!current) return;
+    const kill = new Set(ids);
+    const next = { ...current, drawings: current.drawings.filter((d) => !kill.has(d.id)) };
+    recordHistory(current);
+    setBoard(next);
+    boardRef.current = next;
+    saveNow(next);
+  }
+
+  // Đổi sang mode Sửa thì bỏ lựa chọn và tắt nối dây: để lại một thẻ đang chọn
+  // trong lúc vẽ nghĩa là bấm Delete sẽ xoá thẻ đó, trong khi người dùng đang
+  // nghĩ mình xoá nét vẽ.
+  function enterMode(next) {
+    setMode(next);
+    if (next === "draw") {
+      setSelectedIds(new Set());
+      setSelectedEdgeIds(new Set());
+      setLinkMode(false);
+      setPendingSource(null);
+    }
+  }
+
+  // Bật "Nối ý tưởng" mà vẫn còn ở mode Sửa thì vô dụng: `.ink-capture` phủ
+  // kín viewport ở mode Sửa và nuốt hết click lên thẻ, nên không bấm chọn
+  // được thẻ nguồn/đích nào — bật lên rồi coi như chết. Bật link mode phải
+  // kéo về mode Chuột (select) trước; tắt link mode thì giữ nguyên mode hiện
+  // tại. Dùng chung cho cả phím tắt `l` và nút trên ToolRail.
+  function toggleLinkMode() {
+    const turningOn = !linkMode;
+    if (turningOn) enterMode("select");
+    setLinkMode(turningOn);
+    setPendingSource(null);
+  }
+
+  function addCenteredNode(extra) {
+    const rect = viewportRef.current.getBoundingClientRect();
+    const cx = (rect.width / 2 - board.view.panX) / board.view.scale;
+    const cy = (rect.height / 2 - board.view.panY) / board.view.scale;
+    createNode(cx - CARD_W / 2, cy - 40, extra);
   }
 
   function groupSelectedCards() {
@@ -633,18 +832,19 @@ export default function IdeaMap() {
     };
   }
 
-  function handleGroupMouseDown(e, group) {
+  function handleGroupMouseDown(e, groupId) {
     if (e.button === 2) { e.stopPropagation(); startPan(e); return; }
     if (e.button === 0 && spacePanRef.current) { e.stopPropagation(); startPan(e); return; }
     if (e.button !== 0) return;
-    if (group.locked) return;
+    const group = board.groups.find((g) => g.id === groupId);
+    if (!group || group.locked) return;
     e.stopPropagation();
 
     const startX = e.clientX, startY = e.clientY;
     const scale = board.view.scale;
     const boardBeforeDrag = board;
-    const memberIds = nodesInFrame(board.nodes, group, frameCardSize)
-      .filter((id) => !board.nodes.find((n) => n.id === id)?.locked);
+    const lockedById = new Map(board.nodes.map((n) => [n.id, !!n.locked]));
+    const memberIds = nodesInFrame(board.nodes, group, frameCardSize).filter((id) => !lockedById.get(id));
     const startGroupPos = { x: group.x, y: group.y };
     const startNodePositions = new Map(
       memberIds.map((id) => {
@@ -652,10 +852,21 @@ export default function IdeaMap() {
         return [id, { x: n.x, y: n.y }];
       })
     );
+    // Kích thước thẻ trong khung và các hình chữ nhật để bắt dính đều KHÔNG đổi
+    // trong suốt cú kéo — dựng sẵn một lần thay vì dựng lại ở mỗi nhịp chuột.
+    const memberSizes = new Map(memberIds.map((id) => [id, frameCardSize(id)]));
+    const nodeWidths = new Map(board.nodes.map((n) => [n.id, n.w]));
+    const otherRects = [
+      ...board.nodes.filter((n) => !startNodePositions.has(n.id)).map((n) => {
+        const { w, h } = frameCardSize(n.id);
+        return { x: n.x, y: n.y, w, h };
+      }),
+      ...board.groups.filter((g) => g.id !== group.id).map((g) => ({ x: g.x, y: g.y, w: g.w, h: g.h }))
+    ];
     let latest = board;
     let moved = false;
 
-    function onMove(ev) {
+    const onMove = rafThrottle((ev) => {
       let dx = (ev.clientX - startX) / scale;
       let dy = (ev.clientY - startY) / scale;
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
@@ -664,7 +875,7 @@ export default function IdeaMap() {
       let minX = frameX, minY = frameY, maxX = frameX + group.w, maxY = frameY + group.h;
       memberIds.forEach((id) => {
         const start = startNodePositions.get(id);
-        const { w, h } = frameCardSize(id);
+        const { w, h } = memberSizes.get(id);
         const nx = start.x + dx, ny = start.y + dy;
         minX = Math.min(minX, nx); minY = Math.min(minY, ny);
         maxX = Math.max(maxX, nx + w); maxY = Math.max(maxY, ny + h);
@@ -672,26 +883,18 @@ export default function IdeaMap() {
       const movingRect = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 
       if (ev.altKey) {
-        setSnapGuides([]);
+        setSnapGuides(EMPTY_ARRAY);
       } else {
-        const otherRects = [
-          ...board.nodes.filter((n) => !startNodePositions.has(n.id)).map((n) => {
-            const { w, h } = frameCardSize(n.id);
-            return { x: n.x, y: n.y, w, h };
-          }),
-          ...board.groups.filter((g) => g.id !== group.id).map((g) => ({ x: g.x, y: g.y, w: g.w, h: g.h }))
-        ];
         const snap = computeSnap(movingRect, otherRects, 6 / scale);
         dx += snap.dx; dy += snap.dy;
         setSnapGuides(snap.guides);
       }
 
+      const gx = Math.round(startGroupPos.x + dx), gy = Math.round(startGroupPos.y + dy);
       setBoard((prev) => {
         const next = {
           ...prev,
-          groups: prev.groups.map((g) => (g.id === group.id
-            ? { ...g, x: Math.round(startGroupPos.x + dx), y: Math.round(startGroupPos.y + dy) }
-            : g)),
+          groups: prev.groups.map((g) => (g.id === group.id ? { ...g, x: gx, y: gy } : g)),
           nodes: prev.nodes.map((n) => {
             const start = startNodePositions.get(n.id);
             if (!start) return n;
@@ -701,20 +904,44 @@ export default function IdeaMap() {
         latest = next;
         return next;
       });
+      // Chỉ phát khi thật sự có dịch chuyển: bấm-không-kéo không được sinh
+      // ra gói nào, để bên người xem không phải dựng overlay rồi lại nhả ra.
+      if (moved) publishGeom(movingItems(gx, gy, dx, dy));
+    });
+
+    function movingItems(gx, gy, dx, dy) {
+      return {
+        groups: [{ id: group.id, x: gx, y: gy, w: group.w, h: group.h }],
+        nodes: memberIds.map((id) => {
+          const start = startNodePositions.get(id);
+          return { id, x: Math.round(start.x + dx), y: Math.round(start.y + dy), w: nodeWidths.get(id) };
+        })
+      };
     }
+
     function onUp() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      setSnapGuides([]);
-      if (moved) recordHistory(boardBeforeDrag);
+      onMove.flush();
+      setSnapGuides(EMPTY_ARRAY);
+      // Bấm vào khung mà không kéo thì không có gì để ghi: lần PUT ở đây đẩy cả
+      // board (kèm ảnh) lên server rồi phát board:update cho mọi người, chỉ để
+      // lưu lại đúng trạng thái cũ.
+      if (!moved) return;
+      recordHistory(boardBeforeDrag);
+      finishGeom({
+        groups: latest.groups.filter((g) => g.id === group.id),
+        nodes: latest.nodes.filter((n) => startNodePositions.has(n.id))
+      });
       saveNow(latest);
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }
 
-  function handleGroupResizeMouseDown(e, group) {
-    if (group.locked) return;
+  function handleGroupResizeMouseDown(e, groupId) {
+    const group = board.groups.find((g) => g.id === groupId);
+    if (!group || group.locked) return;
     e.preventDefault();
     const startX = e.clientX, startY = e.clientY;
     const scale = board.view.scale;
@@ -724,25 +951,29 @@ export default function IdeaMap() {
     let latest = board;
     let moved = false;
 
-    function onMove(ev) {
+    const onMove = rafThrottle((ev) => {
       const dx = (ev.clientX - startX) / scale;
       const dy = (ev.clientY - startY) / scale;
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
+      const w = Math.max(MIN_W, Math.round(startW + dx));
+      const h = Math.max(MIN_H, Math.round(startH + dy));
       setBoard((prev) => {
         const next = {
           ...prev,
-          groups: prev.groups.map((g) => (g.id === group.id
-            ? { ...g, w: Math.max(MIN_W, Math.round(startW + dx)), h: Math.max(MIN_H, Math.round(startH + dy)) }
-            : g))
+          groups: prev.groups.map((g) => (g.id === group.id ? { ...g, w, h } : g))
         };
         latest = next;
         return next;
       });
-    }
+      if (moved) publishGeom({ groups: [{ id: group.id, x: group.x, y: group.y, w, h }] });
+    });
     function onUp() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      if (moved) recordHistory(boardBeforeDrag);
+      onMove.flush();
+      if (!moved) return;
+      recordHistory(boardBeforeDrag);
+      finishGeom({ groups: latest.groups.filter((g) => g.id === group.id) });
       saveNow(latest);
     }
     window.addEventListener("mousemove", onMove);
@@ -792,81 +1023,67 @@ export default function IdeaMap() {
     return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
   }
 
-  function createLinkedNode(sourceId, direction, base = board) {
+  // `sourceId` quyết định dây nối, `anchorId` quyết định chỗ đặt. Hai thứ này
+  // tách nhau vì Shift+Enter tạo thẻ CÙNG CẤP: dây đi từ thẻ cha, nhưng vị trí
+  // phải nằm ngay dưới thẻ đang chọn chứ không phải dưới cha.
+  function createLinkedNode(sourceId, direction, base = board, { anchorId = sourceId } = {}) {
     const source = base.nodes.find((n) => n.id === sourceId);
-    if (!source) return;
-    const sourceCard = canvasRef.current.querySelector(`.idea-card[data-id="${sourceId}"]`);
-    const sw = sourceCard ? sourceCard.offsetWidth : CARD_W;
-    const sh = sourceCard ? sourceCard.offsetHeight : 110;
-    const estH = 180;
-    const GAP = 70, STEP = 60, MARGIN = 24;
-    const dir = { top: [0, -1], right: [1, 0], bottom: [0, 1], left: [-1, 0] }[direction] || [1, 0];
+    const anchor = base.nodes.find((n) => n.id === anchorId);
+    if (!source || !anchor) return;
 
-    function overlapsAny(px, py) {
-      return base.nodes.some((n) => {
-        const card = canvasRef.current.querySelector(`.idea-card[data-id="${n.id}"]`);
-        const w = card ? card.offsetWidth : CARD_W, h = card ? card.offsetHeight : estH;
-        return rectsOverlap(px, py, CARD_W, estH, n.x, n.y, w, h);
-      });
-    }
+    // Thẻ chưa tồn tại nên chưa đo được: 180 là chiều cao ước lượng của một thẻ
+    // có tiêu đề + mô tả, dùng làm ô giữ chỗ khi kiểm va chạm.
+    const NEW_SIZE = { w: CARD_W, h: 180 };
+    const MARGIN = 24;
 
     const rect = viewportRef.current.getBoundingClientRect();
     const view = base.view;
-    const visX0 = (-view.panX + MARGIN) / view.scale;
-    const visY0 = (-view.panY + MARGIN) / view.scale;
-    const visX1 = (rect.width - view.panX - MARGIN) / view.scale - CARD_W;
-    const visY1 = (rect.height - view.panY - MARGIN) / view.scale - estH;
-    function inViewport(px, py) { return px >= visX0 && px <= visX1 && py >= visY0 && py <= visY1; }
+    const { x, y, panTo } = placeLinkedNode({
+      anchor: { x: anchor.x, y: anchor.y, ...frameCardSize(anchor.id) },
+      size: NEW_SIZE,
+      direction,
+      obstacles: base.nodes.map((n) => ({ x: n.x, y: n.y, ...frameCardSize(n.id) })),
+      viewport: {
+        x0: (-view.panX + MARGIN) / view.scale,
+        y0: (-view.panY + MARGIN) / view.scale,
+        x1: (rect.width - view.panX - MARGIN) / view.scale,
+        y1: (rect.height - view.panY - MARGIN) / view.scale
+      }
+    });
 
-    let x = source.x + sw / 2 - CARD_W / 2 + dir[0] * (sw / 2 + GAP + CARD_W / 2);
-    let y = source.y + sh / 2 - estH / 2 + dir[1] * (sh / 2 + GAP + estH / 2);
-    let placed = false;
-    let attempts = 0;
-    while (attempts < 10 && inViewport(x, y)) {
-      if (!overlapsAny(x, y)) { placed = true; break; }
-      x += dir[0] * STEP + (dir[0] === 0 ? STEP : 0);
-      y += dir[1] * STEP + (dir[1] === 0 ? STEP : 0);
-      attempts++;
-    }
-
-    if (!placed && visX1 >= visX0 && visY1 >= visY0) {
-      search:
-      for (let gy = visY0; gy <= visY1; gy += STEP) {
-        for (let gx = visX0; gx <= visX1; gx += STEP) {
-          if (!overlapsAny(gx, gy)) { x = gx; y = gy; placed = true; break search; }
+    // Chỗ trống rơi ra ngoài màn hình là chuyện thường khi board dày — dời
+    // camera theo thẻ mới thay vì đặt thẻ ở chỗ khác cho vừa khung nhìn.
+    const nextView = panTo
+      ? {
+          scale: view.scale,
+          panX: rect.width / 2 - panTo.x * view.scale,
+          panY: rect.height / 2 - panTo.y * view.scale
         }
-      }
-    }
-
-    let nextView = null;
-    if (!placed) {
-      x = source.x + sw / 2 - CARD_W / 2 + dir[0] * (sw / 2 + GAP + CARD_W / 2);
-      y = source.y + sh / 2 - estH / 2 + dir[1] * (sh / 2 + GAP + estH / 2);
-      attempts = 0;
-      while (overlapsAny(x, y) && attempts < 30) {
-        x += dir[0] * STEP + (dir[0] === 0 ? STEP : 0);
-        y += dir[1] * STEP + (dir[1] === 0 ? STEP : 0);
-        attempts++;
-      }
-      const cx = x + CARD_W / 2, cy = y + estH / 2;
-      nextView = { scale: view.scale, panX: rect.width / 2 - cx * view.scale, panY: rect.height / 2 - cy * view.scale };
-    }
+      : base.view;
 
     const id = base.nextNodeId;
-    const newNode = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: null, x: Math.round(x), y: Math.round(y) };
+    const newNode = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: null, x, y };
     const next = {
       ...base,
       nodes: [...base.nodes, newNode],
       edges: [...base.edges, { id: base.nextEdgeId, from: sourceId, to: id }],
       nextNodeId: id + 1,
       nextEdgeId: base.nextEdgeId + 1,
-      view: nextView || base.view
+      view: nextView
     };
     setEditingId(id);
     commitAndSave(next);
   }
 
-  function handleConnectorMouseDown(e, node, direction) {
+  // Thẻ cùng cấp = cùng cha. Không có cha (thẻ gốc) thì không có "cùng cấp"
+  // nào để tạo — bỏ qua, chứ không âm thầm tạo thẻ rời.
+  function createSiblingNode(nodeId) {
+    const parentId = parentNodeId(board.edges, nodeId);
+    if (parentId == null) return;
+    createLinkedNode(parentId, "bottom", board, { anchorId: nodeId });
+  }
+
+  function handleConnectorMouseDown(e, nodeId, direction) {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -882,35 +1099,38 @@ export default function IdeaMap() {
     function targetAt(clientX, clientY) {
       const t = entityAtPoint(clientX, clientY);
       if (!t) return null;
-      if (t.kind === "node" && t.id === node.id) return null;
+      if (t.kind === "node" && t.id === nodeId) return null;
       return t;
     }
 
-    function onMove(ev) {
+    // rAF: mỗi nhịp gọi document.elementFromPoint — một phép hit-test buộc
+    // trình duyệt tính lại layout. Ở tần số chuột thô đó là vài trăm lần/giây.
+    const onMove = rafThrottle((ev) => {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
       if (!dragging) return;
       const p = toCanvas(ev.clientX, ev.clientY);
-      setLinkDraft({ fromId: node.id, fromKind: "node", x: p.x, y: p.y });
+      setLinkDraft({ fromId: nodeId, fromKind: "node", x: p.x, y: p.y });
       const t = targetAt(ev.clientX, ev.clientY);
       setDropTargetId(t ? { id: t.id, kind: t.kind } : null);
-    }
+    });
     function onUp(ev) {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      onMove.cancel();
       if (dragging) {
         setLinkDraft(null);
         const t = targetAt(ev.clientX, ev.clientY);
         setDropTargetId(null);
-        if (t) toggleEdge(node.id, "node", t.id, t.kind);
+        if (t) toggleEdge(nodeId, "node", t.id, t.kind);
       } else {
-        createLinkedNode(node.id, direction);
+        createLinkedNode(nodeId, direction);
       }
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   }
 
-  function handleGroupConnectorMouseDown(e, group) {
+  function handleGroupConnectorMouseDown(e, groupId) {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
@@ -923,23 +1143,24 @@ export default function IdeaMap() {
     function targetAt(clientX, clientY) {
       const t = entityAtPoint(clientX, clientY);
       if (!t) return null;
-      if (t.kind === "group" && t.id === group.id) return null;
+      if (t.kind === "group" && t.id === groupId) return null;
       return t;
     }
 
-    function onMove(ev) {
+    const onMove = rafThrottle((ev) => {
       const p = toCanvas(ev.clientX, ev.clientY);
-      setLinkDraft({ fromId: group.id, fromKind: "group", x: p.x, y: p.y });
+      setLinkDraft({ fromId: groupId, fromKind: "group", x: p.x, y: p.y });
       const t = targetAt(ev.clientX, ev.clientY);
       setDropTargetId(t ? { id: t.id, kind: t.kind } : null);
-    }
+    });
     function onUp(ev) {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      onMove.cancel();
       setLinkDraft(null);
       setDropTargetId(null);
       const t = targetAt(ev.clientX, ev.clientY);
-      if (t) toggleEdge(group.id, "group", t.id, t.kind);
+      if (t) toggleEdge(groupId, "group", t.id, t.kind);
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -967,15 +1188,16 @@ export default function IdeaMap() {
       return t;
     }
 
-    function onMove(ev) {
+    const onMove = rafThrottle((ev) => {
       const p = toCanvas(ev.clientX, ev.clientY);
       setEdgeDrag({ edgeId: edge.id, end, fixedKind, fixedId, x: p.x, y: p.y });
       const t = targetAt(ev.clientX, ev.clientY);
       setDropTargetId(t ? { id: t.id, kind: t.kind } : null);
-    }
+    });
     function onUp(ev) {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      onMove.cancel();
       setEdgeDrag(null);
       setDropTargetId(null);
       const t = targetAt(ev.clientX, ev.clientY);
@@ -1014,16 +1236,17 @@ export default function IdeaMap() {
       return card ? Number(card.getAttribute("data-id")) : null;
     }
 
-    function onMove(ev) {
+    const onMove = rafThrottle((ev) => {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
       if (!dragging) return;
       setChipDrag({ kind, value, x: ev.clientX, y: ev.clientY });
       const id = targetCardIdAt(ev.clientX, ev.clientY);
       setDropTargetId(id != null ? { id, kind: "node" } : null);
-    }
+    });
     function onUp(ev) {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      onMove.cancel();
       if (!dragging) return;
       const targetId = targetCardIdAt(ev.clientX, ev.clientY);
       setChipDrag(null);
@@ -1084,8 +1307,9 @@ export default function IdeaMap() {
 
   // Kéo góc ảnh đổi bề rộng thẻ (node.w); chiều cao ảnh theo tỉ lệ. Cùng
   // pattern với handleGroupResizeMouseDown: live update, 1 history entry lúc thả.
-  function handleImageResizeMouseDown(e, node) {
-    if (e.button !== 0 || node.locked) return;
+  function handleImageResizeMouseDown(e, nodeId) {
+    const node = board.nodes.find((n) => n.id === nodeId);
+    if (e.button !== 0 || !node || node.locked) return;
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX;
@@ -1096,7 +1320,7 @@ export default function IdeaMap() {
     let latest = board;
     let moved = false;
 
-    function onMove(ev) {
+    const onMove = rafThrottle((ev) => {
       const dx = (ev.clientX - startX) / scale;
       if (Math.abs(dx) > 0.5) moved = true;
       const w = Math.min(MAX_W, Math.max(MIN_W, Math.round(startW + dx)));
@@ -1105,11 +1329,16 @@ export default function IdeaMap() {
         latest = next;
         return next;
       });
-    }
+      if (moved) publishGeom({ nodes: [{ id: node.id, x: node.x, y: node.y, w }] });
+    });
     function onUp() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      if (moved) { recordHistory(boardBeforeDrag); saveNow(latest); }
+      onMove.flush();
+      if (!moved) return;
+      recordHistory(boardBeforeDrag);
+      finishGeom({ nodes: latest.nodes.filter((n) => n.id === node.id) });
+      saveNow(latest);
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -1145,15 +1374,16 @@ export default function IdeaMap() {
     setEdgeMenu(null);
   }
 
-  function handleCardClick(node) {
+  function handleCardClick(nodeId) {
     if (!linkMode) return;
-    if (pendingSource === null) setPendingSource(node.id);
-    else if (pendingSource === node.id) setPendingSource(null);
-    else { toggleEdge(pendingSource, "node", node.id, "node"); setPendingSource(null); }
+    if (pendingSource === null) setPendingSource(nodeId);
+    else if (pendingSource === nodeId) setPendingSource(null);
+    else { toggleEdge(pendingSource, "node", nodeId, "node"); setPendingSource(null); }
   }
 
-  function handleNodeMouseDown(e, node) {
-    if (linkMode || editingId === node.id) return;
+  function handleNodeMouseDown(e, nodeId) {
+    const node = board.nodes.find((n) => n.id === nodeId);
+    if (!node || linkMode || editingId === node.id) return;
     if (e.button === 2) { e.stopPropagation(); startPan(e); return; }
     if (e.button === 0 && spacePanRef.current) { e.stopPropagation(); startPan(e); return; }
     if (e.button !== 0) return;
@@ -1196,10 +1426,24 @@ export default function IdeaMap() {
         return [id, { x: n.x, y: n.y }];
       })
     );
+    // Ba bảng tra dựng SẴN một lần cho cả cú kéo. Bản cũ dựng lại `otherRects`
+    // — một mảng chứa MỌI thẻ khác, mỗi phần tử kèm một phép đo DOM — ở mỗi
+    // nhịp chuột; với bảng 100 thẻ đó là 100 lần buộc trình duyệt tính lại
+    // layout cho một lần nhích chuột, và là nguyên nhân giật nặng nhất khi bảng
+    // to. Không có gì trong số đó đổi giữa chừng: thẻ khác đứng yên.
+    const dragSizes = new Map(dragIds.map((id) => [id, frameCardSize(id)]));
+    const dragWidths = new Map(dragIds.map((id) => [id, baseBoard.nodes.find((n) => n.id === id)?.w]));
+    const otherRects = [
+      ...baseBoard.nodes.filter((n) => !startPositions.has(n.id)).map((n) => {
+        const { w, h } = frameCardSize(n.id);
+        return { x: n.x, y: n.y, w, h };
+      }),
+      ...baseBoard.groups.map((g) => ({ x: g.x, y: g.y, w: g.w, h: g.h }))
+    ];
     let latest = baseBoard;
     let moved = false;
 
-    function onMove(ev) {
+    const onMove = rafThrottle((ev) => {
       let dx = (ev.clientX - startX) / scale;
       let dy = (ev.clientY - startY) / scale;
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
@@ -1207,7 +1451,7 @@ export default function IdeaMap() {
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       dragIds.forEach((id) => {
         const start = startPositions.get(id);
-        const { w, h } = frameCardSize(id);
+        const { w, h } = dragSizes.get(id);
         const nx = start.x + dx, ny = start.y + dy;
         minX = Math.min(minX, nx); minY = Math.min(minY, ny);
         maxX = Math.max(maxX, nx + w); maxY = Math.max(maxY, ny + h);
@@ -1215,48 +1459,52 @@ export default function IdeaMap() {
       const movingRect = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
 
       if (ev.altKey) {
-        setSnapGuides([]);
+        setSnapGuides(EMPTY_ARRAY);
       } else {
-        const otherRects = [
-          ...baseBoard.nodes.filter((n) => !startPositions.has(n.id)).map((n) => {
-            const { w, h } = frameCardSize(n.id);
-            return { x: n.x, y: n.y, w, h };
-          }),
-          ...baseBoard.groups.map((g) => ({ x: g.x, y: g.y, w: g.w, h: g.h }))
-        ];
         const snap = computeSnap(movingRect, otherRects, 6 / scale);
         dx += snap.dx; dy += snap.dy;
         setSnapGuides(snap.guides);
       }
 
+      const moving = dragIds.map((id) => {
+        const start = startPositions.get(id);
+        return { id, x: Math.round(start.x + dx), y: Math.round(start.y + dy), w: dragWidths.get(id) };
+      });
+      const movingById = new Map(moving.map((m) => [m.id, m]));
       setBoard((prev) => {
         const next = {
           ...prev,
           nodes: prev.nodes.map((n) => {
-            const start = startPositions.get(n.id);
-            if (!start) return n;
-            return { ...n, x: Math.round(start.x + dx), y: Math.round(start.y + dy) };
+            const m = movingById.get(n.id);
+            return m ? { ...n, x: m.x, y: m.y } : n;
           })
         };
         latest = next;
         return next;
       });
-    }
+      // Chỉ phát ĐÚNG những thẻ đang bị kéo, không phát cả bảng.
+      if (moved) publishGeom({ nodes: moving });
+    });
     function onUp() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      setSnapGuides([]);
+      onMove.flush();
+      setSnapGuides(EMPTY_ARRAY);
       if (moved) {
         recordHistory(boardBeforeDrag);
+        // Gói geom cuối được gửi TRƯỚC khi PUT trả về, và nó giữ vị trí mới bên
+        // máy người khác cho tới khi board:update chính thức tới nơi — không còn
+        // khoảng hở nào để thẻ nhảy về chỗ cũ rồi nhảy lại.
+        finishGeom({ nodes: latest.nodes.filter((n) => startPositions.has(n.id)) });
         saveNow(latest);
       } else if (isAlt) {
         // Alt-click without drag: roll back the clone so nothing is silently duplicated.
         setBoard(boardBeforeDrag);
         boardRef.current = boardBeforeDrag;
         setSelectedIds(selectedIdsBeforeDrag);
-      } else {
-        saveNow(latest);
       }
+      // Bấm-không-kéo: không lưu. Bản cũ vẫn PUT cả board (kèm ảnh base64) rồi
+      // bắt server phát board:update cho mọi người, chỉ vì một cú click chọn thẻ.
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -1276,8 +1524,7 @@ export default function IdeaMap() {
     function hitIdsFor(m) {
       return boardRef.current.nodes
         .filter((n) => {
-          const card = canvasRef.current.querySelector(`.idea-card[data-id="${n.id}"]`);
-          const w = card ? card.offsetWidth : CARD_W, h = card ? card.offsetHeight : 100;
+          const { w, h } = frameCardSize(n.id);
           return rectsOverlap(m.x, m.y, m.w, m.h, n.x, n.y, w, h);
         })
         .map((n) => n.id);
@@ -1297,19 +1544,23 @@ export default function IdeaMap() {
         .map((edge) => edge.id);
     }
 
-    function onMove(ev) {
+    const onMove = rafThrottle((ev) => {
       if (!dragging && Math.hypot(ev.clientX - startScreenX, ev.clientY - startScreenY) > THRESHOLD) dragging = true;
       if (!dragging) return;
       const a = toCanvas(startScreenX, startScreenY);
       const b = toCanvas(ev.clientX, ev.clientY);
       const m = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
       setMarquee(m);
-      setSelectedIds(new Set(hitIdsFor(m)));
-      setSelectedEdgeIds(new Set(edgeHitIdsFor(m)));
-    }
+      // Giữ nguyên Set cũ khi tập chọn không đổi: một Set mới ở mỗi nhịp chuột
+      // sẽ kích hoạt effect ghi URL và effect phát selection lên socket dù
+      // chẳng có gì thay đổi.
+      setSelectedIds((prev) => replaceIdSet(prev, hitIdsFor(m)));
+      setSelectedEdgeIds((prev) => replaceIdSet(prev, edgeHitIdsFor(m)));
+    });
     function onUp() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      onMove.cancel();
       if (!dragging) { setSelectedIds(new Set()); setSelectedEdgeIds(new Set()); return; }
       setMarquee(null);
     }
@@ -1323,9 +1574,8 @@ export default function IdeaMap() {
     const startPanX = board.view.panX, startPanY = board.view.panY;
     let dragging = false;
     const THRESHOLD = 4;
-    let latest = board;
 
-    function onMove(ev) {
+    const onMove = rafThrottle((ev) => {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) {
         dragging = true;
         setIsPanning(true);
@@ -1333,18 +1583,19 @@ export default function IdeaMap() {
       if (!dragging) return;
       const nx = startPanX + (ev.clientX - startX);
       const ny = startPanY + (ev.clientY - startY);
-      setBoard((prev) => {
-        const next = { ...prev, view: { ...prev.view, panX: nx, panY: ny } };
-        latest = next;
-        return next;
-      });
-    }
+      setBoard((prev) => ({ ...prev, view: { ...prev.view, panX: nx, panY: ny } }));
+    });
     function onUp() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      onMove.flush();
       if (dragging) {
         setIsPanning(false);
-        saveNow(latest);
+        // KHÔNG lưu: lia sa bàn chỉ đổi camera, mà camera là riêng từng người
+        // (api.js đã bỏ `view` khỏi payload). Lần PUT ở đây không ghi được gì,
+        // nhưng vẫn đẩy cả board — kể cả ảnh base64 — lên server rồi bắt server
+        // phát board:update cho MỌI người khác. Mỗi cú lia nền của một người là
+        // một cú giật trên màn hình tất cả những người còn lại.
         suppressContextMenuRef.current = true;
         setTimeout(() => { suppressContextMenuRef.current = false; }, 0);
       }
@@ -1362,20 +1613,38 @@ export default function IdeaMap() {
     handleMarqueeMouseDown(e);
   }
 
+  // Nhường đường cho lia bảng TRƯỚC khi nghĩ tới việc vẽ — đúng thứ tự
+  // handleViewportMouseDown đang dùng, nên chuột phải và Space+trái vẫn lia
+  // bảng bình thường ở mode Sửa.
+  function handleInkCaptureMouseDown(e) {
+    if (e.button === 2) { startPan(e); return; }
+    if (e.button === 0 && spacePanRef.current) { startPan(e); return; }
+    if (e.button !== 0) return;
+    ink.handleMouseDown(e);
+  }
+
+  // Mọi thao tác CHỈ đổi camera đều đi qua đây. Camera là riêng từng người: nó
+  // được lưu vào localStorage bằng effect theo board.view, còn api.js thì đã cắt
+  // `view` khỏi payload PUT từ lâu. Vì vậy gọi saveNow/commitAndSave ở nhóm hàm
+  // này (bản cũ có ở zoom, vừa khung, nhảy tới thẻ/khung, thoát trình chiếu)
+  // KHÔNG ghi được gì lên server, nhưng vẫn đẩy cả board kèm ảnh base64 đi và
+  // bắt server phát board:update cho mọi người — nghĩa là chỉ cần một người
+  // cuộn chuột là màn hình của tất cả những người còn lại bị dựng lại.
+  function setCamera(view) {
+    setBoard((prev) => ({ ...prev, view }));
+  }
+
   function zoomButton(factor) {
     const rect = viewportRef.current.getBoundingClientRect();
     const next = computeZoom(board, rect, rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
-    setBoard(next);
-    saveDebounced(next);
+    setCamera(next.view);
   }
 
   function fitToView() {
     if (board.nodes.length === 0) return;
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     board.nodes.forEach((n) => {
-      const card = canvasRef.current.querySelector(`.idea-card[data-id="${n.id}"]`);
-      const w = card ? card.offsetWidth : CARD_W;
-      const h = card ? card.offsetHeight : 120;
+      const { w, h } = frameCardSize(n.id);
       minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
       maxX = Math.max(maxX, n.x + w); maxY = Math.max(maxY, n.y + h);
     });
@@ -1384,14 +1653,11 @@ export default function IdeaMap() {
     const bboxW = maxX - minX + pad * 2, bboxH = maxY - minY + pad * 2;
     let scale = Math.min(rect.width / bboxW, rect.height / bboxH, MAX_SCALE);
     scale = Math.max(scale, MIN_SCALE);
-    commitAndSave({
-      ...board,
-      view: {
-        scale,
-        panX: -(minX - pad) * scale + (rect.width - bboxW * scale) / 2,
-        panY: -(minY - pad) * scale + (rect.height - bboxH * scale) / 2
-      }
-    }, { historical: false });
+    setCamera({
+      scale,
+      panX: -(minX - pad) * scale + (rect.width - bboxW * scale) / 2,
+      panY: -(minY - pad) * scale + (rect.height - bboxH * scale) / 2
+    });
   }
 
   function deleteSelection() {
@@ -1512,14 +1778,11 @@ export default function IdeaMap() {
     const bboxW = maxX - minX + pad * 2, bboxH = maxY - minY + pad * 2;
     let scale = Math.min(rect.width / bboxW, rect.height / bboxH, MAX_SCALE);
     scale = Math.max(scale, MIN_SCALE);
-    commitAndSave({
-      ...board,
-      view: {
-        scale,
-        panX: -(minX - pad) * scale + (rect.width - bboxW * scale) / 2,
-        panY: -(minY - pad) * scale + (rect.height - bboxH * scale) / 2
-      }
-    }, { historical: false });
+    setCamera({
+      scale,
+      panX: -(minX - pad) * scale + (rect.width - bboxW * scale) / 2,
+      panY: -(minY - pad) * scale + (rect.height - bboxH * scale) / 2
+    });
   }
 
   function zoomToSelection() {
@@ -1533,20 +1796,33 @@ export default function IdeaMap() {
     setTimeout(() => setFlashId((cur) => (cur === id ? null : cur)), 1600);
   }
 
+  // Đưa con trỏ của một người khác vào giữa màn hình. Camera là dữ liệu riêng
+  // từng máy (lib/camera.js) nên chỉ setBoard, không commit vào lịch sử undo —
+  // nhìn sang chỗ đồng đội không phải là một thao tác sửa board.
+  function jumpToPeer(peer) {
+    const rect = viewportRef.current.getBoundingClientRect();
+    const { scale } = board.view;
+    setBoard({
+      ...board,
+      view: { scale, panX: rect.width / 2 - peer.x * scale, panY: rect.height / 2 - peer.y * scale }
+    });
+    // Con trỏ peer nhỏ và có thể đang đứng yên giữa một rừng thẻ — nháy sáng
+    // một nhịp để mắt bắt được sau khi màn hình vừa nhảy.
+    setSpotlightPeerId(peer.socketId);
+    setTimeout(() => setSpotlightPeerId((cur) => (cur === peer.socketId ? null : cur)), 1600);
+  }
+
   function jumpToGroup(group) {
     const rect = viewportRef.current.getBoundingClientRect();
     const pad = 60;
     const bboxW = group.w + pad * 2, bboxH = group.h + pad * 2;
     let scale = Math.min(rect.width / bboxW, rect.height / bboxH, MAX_SCALE);
     scale = Math.max(scale, MIN_SCALE);
-    commitAndSave({
-      ...board,
-      view: {
-        scale,
-        panX: -(group.x - pad) * scale + (rect.width - bboxW * scale) / 2,
-        panY: -(group.y - pad) * scale + (rect.height - bboxH * scale) / 2
-      }
-    }, { historical: false });
+    setCamera({
+      scale,
+      panX: -(group.x - pad) * scale + (rect.width - bboxW * scale) / 2,
+      panY: -(group.y - pad) * scale + (rect.height - bboxH * scale) / 2
+    });
   }
 
   function startPresentation() {
@@ -1583,7 +1859,7 @@ export default function IdeaMap() {
   function exitPresentation() {
     setPresentIndex(null);
     if (prePresentViewRef.current) {
-      commitAndSave({ ...board, view: prePresentViewRef.current }, { historical: false });
+      setCamera(prePresentViewRef.current);
       prePresentViewRef.current = null;
     }
   }
@@ -1626,9 +1902,14 @@ export default function IdeaMap() {
       nodes: board.nodes.map((n) => (selectedIds.has(n.id) && !n.locked ? { ...n, x: n.x + dx, y: n.y + dy } : n))
     };
     setBoard(next);
+    // Nhích bằng phím mũi tên cũng là một cú "kéo": người khác phải thấy thẻ
+    // chạy ngay, chứ không đợi bản lưu 500ms sau mới nhảy một phát.
+    const nudged = next.nodes.filter((n) => selectedIds.has(n.id) && !n.locked);
+    publishGeom({ nodes: nudged });
     saveDebounced(next);
     if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
     nudgeTimerRef.current = setTimeout(() => {
+      finishGeom({ nodes: boardRef.current.nodes.filter((n) => selectedIds.has(n.id) && !n.locked) });
       flushNudgeBurst();
     }, 600);
   }
@@ -1682,7 +1963,6 @@ export default function IdeaMap() {
     Object.values(filterTags).filter(Boolean).length +
     (filterFav ? 1 : 0) +
     (search.trim() ? 1 : 0);
-  const matches = board.nodes.filter(passesFilter).sort((a, b) => a.y - b.y || a.x - b.x);
   const matchCount = matches.length;
 
   function goToMatch(delta) {
@@ -1874,16 +2154,17 @@ export default function IdeaMap() {
       return null;
     }
 
-    function onMove(ev) {
+    const onMove = rafThrottle((ev) => {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
       if (!dragging) return;
       setColorDrag({ token, x: ev.clientX, y: ev.clientY });
       const target = colorTargetAt(ev.clientX, ev.clientY);
       setDropTargetId(target && target.kind === "node" ? { id: target.id, kind: "node" } : null);
-    }
+    });
     function onUp(ev) {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      onMove.cancel();
       if (!dragging) return;
       const target = colorTargetAt(ev.clientX, ev.clientY);
       setColorDrag(null);
@@ -1894,6 +2175,29 @@ export default function IdeaMap() {
     window.addEventListener("mouseup", onUp);
   }
 
+  // Nối lớp vỏ ổn định ở trên với bản mới nhất của từng hàm xử lý. Gán thường,
+  // không phải hook — nên đặt được sau các nhánh return sớm.
+  actionsRef.current = {
+    nodeMouseDown: handleNodeMouseDown,
+    cardClick: handleCardClick,
+    openColorMenu,
+    connectorMouseDown: handleConnectorMouseDown,
+    deleteNode,
+    toggleFavorite,
+    openComments: (e, id) => { setColorMenu(null); setEdgeMenu(null); setCommentsFor({ id, x: e.clientX, y: e.clientY }); },
+    liveText: (id, field, value) => sendLiveText({ nodeId: id, field, value }),
+    saveNodeEdit,
+    saveNodeEditAndNext,
+    dropImage: handleImageDrop,
+    removeImage: removeNodeImage,
+    imageResize: handleImageResizeMouseDown,
+    groupMouseDown: handleGroupMouseDown,
+    deleteGroup,
+    saveGroupTitle,
+    groupResizeMouseDown: handleGroupResizeMouseDown,
+    groupConnectorMouseDown: handleGroupConnectorMouseDown
+  };
+
   return (
     <div className={"shell" + (presentIndex != null ? " presenting" : "") + (role === "viewer" ? " readonly" : "")} onContextMenu={handlePageContextMenu}>
       {role === "viewer" && (
@@ -1901,7 +2205,7 @@ export default function IdeaMap() {
       )}
       {/* Khai báo màu tự tạo trong cây React: sửa hex là mọi card/dây/badge dùng
           var(--pal-N) repaint ngay, không cần đi ghi lại từng chỗ tham chiếu. */}
-      <style>{paletteCss(board.palette)}</style>
+      <style>{paletteStyle}</style>
       <div className="topbar">
         <div>
           <div className="eyebrow"><Trans>Bản đồ ý tưởng</Trans></div>
@@ -1909,33 +2213,20 @@ export default function IdeaMap() {
         </div>
         {/* data-mutating = móc CSS đánh dấu control ghi dữ liệu board; ở chế độ
             chỉ xem chúng bị vô hiệu hoá, phần còn lại của thanh vẫn dùng được. */}
+        {/* "Mời thành viên" đã chuyển xuống PresenceBar, nằm cạnh danh sách
+            người đang mở board — mời ai đó là việc của cùng một mạch suy nghĩ. */}
         <TopMenu label={t`Board`}>
           <Link to="/idea-map" className="btn ghost"><Trans>← Danh sách board</Trans></Link>
-          {role === "owner" && (
-            <button className="btn ghost" onClick={() => setInviteOpen(true)}><Trans>Mời thành viên</Trans></button>
-          )}
-        </TopMenu>
-
-        <TopMenu label={t`Thêm`}>
-          <button className="btn" data-mutating onClick={handleAddClick}><Trans>+ Ý tưởng</Trans></button>
-          <button className="btn ghost" data-mutating onClick={createGroup}><Trans>+ Khung</Trans></button>
-          <button className="btn ghost" data-mutating onClick={() => setCaptureOpen(true)}><Trans>Nhập nhanh</Trans></button>
         </TopMenu>
 
         <button className="btn ghost icon" data-mutating onClick={undo} disabled={past.length === 0} title={t`Hoàn tác (Ctrl+Z)`}>↶</button>
         <button className="btn ghost icon" data-mutating onClick={redo} disabled={future.length === 0} title={t`Làm lại (Ctrl+Shift+Z)`}>↷</button>
-        <button
-          className={"btn ghost toggle" + (linkMode ? " active" : "")}
-          data-mutating
-          onClick={() => { setLinkMode((v) => !v); setPendingSource(null); }}
-        >
-          <Trans>Nối ý tưởng</Trans>
-        </button>
 
         <div className="search-box">
           <input
+            ref={searchInputRef}
             type="text"
-            placeholder={t`Tìm theo tên/mô tả…`}
+            placeholder={t`Tìm theo tên/mô tả… (Ctrl+F)`}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             onKeyDown={(e) => {
@@ -1961,12 +2252,14 @@ export default function IdeaMap() {
         <TopMenu label={t`Xem`} align="right">
           <button className="btn ghost" disabled={board.groups.length === 0} onClick={startPresentation}><Trans>Trình chiếu</Trans></button>
           <button className={"btn ghost toggle" + (outlineOpen ? " active" : "")} onClick={() => setOutlineOpen((v) => !v)}><Trans>Mục lục</Trans></button>
-          <div className="menubar-sep" />
-          <div className="menubar-row">
-            <LocaleToggle />
-            <button className="btn ghost icon" onClick={toggleTheme} title={t`Đổi giao diện sáng/tối`}>◐</button>
-          </div>
         </TopMenu>
+
+        {/* Ngôn ngữ và sáng/tối là thứ đổi rồi nhìn thấy kết quả ngay, nên nằm
+            thẳng trên thanh chứ không giấu sau một lần bấm mở menu. */}
+        <div className="topbar-prefs">
+          <LocaleToggle />
+          <button className="btn ghost icon" onClick={toggleTheme} title={t`Đổi giao diện sáng/tối`}>◐</button>
+        </div>
       </div>
 
       <div className="filterbar">
@@ -1989,6 +2282,14 @@ export default function IdeaMap() {
               <button className="fb-clear" onClick={clearFilters}><Trans>Xoá lọc</Trans></button>
             </div>
           )}
+          <PresenceBar
+            user={user}
+            socket={socket}
+            canInvite={role === "owner"}
+            onInvite={() => setInviteOpen(true)}
+            onJumpToPeer={jumpToPeer}
+            onLogout={logout}
+          />
         </div>
 
         {/* Khay neo: LUÔN hiện, kể cả rỗng, và chính nó là vùng thả. Panel neo chảy
@@ -2102,6 +2403,25 @@ export default function IdeaMap() {
         onDrop={handleViewportImageDrop}
         onMouseMove={handlePresenceMouseMove}
       >
+        <ToolRail
+          mode={mode}
+          tool={tool}
+          canEdit={role !== "viewer"}
+          linkMode={linkMode}
+          onMode={enterMode}
+          onTool={(next) => { setMode("draw"); setTool(next); }}
+          onAddNode={handleAddClick}
+          onAddRootNode={handleAddRootClick}
+          onAddGroup={createGroup}
+          onToggleLink={toggleLinkMode}
+          onCapture={() => setCaptureOpen(true)}
+        />
+        {mode === "draw" && (
+          <ToolOptions tool={tool} prefs={penPrefs} onPrefs={setPenPrefs} />
+        )}
+        {mode === "draw" && (
+          <div className="ink-capture" onMouseDown={handleInkCaptureMouseDown} />
+        )}
         <div
           className="canvas"
           ref={canvasRef}
@@ -2110,166 +2430,66 @@ export default function IdeaMap() {
           {marquee && (
             <div className="marquee-box" style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h }} />
           )}
-          {board.groups.map((group, i) => {
-            const renderGroup = liveGroups[i];
-            return (
+          {liveGroups.map((group) => (
             <FrameBox
               key={group.id}
-              group={renderGroup}
+              group={group}
               editingTitle={editingGroupTitleId === group.id}
-              onMouseDown={(e) => handleGroupMouseDown(e, group)}
-              onResizeMouseDown={(e) => handleGroupResizeMouseDown(e, group)}
-              onContextMenu={(e) => openColorMenu(e, "group", group.id)}
-              onTitleDoubleClick={() => setEditingGroupTitleId(group.id)}
-              onTitleSave={(title) => saveGroupTitle(group.id, title)}
-              onTitleCancel={() => setEditingGroupTitleId(null)}
-              onDelete={() => deleteGroup(group.id)}
-              onConnectorMouseDown={(e) => handleGroupConnectorMouseDown(e, group)}
               dropTarget={!!dropTargetId && dropTargetId.kind === "group" && dropTargetId.id === group.id}
+              h={groupHandlers}
             />
-            );
-          })}
-          <svg className="edge-layer">
-            <defs>
-              <marker id="edge-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
-              </marker>
-            </defs>
-            {board.edges.map((edge) => {
-              if (edgeDrag && edgeDrag.edgeId === edge.id) return null;
-              const r1 = rectForEndpoint(edge.fromKind || "node", edge.from, liveNodes, liveGroups, frameCardSize);
-              const r2 = rectForEndpoint(edge.toKind || "node", edge.to, liveNodes, liveGroups, frameCardSize);
-              if (!r1 || !r2) return null;
-              const p1 = clipToRect(r1.cx, r1.cy, r1.w, r1.h, r2.cx, r2.cy);
-              const p2 = clipToRect(r2.cx, r2.cy, r2.w, r2.h, r1.cx, r1.cy);
-              const hot = hoveredEdgeId === edge.id;
-              return (
-                <g
-                  key={edge.id}
-                  onMouseEnter={() => setHoveredEdgeId(edge.id)}
-                  onMouseLeave={() => setHoveredEdgeId((id) => (id === edge.id ? null : id))}
-                >
-                  <line
-                    className="hit"
-                    data-edge-id={edge.id}
-                    x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                    onClick={(e) => { setColorMenu(null); setCommentsFor(null); setEdgeMenu({ id: edge.id, x: e.clientX, y: e.clientY }); }}
-                  />
-                  <line
-                    className={"visible" + (hot ? " hot" : "") + (selectedEdgeIds.has(edge.id) ? " selected" : "")}
-                    x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                    style={edge.color ? { stroke: colorVar(edge.color) } : undefined}
-                    strokeDasharray={edge.style === "dashed" ? "6 5" : undefined}
-                    markerEnd={edge.arrow === "none" ? undefined : "url(#edge-arrow)"}
-                  />
-                  {edge.label && (
-                    <text className="edge-label" x={(p1.x + p2.x) / 2} y={(p1.y + p2.y) / 2 - 4} textAnchor="middle">{edge.label}</text>
-                  )}
-                </g>
-              );
-            })}
-            {snapGuides.map((g, i) => (g.axis === "v"
-              ? <line key={i} className="snap-guide" x1={g.pos} y1={g.start} x2={g.pos} y2={g.end} />
-              : <line key={i} className="snap-guide" x1={g.start} y1={g.pos} x2={g.end} y2={g.pos} />))}
-            {linkDraft && (() => {
-              const from = edgeEndpoint(linkDraft.fromKind || "node", linkDraft.fromId, liveNodes, liveGroups, frameCardSize);
-              if (!from) return null;
-              return <line className="draft" x1={from.x} y1={from.y} x2={linkDraft.x} y2={linkDraft.y} />;
-            })()}
-            {edgeDrag && (() => {
-              const fixed = edgeEndpoint(edgeDrag.fixedKind, edgeDrag.fixedId, liveNodes, liveGroups, frameCardSize);
-              if (!fixed) return null;
-              return <line className="draft" x1={fixed.x} y1={fixed.y} x2={edgeDrag.x} y2={edgeDrag.y} />;
-            })()}
-            {Array.from(presencePeers.values()).map((peer) => {
-              if (!peer.edgeDraft) return null;
-              const from = edgeEndpoint(peer.edgeDraft.fromKind || "node", peer.edgeDraft.fromId, liveNodes, liveGroups, frameCardSize);
-              if (!from) return null;
-              return (
-                <line
-                  key={"peer-draft-" + peer.socketId}
-                  className="draft"
-                  x1={from.x} y1={from.y} x2={peer.edgeDraft.x} y2={peer.edgeDraft.y}
-                  style={{ stroke: cursorColor(peer.email) }}
-                />
-              );
-            })}
-          </svg>
-
-          {board.nodes.map((node, i) => {
-            const liveText = editingId === node.id ? null : textOverlay.get(String(node.id));
-            const renderNode = liveText
-              ? { ...liveNodes[i], title: liveText.title ?? node.title, desc: liveText.desc ?? node.desc }
-              : liveNodes[i];
-            return (
-            <IdeaCard
-              key={node.id}
-              node={renderNode}
-              board={board}
-              currentUser={currentUser}
-              editing={editingId === node.id}
-              dimmed={(!passesFilter(node) || (focusSet != null && !focusSet.has(node.id))) && editingId !== node.id}
-              linkPending={linkMode && pendingSource === node.id}
-              dropTarget={!!dropTargetId && dropTargetId.kind === "node" && dropTargetId.id === node.id}
-              selected={selectedIds.has(node.id)}
-              flash={flashId === node.id}
-              onMouseDown={(e) => handleNodeMouseDown(e, node)}
-              onClick={() => handleCardClick(node)}
-              onContextMenu={(e) => openColorMenu(e, "card", node.id)}
-              onConnectorMouseDown={(e, direction) => handleConnectorMouseDown(e, node, direction)}
-              onEdit={() => setEditingId(node.id)}
-              onDelete={() => deleteNode(node.id)}
-              onToggleFavorite={() => toggleFavorite(node.id)}
-              onOpenComments={(e) => { setColorMenu(null); setEdgeMenu(null); setCommentsFor({ id: node.id, x: e.clientX, y: e.clientY }); }}
-              onLiveTextChange={(field, value) => sendLiveText({ nodeId: node.id, field, value })}
-              onSave={(fields) => saveNodeEdit(node.id, fields)}
-              onSaveAndNext={(fields) => saveNodeEditAndNext(node.id, fields)}
-              onCancel={() => setEditingId(null)}
-              onDropImage={(e) => handleImageDrop(e, node.id)}
-              onRemoveImage={() => removeNodeImage(node.id)}
-              onImageResize={(e) => handleImageResizeMouseDown(e, node)}
-            />
-            );
-          })}
-
-          {Array.from(presencePeers.values()).map((peer) => (
-            <div
-              key={peer.socketId}
-              className="peer-cursor"
-              style={{ left: peer.x, top: peer.y, "--peer-color": cursorColor(peer.email) }}
-            >
-              <svg viewBox="0 0 20 20" width="16" height="16">
-                <path d="M2 2 L18 9 L10 11 L8 18 Z" fill="var(--peer-color)" stroke="var(--bg)" strokeWidth="1" />
-              </svg>
-              <span className="peer-cursor-label" style={{ background: "var(--peer-color)" }}>{peer.name}</span>
-            </div>
           ))}
 
-          {Array.from(presencePeers.values()).flatMap((peer, pi) =>
-            (peer.selectedIds || []).map((id) => {
-              const n = liveNodes.find((x) => x.id === id);
-              if (!n) return null;
-              // Chiều cao thẻ phụ thuộc nội dung nên phải đo DOM, không suy ra
-              // được từ dữ liệu. Mỗi người lùi ra xa thêm một nấc để hai người
-              // cùng chọn một thẻ không vẽ đè khít nhau (chỉ còn thấy 1 màu).
-              const { w, h } = frameCardSize(id);
-              const pad = 4 + pi * 3;
-              return (
-                <div
-                  key={peer.socketId + ":sel:" + id}
-                  className="peer-select-outline"
-                  style={{
-                    left: n.x - pad,
-                    top: n.y - pad,
-                    width: w + pad * 2,
-                    height: h + pad * 2,
-                    borderColor: cursorColor(peer.email)
-                  }}
-                  title={peer.name}
-                />
-              );
-            })
-          )}
+          <EdgeLayer
+            edges={board.edges}
+            nodeById={nodeById}
+            groupById={groupById}
+            cardSize={frameCardSize}
+            hoveredEdgeId={hoveredEdgeId}
+            selectedEdgeIds={selectedEdgeIds}
+            edgeDragId={edgeDrag ? edgeDrag.edgeId : null}
+            snapGuides={snapGuides}
+            linkDraft={linkDraft}
+            edgeDraft={edgeDrag}
+            onEdgeEnter={onEdgeEnter}
+            onEdgeLeave={onEdgeLeave}
+            onEdgeClick={onEdgeClick}
+          />
+
+          {liveNodes.map((liveNode) => {
+            const liveText = editingId === liveNode.id ? null : textOverlay.get(String(liveNode.id));
+            const renderNode = liveText
+              ? { ...liveNode, title: liveText.title ?? liveNode.title, desc: liveText.desc ?? liveNode.desc }
+              : liveNode;
+            return (
+              <IdeaCard
+                key={liveNode.id}
+                node={renderNode}
+                statusDef={statusDefById.get(liveNode.statusId) ?? null}
+                tagDef={tagDefById.get(liveNode.tagId) ?? null}
+                statuses={board.statuses}
+                tags={board.tags}
+                currentUser={currentUser}
+                observeCard={observeCard}
+                editing={editingId === liveNode.id}
+                dimmed={(!passesFilter(liveNode) || (focusSet != null && !focusSet.has(liveNode.id))) && editingId !== liveNode.id}
+                linkPending={linkMode && pendingSource === liveNode.id}
+                dropTarget={!!dropTargetId && dropTargetId.kind === "node" && dropTargetId.id === liveNode.id}
+                selected={selectedIds.has(liveNode.id)}
+                flash={flashId === liveNode.id}
+                h={cardHandlers}
+              />
+            );
+          })}
+
+          <PeerLayer socket={socket} nodeById={nodeById} groupById={groupById} cardSize={frameCardSize} spotlightPeerId={spotlightPeerId} />
+
+          <InkLayer
+            drawings={board.drawings}
+            draft={ink.draft}
+            eraseIds={ink.eraseIds}
+            liveStrokes={inkLive.liveStrokes}
+          />
 
           {/* Tay cầm nổi trên cùng, tách khỏi .edge-layer: đầu dây thường trùng
               đúng chỗ connector-zone của thẻ (cả hai đều ở tâm cạnh), và thẻ
@@ -2278,8 +2498,8 @@ export default function IdeaMap() {
           {hoveredEdgeId != null && !edgeDrag && (() => {
             const edge = board.edges.find((e) => e.id === hoveredEdgeId);
             if (!edge) return null;
-            const r1 = rectForEndpoint(edge.fromKind || "node", edge.from, liveNodes, liveGroups, frameCardSize);
-            const r2 = rectForEndpoint(edge.toKind || "node", edge.to, liveNodes, liveGroups, frameCardSize);
+            const r1 = rectForEndpoint(edge.fromKind || "node", edge.from, nodeById, groupById, frameCardSize);
+            const r2 = rectForEndpoint(edge.toKind || "node", edge.to, nodeById, groupById, frameCardSize);
             if (!r1 || !r2) return null;
             const p1 = clipToRect(r1.cx, r1.cy, r1.w, r1.h, r2.cx, r2.cy);
             const p2 = clipToRect(r2.cx, r2.cy, r2.w, r2.h, r1.cx, r1.cy);
@@ -2622,29 +2842,6 @@ export default function IdeaMap() {
   );
 }
 
-function MdLite({ text }) {
-  const blocks = parseDesc(text);
-  const renderInline = (tokens) => tokens.map((tk, i) => {
-    if (tk.type === "bold") return <strong key={i}>{tk.value}</strong>;
-    if (tk.type === "link") {
-      return (
-        <a key={i} href={tk.value} target="_blank" rel="noopener noreferrer"
-           onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
-          {tk.value}
-        </a>
-      );
-    }
-    return tk.value;
-  });
-  return (
-    <>
-      {blocks.map((b, i) => b.type === "bullet"
-        ? <div key={i} className="md-bullet">{renderInline(b.inline)}</div>
-        : <div key={i}>{renderInline(b.inline)}</div>)}
-    </>
-  );
-}
-
 function LineSolidIcon() {
   return <svg viewBox="0 0 20 12" width="20" height="12"><line x1="2" y1="6" x2="18" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>;
 }
@@ -2825,148 +3022,6 @@ function CommentsPopover({ x, y, comments, onAdd, onDelete, onClose }) {
       <div className="cmt-actions">
         <button className="save-btn" onClick={submit}><Trans>Gửi</Trans></button>
       </div>
-    </div>
-  );
-}
-
-function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, dropTarget, selected, flash, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onToggleFavorite, onOpenComments, onSave, onSaveAndNext, onCancel, onDropImage, onRemoveImage, onImageResize, onLiveTextChange }) {
-  const { t } = useLingui();
-  const [title, setTitle] = useState(node.title);
-  const [desc, setDesc] = useState(node.desc);
-  const [tagId, setTagId] = useState(node.tagId ?? null);
-  const [statusId, setStatusId] = useState(node.statusId ?? null);
-
-  useEffect(() => {
-    if (editing) {
-      setTitle(node.title); setDesc(node.desc); setTagId(node.tagId ?? null); setStatusId(node.statusId ?? null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [editing]);
-
-  const classNames = ["idea-card"];
-  if (dimmed) classNames.push("dim");
-  if (linkPending) classNames.push("link-pending");
-  if (dropTarget) classNames.push("drop-target");
-  if (selected) classNames.push("selected");
-  if (flash) classNames.push("flash");
-  if (node.shape === "ellipse") classNames.push("shape-ellipse");
-  if (node.dashed) classNames.push("border-dashed");
-  if (node.isRoot) classNames.push("is-root");
-
-  function handleEditKeyDown(e) {
-    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
-      e.preventDefault();
-      onSaveAndNext({ title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId });
-    } else if (e.key === "Enter" && e.currentTarget.tagName === "INPUT") {
-      // Enter thường chỉ lưu ở ô tiêu đề (input 1 dòng) — textarea mô tả
-      // vẫn cần Enter để xuống dòng.
-      e.preventDefault();
-      onSave({ title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId });
-    } else if (e.key === "Escape") {
-      e.preventDefault();
-      e.stopPropagation();
-      onCancel();
-    }
-  }
-
-  if (editing) {
-    return (
-      <div className={classNames.join(" ")} data-id={node.id} style={{ left: node.x, top: node.y, ...(node.w ? { width: node.w } : {}) }} onMouseDown={(e) => e.stopPropagation()}>
-        <div className="edit-form">
-          <input type="text" autoFocus value={title} onChange={(e) => { setTitle(e.target.value); onLiveTextChange("title", e.target.value); }} placeholder={t`Tên ý tưởng`} onKeyDown={handleEditKeyDown} />
-          <textarea value={desc} onChange={(e) => { setDesc(e.target.value); onLiveTextChange("desc", e.target.value); }} placeholder={t`Mô tả ngắn`} onKeyDown={handleEditKeyDown} />
-          <div className="edit-row">
-            <select value={tagId ?? ""} onChange={(e) => setTagId(e.target.value === "" ? null : Number(e.target.value))}>
-              <option value="">{t`Không nhãn`}</option>
-              {board.tags.map((tg) => <option key={tg.id} value={tg.id}>{tg.name}</option>)}
-            </select>
-            <select value={statusId ?? ""} onChange={(e) => setStatusId(e.target.value === "" ? null : Number(e.target.value))}>
-              <option value="">{t`Không trạng thái`}</option>
-              {board.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-            </select>
-          </div>
-          <div className="edit-actions">
-            <button className="save-btn" onClick={() => onSave({ title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId })}><Trans>Lưu</Trans></button>
-            <button className="cancel-btn" onClick={onCancel}><Trans>Hủy</Trans></button>
-            {node.image && <button className="cancel-btn" onClick={() => onRemoveImage()}><Trans>Xoá ảnh</Trans></button>}
-          </div>
-          <div className="edit-hint"><Trans>Enter: lưu · Ctrl+Enter: lưu & tạo ý nối tiếp</Trans></div>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={classNames.join(" ")}
-      data-id={node.id}
-      style={{
-        left: node.x, top: node.y,
-        ...(node.w ? { width: node.w } : {}),
-        ...(node.color ? { borderLeftColor: colorVar(node.color), borderLeftWidth: 4 } : {})
-      }}
-      onMouseDown={onMouseDown}
-      onClick={onClick}
-      onContextMenu={onContextMenu}
-      onDragOver={(e) => e.preventDefault()}
-      onDrop={onDropImage}
-    >
-      {/* Nút nằm cùng hàng với tiêu đề, không absolute: absolute thì tiêu đề dài
-          chạy xuống dưới ngôi sao và bị đè. Tiêu đề co lại, nút giữ nguyên. */}
-      <div className="card-top">
-        {node.isRoot && <span className="root-badge" title={t`Thẻ gốc`}>👑</span>}
-        {node.locked && <span className="lock-badge">🔒</span>}
-        <div className="title">{node.title}</div>
-        <div className="card-actions">
-          <button
-            className={"icon-btn fav-btn" + ((node.favorites ?? []).includes(currentUser) ? " on" : "")}
-            title={t`Yêu thích`}
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
-          >
-            ★{(node.favorites?.length ?? 0) > 0 ? node.favorites.length : ""}
-          </button>
-          <button className="icon-btn" title={t`Sửa`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(); }}>✎</button>
-          <button className="icon-btn" title={t`Xoá`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onDelete(); }}>×</button>
-        </div>
-      </div>
-      {node.image && (
-        <div className="card-img-wrap">
-          <img className="card-img" src={node.image} alt="" draggable={false} />
-          {!node.locked && (
-            <span className="img-resize" title={t`Kéo để đổi cỡ ảnh`} onMouseDown={onImageResize} onClick={(e) => e.stopPropagation()} />
-          )}
-        </div>
-      )}
-      <div className="desc">{node.desc ? <MdLite text={node.desc} /> : null}</div>
-      <div className="meta-row">
-        {(() => {
-          const s = statusById(board, node.statusId);
-          return s ? <span className="status-pill" data-badge-kind="status" data-badge-id={s.id} style={{ background: colorVar(s.color), color: contrastInk(s.color) }}>{s.name}</span> : null;
-        })()}
-        {(() => {
-          const tg = tagById(board, node.tagId);
-          return tg ? (
-            <span className="tag-pill" data-badge-kind="tag" data-badge-id={tg.id}>
-              <span className="dot" style={{ background: colorVar(tg.color) }}></span>
-              {tg.name}
-            </span>
-          ) : null;
-        })()}
-        {(node.comments?.length ?? 0) > 0 && (
-          <button
-            className="cmt-pill"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => { e.stopPropagation(); onOpenComments(e); }}
-          >
-            💬 {node.comments.length}
-          </button>
-        )}
-      </div>
-      <span className="connector-zone top" title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot" onMouseDown={(e) => onConnectorMouseDown(e, "top")} onClick={(e) => e.stopPropagation()}>+</span></span>
-      <span className="connector-zone right" title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot" onMouseDown={(e) => onConnectorMouseDown(e, "right")} onClick={(e) => e.stopPropagation()}>+</span></span>
-      <span className="connector-zone bottom" title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot" onMouseDown={(e) => onConnectorMouseDown(e, "bottom")} onClick={(e) => e.stopPropagation()}>+</span></span>
-      <span className="connector-zone left" title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot" onMouseDown={(e) => onConnectorMouseDown(e, "left")} onClick={(e) => e.stopPropagation()}>+</span></span>
     </div>
   );
 }

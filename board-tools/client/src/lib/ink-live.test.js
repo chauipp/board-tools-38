@@ -1,0 +1,104 @@
+// game-tools/client/src/lib/ink-live.test.js
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import {
+  INK_LIVE_TTL_MS, INK_SETTLE_TTL_MS, inkKey, mergeInkPacket, reconcileInkOverlay
+} from "./ink-live.js";
+
+const NOW = 1000;
+// socketId do SERVER đính vào, không phải client tự đặt.
+function pkt(o) { return { socketId: "s1", strokeId: 1, ...o }; }
+
+test("inkKey: khoá theo socketId + strokeId", () => {
+  assert.equal(inkKey({ socketId: "abc", strokeId: 7 }), "abc:7");
+});
+
+test("mergeInkPacket: gói đầu tạo entry đủ màu, độ dày, điểm", () => {
+  const m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, pts: [0, 0, 10, 10] }), NOW);
+  assert.deepEqual(m.get("s1:1"), {
+    color: "pen-red", w: 4, pts: [0, 0, 10, 10],
+    drawingId: null, erase: null, expiresAt: NOW + INK_LIVE_TTL_MS
+  });
+});
+
+test("mergeInkPacket: gói sau nối điểm mới vào đuôi và gia hạn TTL", () => {
+  let m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, pts: [0, 0] }), NOW);
+  m = mergeInkPacket(m, pkt({ seq: 1, pts: [10, 10] }), NOW + 40);
+  m = mergeInkPacket(m, pkt({ seq: 2, pts: [20, 20] }), NOW + 80);
+  assert.deepEqual(m.get("s1:1").pts, [0, 0, 10, 10, 20, 20]);
+  assert.equal(m.get("s1:1").expiresAt, NOW + 80 + INK_LIVE_TTL_MS);
+});
+
+// Vào board giữa lúc người khác đang vẽ: không có gói seq 0 nên không biết màu
+// và độ dày. Bỏ qua, đừng vẽ một nét vô màu.
+test("mergeInkPacket: thiếu gói đầu thì bỏ qua và trả đúng map cũ", () => {
+  const prev = new Map();
+  assert.equal(mergeInkPacket(prev, pkt({ seq: 3, pts: [1, 1] }), NOW), prev);
+});
+
+test("mergeInkPacket: gói done ghi drawingId, đổi sang TTL dài, giữ nguyên điểm", () => {
+  let m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-blue", w: 2, pts: [0, 0, 5, 5] }), NOW);
+  m = mergeInkPacket(m, pkt({ done: true, drawingId: 37 }), NOW + 100);
+  const e = m.get("s1:1");
+  assert.equal(e.drawingId, 37);
+  assert.equal(e.expiresAt, NOW + 100 + INK_SETTLE_TTL_MS);
+  assert.deepEqual(e.pts, [0, 0, 5, 5], "gói done không được xoá điểm đã nhận");
+});
+
+test("mergeInkPacket: gói cancel bỏ hẳn entry", () => {
+  let m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, pts: [0, 0] }), NOW);
+  m = mergeInkPacket(m, pkt({ cancel: true }), NOW + 50);
+  assert.equal(m.has("s1:1"), false);
+});
+
+test("mergeInkPacket: gói erase gom id, không trùng lặp", () => {
+  let m = mergeInkPacket(new Map(), pkt({ erase: [3, 7] }), NOW);
+  m = mergeInkPacket(m, pkt({ erase: [7, 12] }), NOW + 40);
+  assert.deepEqual(m.get("s1:1").erase, [3, 7, 12]);
+  assert.equal(m.get("s1:1").pts, null);
+});
+
+test("mergeInkPacket: hai người vẽ cùng lúc là hai entry riêng", () => {
+  let m = mergeInkPacket(new Map(), { socketId: "s1", strokeId: 1, seq: 0, color: "pen-red", w: 4, pts: [0, 0] }, NOW);
+  m = mergeInkPacket(m, { socketId: "s2", strokeId: 1, seq: 0, color: "pen-blue", w: 8, pts: [9, 9] }, NOW);
+  assert.equal(m.size, 2);
+  assert.equal(m.get("s2:1").color, "pen-blue");
+});
+
+test("mergeInkPacket: gói rác trả đúng map cũ, không nổ", () => {
+  const prev = new Map();
+  assert.equal(mergeInkPacket(prev, null, NOW), prev);
+  assert.equal(mergeInkPacket(prev, { seq: 0, pts: [0, 0] }, NOW), prev, "thiếu socketId");
+  assert.equal(mergeInkPacket(prev, pkt({ seq: 0, pts: [] }), NOW), prev, "pts rỗng");
+});
+
+test("reconcileInkOverlay: bỏ ngay entry mà board đã có nét thật", () => {
+  let m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, pts: [0, 0] }), NOW);
+  m = mergeInkPacket(m, pkt({ done: true, drawingId: 37 }), NOW);
+  const board = { drawings: [{ id: 37, kind: "pen", color: "pen-red", w: 4, pts: [0, 0] }] };
+  assert.equal(reconcileInkOverlay(m, board).has("s1:1"), false);
+});
+
+test("reconcileInkOverlay: giữ entry mà board chưa bắt kịp", () => {
+  let m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, pts: [0, 0] }), NOW);
+  m = mergeInkPacket(m, pkt({ done: true, drawingId: 37 }), NOW);
+  assert.equal(reconcileInkOverlay(m, { drawings: [] }).has("s1:1"), true);
+});
+
+test("reconcileInkOverlay: nét đang vẽ chưa done thì không bị bỏ, trả map cũ", () => {
+  const m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, pts: [0, 0] }), NOW);
+  assert.equal(reconcileInkOverlay(m, { drawings: [{ id: 1 }] }), m);
+});
+
+test("reconcileInkOverlay: entry gôm bỏ khi mọi nét đã thật sự mất khỏi board", () => {
+  const m = mergeInkPacket(new Map(), pkt({ erase: [3, 7], done: true }), NOW);
+  assert.equal(reconcileInkOverlay(m, { drawings: [{ id: 9 }] }).has("s1:1"), false);
+  assert.equal(reconcileInkOverlay(m, { drawings: [{ id: 3 }] }).has("s1:1"), true);
+});
+
+test("reconcileInkOverlay: overlay rỗng hoặc board null trả map cũ", () => {
+  const empty = new Map();
+  assert.equal(reconcileInkOverlay(empty, { drawings: [] }), empty);
+  const m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, pts: [0, 0] }), NOW);
+  assert.equal(reconcileInkOverlay(m, null), m);
+});

@@ -96,12 +96,14 @@ router.get("/:id", async (req, res) => {
       statuses: obj.statuses,
       tags: obj.tags,
       palette: obj.palette,
+      drawings: obj.drawings,
       nextNodeId: obj.nextNodeId,
       nextEdgeId: obj.nextEdgeId,
       nextGroupId: obj.nextGroupId,
       nextStatusId: obj.nextStatusId,
       nextTagId: obj.nextTagId,
       nextPaletteId: obj.nextPaletteId,
+      nextDrawingId: obj.nextDrawingId,
       view: obj.view,
       updatedAt: obj.updatedAt
     });
@@ -116,14 +118,15 @@ router.put("/:id", async (req, res) => {
     const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS);
     if (!found) return;
     const {
-      nodes, edges, groups, statuses, tags, palette,
-      nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, view,
+      nodes, edges, groups, statuses, tags, palette, drawings,
+      nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, nextDrawingId,
+      view,
       clientId
     } = req.body;
     const updatedAt = new Date();
     await Board.findByIdAndUpdate(req.params.id, {
-      nodes, edges, groups, statuses, tags, palette,
-      nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId,
+      nodes, edges, groups, statuses, tags, palette, drawings,
+      nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, nextDrawingId,
       view, updatedAt
     });
     // Phát cho người khác trong board ngay sau khi lưu thành công — không
@@ -135,8 +138,8 @@ router.put("/:id", async (req, res) => {
     // không từ URL — hex viết hoa/thường khác nhau vẫn phải vào đúng phòng.
     const room = "board:" + String(found.board._id);
     const payload = {
-      nodes, edges, groups, statuses, tags, palette,
-      nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId,
+      nodes, edges, groups, statuses, tags, palette, drawings,
+      nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, nextDrawingId,
       updatedAt: updatedAt.toISOString()
     };
     if (clientId) io.in(room).except(clientId).emit("board:update", payload);

@@ -16,6 +16,11 @@
   --shadow: 0 1px 0 rgba(36,38,29,0.06), 0 6px 16px rgba(36,38,29,0.10);
   --dot-1: #5C7A99; --dot-2: #8A6BAE; --dot-3: #3C7A5A; --dot-4: #B5822A;
   --dot-5: #A15B21; --dot-6: #6B8F71; --dot-7: #8B4A5C; --dot-8: #4E7A8C;
+  /* Màu bút vẽ tay — hệ màu RIÊNG, không dùng --dot-* của nhãn/thẻ. Giá trị
+     mượn từ --danger / --accent / --st-* đã được duyệt cho hai theme. */
+  --pen-red: #A43F32; --pen-orange: #9C5A22; --pen-yellow: #8A6D14;
+  --pen-green: #3C7A5A; --pen-blue: #35618A; --pen-purple: #6B5B8A;
+  --pen-mono: #24261D;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -25,6 +30,9 @@
     --st-idea: #9B9880; --st-considering: #86B8E8; --st-chosen: #74C79B;
     --st-parked: #B9A6DE; --st-rejected: #D89184;
     --shadow: 0 1px 0 rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.35);
+    --pen-red: #E2685A; --pen-orange: #E3A455; --pen-yellow: #D4B451;
+    --pen-green: #74C79B; --pen-blue: #86B8E8; --pen-purple: #B9A6DE;
+    --pen-mono: #ECE7D2;
   }
 }
 :root[data-theme="dark"] {
@@ -34,6 +42,9 @@
   --st-idea: #9B9880; --st-considering: #86B8E8; --st-chosen: #74C79B;
   --st-parked: #B9A6DE; --st-rejected: #D89184;
   --shadow: 0 1px 0 rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.35);
+  --pen-red: #E2685A; --pen-orange: #E3A455; --pen-yellow: #D4B451;
+  --pen-green: #74C79B; --pen-blue: #86B8E8; --pen-purple: #B9A6DE;
+  --pen-mono: #ECE7D2;
 }
 :root[data-theme="light"] {
   --bg: #E6E0CC; --surface: #F3EEDC; --surface-2: #DCD4B4;
@@ -42,6 +53,9 @@
   --st-idea: #7C7A66; --st-considering: #35618A; --st-chosen: #3C7A5A;
   --st-parked: #6B5B8A; --st-rejected: #8B4A3D;
   --shadow: 0 1px 0 rgba(36,38,29,0.06), 0 6px 16px rgba(36,38,29,0.10);
+  --pen-red: #A43F32; --pen-orange: #9C5A22; --pen-yellow: #8A6D14;
+  --pen-green: #3C7A5A; --pen-blue: #35618A; --pen-purple: #6B5B8A;
+  --pen-mono: #24261D;
 }
 
 * { box-sizing: border-box; }

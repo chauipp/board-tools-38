@@ -205,6 +205,87 @@ io.use(async (socket, next) => {
 // boardId -> Map<socket.id, { socketId, email, name, picture, x, y }>
 const presencePeers = new Map();
 
+// Kênh live:geom giờ chỉ mang ĐÚNG những item đang bị kéo (thường là 1), không
+// mang cả board như trước. Chặn ở đây để một client lỗi (hoặc cố tình) không
+// bơm được mảng khổng lồ rồi bắt server phát cho cả phòng.
+const MAX_LIVE_GEOM_ITEMS = 200;
+const MAX_LIVE_TEXT_LEN = 20000;
+
+// Gói live:ink mang ĐIỂM MỚI THÊM của một nét đang vẽ. Trần này để một client
+// lỗi (hoặc cố tình) không bơm được mảng khổng lồ rồi bắt server phát cho cả
+// phòng — cùng lý do với MAX_LIVE_GEOM_ITEMS.
+const MAX_LIVE_INK_NUMBERS = 200;
+const MAX_LIVE_ERASE_IDS = 200;
+// color là token kiểu "pen-red" — 32 ký tự là quá rộng rãi cho nó. w hợp lệ từ
+// client hiện là 2/4/8; chấp một dải rộng hơn thay vì đúng ba giá trị đó để
+// không phải redeploy server mỗi khi client đổi danh sách độ dày. Chặn ở đây
+// để một client lỗi (hoặc cố tình) không bơm chuỗi màu khổng lồ hay w khổng lồ
+// rồi bắt server phát vệt bút phủ kín màn hình cho cả phòng tới khi hết TTL.
+const MAX_LIVE_INK_COLOR_LEN = 32;
+const MIN_LIVE_INK_W = 1;
+const MAX_LIVE_INK_W = 64;
+
+function sanitizeInk(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  if (!Number.isFinite(payload.strokeId)) return null;
+  const strokeId = payload.strokeId;
+  const done = payload.done === true;
+
+  if (payload.cancel === true) return { strokeId, cancel: true };
+
+  if (Array.isArray(payload.erase)) {
+    const erase = payload.erase
+      .filter((id) => Number.isFinite(id))
+      .slice(0, MAX_LIVE_ERASE_IDS);
+    return { strokeId, erase, done };
+  }
+
+  if (done) {
+    return {
+      strokeId, done: true,
+      drawingId: Number.isFinite(payload.drawingId) ? payload.drawingId : null
+    };
+  }
+
+  // pts phải là mảng số ĐỘ DÀI CHẴN: nó là [x0,y0,x1,y1,…], lẻ một số là dữ
+  // liệu hỏng chứ không phải thiếu điểm cuối.
+  if (!Array.isArray(payload.pts)) return null;
+  const pts = payload.pts.slice(0, MAX_LIVE_INK_NUMBERS);
+  if (pts.length < 2 || pts.length % 2 !== 0) return null;
+  if (!pts.every((v) => Number.isFinite(v))) return null;
+
+  const clean = { strokeId, seq: Number.isFinite(payload.seq) ? payload.seq : 0, pts };
+  if (clean.seq === 0) {
+    if (typeof payload.color !== "string" || payload.color.length > MAX_LIVE_INK_COLOR_LEN) return null;
+    if (!Number.isFinite(payload.w) || payload.w < MIN_LIVE_INK_W || payload.w > MAX_LIVE_INK_W) return null;
+    clean.color = payload.color;
+    clean.w = payload.w;
+  }
+  return clean;
+}
+
+function sanitizeGeom(payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const nodes = [];
+  const groups = [];
+  for (const n of Array.isArray(payload.nodes) ? payload.nodes : []) {
+    if (nodes.length >= MAX_LIVE_GEOM_ITEMS) break;
+    if (!n || !Number.isFinite(n.id) || !Number.isFinite(n.x) || !Number.isFinite(n.y)) continue;
+    nodes.push({ id: n.id, x: n.x, y: n.y, w: Number.isFinite(n.w) ? n.w : undefined });
+  }
+  for (const g of Array.isArray(payload.groups) ? payload.groups : []) {
+    if (groups.length >= MAX_LIVE_GEOM_ITEMS) break;
+    if (!g || !Number.isFinite(g.id) || !Number.isFinite(g.x) || !Number.isFinite(g.y)) continue;
+    groups.push({
+      id: g.id, x: g.x, y: g.y,
+      w: Number.isFinite(g.w) ? g.w : undefined,
+      h: Number.isFinite(g.h) ? g.h : undefined
+    });
+  }
+  if (!nodes.length && !groups.length) return null;
+  return { nodes, groups, done: payload.done === true };
+}
+
 function peersForBoard(boardId) {
   let m = presencePeers.get(boardId);
   if (!m) {
@@ -226,25 +307,55 @@ io.on("connection", (socket) => {
   // Cursor position là presence, không phải chỉnh sửa dữ liệu — viewer vẫn
   // được thấy và được người khác thấy con trỏ, chỉ bị chặn ghi dữ liệu thật
   // ở PUT /api/boards/:id (403 read_only).
+  //
+  // `.volatile`: nếu đường truyền tới một người nào đó đang tắc, gói này bị BỎ
+  // thay vì xếp hàng đợi. Đúng thứ ta muốn cho dữ liệu "vị trí hiện tại": gói
+  // cũ xếp hàng rồi phát bù một lượt chính là cảnh con trỏ/thẻ chạy giật lùi
+  // qua cả chuỗi vị trí đã lỗi thời. Mạng chậm thì thà cập nhật thưa hơn.
   socket.on("cursor:move", (payload) => {
     const { x, y } = payload || {};
     const p = peers.get(socket.id);
     if (!p || !Number.isFinite(x) || !Number.isFinite(y)) return;
     p.x = x;
     p.y = y;
-    socket.to(room).emit("cursor:move", p);
+    socket.volatile.to(room).emit("cursor:move", p);
   });
 
   // Vị trí/kích thước tạm thời lúc đang kéo — không lưu DB, không giữ
-  // state trên server, chỉ relay nguyên payload cho người khác trong room.
+  // state trên server, chỉ relay cho người khác trong room.
   socket.on("live:geom", (payload) => {
-    socket.to(room).emit("live:geom", payload || {});
+    const clean = sanitizeGeom(payload);
+    if (!clean) return;
+    // Gói CUỐI (done) là gói giữ vị trí bên người xem cho tới khi bản lưu chính
+    // thức về — mất nó là thẻ nhảy về chỗ cũ, nên nó phải đi đường tin cậy.
+    // Các gói giữa chừng thì volatile.
+    if (clean.done) socket.to(room).emit("live:geom", clean);
+    else socket.volatile.to(room).emit("live:geom", clean);
+  });
+
+  // Nét đang vẽ dở — không lưu DB, chỉ relay. Khác cursor/geom/text: vẽ là GHI
+  // dữ liệu chứ không phải presence, nên chặn viewer ngay tại đây. Middleware
+  // trên đã đặt socket.data.role.
+  //
+  // KHÔNG dùng .volatile: gói này mang ĐIỂM MỚI THÊM, mất một gói là nét khuyết
+  // hẳn một khúc và không bao giờ tự lành (khác live:geom, nơi gói sau mang vị
+  // trí tuyệt đối và tự sửa cho gói bị mất).
+  socket.on("live:ink", (payload) => {
+    if (socket.data.role === "viewer") return;
+    const clean = sanitizeInk(payload);
+    if (!clean) return;
+    // socketId do SERVER đính vào, không tin id do client tự đặt — cùng cách
+    // selection:update và edge-draft:update đang làm.
+    socket.to(room).emit("live:ink", { ...clean, socketId: socket.id });
   });
 
   // Nội dung đang gõ dở — không lưu DB, chỉ relay để người khác thấy chữ
   // chạy gần real-time; bản chính thức vẫn qua saveNodeEdit → PUT như cũ.
   socket.on("live:text", (payload) => {
-    socket.to(room).emit("live:text", payload || {});
+    const { nodeId, field, value } = payload || {};
+    if (!Number.isFinite(nodeId) || (field !== "title" && field !== "desc")) return;
+    if (typeof value !== "string" || value.length > MAX_LIVE_TEXT_LEN) return;
+    socket.volatile.to(room).emit("live:text", { nodeId, field, value });
   });
 
   // Vùng đang chọn của người này — presence nhẹ, không phải chỉnh sửa dữ
@@ -263,7 +374,11 @@ io.on("connection", (socket) => {
     const p = peers.get(socket.id);
     if (!p) return;
     p.edgeDraft = payload && Number.isFinite(payload.x) && Number.isFinite(payload.y) ? payload : null;
-    socket.to(room).emit("edge-draft:update", { socketId: socket.id, edgeDraft: p.edgeDraft });
+    // Bám theo chuột như cursor:move → cũng volatile. Riêng lúc BUÔNG dây
+    // (edgeDraft = null) phải tin cậy, không thì đầu dây nháp treo lại trên màn
+    // hình người khác cho tới lần kéo sau.
+    const target = p.edgeDraft ? socket.volatile.to(room) : socket.to(room);
+    target.emit("edge-draft:update", { socketId: socket.id, edgeDraft: p.edgeDraft });
   });
 
   socket.on("disconnect", () => {
