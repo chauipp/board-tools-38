@@ -1,36 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { t } from "@lingui/core/macro";
 import { getIdeas, saveIdeas } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
+import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
 import LoadError from "../components/LoadError.jsx";
 import LocaleToggle from "../components/LocaleToggle.jsx";
+import BadgeEditor from "../components/BadgeEditor.jsx";
 import "../styles/idea-map.css";
 
-const STATUS = {
-  idea: { label: "Ý tưởng mới", color: "var(--st-idea)" },
-  considering: { label: "Đang cân nhắc", color: "var(--st-considering)" },
-  chosen: { label: "Đã chọn", color: "var(--st-chosen)" },
-  parked: { label: "Gác lại", color: "var(--st-parked)" },
-  rejected: { label: "Đã loại", color: "var(--st-rejected)" }
-};
-const STATUS_ORDER = ["idea", "considering", "chosen", "parked", "rejected"];
-const TAG_SUGGESTIONS = ["Cơ chế", "Cốt truyện", "Nghệ thuật", "Âm thanh", "Kỹ thuật", "Kinh doanh", "Nghiên cứu"];
-const DOT_PALETTE = ["var(--dot-1)", "var(--dot-2)", "var(--dot-3)", "var(--dot-4)", "var(--dot-5)", "var(--dot-6)", "var(--dot-7)", "var(--dot-8)"];
 const CARD_W = 210;
 const MIN_SCALE = 0.3, MAX_SCALE = 2.4;
-
-function hashTag(tag) {
-  let h = 0;
-  const s = String(tag || "");
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return DOT_PALETTE[h % DOT_PALETTE.length];
-}
-
-function tagLabel(tag) {
-  return tag === "—" ? t`Chưa gắn nhãn` : tag;
-}
 
 function computeZoom(currentBoard, rect, screenX, screenY, factor) {
   const mx = screenX - rect.left, my = screenY - rect.top;
@@ -64,6 +44,7 @@ export default function IdeaMap() {
   const [chipDrag, setChipDrag] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [marquee, setMarquee] = useState(null);
+  const [badgeUI, setBadgeUI] = useState(null); // { mode: "create"|"edit", kind, def?, x, y }
   const [, bump] = useState(0);
 
   const viewportRef = useRef(null);
@@ -176,9 +157,15 @@ export default function IdeaMap() {
 
   function passesFilter(node) {
     const statusKeys = Object.keys(filterStatus).filter((k) => filterStatus[k]);
-    if (statusKeys.length && filterStatus[node.status] !== true) return false;
+    if (statusKeys.length) {
+      const key = node.statusId == null ? "none" : String(node.statusId);
+      if (!filterStatus[key]) return false;
+    }
     const tagKeys = Object.keys(filterTags).filter((k) => filterTags[k]);
-    if (tagKeys.length && !filterTags[node.tag || "—"]) return false;
+    if (tagKeys.length) {
+      const key = node.tagId == null ? "none" : String(node.tagId);
+      if (!filterTags[key]) return false;
+    }
     const q = search.trim().toLowerCase();
     if (q) {
       const hay = (node.title + " " + node.desc).toLowerCase();
@@ -189,7 +176,7 @@ export default function IdeaMap() {
 
   function createNode(x, y) {
     const id = board.nextNodeId;
-    const node = { id, title: t`Ý tưởng mới`, desc: "", tag: "", status: "idea", x: Math.round(x), y: Math.round(y) };
+    const node = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: board.statuses[0]?.id ?? null, x: Math.round(x), y: Math.round(y) };
     const next = { ...board, nodes: [...board.nodes, node], nextNodeId: id + 1 };
     setEditingId(id);
     commitAndSave(next);
@@ -281,7 +268,7 @@ export default function IdeaMap() {
     }
 
     const id = board.nextNodeId;
-    const newNode = { id, title: t`Ý tưởng mới`, desc: "", tag: "", status: "idea", x: Math.round(x), y: Math.round(y) };
+    const newNode = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: board.statuses[0]?.id ?? null, x: Math.round(x), y: Math.round(y) };
     const next = {
       ...board,
       nodes: [...board.nodes, newNode],
@@ -341,13 +328,13 @@ export default function IdeaMap() {
   function applyChipToNode(nodeId, kind, value) {
     const node = board.nodes.find((n) => n.id === nodeId);
     if (!node) return;
+    const nextVal = value === "none" ? null : Number(value);
     if (kind === "status") {
-      if (node.status === value) return;
-      commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, status: value } : n)) });
+      if ((node.statusId ?? null) === nextVal) return;
+      commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, statusId: nextVal } : n)) });
     } else {
-      const nextTag = value === "—" ? "" : value;
-      if ((node.tag || "") === nextTag) return;
-      commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, tag: nextTag } : n)) });
+      if ((node.tagId ?? null) === nextVal) return;
+      commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, tagId: nextVal } : n)) });
     }
   }
 
@@ -588,7 +575,8 @@ export default function IdeaMap() {
     }
   }
 
-  const distinctTags = Array.from(new Set(board.nodes.map((n) => n.tag || "—")));
+  const hasNoStatus = board.nodes.some((n) => n.statusId == null);
+  const hasNoTag = board.nodes.some((n) => n.tagId == null);
   const activeFilterCount =
     Object.values(filterStatus).filter(Boolean).length +
     Object.values(filterTags).filter(Boolean).length +
@@ -599,6 +587,58 @@ export default function IdeaMap() {
     setFilterStatus({});
     setFilterTags({});
     setSearch("");
+  }
+
+  function openBadgeMenu(e, kind, def) {
+    e.preventDefault();
+    e.stopPropagation();
+    setBadgeUI({ mode: "edit", kind, def, x: e.clientX, y: e.clientY });
+  }
+
+  function openBadgeCreate(e, kind) {
+    e.preventDefault();
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    setBadgeUI({ mode: "create", kind, x: r.left, y: r.bottom + 4 });
+  }
+
+  function createBadge(kind, name, color) {
+    if (kind === "status") {
+      const id = board.nextStatusId;
+      commitAndSave({ ...board, statuses: [...board.statuses, { id, name, color }], nextStatusId: id + 1 });
+    } else {
+      const id = board.nextTagId;
+      commitAndSave({ ...board, tags: [...board.tags, { id, name, color }], nextTagId: id + 1 });
+    }
+    setBadgeUI(null);
+  }
+
+  function updateBadge(kind, id, name, color) {
+    if (kind === "status") {
+      commitAndSave({ ...board, statuses: board.statuses.map((s) => (s.id === id ? { ...s, name, color } : s)) });
+    } else {
+      commitAndSave({ ...board, tags: board.tags.map((tg) => (tg.id === id ? { ...tg, name, color } : tg)) });
+    }
+    setBadgeUI(null);
+  }
+
+  function deleteBadge(kind, id) {
+    if (kind === "status") {
+      commitAndSave({
+        ...board,
+        statuses: board.statuses.filter((s) => s.id !== id),
+        nodes: board.nodes.map((n) => (n.statusId === id ? { ...n, statusId: null } : n))
+      });
+      setFilterStatus((prev) => { const next = { ...prev }; delete next[String(id)]; return next; });
+    } else {
+      commitAndSave({
+        ...board,
+        tags: board.tags.filter((tg) => tg.id !== id),
+        nodes: board.nodes.map((n) => (n.tagId === id ? { ...n, tagId: null } : n))
+      });
+      setFilterTags((prev) => { const next = { ...prev }; delete next[String(id)]; return next; });
+    }
+    setBadgeUI(null);
   }
 
   return (
@@ -633,40 +673,70 @@ export default function IdeaMap() {
         <div className="fb-group">
           <span className="fb-label"><Trans>Trạng thái</Trans></span>
           <div className="fb-chips">
-            {STATUS_ORDER.map((key) => (
+            {board.statuses.map((s) => {
+              const key = String(s.id);
+              return (
+                <span
+                  key={key}
+                  className={"chip-toggle status" + (filterStatus[key] ? " on" : "")}
+                  onMouseDown={(e) => handleChipMouseDown(e, "status", key)}
+                  onContextMenu={(e) => openBadgeMenu(e, "status", s)}
+                  onClick={() => setFilterStatus((prev) => ({ ...prev, [key]: !prev[key] }))}
+                  title={t`Bấm để lọc — kéo thả vào thẻ để gán trạng thái — chuột phải để sửa`}
+                >
+                  <span className="dot" style={{ background: colorVar(s.color) }}></span>
+                  {s.name}
+                </span>
+              );
+            })}
+            {hasNoStatus && (
               <span
-                key={key}
-                className={"chip-toggle status" + (filterStatus[key] ? " on" : "")}
-                onMouseDown={(e) => handleChipMouseDown(e, "status", key)}
-                onClick={() => setFilterStatus((prev) => ({ ...prev, [key]: !prev[key] }))}
-                title={t`Bấm để lọc — kéo thả vào thẻ để gán trạng thái`}
+                className={"chip-toggle status" + (filterStatus["none"] ? " on" : "")}
+                onMouseDown={(e) => handleChipMouseDown(e, "status", "none")}
+                onClick={() => setFilterStatus((prev) => ({ ...prev, none: !prev["none"] }))}
+                title={t`Lọc thẻ chưa có trạng thái`}
               >
-                <span className="dot" style={{ background: STATUS[key].color }}></span>
-                {STATUS[key].label}
+                <span className="dot dot-empty"></span>
+                <Trans>Không trạng thái</Trans>
               </span>
-            ))}
+            )}
+            <button className="fb-add" onClick={(e) => openBadgeCreate(e, "status")} title={t`Thêm trạng thái`}>+</button>
           </div>
         </div>
 
-        {distinctTags.length > 0 && (
-          <div className="fb-group">
-            <span className="fb-label"><Trans>Nhãn</Trans></span>
-            <div className="fb-chips">
-              {distinctTags.map((tag) => (
+        <div className="fb-group">
+          <span className="fb-label"><Trans>Nhãn</Trans></span>
+          <div className="fb-chips">
+            {board.tags.map((tg) => {
+              const key = String(tg.id);
+              return (
                 <span
-                  key={tag}
-                  className={"chip-toggle tag" + (filterTags[tag] ? " on" : "")}
-                  onMouseDown={(e) => handleChipMouseDown(e, "tag", tag)}
-                  onClick={() => setFilterTags((prev) => ({ ...prev, [tag]: !prev[tag] }))}
-                  title={t`Bấm để lọc — kéo thả vào thẻ để gán nhãn`}
+                  key={key}
+                  className={"chip-toggle tag" + (filterTags[key] ? " on" : "")}
+                  onMouseDown={(e) => handleChipMouseDown(e, "tag", key)}
+                  onContextMenu={(e) => openBadgeMenu(e, "tag", tg)}
+                  onClick={() => setFilterTags((prev) => ({ ...prev, [key]: !prev[key] }))}
+                  title={t`Bấm để lọc — kéo thả vào thẻ để gán nhãn — chuột phải để sửa`}
                 >
-                  <span className="dot" style={{ background: hashTag(tag) }}></span>
-                  {tagLabel(tag)}
+                  <span className="dot" style={{ background: colorVar(tg.color) }}></span>
+                  {tg.name}
                 </span>
-              ))}
-            </div>
+              );
+            })}
+            {hasNoTag && (
+              <span
+                className={"chip-toggle tag" + (filterTags["none"] ? " on" : "")}
+                onMouseDown={(e) => handleChipMouseDown(e, "tag", "none")}
+                onClick={() => setFilterTags((prev) => ({ ...prev, none: !prev["none"] }))}
+                title={t`Lọc thẻ chưa gắn nhãn`}
+              >
+                <span className="dot dot-empty"></span>
+                <Trans>Không nhãn</Trans>
+              </span>
+            )}
+            <button className="fb-add" onClick={(e) => openBadgeCreate(e, "tag")} title={t`Thêm nhãn`}>+</button>
           </div>
-        )}
+        </div>
 
         <div className="spacer" />
 
@@ -730,6 +800,7 @@ export default function IdeaMap() {
             <IdeaCard
               key={node.id}
               node={node}
+              board={board}
               editing={editingId === node.id}
               dimmed={!passesFilter(node)}
               linkPending={linkMode && pendingSource === node.id}
@@ -780,28 +851,59 @@ export default function IdeaMap() {
 
       {chipDrag && (
         <div className="chip-ghost" style={{ left: chipDrag.x, top: chipDrag.y }}>
-          <span className="dot" style={{ background: chipDrag.kind === "status" ? STATUS[chipDrag.value].color : hashTag(chipDrag.value) }}></span>
-          {chipDrag.kind === "status" ? STATUS[chipDrag.value].label : tagLabel(chipDrag.value)}
+          {(() => {
+            const def = chipDrag.value === "none"
+              ? null
+              : (chipDrag.kind === "status" ? statusById(board, Number(chipDrag.value)) : tagById(board, Number(chipDrag.value)));
+            return (
+              <>
+                <span className="dot" style={{ background: def ? colorVar(def.color) : "transparent" }}></span>
+                {def ? def.name : (chipDrag.kind === "status" ? t`Không trạng thái` : t`Không nhãn`)}
+              </>
+            );
+          })()}
         </div>
       )}
 
-      <datalist id="tagOptions">
-        {TAG_SUGGESTIONS.map((t) => <option key={t} value={t} />)}
-      </datalist>
+      {badgeUI && badgeUI.mode === "create" && (
+        <BadgeEditor
+          key={badgeUI.mode + "-" + (badgeUI.def?.id ?? "new")}
+          x={badgeUI.x}
+          y={badgeUI.y}
+          initialName=""
+          initialColor={BADGE_PALETTE[0]}
+          submitLabel={t`Tạo`}
+          onSubmit={(name, color) => createBadge(badgeUI.kind, name, color)}
+          onClose={() => setBadgeUI(null)}
+        />
+      )}
+      {badgeUI && badgeUI.mode === "edit" && (
+        <BadgeEditor
+          key={badgeUI.mode + "-" + (badgeUI.def?.id ?? "new")}
+          x={badgeUI.x}
+          y={badgeUI.y}
+          initialName={badgeUI.def.name}
+          initialColor={badgeUI.def.color}
+          submitLabel={t`Lưu`}
+          onDelete={() => deleteBadge(badgeUI.kind, badgeUI.def.id)}
+          onSubmit={(name, color) => updateBadge(badgeUI.kind, badgeUI.def.id, name, color)}
+          onClose={() => setBadgeUI(null)}
+        />
+      )}
     </div>
   );
 }
 
-function IdeaCard({ node, editing, dimmed, linkPending, dropTarget, selected, onMouseDown, onClick, onConnectorMouseDown, onEdit, onDelete, onSave, onCancel }) {
+function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selected, onMouseDown, onClick, onConnectorMouseDown, onEdit, onDelete, onSave, onCancel }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(node.title);
   const [desc, setDesc] = useState(node.desc);
-  const [tag, setTag] = useState(node.tag);
-  const [status, setStatus] = useState(node.status);
+  const [tagId, setTagId] = useState(node.tagId ?? null);
+  const [statusId, setStatusId] = useState(node.statusId ?? null);
 
   useEffect(() => {
     if (editing) {
-      setTitle(node.title); setDesc(node.desc); setTag(node.tag); setStatus(node.status);
+      setTitle(node.title); setDesc(node.desc); setTagId(node.tagId ?? null); setStatusId(node.statusId ?? null);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);
@@ -819,13 +921,17 @@ function IdeaCard({ node, editing, dimmed, linkPending, dropTarget, selected, on
           <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t`Tên ý tưởng`} />
           <textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t`Mô tả ngắn`} />
           <div className="edit-row">
-            <input type="text" list="tagOptions" value={tag} onChange={(e) => setTag(e.target.value)} placeholder={t`Nhãn`} />
-            <select value={status} onChange={(e) => setStatus(e.target.value)}>
-              {STATUS_ORDER.map((s) => <option key={s} value={s}>{STATUS[s].label}</option>)}
+            <select value={tagId ?? ""} onChange={(e) => setTagId(e.target.value === "" ? null : Number(e.target.value))}>
+              <option value="">{t`Không nhãn`}</option>
+              {board.tags.map((tg) => <option key={tg.id} value={tg.id}>{tg.name}</option>)}
+            </select>
+            <select value={statusId ?? ""} onChange={(e) => setStatusId(e.target.value === "" ? null : Number(e.target.value))}>
+              <option value="">{t`Không trạng thái`}</option>
+              {board.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
           <div className="edit-actions">
-            <button className="save-btn" onClick={() => onSave({ title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tag: tag.trim(), status })}><Trans>Lưu</Trans></button>
+            <button className="save-btn" onClick={() => onSave({ title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId })}><Trans>Lưu</Trans></button>
             <button className="cancel-btn" onClick={onCancel}><Trans>Hủy</Trans></button>
           </div>
         </div>
@@ -850,13 +956,19 @@ function IdeaCard({ node, editing, dimmed, linkPending, dropTarget, selected, on
       </div>
       <div className="desc">{node.desc}</div>
       <div className="meta-row">
-        <span className="status-pill" style={{ background: STATUS[node.status].color }}>{STATUS[node.status].label}</span>
-        {node.tag && (
-          <span className="tag-pill">
-            <span className="dot" style={{ background: hashTag(node.tag) }}></span>
-            {node.tag}
-          </span>
-        )}
+        {(() => {
+          const s = statusById(board, node.statusId);
+          return s ? <span className="status-pill" style={{ background: colorVar(s.color) }}>{s.name}</span> : null;
+        })()}
+        {(() => {
+          const tg = tagById(board, node.tagId);
+          return tg ? (
+            <span className="tag-pill">
+              <span className="dot" style={{ background: colorVar(tg.color) }}></span>
+              {tg.name}
+            </span>
+          ) : null;
+        })()}
       </div>
       <span className="connector-zone top" onMouseDown={(e) => onConnectorMouseDown(e, "top")} onClick={(e) => e.stopPropagation()} title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot">+</span></span>
       <span className="connector-zone right" onMouseDown={(e) => onConnectorMouseDown(e, "right")} onClick={(e) => e.stopPropagation()} title={t`Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác`}><span className="connector-dot">+</span></span>
