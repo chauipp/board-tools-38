@@ -69,8 +69,9 @@
 }
 .edge-layer { position: absolute; left: 0; top: 0; width: 4200px; height: 3200px; overflow: visible; pointer-events: none; }
 .edge-layer .hit { stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
-.edge-layer .visible { stroke: var(--ink-dim); stroke-width: 1.6; opacity: 0.6; }
+.edge-layer .visible { stroke: var(--ink-dim); stroke-width: 1.6; opacity: 0.75; }
 .edge-layer .draft { stroke: var(--accent); stroke-width: 1.8; stroke-dasharray: 5 4; pointer-events: none; }
+.edge-layer .snap-guide { stroke: var(--accent); stroke-width: 1; stroke-dasharray: 4 3; pointer-events: none; }
 
 .idea-card {
   position: absolute; width: 210px;
@@ -130,11 +131,20 @@
 .edit-form .edit-actions button { flex: 1; font-size: 10.5px; padding: 4px; border-radius: 3px; cursor: pointer; }
 .edit-form .save-btn { background: var(--accent); color: var(--accent-ink); border: none; }
 .edit-form .cancel-btn { background: transparent; color: var(--ink-dim); border: 1px solid var(--line); }
+.edit-form .edit-hint { font-size: 9px; color: var(--ink-dim); }
 
 .empty-hint {
   position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
   color: var(--ink-dim); font-size: 13px; text-align: center; pointer-events: none; width: 280px;
 }
+
+.focus-banner {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 999px;
+  padding: 5px 8px 5px 14px; font-size: 11px; color: var(--ink-dim); box-shadow: var(--shadow);
+  display: flex; gap: 8px; align-items: center; z-index: 40;
+}
+.focus-banner button { background: none; border: none; cursor: pointer; color: var(--ink-dim); font-size: 13px; line-height: 1; padding: 0 4px; }
 
 .zoom-ctrl {
   position: absolute; right: 14px; bottom: 14px; display: flex; align-items: center;
@@ -144,6 +154,19 @@
 .zoom-ctrl button:hover { background: var(--surface-2); }
 .zoom-ctrl .pct { font-size: 11px; width: 44px; text-align: center; color: var(--ink-dim); }
 .zoom-ctrl .sep { width: 1px; height: 18px; background: var(--line); }
+
+.bulk-bar {
+  position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 10px; z-index: 40;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: var(--shadow); padding: 8px 12px;
+}
+.bulk-bar select { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 4px 6px; font-size: 11px; }
+.bulk-bar .bb-count { font-size: 11px; color: var(--ink-dim); white-space: nowrap; }
+.bulk-bar .bb-swatches { display: flex; gap: 4px; }
+.bulk-bar .be-swatch { width: 16px; height: 16px; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0; }
+.bulk-bar .bb-clear { background: none; border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 10.5px; color: var(--ink-dim); cursor: pointer; }
+.bulk-bar .bb-clear:hover { color: var(--ink); border-color: var(--ink-dim); }
 
 .io-drawer {
   position: absolute; right: 14px; top: 14px; width: 320px;

@@ -9,7 +9,8 @@ import LocaleToggle from "../components/LocaleToggle.jsx";
 import BadgeEditor from "../components/BadgeEditor.jsx";
 import ColorMenu from "../components/ColorMenu.jsx";
 import FrameBox from "../components/FrameBox.jsx";
-import { nodesInFrame, edgeEndpoint, edgesMatch } from "../lib/board-geometry.js";
+import { nodesInFrame, edgeEndpoint, edgesMatch, rectForEndpoint, clipToRect } from "../lib/board-geometry.js";
+import { computeSnap } from "../lib/snap.js";
 import "../styles/idea-map.css";
 
 const CARD_W = 210;
@@ -47,9 +48,11 @@ export default function IdeaMap() {
   const [chipDrag, setChipDrag] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [marquee, setMarquee] = useState(null);
+  const [snapGuides, setSnapGuides] = useState([]);
   const [badgeUI, setBadgeUI] = useState(null); // { mode: "create"|"edit", kind, def?, x, y }
   const [colorMenu, setColorMenu] = useState(null); // { kind: "card"|"group", id, x, y }
   const [editingGroupTitleId, setEditingGroupTitleId] = useState(null);
+  const [focusId, setFocusId] = useState(null);
   const [, bump] = useState(0);
 
   const viewportRef = useRef(null);
@@ -57,6 +60,9 @@ export default function IdeaMap() {
   const saveTimerRef = useRef(null);
   const boardRef = useRef(null);
   const suppressContextMenuRef = useRef(false);
+  const nudgeTimerRef = useRef(null);
+  const nudgeBaseRef = useRef(null);
+  const spacePanRef = useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,6 +108,7 @@ export default function IdeaMap() {
   }, [board != null]);
 
   function saveNow(next) {
+    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
     saveIdeas(next).then(() => setSaveError(null)).catch(() => setSaveError(true));
   }
 
@@ -111,12 +118,25 @@ export default function IdeaMap() {
   }
 
   const MAX_HISTORY = 50;
-  function recordHistory(prevBoard) {
+  function recordHistoryRaw(prevBoard) {
     setPast((p) => {
       const nextPast = [...p, prevBoard];
       return nextPast.length > MAX_HISTORY ? nextPast.slice(nextPast.length - MAX_HISTORY) : nextPast;
     });
     setFuture([]);
+  }
+
+  function flushNudgeBurst() {
+    if (nudgeBaseRef.current == null) return;
+    const base = nudgeBaseRef.current;
+    nudgeBaseRef.current = null;
+    if (nudgeTimerRef.current) { clearTimeout(nudgeTimerRef.current); nudgeTimerRef.current = null; }
+    recordHistoryRaw(base);
+  }
+
+  function recordHistory(prevBoard) {
+    flushNudgeBurst();
+    recordHistoryRaw(prevBoard);
   }
 
   function commitAndSave(next, opts) {
@@ -126,6 +146,16 @@ export default function IdeaMap() {
   }
 
   function undo() {
+    if (nudgeBaseRef.current != null) {
+      const base = nudgeBaseRef.current;
+      nudgeBaseRef.current = null;
+      if (nudgeTimerRef.current) { clearTimeout(nudgeTimerRef.current); nudgeTimerRef.current = null; }
+      setFuture((f) => [board, ...f]);
+      setEditingId(null);
+      setBoard(base);
+      saveNow(base);
+      return;
+    }
     if (past.length === 0) return;
     const prev = past[past.length - 1];
     setPast((p) => p.slice(0, -1));
@@ -136,6 +166,7 @@ export default function IdeaMap() {
   }
 
   function redo() {
+    if (nudgeBaseRef.current != null) { flushNudgeBurst(); return; }
     if (future.length === 0) return;
     const nextState = future[0];
     setFuture((f) => f.slice(1));
@@ -148,16 +179,47 @@ export default function IdeaMap() {
   useEffect(() => {
     function onKeyDown(e) {
       const tag = (e.target.tagName || "").toLowerCase();
-      if (tag === "input" || tag === "textarea" || tag === "select") return;
-      if (!e.ctrlKey && !e.metaKey) return;
+      if (tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable) return;
       const key = e.key.toLowerCase();
-      if (key === "z" && e.shiftKey) { e.preventDefault(); redo(); }
-      else if (key === "z") { e.preventDefault(); undo(); }
-      else if (key === "y") { e.preventDefault(); redo(); }
+      if (e.ctrlKey || e.metaKey) {
+        if (key === "z" && e.shiftKey) { e.preventDefault(); redo(); }
+        else if (key === "z") { e.preventDefault(); undo(); }
+        else if (key === "y") { e.preventDefault(); redo(); }
+        else if (key === "d") { e.preventDefault(); duplicateSelection(); }
+        return;
+      }
+      if (key === "delete" || key === "backspace") { e.preventDefault(); deleteSelection(); }
+      else if (key === "escape") {
+        if (colorMenu) setColorMenu(null);
+        else if (badgeUI) setBadgeUI(null);
+        else if (linkMode) { setLinkMode(false); setPendingSource(null); }
+        else if (focusId != null) setFocusId(null);
+        else if (selectedIds.size > 0) setSelectedIds(new Set());
+      }
+      else if (key === "n") { e.preventDefault(); handleAddClick(); }
+      else if (key === "f") { e.preventDefault(); zoomToSelection(); }
+      else if (key === "arrowleft") { e.preventDefault(); nudgeSelection(e.shiftKey ? -10 : -1, 0); }
+      else if (key === "arrowright") { e.preventDefault(); nudgeSelection(e.shiftKey ? 10 : 1, 0); }
+      else if (key === "arrowup") { e.preventDefault(); nudgeSelection(0, e.shiftKey ? -10 : -1); }
+      else if (key === "arrowdown") { e.preventDefault(); nudgeSelection(0, e.shiftKey ? 10 : 1); }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [board, past, future]);
+  }, [board, past, future, selectedIds, linkMode, colorMenu, badgeUI, focusId]);
+
+  useEffect(() => {
+    function down(e) {
+      if (e.code !== "Space") return;
+      const tag = (e.target.tagName || "").toLowerCase();
+      if (tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable) return;
+      e.preventDefault();            // chặn page scroll
+      spacePanRef.current = true;
+    }
+    function up(e) { if (e.code === "Space") spacePanRef.current = false; }
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
+  }, []);
 
   if (loadError) {
     return <LoadError code={loadError} />;
@@ -193,6 +255,31 @@ export default function IdeaMap() {
     }
     return true;
   }
+
+  function computeFocusSet(rootId) {
+    // BFS ≤2 hop trên edge node↔node (bỏ qua edge dính group)
+    const adj = new Map();
+    board.edges.forEach((e) => {
+      if ((e.fromKind || "node") !== "node" || (e.toKind || "node") !== "node") return;
+      if (!adj.has(e.from)) adj.set(e.from, []);
+      if (!adj.has(e.to)) adj.set(e.to, []);
+      adj.get(e.from).push(e.to);
+      adj.get(e.to).push(e.from);
+    });
+    const seen = new Set([rootId]);
+    let frontier = [rootId];
+    for (let hop = 0; hop < 2; hop++) {
+      const nextFrontier = [];
+      frontier.forEach((id) => (adj.get(id) || []).forEach((nb) => {
+        if (!seen.has(nb)) { seen.add(nb); nextFrontier.push(nb); }
+      }));
+      frontier = nextFrontier;
+    }
+    return seen;
+  }
+  const focusSet = focusId != null && board.nodes.some((n) => n.id === focusId)
+    ? computeFocusSet(focusId)
+    : null;
 
   function createNode(x, y) {
     const id = board.nextNodeId;
@@ -247,8 +334,40 @@ export default function IdeaMap() {
     commitAndSave({ ...board, groups: [...board.groups, group], nextGroupId: id + 1 });
   }
 
+  function duplicateNodes(ids, offset = 24) {
+    let nextId = board.nextNodeId;
+    const idMap = new Map();
+    const clones = [];
+    ids.forEach((id) => {
+      const n = board.nodes.find((nn) => nn.id === id);
+      if (!n) return;
+      idMap.set(id, nextId);
+      clones.push({ ...n, id: nextId, x: n.x + offset, y: n.y + offset });
+      nextId++;
+    });
+    let nextEdgeId = board.nextEdgeId;
+    const clonedEdges = [];
+    board.edges.forEach((e) => {
+      if ((e.fromKind || "node") !== "node" || (e.toKind || "node") !== "node") return;
+      if (idMap.has(e.from) && idMap.has(e.to)) {
+        clonedEdges.push({ ...e, id: nextEdgeId++, from: idMap.get(e.from), to: idMap.get(e.to) });
+      }
+    });
+    return {
+      next: {
+        ...board,
+        nodes: [...board.nodes, ...clones],
+        edges: [...board.edges, ...clonedEdges],
+        nextNodeId: nextId,
+        nextEdgeId
+      },
+      cloneIds: Array.from(idMap.values())
+    };
+  }
+
   function handleGroupMouseDown(e, group) {
     if (e.button === 2) { e.stopPropagation(); startPan(e); return; }
+    if (e.button === 0 && spacePanRef.current) { e.stopPropagation(); startPan(e); return; }
     if (e.button !== 0) return;
     e.stopPropagation();
 
@@ -267,9 +386,36 @@ export default function IdeaMap() {
     let moved = false;
 
     function onMove(ev) {
-      const dx = (ev.clientX - startX) / scale;
-      const dy = (ev.clientY - startY) / scale;
+      let dx = (ev.clientX - startX) / scale;
+      let dy = (ev.clientY - startY) / scale;
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
+
+      const frameX = startGroupPos.x + dx, frameY = startGroupPos.y + dy;
+      let minX = frameX, minY = frameY, maxX = frameX + group.w, maxY = frameY + group.h;
+      memberIds.forEach((id) => {
+        const start = startNodePositions.get(id);
+        const { w, h } = frameCardSize(id);
+        const nx = start.x + dx, ny = start.y + dy;
+        minX = Math.min(minX, nx); minY = Math.min(minY, ny);
+        maxX = Math.max(maxX, nx + w); maxY = Math.max(maxY, ny + h);
+      });
+      const movingRect = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+
+      if (ev.altKey) {
+        setSnapGuides([]);
+      } else {
+        const otherRects = [
+          ...board.nodes.filter((n) => !startNodePositions.has(n.id)).map((n) => {
+            const { w, h } = frameCardSize(n.id);
+            return { x: n.x, y: n.y, w, h };
+          }),
+          ...board.groups.filter((g) => g.id !== group.id).map((g) => ({ x: g.x, y: g.y, w: g.w, h: g.h }))
+        ];
+        const snap = computeSnap(movingRect, otherRects, 6 / scale);
+        dx += snap.dx; dy += snap.dy;
+        setSnapGuides(snap.guides);
+      }
+
       setBoard((prev) => {
         const next = {
           ...prev,
@@ -289,6 +435,7 @@ export default function IdeaMap() {
     function onUp() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
+      setSnapGuides([]);
       if (moved) recordHistory(boardBeforeDrag);
       saveNow(latest);
     }
@@ -373,8 +520,8 @@ export default function IdeaMap() {
     return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
   }
 
-  function createLinkedNode(sourceId, direction) {
-    const source = board.nodes.find((n) => n.id === sourceId);
+  function createLinkedNode(sourceId, direction, base = board) {
+    const source = base.nodes.find((n) => n.id === sourceId);
     if (!source) return;
     const sourceCard = canvasRef.current.querySelector(`.idea-card[data-id="${sourceId}"]`);
     const sw = sourceCard ? sourceCard.offsetWidth : CARD_W;
@@ -384,7 +531,7 @@ export default function IdeaMap() {
     const dir = { top: [0, -1], right: [1, 0], bottom: [0, 1], left: [-1, 0] }[direction] || [1, 0];
 
     function overlapsAny(px, py) {
-      return board.nodes.some((n) => {
+      return base.nodes.some((n) => {
         const card = canvasRef.current.querySelector(`.idea-card[data-id="${n.id}"]`);
         const w = card ? card.offsetWidth : CARD_W, h = card ? card.offsetHeight : estH;
         return rectsOverlap(px, py, CARD_W, estH, n.x, n.y, w, h);
@@ -392,7 +539,7 @@ export default function IdeaMap() {
     }
 
     const rect = viewportRef.current.getBoundingClientRect();
-    const view = board.view;
+    const view = base.view;
     const visX0 = (-view.panX + MARGIN) / view.scale;
     const visY0 = (-view.panY + MARGIN) / view.scale;
     const visX1 = (rect.width - view.panX - MARGIN) / view.scale - CARD_W;
@@ -433,15 +580,15 @@ export default function IdeaMap() {
       nextView = { scale: view.scale, panX: rect.width / 2 - cx * view.scale, panY: rect.height / 2 - cy * view.scale };
     }
 
-    const id = board.nextNodeId;
-    const newNode = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: board.statuses[0]?.id ?? null, x: Math.round(x), y: Math.round(y) };
+    const id = base.nextNodeId;
+    const newNode = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: base.statuses[0]?.id ?? null, x: Math.round(x), y: Math.round(y) };
     const next = {
-      ...board,
-      nodes: [...board.nodes, newNode],
-      edges: [...board.edges, { id: board.nextEdgeId, from: sourceId, to: id }],
+      ...base,
+      nodes: [...base.nodes, newNode],
+      edges: [...base.edges, { id: base.nextEdgeId, from: sourceId, to: id }],
       nextNodeId: id + 1,
-      nextEdgeId: board.nextEdgeId + 1,
-      view: nextView || board.view
+      nextEdgeId: base.nextEdgeId + 1,
+      view: nextView || base.view
     };
     setEditingId(id);
     commitAndSave(next);
@@ -587,6 +734,12 @@ export default function IdeaMap() {
     commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, ...fields } : n)) });
   }
 
+  function saveNodeEditAndNext(id, fields) {
+    setEditingId(null);
+    const edited = { ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, ...fields } : n)) };
+    createLinkedNode(id, "right", edited);
+  }
+
   function toggleEdge(a, aKind, b, bKind) {
     const existing = board.edges.find((e) => edgesMatch(e, a, aKind, b, bKind));
     if (existing) {
@@ -607,32 +760,76 @@ export default function IdeaMap() {
   function handleNodeMouseDown(e, node) {
     if (linkMode || editingId === node.id) return;
     if (e.button === 2) { e.stopPropagation(); startPan(e); return; }
+    if (e.button === 0 && spacePanRef.current) { e.stopPropagation(); startPan(e); return; }
     if (e.button !== 0) return;
     e.stopPropagation();
 
-    let groupIds = [node.id];
-    if (selectedIds.has(node.id) && selectedIds.size > 1) {
-      groupIds = Array.from(selectedIds);
+    const boardBeforeDrag = board;
+    let dragIds, baseBoard, isAlt = false, selectedIdsBeforeDrag;
+
+    if (e.altKey) {
+      isAlt = true;
+      selectedIdsBeforeDrag = selectedIds;
+      const cloneSourceIds = selectedIds.has(node.id) && selectedIds.size > 1
+        ? Array.from(selectedIds)
+        : [node.id];
+      const dup = duplicateNodes(cloneSourceIds, 0);
+      setBoard(dup.next);
+      boardRef.current = dup.next;
+      setSelectedIds(new Set(dup.cloneIds));
+      dragIds = dup.cloneIds;
+      baseBoard = dup.next;
     } else {
-      setSelectedIds(new Set([node.id]));
+      dragIds = [node.id];
+      if (selectedIds.has(node.id) && selectedIds.size > 1) {
+        dragIds = Array.from(selectedIds);
+      } else {
+        setSelectedIds(new Set([node.id]));
+      }
+      baseBoard = board;
     }
 
     const startX = e.clientX, startY = e.clientY;
     const scale = board.view.scale;
-    const boardBeforeDrag = board;
     const startPositions = new Map(
-      groupIds.map((id) => {
-        const n = board.nodes.find((nn) => nn.id === id);
+      dragIds.map((id) => {
+        const n = baseBoard.nodes.find((nn) => nn.id === id);
         return [id, { x: n.x, y: n.y }];
       })
     );
-    let latest = board;
+    let latest = baseBoard;
     let moved = false;
 
     function onMove(ev) {
-      const dx = (ev.clientX - startX) / scale;
-      const dy = (ev.clientY - startY) / scale;
+      let dx = (ev.clientX - startX) / scale;
+      let dy = (ev.clientY - startY) / scale;
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
+
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      dragIds.forEach((id) => {
+        const start = startPositions.get(id);
+        const { w, h } = frameCardSize(id);
+        const nx = start.x + dx, ny = start.y + dy;
+        minX = Math.min(minX, nx); minY = Math.min(minY, ny);
+        maxX = Math.max(maxX, nx + w); maxY = Math.max(maxY, ny + h);
+      });
+      const movingRect = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+
+      if (ev.altKey) {
+        setSnapGuides([]);
+      } else {
+        const otherRects = [
+          ...baseBoard.nodes.filter((n) => !startPositions.has(n.id)).map((n) => {
+            const { w, h } = frameCardSize(n.id);
+            return { x: n.x, y: n.y, w, h };
+          }),
+          ...baseBoard.groups.map((g) => ({ x: g.x, y: g.y, w: g.w, h: g.h }))
+        ];
+        const snap = computeSnap(movingRect, otherRects, 6 / scale);
+        dx += snap.dx; dy += snap.dy;
+        setSnapGuides(snap.guides);
+      }
+
       setBoard((prev) => {
         const next = {
           ...prev,
@@ -649,8 +846,18 @@ export default function IdeaMap() {
     function onUp() {
       window.removeEventListener("mousemove", onMove);
       window.removeEventListener("mouseup", onUp);
-      if (moved) recordHistory(boardBeforeDrag);
-      saveNow(latest);
+      setSnapGuides([]);
+      if (moved) {
+        recordHistory(boardBeforeDrag);
+        saveNow(latest);
+      } else if (isAlt) {
+        // Alt-click without drag: roll back the clone so nothing is silently duplicated.
+        setBoard(boardBeforeDrag);
+        boardRef.current = boardBeforeDrag;
+        setSelectedIds(selectedIdsBeforeDrag);
+      } else {
+        saveNow(latest);
+      }
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -737,6 +944,7 @@ export default function IdeaMap() {
     if (linkMode) { setPendingSource(null); return; }
     if (e.button === 2) { startPan(e); return; }
     if (e.button !== 0) return;
+    if (e.button === 0 && spacePanRef.current) { startPan(e); return; }
     handleMarqueeMouseDown(e);
   }
 
@@ -770,6 +978,77 @@ export default function IdeaMap() {
         panY: -(minY - pad) * scale + (rect.height - bboxH * scale) / 2
       }
     }, { historical: false });
+  }
+
+  function deleteSelection() {
+    const ids = selectedIds;
+    if (ids.size === 0) return;
+    commitAndSave({
+      ...board,
+      nodes: board.nodes.filter((n) => !ids.has(n.id)),
+      edges: board.edges.filter((e) => !(
+        (ids.has(e.from) && (e.fromKind || "node") === "node") ||
+        (ids.has(e.to) && (e.toKind || "node") === "node")
+      ))
+    });
+    setSelectedIds(new Set());
+  }
+
+  function duplicateSelection() {
+    if (selectedIds.size === 0) return;
+    const { next, cloneIds } = duplicateNodes(Array.from(selectedIds));
+    commitAndSave(next);
+    setSelectedIds(new Set(cloneIds));
+  }
+
+  function applyToSelection(patch) {
+    commitAndSave({
+      ...board,
+      nodes: board.nodes.map((n) => (selectedIds.has(n.id) ? { ...n, ...patch } : n))
+    });
+  }
+
+  function zoomToSelection() {
+    const targets = selectedIds.size > 0
+      ? board.nodes.filter((n) => selectedIds.has(n.id))
+      : board.nodes;
+    if (targets.length === 0) return;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    targets.forEach((n) => {
+      const { w, h } = frameCardSize(n.id);
+      minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x + w); maxY = Math.max(maxY, n.y + h);
+    });
+    const rect = viewportRef.current.getBoundingClientRect();
+    const pad = 60;
+    const bboxW = maxX - minX + pad * 2, bboxH = maxY - minY + pad * 2;
+    let scale = Math.min(rect.width / bboxW, rect.height / bboxH, MAX_SCALE);
+    scale = Math.max(scale, MIN_SCALE);
+    commitAndSave({
+      ...board,
+      view: {
+        scale,
+        panX: -(minX - pad) * scale + (rect.width - bboxW * scale) / 2,
+        panY: -(minY - pad) * scale + (rect.height - bboxH * scale) / 2
+      }
+    }, { historical: false });
+  }
+
+  function nudgeSelection(dx, dy) {
+    if (selectedIds.size === 0) return;
+    if (nudgeBaseRef.current == null) {
+      nudgeBaseRef.current = board;   // history recorded once per burst, at burst end
+    }
+    const next = {
+      ...board,
+      nodes: board.nodes.map((n) => (selectedIds.has(n.id) ? { ...n, x: n.x + dx, y: n.y + dy } : n))
+    };
+    setBoard(next);
+    saveDebounced(next);
+    if (nudgeTimerRef.current) clearTimeout(nudgeTimerRef.current);
+    nudgeTimerRef.current = setTimeout(() => {
+      flushNudgeBurst();
+    }, 600);
   }
 
   function handleImportConfirm() {
@@ -1004,10 +1283,17 @@ export default function IdeaMap() {
             />
           ))}
           <svg className="edge-layer">
+            <defs>
+              <marker id="edge-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ink-dim)" />
+              </marker>
+            </defs>
             {board.edges.map((edge) => {
-              const p1 = edgeEndpoint(edge.fromKind || "node", edge.from, board.nodes, board.groups, frameCardSize);
-              const p2 = edgeEndpoint(edge.toKind || "node", edge.to, board.nodes, board.groups, frameCardSize);
-              if (!p1 || !p2) return null;
+              const r1 = rectForEndpoint(edge.fromKind || "node", edge.from, board.nodes, board.groups, frameCardSize);
+              const r2 = rectForEndpoint(edge.toKind || "node", edge.to, board.nodes, board.groups, frameCardSize);
+              if (!r1 || !r2) return null;
+              const p1 = clipToRect(r1.cx, r1.cy, r1.w, r1.h, r2.cx, r2.cy);
+              const p2 = clipToRect(r2.cx, r2.cy, r2.w, r2.h, r1.cx, r1.cy);
               return (
                 <g key={edge.id}>
                   <line
@@ -1015,10 +1301,13 @@ export default function IdeaMap() {
                     x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                     onClick={() => commitAndSave({ ...board, edges: board.edges.filter((e) => e.id !== edge.id) })}
                   />
-                  <line className="visible" x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} />
+                  <line className="visible" x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} markerEnd="url(#edge-arrow)" />
                 </g>
               );
             })}
+            {snapGuides.map((g, i) => (g.axis === "v"
+              ? <line key={i} className="snap-guide" x1={g.pos} y1={g.start} x2={g.pos} y2={g.end} />
+              : <line key={i} className="snap-guide" x1={g.start} y1={g.pos} x2={g.end} y2={g.pos} />))}
             {linkDraft && (() => {
               const from = edgeEndpoint(linkDraft.fromKind || "node", linkDraft.fromId, board.nodes, board.groups, frameCardSize);
               if (!from) return null;
@@ -1032,7 +1321,7 @@ export default function IdeaMap() {
               node={node}
               board={board}
               editing={editingId === node.id}
-              dimmed={!passesFilter(node)}
+              dimmed={(!passesFilter(node) || (focusSet != null && !focusSet.has(node.id))) && editingId !== node.id}
               linkPending={linkMode && pendingSource === node.id}
               dropTarget={!!dropTargetId && dropTargetId.kind === "node" && dropTargetId.id === node.id}
               selected={selectedIds.has(node.id)}
@@ -1043,6 +1332,7 @@ export default function IdeaMap() {
               onEdit={() => setEditingId(node.id)}
               onDelete={() => deleteNode(node.id)}
               onSave={(fields) => saveNodeEdit(node.id, fields)}
+              onSaveAndNext={(fields) => saveNodeEditAndNext(node.id, fields)}
               onCancel={() => setEditingId(null)}
             />
           ))}
@@ -1055,6 +1345,13 @@ export default function IdeaMap() {
           </div>
         )}
 
+        {focusSet != null && (
+          <div className="focus-banner">
+            <Trans>Đang tập trung — Esc để thoát</Trans>
+            <button onClick={() => setFocusId(null)}>×</button>
+          </div>
+        )}
+
         <div className="zoom-ctrl">
           <button onClick={() => zoomButton(1 / 1.2)} title={t`Thu nhỏ`}>−</button>
           <span className="pct mono">{Math.round(board.view.scale * 100)}%</span>
@@ -1062,6 +1359,29 @@ export default function IdeaMap() {
           <div className="sep" />
           <button onClick={fitToView} style={{ width: "auto", padding: "0 8px", fontSize: 11 }}><Trans>Vừa khung</Trans></button>
         </div>
+
+        {selectedIds.size >= 2 && (
+          <div className="bulk-bar" onMouseDown={(e) => e.stopPropagation()}>
+            <span className="bb-count mono"><Trans>{selectedIds.size} thẻ</Trans></span>
+            <select value="" onChange={(e) => { if (e.target.value !== "") applyToSelection({ statusId: e.target.value === "none" ? null : Number(e.target.value) }); }}>
+              <option value="">{t`Trạng thái…`}</option>
+              <option value="none">{t`Không trạng thái`}</option>
+              {board.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <select value="" onChange={(e) => { if (e.target.value !== "") applyToSelection({ tagId: e.target.value === "none" ? null : Number(e.target.value) }); }}>
+              <option value="">{t`Nhãn…`}</option>
+              <option value="none">{t`Không nhãn`}</option>
+              {board.tags.map((tg) => <option key={tg.id} value={tg.id}>{tg.name}</option>)}
+            </select>
+            <div className="bb-swatches">
+              <button className="be-swatch dot-empty" onClick={() => applyToSelection({ color: null })} title={t`Không màu`} />
+              {BADGE_PALETTE.map((token) => (
+                <button key={token} className="be-swatch" style={{ background: colorVar(token) }} onClick={() => applyToSelection({ color: token })} title={token} />
+              ))}
+            </div>
+            <button className="bb-clear" onClick={() => setSelectedIds(new Set())}><Trans>Bỏ chọn</Trans></button>
+          </div>
+        )}
 
         {ioOpen && (
           <div className="io-drawer">
@@ -1107,6 +1427,9 @@ export default function IdeaMap() {
             onPick={(color) => applyNodeColor(node.id, color)}
             onEdit={() => { setColorMenu(null); setEditingId(node.id); }}
             onGroup={selectedIds.size >= 2 && selectedIds.has(node.id) ? groupSelectedCards : undefined}
+            onFocus={() => { setColorMenu(null); setFocusId(node.id); }}
+            onDuplicate={() => { setColorMenu(null); const { next, cloneIds } = duplicateNodes([node.id]); commitAndSave(next); setSelectedIds(new Set(cloneIds)); }}
+            onDelete={() => { setColorMenu(null); deleteNode(node.id); }}
             onClose={() => setColorMenu(null)}
           />
         );
@@ -1155,7 +1478,7 @@ export default function IdeaMap() {
   );
 }
 
-function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selected, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onSave, onCancel }) {
+function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selected, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onSave, onSaveAndNext, onCancel }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(node.title);
   const [desc, setDesc] = useState(node.desc);
@@ -1175,12 +1498,23 @@ function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selec
   if (dropTarget) classNames.push("drop-target");
   if (selected) classNames.push("selected");
 
+  function handleEditKeyDown(e) {
+    if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+      e.preventDefault();
+      onSaveAndNext({ title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId });
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      e.stopPropagation();
+      onCancel();
+    }
+  }
+
   if (editing) {
     return (
       <div className={classNames.join(" ")} data-id={node.id} style={{ left: node.x, top: node.y }} onMouseDown={(e) => e.stopPropagation()}>
         <div className="edit-form">
-          <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t`Tên ý tưởng`} />
-          <textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t`Mô tả ngắn`} />
+          <input type="text" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t`Tên ý tưởng`} onKeyDown={handleEditKeyDown} />
+          <textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t`Mô tả ngắn`} onKeyDown={handleEditKeyDown} />
           <div className="edit-row">
             <select value={tagId ?? ""} onChange={(e) => setTagId(e.target.value === "" ? null : Number(e.target.value))}>
               <option value="">{t`Không nhãn`}</option>
@@ -1195,6 +1529,7 @@ function IdeaCard({ node, board, editing, dimmed, linkPending, dropTarget, selec
             <button className="save-btn" onClick={() => onSave({ title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId })}><Trans>Lưu</Trans></button>
             <button className="cancel-btn" onClick={onCancel}><Trans>Hủy</Trans></button>
           </div>
+          <div className="edit-hint"><Trans>Ctrl+Enter: lưu & tạo ý nối tiếp</Trans></div>
         </div>
       </div>
     );
