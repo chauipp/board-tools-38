@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { getIdeas, saveIdeas } from "../lib/api.js";
+import { getBoard, saveBoard } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
 import { paletteCss, applyColorTo, removePaletteColor } from "../lib/palette.js";
@@ -9,6 +9,7 @@ import { loadLayouts, saveLayouts } from "../lib/dock.js";
 import DockPanel from "../components/DockPanel.jsx";
 import LoadError from "../components/LoadError.jsx";
 import LocaleToggle from "../components/LocaleToggle.jsx";
+import InviteModal from "../components/InviteModal.jsx";
 import BadgeEditor from "../components/BadgeEditor.jsx";
 import ColorMenu from "../components/ColorMenu.jsx";
 import FrameBox from "../components/FrameBox.jsx";
@@ -84,13 +85,20 @@ export default function IdeaMap() {
   const [, bump] = useState(0);
 
   const { user } = useAuth();
-  const { peers: presencePeers, sendCursor } = usePresence(user);
+  const { boardId } = useParams();
+  const [role, setRole] = useState(null);
+  const [boardName, setBoardName] = useState("");
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const { peers: presencePeers, sendCursor } = usePresence(user, boardId);
 
   const viewportRef = useRef(null);
   const fbDockRef = useRef(null);
   const canvasRef = useRef(null);
   const saveTimerRef = useRef(null);
   const boardRef = useRef(null);
+  // Listener "paste" gắn-một-lần (deps: []) đóng gói `role` lúc mount, khi đó
+  // board chưa tải xong nên role vẫn là null — phải đọc qua ref mới đúng.
+  const roleRef = useRef(null);
   const selectedIdsRef = useRef(selectedIds);
   const suppressContextMenuRef = useRef(false);
   const nudgeTimerRef = useRef(null);
@@ -101,19 +109,25 @@ export default function IdeaMap() {
 
   useEffect(() => {
     let cancelled = false;
-    getIdeas()
+    // Không reset state ở đây: IdeaMapRoute (main.jsx) truyền key={boardId} nên
+    // đổi board là remount hẳn — board/role/past/future/selectedIds đều mới.
+    // Reset thủ công chỉ xoá được vài ô state và bỏ sót lịch sử undo.
+    getBoard(boardId)
       .then((data) => {
         if (cancelled) return;
         if (initialCardParam && data.nodes.some((n) => n.id === Number(initialCardParam))) {
           pendingJumpRef.current = Number(initialCardParam);
         }
+        const { id, name, role: r, ...boardData } = data;
+        setRole(r);
+        setBoardName(name);
         // Board cũ chưa có palette → mặc định rỗng, để mọi chỗ đọc board.palette
         // không phải ?? [] khắp nơi.
-        setBoard({ palette: [], nextPaletteId: 1, ...data });
+        setBoard({ palette: [], nextPaletteId: 1, ...boardData });
       })
-      .catch((e) => setLoadError(e.code || "UNKNOWN"));
+      .catch((e) => { if (!cancelled) setLoadError(e.code || "UNKNOWN"); });
     return () => { cancelled = true; };
-  }, []);
+  }, [boardId]);
 
   // Kéo panel cập nhật layouts mỗi mousemove; hoãn một nhịp để không ghi
   // localStorage 60 lần/giây.
@@ -123,7 +137,16 @@ export default function IdeaMap() {
   }, [layouts]);
 
   useEffect(() => { boardRef.current = board; }, [board]);
+  useEffect(() => { roleRef.current = role; }, [role]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
+
+  // Chip danh tính được render ở AuthGate, ngoài `.shell`, nên selector
+  // `.shell.presenting` không với tới được. Đánh dấu trên body để ẩn nó khi
+  // trình chiếu, giống mọi thứ chrome khác của board.
+  useEffect(() => {
+    document.body.classList.toggle("presenting", presentIndex != null);
+    return () => document.body.classList.remove("presenting");
+  }, [presentIndex]);
 
   useEffect(() => {
     const url = new URL(window.location.href);
@@ -179,9 +202,14 @@ export default function IdeaMap() {
     // sẽ không được gắn nếu chỉ phụ thuộc [].
   }, [board != null]);
 
+  // Đọc roleRef chứ không đọc `role`: saveNow là chốt chặn cuối, nó phải đúng kể
+  // cả khi được gọi từ một closure cũ. Handler nào gắn với deps [] (listener
+  // paste, .then() của compressImage…) đóng gói `role` lúc mount — khi đó board
+  // chưa tải xong nên role vẫn null và chốt chặn sẽ hở. Ref thì luôn mới.
   function saveNow(next) {
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-    saveIdeas(next).then(() => setSaveError(null)).catch(() => setSaveError(true));
+    if (roleRef.current === "viewer") return;
+    saveBoard(boardId, next).then(() => setSaveError(null)).catch(() => setSaveError(true));
   }
 
   function saveDebounced(next) {
@@ -260,14 +288,22 @@ export default function IdeaMap() {
         else if (key === "escape") { exitPresentation(); }
         return;
       }
+      // Undo/redo/nhân bản đều ghi dữ liệu. Với người chỉ xem chúng không lưu
+      // được (saveNow chặn) nhưng vẫn làm thẻ nhảy trên màn hình rồi biến mất
+      // khi tải lại — nên chặn thẳng ở đây.
       if (e.ctrlKey || e.metaKey) {
+        if (role === "viewer") return;
         if (key === "z" && e.shiftKey) { e.preventDefault(); redo(); }
         else if (key === "z") { e.preventDefault(); undo(); }
         else if (key === "y") { e.preventDefault(); redo(); }
         else if (key === "d") { e.preventDefault(); duplicateSelection(); }
         return;
       }
-      if (key === "delete" || key === "backspace") { e.preventDefault(); deleteSelection(); }
+      if (key === "delete" || key === "backspace") {
+        if (role === "viewer") return;
+        e.preventDefault();
+        deleteSelection();
+      }
       else if (key === "escape") {
         if (colorMenu) setColorMenu(null);
         else if (badgeUI) setBadgeUI(null);
@@ -277,16 +313,17 @@ export default function IdeaMap() {
         else if (focusId != null) setFocusId(null);
         else if (selectedIds.size > 0) setSelectedIds(new Set());
       }
-      else if (key === "n") { e.preventDefault(); handleAddClick(); }
+      else if (key === "n") { if (role === "viewer") return; e.preventDefault(); handleAddClick(); }
+      // `f` (vừa khung theo lựa chọn) chỉ đổi view — người chỉ xem vẫn dùng được.
       else if (key === "f") { e.preventDefault(); zoomToSelection(); }
-      else if (key === "arrowleft") { e.preventDefault(); nudgeSelection(e.shiftKey ? -10 : -1, 0); }
-      else if (key === "arrowright") { e.preventDefault(); nudgeSelection(e.shiftKey ? 10 : 1, 0); }
-      else if (key === "arrowup") { e.preventDefault(); nudgeSelection(0, e.shiftKey ? -10 : -1); }
-      else if (key === "arrowdown") { e.preventDefault(); nudgeSelection(0, e.shiftKey ? 10 : 1); }
+      else if (key === "arrowleft") { if (role === "viewer") return; e.preventDefault(); nudgeSelection(e.shiftKey ? -10 : -1, 0); }
+      else if (key === "arrowright") { if (role === "viewer") return; e.preventDefault(); nudgeSelection(e.shiftKey ? 10 : 1, 0); }
+      else if (key === "arrowup") { if (role === "viewer") return; e.preventDefault(); nudgeSelection(0, e.shiftKey ? -10 : -1); }
+      else if (key === "arrowdown") { if (role === "viewer") return; e.preventDefault(); nudgeSelection(0, e.shiftKey ? 10 : 1); }
     }
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [board, past, future, selectedIds, linkMode, colorMenu, badgeUI, edgeMenu, commentsFor, focusId, presentIndex]);
+  }, [board, past, future, selectedIds, linkMode, colorMenu, badgeUI, edgeMenu, commentsFor, focusId, presentIndex, role]);
 
   useEffect(() => {
     function down(e) {
@@ -345,6 +382,7 @@ export default function IdeaMap() {
     function onPaste(e) {
       const tag = (e.target.tagName || "").toLowerCase();
       if (tag === "input" || tag === "textarea") return;
+      if (roleRef.current === "viewer") return;
       const current = boardRef.current;
       if (!current) return;
       const sel = selectedIdsRef.current;
@@ -370,12 +408,14 @@ export default function IdeaMap() {
   const currentUser = user.name;
 
   function handlePresenceMouseMove(e) {
-    const rect = viewportRef.current.getBoundingClientRect();
-    const view = boardRef.current.view;
-    sendCursor(
-      (e.clientX - rect.left - view.panX) / view.scale,
-      (e.clientY - rect.top - view.panY) / view.scale
-    );
+    sendCursor(() => {
+      const rect = viewportRef.current.getBoundingClientRect();
+      const view = boardRef.current.view;
+      return {
+        x: (e.clientX - rect.left - view.panX) / view.scale,
+        y: (e.clientY - rect.top - view.panY) / view.scale
+      };
+    });
   }
 
   function entityAtPoint(clientX, clientY) {
@@ -655,6 +695,7 @@ export default function IdeaMap() {
   }
 
   function handleViewportDoubleClick(e) {
+    if (role === "viewer") return;
     if (e.target !== viewportRef.current && e.target !== canvasRef.current) return;
     const rect = viewportRef.current.getBoundingClientRect();
     const cx = (e.clientX - rect.left - board.view.panX) / board.view.scale;
@@ -881,7 +922,11 @@ export default function IdeaMap() {
     }
   }
 
+  // Chip trạng thái/nhãn: click = lọc (đọc, người chỉ xem vẫn dùng được), nhưng
+  // kéo = gán badge vào thẻ và chuột phải = sửa badge, cả hai đều ghi dữ liệu.
+  // CSS không tách được ba cử chỉ trên cùng một phần tử nên chặn ở đây.
   function handleChipMouseDown(e, kind, value) {
+    if (role === "viewer") return;
     if (e.button !== 0) return;
     const startX = e.clientX, startY = e.clientY;
     let dragging = false;
@@ -951,6 +996,7 @@ export default function IdeaMap() {
   // Thả file ảnh lên chỗ trống canvas → tạo thẻ ảnh tại điểm thả (thả lên thẻ
   // có sẵn do handleImageDrop xử lý và đã stopPropagation).
   function handleViewportImageDrop(e) {
+    if (role === "viewer") return;
     const f = Array.from(e.dataTransfer?.files ?? []).find((x) => x.type.startsWith("image/"));
     if (!f) return;
     e.preventDefault();
@@ -1510,6 +1556,7 @@ export default function IdeaMap() {
   }
 
   function openBadgeMenu(e, kind, def) {
+    if (role === "viewer") return;
     e.preventDefault();
     e.stopPropagation();
     setBadgeUI({ mode: "edit", kind, def, x: e.clientX, y: e.clientY });
@@ -1681,23 +1728,32 @@ export default function IdeaMap() {
   }
 
   return (
-    <div className={"shell" + (presentIndex != null ? " presenting" : "")} onContextMenu={handlePageContextMenu}>
+    <div className={"shell" + (presentIndex != null ? " presenting" : "") + (role === "viewer" ? " readonly" : "")} onContextMenu={handlePageContextMenu}>
+      {role === "viewer" && (
+        <div className="readonly-banner"><Trans>Chỉ xem — bạn không có quyền chỉnh sửa board này.</Trans></div>
+      )}
       {/* Khai báo màu tự tạo trong cây React: sửa hex là mọi card/dây/badge dùng
           var(--pal-N) repaint ngay, không cần đi ghi lại từng chỗ tham chiếu. */}
       <style>{paletteCss(board.palette)}</style>
       <div className="topbar">
         <div>
           <div className="eyebrow"><Trans>Bản đồ ý tưởng</Trans></div>
-          <h1 className="display" style={{ fontSize: 19, margin: 0 }}><Trans>Game Của Tôi</Trans></h1>
+          <h1 className="display" style={{ fontSize: 19, margin: 0 }}>{boardName}</h1>
         </div>
-        <Link to="/" className="btn ghost"><Trans>← Trang chủ</Trans></Link>
-        <button className="btn" onClick={handleAddClick}><Trans>+ Ý tưởng</Trans></button>
-        <button className="btn ghost" onClick={createGroup}><Trans>+ Khung</Trans></button>
-        <button className="btn ghost" onClick={() => setCaptureOpen(true)}><Trans>Nhập nhanh</Trans></button>
-        <button className="btn ghost icon" onClick={undo} disabled={past.length === 0} title={t`Hoàn tác (Ctrl+Z)`}>↶</button>
-        <button className="btn ghost icon" onClick={redo} disabled={future.length === 0} title={t`Làm lại (Ctrl+Shift+Z)`}>↷</button>
+        <Link to="/idea-map" className="btn ghost"><Trans>← Danh sách board</Trans></Link>
+        {role === "owner" && (
+          <button className="btn ghost" onClick={() => setInviteOpen(true)}><Trans>Mời thành viên</Trans></button>
+        )}
+        {/* data-mutating = móc CSS đánh dấu control ghi dữ liệu board; ở chế độ
+            chỉ xem chúng bị vô hiệu hoá, phần còn lại của thanh vẫn dùng được. */}
+        <button className="btn" data-mutating onClick={handleAddClick}><Trans>+ Ý tưởng</Trans></button>
+        <button className="btn ghost" data-mutating onClick={createGroup}><Trans>+ Khung</Trans></button>
+        <button className="btn ghost" data-mutating onClick={() => setCaptureOpen(true)}><Trans>Nhập nhanh</Trans></button>
+        <button className="btn ghost icon" data-mutating onClick={undo} disabled={past.length === 0} title={t`Hoàn tác (Ctrl+Z)`}>↶</button>
+        <button className="btn ghost icon" data-mutating onClick={redo} disabled={future.length === 0} title={t`Làm lại (Ctrl+Shift+Z)`}>↷</button>
         <button
           className={"btn ghost toggle" + (linkMode ? " active" : "")}
+          data-mutating
           onClick={() => { setLinkMode((v) => !v); setPendingSource(null); }}
         >
           <Trans>Nối ý tưởng</Trans>
@@ -1708,7 +1764,7 @@ export default function IdeaMap() {
         <div className="spacer" />
         {saveError && <span style={{ fontSize: 11, color: "var(--danger)" }}><Trans>Không lưu được lên server.</Trans></span>}
         <button className="btn ghost" onClick={() => { setIoMode("export"); setIoText(JSON.stringify(board, null, 2)); setIoOpen(true); }}><Trans>Xuất JSON</Trans></button>
-        <button className="btn ghost" onClick={() => { setIoMode("import"); setIoText(""); setIoOpen(true); }}><Trans>Nhập JSON</Trans></button>
+        <button className="btn ghost" data-mutating onClick={() => { setIoMode("import"); setIoText(""); setIoOpen(true); }}><Trans>Nhập JSON</Trans></button>
         <button className="btn ghost" disabled={board.groups.length === 0} onClick={startPresentation}><Trans>Trình chiếu</Trans></button>
         <button className={"btn ghost toggle" + (outlineOpen ? " active" : "")} onClick={() => setOutlineOpen((v) => !v)}><Trans>Mục lục</Trans></button>
         <LocaleToggle />
@@ -2302,6 +2358,10 @@ export default function IdeaMap() {
             </div>
           </div>
         </div>
+      )}
+
+      {inviteOpen && role === "owner" && (
+        <InviteModal boardId={boardId} onClose={() => setInviteOpen(false)} />
       )}
     </div>
   );

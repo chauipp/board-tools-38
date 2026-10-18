@@ -12,9 +12,12 @@ import {
   signSession,
   verifyGoogleIdToken,
   parseSessionFromCookieHeader,
+  getBoardRole,
   SESSION_COOKIE_NAME,
   SESSION_COOKIE_MAX_AGE_MS
 } from "./auth.js";
+import { Board, upsertUser } from "./models.js";
+import boardsRouter from "./boards.js";
 
 dotenv.config();
 
@@ -45,32 +48,12 @@ if (!process.env.SESSION_SECRET) {
 }
 
 if (!process.env.ALLOWED_EMAILS) {
-  console.error(
-    "Thiếu ALLOWED_EMAILS — mọi đăng nhập sẽ bị từ chối cho đến khi biến này được cấu hình trong server/.env."
+  console.warn(
+    "ALLOWED_EMAILS trống — app đang public, ai có tài khoản Google cũng đăng nhập được. Điền ALLOWED_EMAILS trong server/.env nếu muốn giới hạn."
   );
 }
 
 await mongoose.connect(MONGODB_URI);
-
-const ideaBoardSchema = new mongoose.Schema(
-  {
-    singleton: { type: String, default: "main", unique: true },
-    nodes: { type: Array, default: [] },
-    edges: { type: Array, default: [] },
-    groups: { type: Array, default: [] },
-    statuses: { type: Array, default: undefined },
-    tags: { type: Array, default: undefined },
-    palette: { type: Array, default: [] },
-    nextNodeId: { type: Number, default: 1 },
-    nextEdgeId: { type: Number, default: 1 },
-    nextGroupId: { type: Number, default: 1 },
-    nextStatusId: { type: Number, default: 1 },
-    nextTagId: { type: Number, default: 1 },
-    nextPaletteId: { type: Number, default: 1 },
-    view: { type: Object, default: () => ({ panX: 0, panY: 0, scale: 1 }) }
-  },
-  { minimize: false, versionKey: false }
-);
 
 const calculatorSchema = new mongoose.Schema(
   {
@@ -82,43 +65,7 @@ const calculatorSchema = new mongoose.Schema(
   { minimize: false, versionKey: false }
 );
 
-const IdeaBoard = mongoose.model("IdeaBoard", ideaBoardSchema);
 const Calculator = mongoose.model("Calculator", calculatorSchema);
-
-const DEFAULT_STATUSES = [
-  { id: 1, name: "Ý tưởng mới", color: "st-idea" },
-  { id: 2, name: "Đang cân nhắc", color: "st-considering" },
-  { id: 3, name: "Đã chọn", color: "st-chosen" },
-  { id: 4, name: "Gác lại", color: "st-parked" },
-  { id: 5, name: "Đã loại", color: "st-rejected" }
-];
-const STATUS_KEY_TO_ID = { idea: 1, considering: 2, chosen: 3, parked: 4, rejected: 5 };
-
-const defaultIdeas = {
-  nodes: [
-    { id: 1, title: "Ngân sách điểm chiến đấu", desc: "500 điểm chia vào Máu / Giáp / Xuyên giáp / Tấn công. Đây là cốt lõi giữ chân người chơi.", tagId: 1, statusId: 3, x: 60, y: 40 },
-    { id: 2, title: "Hệ vũ khí (tam giác)", desc: "3 loại khắc chế vòng tròn, kiểu Fire Emblem. Làm trước hệ nguyên tố.", tagId: 1, statusId: 2, x: 360, y: 40 },
-    { id: 3, title: "5 phe", desc: "Đề xuất bắt đầu 2-3 phe để giảm khối lượng cân bằng ban đầu.", tagId: 2, statusId: 4, x: 60, y: 260 },
-    { id: 4, title: "Leo hạng / Elo online", desc: "Chỉ thêm sau khi core loop đã vui và có đủ người chơi để ghép trận.", tagId: 3, statusId: 4, x: 360, y: 260 }
-  ],
-  edges: [
-    { id: 1, from: 1, to: 2 },
-    { id: 2, from: 1, to: 3 }
-  ],
-  groups: [],
-  statuses: DEFAULT_STATUSES,
-  tags: [
-    { id: 1, name: "Cơ chế", color: "dot-1" },
-    { id: 2, name: "Nội dung", color: "dot-2" },
-    { id: 3, name: "Kỹ thuật", color: "dot-3" }
-  ],
-  nextNodeId: 5,
-  nextEdgeId: 3,
-  nextGroupId: 1,
-  nextStatusId: 6,
-  nextTagId: 4,
-  view: { panX: 60, panY: 60, scale: 1 }
-};
 
 const defaultCalculator = {
   budget: 500,
@@ -131,58 +78,7 @@ const defaultCalculator = {
   ]
 };
 
-const DOT_COUNT = 8;
-function hashTagToken(name) {
-  let h = 0;
-  const s = String(name || "");
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
-  return "dot-" + ((h % DOT_COUNT) + 1);
-}
-
-// Di trú một board cũ (node.status key + node.tag string) sang mô hình keyed.
-// Idempotent: chỉ chạy phần còn thiếu. Trả về true nếu có thay đổi.
-function migrateBoard(doc) {
-  let changed = false;
-
-  if (!Array.isArray(doc.statuses)) {
-    doc.statuses = DEFAULT_STATUSES.map((s) => ({ ...s }));
-    doc.nextStatusId = 6;
-    (doc.nodes || []).forEach((n) => {
-      n.statusId = STATUS_KEY_TO_ID[n.status] ?? null;
-      delete n.status;
-    });
-    changed = true;
-  }
-
-  if (!Array.isArray(doc.tags)) {
-    const nameToId = new Map();
-    const tags = [];
-    let nextId = 1;
-    (doc.nodes || []).forEach((n) => {
-      const name = (n.tag || "").trim();
-      if (name && !nameToId.has(name)) {
-        nameToId.set(name, nextId);
-        tags.push({ id: nextId, name, color: hashTagToken(name) });
-        nextId++;
-      }
-    });
-    doc.tags = tags;
-    doc.nextTagId = nextId;
-    (doc.nodes || []).forEach((n) => {
-      const name = (n.tag || "").trim();
-      n.tagId = name ? nameToId.get(name) : null;
-      delete n.tag;
-    });
-    changed = true;
-  }
-
-  return changed;
-}
-
 async function ensureSeed() {
-  const ideaCount = await IdeaBoard.countDocuments({ singleton: "main" });
-  if (ideaCount === 0) await IdeaBoard.create({ singleton: "main", ...defaultIdeas });
-
   const calcCount = await Calculator.countDocuments({ singleton: "main" });
   if (calcCount === 0) await Calculator.create({ singleton: "main", ...defaultCalculator });
 }
@@ -198,6 +94,7 @@ function stripMongoMeta(doc) {
 const app = express();
 app.use(express.json({ limit: "10mb" }));
 app.use(cookieParser());
+app.use("/api/boards", requireAuth, boardsRouter);
 
 app.post("/api/auth/google", async (req, res) => {
   let googleUser;
@@ -208,6 +105,11 @@ app.post("/api/auth/google", async (req, res) => {
   }
   if (!isEmailAllowed(googleUser.email)) {
     return res.status(403).json({ error: "not_allowed" });
+  }
+  try {
+    await upsertUser(googleUser);
+  } catch (e) {
+    console.error("Không lưu được thông tin user:", e);
   }
   let token;
   try {
@@ -232,44 +134,6 @@ app.get("/api/auth/me", requireAuth, (req, res) => {
 app.post("/api/auth/logout", (req, res) => {
   res.clearCookie(SESSION_COOKIE_NAME);
   res.json({ ok: true });
-});
-
-app.get("/api/ideas", requireAuth, async (req, res) => {
-  try {
-    const doc = await IdeaBoard.findOne({ singleton: "main" });
-    const obj = doc.toObject();
-    if (migrateBoard(obj)) {
-      await IdeaBoard.findOneAndUpdate(
-        { singleton: "main" },
-        {
-          nodes: obj.nodes,
-          statuses: obj.statuses,
-          tags: obj.tags,
-          nextStatusId: obj.nextStatusId,
-          nextTagId: obj.nextTagId
-        }
-      );
-    }
-    delete obj._id;
-    delete obj.singleton;
-    res.json(obj);
-  } catch (e) {
-    res.status(500).json({ error: "Không đọc được dữ liệu ý tưởng." });
-  }
-});
-
-app.put("/api/ideas", requireAuth, async (req, res) => {
-  try {
-    const { nodes, edges, groups, statuses, tags, palette, nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, view } = req.body;
-    await IdeaBoard.findOneAndUpdate(
-      { singleton: "main" },
-      { nodes, edges, groups, statuses, tags, palette, nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, view },
-      { upsert: true }
-    );
-    res.json({ ok: true });
-  } catch (e) {
-    res.status(500).json({ error: "Không lưu được dữ liệu ý tưởng." });
-  }
 });
 
 app.get("/api/calculator", requireAuth, async (req, res) => {
@@ -310,33 +174,68 @@ app.get("*", (req, res, next) => {
 const server = http.createServer(app);
 const io = new Server(server);
 
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   const user = parseSessionFromCookieHeader(socket.handshake.headers.cookie);
   if (!user || !isEmailAllowed(user.email)) return next(new Error("unauthorized"));
+  const boardId = socket.handshake.query.boardId;
+  if (!boardId) return next(new Error("missing_board"));
+  let board;
+  try {
+    board = await Board.findById(boardId).select("ownerEmail members").lean();
+  } catch (e) {
+    // Mongo chết và "board id không hợp lệ" cùng ra `forbidden` ở phía client;
+    // không log thì lỗi hạ tầng trông hệt như từ chối quyền và không debug được.
+    console.error("Socket handshake: không đọc được board", boardId, e);
+    return next(new Error("forbidden"));
+  }
+  if (!board) return next(new Error("forbidden"));
+  const role = getBoardRole(board, user.email);
+  if (!role) return next(new Error("forbidden"));
   socket.data.user = user;
+  // Chuẩn hoá từ document, không từ query: hex id viết hoa/thường khác nhau vẫn
+  // trỏ về cùng board nhưng sẽ tạo hai phòng presence riêng nếu lấy nguyên chuỗi.
+  socket.data.boardId = String(board._id);
+  socket.data.role = role;
   next();
 });
 
-const presencePeers = new Map(); // socket.id -> { socketId, email, name, picture, x, y }
+// boardId -> Map<socket.id, { socketId, email, name, picture, x, y }>
+const presencePeers = new Map();
+
+function peersForBoard(boardId) {
+  let m = presencePeers.get(boardId);
+  if (!m) {
+    m = new Map();
+    presencePeers.set(boardId, m);
+  }
+  return m;
+}
 
 io.on("connection", (socket) => {
+  const room = "board:" + socket.data.boardId;
+  socket.join(room);
+  const peers = peersForBoard(socket.data.boardId);
   const peer = { socketId: socket.id, ...socket.data.user, x: 0, y: 0 };
-  presencePeers.set(socket.id, peer);
-  socket.emit("presence:sync", Array.from(presencePeers.values()));
-  socket.broadcast.emit("presence:join", peer);
+  peers.set(socket.id, peer);
+  socket.emit("presence:sync", Array.from(peers.values()));
+  socket.to(room).emit("presence:join", peer);
 
+  // Cursor position là presence, không phải chỉnh sửa dữ liệu — viewer vẫn
+  // được thấy và được người khác thấy con trỏ, chỉ bị chặn ghi dữ liệu thật
+  // ở PUT /api/boards/:id (403 read_only).
   socket.on("cursor:move", (payload) => {
     const { x, y } = payload || {};
-    const p = presencePeers.get(socket.id);
+    const p = peers.get(socket.id);
     if (!p || !Number.isFinite(x) || !Number.isFinite(y)) return;
     p.x = x;
     p.y = y;
-    socket.broadcast.emit("cursor:move", p);
+    socket.to(room).emit("cursor:move", p);
   });
 
   socket.on("disconnect", () => {
-    presencePeers.delete(socket.id);
-    socket.broadcast.emit("presence:leave", { socketId: socket.id });
+    peers.delete(socket.id);
+    if (peers.size === 0) presencePeers.delete(socket.data.boardId);
+    socket.to(room).emit("presence:leave", { socketId: socket.id });
   });
 });
 

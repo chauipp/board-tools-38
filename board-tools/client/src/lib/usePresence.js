@@ -19,16 +19,16 @@ export function excludeSelf(list, selfId) {
   return list.filter((p) => p.socketId !== selfId);
 }
 
-export function usePresence(user) {
+export function usePresence(user, boardId) {
   const [peers, setPeers] = useState(new Map());
   const socketRef = useRef(null);
   const lastSentAtRef = useRef(0);
   const warnedRef = useRef(false);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !boardId) return;
     warnedRef.current = false;
-    const socket = io();
+    const socket = io({ query: { boardId } });
     socketRef.current = socket;
 
     socket.on("presence:sync", (list) => {
@@ -75,14 +75,18 @@ export function usePresence(user) {
       socketRef.current = null;
       setPeers(new Map());
     };
-  }, [user]);
+  }, [user, boardId]);
 
-  function sendCursor(x, y) {
+  // Takes a lazy coordinate getter (rather than x/y directly) so callers can
+  // defer any expensive work (e.g. getBoundingClientRect()) until after the
+  // throttle gate below, instead of doing it on every raw mousemove.
+  function sendCursor(getXY) {
     const socket = socketRef.current;
     if (!socket) return;
     const now = Date.now();
     if (now - lastSentAtRef.current < CURSOR_THROTTLE_MS) return;
     lastSentAtRef.current = now;
+    const { x, y } = getXY();
     socket.emit("cursor:move", { x, y });
   }
 

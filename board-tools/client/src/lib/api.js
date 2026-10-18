@@ -8,21 +8,95 @@ function checkAuthExpired(res) {
   if (res.status === 401) window.dispatchEvent(new Event("auth:expired"));
 }
 
-export async function getIdeas() {
-  const res = await fetch("/api/ideas");
+async function parseErrorCode(res, fallback) {
+  try {
+    const body = await res.json();
+    return body.error || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export async function listBoards() {
+  const res = await fetch("/api/boards");
   checkAuthExpired(res);
-  if (!res.ok) throw apiError("IDEAS_LOAD_FAILED");
+  if (!res.ok) throw apiError("BOARDS_LOAD_FAILED");
   return res.json();
 }
 
-export async function saveIdeas(state) {
-  const res = await fetch("/api/ideas", {
+export async function createBoard(name) {
+  const res = await fetch("/api/boards", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name })
+  });
+  checkAuthExpired(res);
+  if (!res.ok) throw apiError("BOARD_CREATE_FAILED");
+  return res.json();
+}
+
+export async function getBoard(boardId) {
+  const res = await fetch(`/api/boards/${boardId}`);
+  checkAuthExpired(res);
+  if (res.status === 404) throw apiError("BOARD_NOT_FOUND");
+  if (!res.ok) throw apiError("BOARD_LOAD_FAILED");
+  return res.json();
+}
+
+export async function saveBoard(boardId, state) {
+  const res = await fetch(`/api/boards/${boardId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(state)
   });
   checkAuthExpired(res);
-  if (!res.ok) throw apiError("IDEAS_SAVE_FAILED");
+  if (res.status === 403) throw apiError("READ_ONLY");
+  if (!res.ok) throw apiError("BOARD_SAVE_FAILED");
+  return res.json();
+}
+
+export async function deleteBoard(boardId) {
+  const res = await fetch(`/api/boards/${boardId}`, { method: "DELETE" });
+  checkAuthExpired(res);
+  if (!res.ok) throw apiError("BOARD_DELETE_FAILED");
+  return res.json();
+}
+
+export async function getMembers(boardId) {
+  const res = await fetch(`/api/boards/${boardId}/members`);
+  checkAuthExpired(res);
+  if (!res.ok) throw apiError("MEMBERS_LOAD_FAILED");
+  return res.json();
+}
+
+export async function inviteMember(boardId, email, role) {
+  const res = await fetch(`/api/boards/${boardId}/members`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, role })
+  });
+  checkAuthExpired(res);
+  if (!res.ok) throw apiError(await parseErrorCode(res, "MEMBER_INVITE_FAILED"));
+  return res.json();
+}
+
+export async function updateMemberRole(boardId, email, role) {
+  const res = await fetch(`/api/boards/${boardId}/members/${encodeURIComponent(email)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ role })
+  });
+  checkAuthExpired(res);
+  if (!res.ok) throw apiError(await parseErrorCode(res, "MEMBER_UPDATE_FAILED"));
+  return res.json();
+}
+
+export async function removeMember(boardId, email) {
+  const res = await fetch(`/api/boards/${boardId}/members/${encodeURIComponent(email)}`, {
+    method: "DELETE"
+  });
+  checkAuthExpired(res);
+  if (!res.ok) throw apiError(await parseErrorCode(res, "MEMBER_REMOVE_FAILED"));
   return res.json();
 }
 

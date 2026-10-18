@@ -1,7 +1,8 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useParams } from "react-router-dom";
 import { I18nProvider } from "@lingui/react";
+import { Trans } from "@lingui/react/macro";
 import { i18n } from "./lib/i18n.js";
 import "@fontsource/anton";
 import "@fontsource/ibm-plex-sans/400.css";
@@ -11,16 +12,54 @@ import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/600.css";
 import "./index.css";
 import Home from "./pages/Home.jsx";
+import BoardList from "./pages/BoardList.jsx";
 import IdeaMap from "./pages/IdeaMap.jsx";
 import Calculator from "./pages/Calculator.jsx";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 import LoginGate from "./components/LoginGate.jsx";
 
+function IdentityChip() {
+  const { user, logout } = useAuth();
+  const [imgOk, setImgOk] = React.useState(true);
+
+  return (
+    <div className="identity-chip">
+      {user.picture && imgOk && (
+        <img
+          className="identity-chip-avatar"
+          src={user.picture}
+          alt=""
+          referrerPolicy="no-referrer"
+          onError={() => setImgOk(false)}
+        />
+      )}
+      <span className="identity-chip-name">{user.name}</span>
+      <button type="button" className="btn ghost identity-chip-logout" onClick={logout}>
+        <Trans>Đăng xuất</Trans>
+      </button>
+    </div>
+  );
+}
+
+// Đổi :boardId mà element khớp vẫn là một, react-router v6 KHÔNG unmount — nó
+// chỉ re-render. IdeaMap giữ past/future/selectedIds/presentIndex là state cục
+// bộ, nên nếu không remount thì undo sau khi chuyển board sẽ ghi nội dung board
+// cũ đè lên board mới. `key` buộc React dựng lại từ đầu ở mỗi board.
+function IdeaMapRoute() {
+  const { boardId } = useParams();
+  return <IdeaMap key={boardId} />;
+}
+
 function AuthGate({ children }) {
   const { user, loading } = useAuth();
   if (loading) return null;
   if (!user) return <LoginGate />;
-  return children;
+  return (
+    <>
+      <IdentityChip />
+      {children}
+    </>
+  );
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(
@@ -31,7 +70,8 @@ ReactDOM.createRoot(document.getElementById("root")).render(
           <BrowserRouter>
             <Routes>
               <Route path="/" element={<Home />} />
-              <Route path="/idea-map" element={<IdeaMap />} />
+              <Route path="/idea-map" element={<BoardList />} />
+              <Route path="/idea-map/:boardId" element={<IdeaMapRoute />} />
               <Route path="/calculator" element={<Calculator />} />
             </Routes>
           </BrowserRouter>

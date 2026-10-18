@@ -13,11 +13,18 @@ function getAllowedEmails() {
 
 export function isEmailAllowed(email) {
   const allowed = getAllowedEmails();
-  if (allowed.length === 0) {
-    console.error("ALLOWED_EMAILS chưa được cấu hình — từ chối mọi đăng nhập.");
-    return false;
-  }
+  if (allowed.length === 0) return true; // no allowlist configured = public app, anyone can log in
   return allowed.includes(String(email || "").toLowerCase());
+}
+
+export function getBoardRole(board, email) {
+  const normalized = String(email || "").toLowerCase();
+  if (!normalized) return null;
+  if (String(board.ownerEmail || "").toLowerCase() === normalized) return "owner";
+  const member = (board.members || []).find(
+    (m) => String(m.email || "").toLowerCase() === normalized
+  );
+  return member ? member.role : null;
 }
 
 export function signSession(user) {
