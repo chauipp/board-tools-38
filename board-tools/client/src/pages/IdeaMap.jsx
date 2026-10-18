@@ -4,6 +4,9 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { getIdeas, saveIdeas } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
+import { paletteCss, applyColorTo, removePaletteColor } from "../lib/palette.js";
+import { loadLayouts, saveLayouts } from "../lib/dock.js";
+import DockPanel from "../components/DockPanel.jsx";
 import LoadError from "../components/LoadError.jsx";
 import LocaleToggle from "../components/LocaleToggle.jsx";
 import BadgeEditor from "../components/BadgeEditor.jsx";
@@ -12,7 +15,7 @@ import FrameBox from "../components/FrameBox.jsx";
 import { nodesInFrame, edgeEndpoint, edgesMatch, rectForEndpoint, clipToRect } from "../lib/board-geometry.js";
 import { computeSnap } from "../lib/snap.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
-import { gridLayout } from "../lib/layout.js";
+import { gridLayout, layerLayout } from "../lib/layout.js";
 import { parseDesc } from "../lib/mdlite.js";
 import { getUserName } from "../lib/user.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
@@ -57,6 +60,12 @@ export default function IdeaMap() {
   const [linkDraft, setLinkDraft] = useState(null);
   const [dropTargetId, setDropTargetId] = useState(null);
   const [chipDrag, setChipDrag] = useState(null);
+  // Mặc định mở Trạng thái + Nhãn để giữ đúng hành vi cũ khi mới vào; Bảng màu
+  // đóng. Chỉ giữ trong state — không lưu qua reload.
+  const [panels, setPanels] = useState({ status: true, tag: true, palette: false });
+  const [layouts, setLayouts] = useState(() => loadLayouts(window.localStorage));
+  const [paletteUI, setPaletteUI] = useState(null); // { mode: "create"|"edit", id?, hex, x, y } | null
+  const [colorDrag, setColorDrag] = useState(null); // { token, x, y } | null
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [marquee, setMarquee] = useState(null);
   const [snapGuides, setSnapGuides] = useState([]);
@@ -72,6 +81,7 @@ export default function IdeaMap() {
   const [, bump] = useState(0);
 
   const viewportRef = useRef(null);
+  const fbDockRef = useRef(null);
   const canvasRef = useRef(null);
   const saveTimerRef = useRef(null);
   const boardRef = useRef(null);
@@ -91,11 +101,20 @@ export default function IdeaMap() {
         if (initialCardParam && data.nodes.some((n) => n.id === Number(initialCardParam))) {
           pendingJumpRef.current = Number(initialCardParam);
         }
-        setBoard(data);
+        // Board cũ chưa có palette → mặc định rỗng, để mọi chỗ đọc board.palette
+        // không phải ?? [] khắp nơi.
+        setBoard({ palette: [], nextPaletteId: 1, ...data });
       })
       .catch((e) => setLoadError(e.code || "UNKNOWN"));
     return () => { cancelled = true; };
   }, []);
+
+  // Kéo panel cập nhật layouts mỗi mousemove; hoãn một nhịp để không ghi
+  // localStorage 60 lần/giây.
+  useEffect(() => {
+    const id = setTimeout(() => saveLayouts(window.localStorage, layouts), 200);
+    return () => clearTimeout(id);
+  }, [layouts]);
 
   useEffect(() => { boardRef.current = board; }, [board]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
@@ -293,6 +312,29 @@ export default function IdeaMap() {
     saveNow(next);
   }
 
+  // Cùng kỷ luật refs-only như applyImageToNode: được gọi từ listener "paste"
+  // gắn-một-lần và từ .then() của compressImage.
+  function createImageNode(dataUrl, pos) {
+    const current = boardRef.current;
+    if (!current || !viewportRef.current) return;
+    let x, y;
+    if (pos) {
+      ({ x, y } = pos);
+    } else {
+      const rect = viewportRef.current.getBoundingClientRect();
+      x = Math.round((rect.width / 2 - current.view.panX) / current.view.scale - CARD_W / 2);
+      y = Math.round((rect.height / 2 - current.view.panY) / current.view.scale - 80);
+    }
+    const id = current.nextNodeId;
+    const node = { id, title: t`Ảnh`, desc: "", tagId: null, statusId: null, x, y, image: dataUrl };
+    const next = { ...current, nodes: [...current.nodes, node], nextNodeId: id + 1 };
+    recordHistory(current);
+    setBoard(next);
+    boardRef.current = next;
+    saveNow(next);
+    setSelectedIds(new Set([id]));
+  }
+
   useEffect(() => {
     function onPaste(e) {
       const tag = (e.target.tagName || "").toLowerCase();
@@ -300,11 +342,13 @@ export default function IdeaMap() {
       const current = boardRef.current;
       if (!current) return;
       const sel = selectedIdsRef.current;
-      if (sel.size !== 1) return;
+      if (sel.size > 1) return;
       const item = Array.from(e.clipboardData?.items ?? []).find((i) => i.type.startsWith("image/"));
       if (!item) return;
       e.preventDefault();
-      compressImage(item.getAsFile()).then((dataUrl) => applyImageToNode(Array.from(sel)[0], dataUrl)).catch(() => {});
+      const file = item.getAsFile();
+      if (sel.size === 1) compressImage(file).then((dataUrl) => applyImageToNode(Array.from(sel)[0], dataUrl)).catch(() => {});
+      else compressImage(file).then((dataUrl) => createImageNode(dataUrl)).catch(() => {});
     }
     window.addEventListener("paste", onPaste);
     return () => window.removeEventListener("paste", onPaste);
@@ -849,6 +893,51 @@ export default function IdeaMap() {
     if (f) compressImage(f).then((d) => applyImageToNode(nodeId, d)).catch(() => {});
   }
 
+  // Thả file ảnh lên chỗ trống canvas → tạo thẻ ảnh tại điểm thả (thả lên thẻ
+  // có sẵn do handleImageDrop xử lý và đã stopPropagation).
+  function handleViewportImageDrop(e) {
+    const f = Array.from(e.dataTransfer?.files ?? []).find((x) => x.type.startsWith("image/"));
+    if (!f) return;
+    e.preventDefault();
+    const rect = viewportRef.current.getBoundingClientRect();
+    const x = Math.round((e.clientX - rect.left - board.view.panX) / board.view.scale - CARD_W / 2);
+    const y = Math.round((e.clientY - rect.top - board.view.panY) / board.view.scale - 40);
+    compressImage(f).then((d) => createImageNode(d, { x, y })).catch(() => {});
+  }
+
+  // Kéo góc ảnh đổi bề rộng thẻ (node.w); chiều cao ảnh theo tỉ lệ. Cùng
+  // pattern với handleGroupResizeMouseDown: live update, 1 history entry lúc thả.
+  function handleImageResizeMouseDown(e, node) {
+    if (e.button !== 0 || node.locked) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const scale = board.view.scale;
+    const boardBeforeDrag = board;
+    const startW = node.w || CARD_W;
+    const MIN_W = 140, MAX_W = 560;
+    let latest = board;
+    let moved = false;
+
+    function onMove(ev) {
+      const dx = (ev.clientX - startX) / scale;
+      if (Math.abs(dx) > 0.5) moved = true;
+      const w = Math.min(MAX_W, Math.max(MIN_W, Math.round(startW + dx)));
+      setBoard((prev) => {
+        const next = { ...prev, nodes: prev.nodes.map((n) => (n.id === node.id ? { ...n, w } : n)) };
+        latest = next;
+        return next;
+      });
+    }
+    function onUp() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (moved) { recordHistory(boardBeforeDrag); saveNow(latest); }
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
   function removeNodeImage(id) {
     commitAndSave({
       ...board,
@@ -1152,8 +1241,11 @@ export default function IdeaMap() {
       x: Math.min(...selected.map((n) => n.x)),
       y: Math.min(...selected.map((n) => n.y))
     };
-    const cols = Math.ceil(Math.sqrt(items.length));
-    const pos = gridLayout(items, origin, cols);
+    // Chỉ cạnh thẻ–thẻ mới định tầng; cạnh dính khung không nói gì về thứ tự thẻ.
+    const links = board.edges.filter(
+      (e) => (e.fromKind || "node") === "node" && (e.toKind || "node") === "node"
+    );
+    const pos = layerLayout(items, links, origin);
     commitAndSave({
       ...board,
       nodes: board.nodes.map((n) => (pos.has(n.id) ? { ...n, ...pos.get(n.id) } : n))
@@ -1345,6 +1437,16 @@ export default function IdeaMap() {
     (search.trim() ? 1 : 0);
   const matchCount = board.nodes.filter(passesFilter).length;
 
+  function togglePanel(key) {
+    setPanels((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  function setLayout(key, layout) {
+    setLayouts((prev) => ({ ...prev, [key]: layout }));
+  }
+
+  const hasDockedPanel = Object.keys(layouts).some((k) => panels[k] && !layouts[k].free);
+
   function clearFilters() {
     setFilterStatus({});
     setFilterTags({});
@@ -1461,8 +1563,76 @@ export default function IdeaMap() {
     setBadgeUI(null);
   }
 
+  function openPaletteEditor(e, entry) {
+    e.preventDefault();
+    e.stopPropagation();
+    const r = e.currentTarget.getBoundingClientRect();
+    setPaletteUI(entry
+      ? { mode: "edit", id: entry.id, hex: entry.hex, x: r.left, y: r.bottom + 6 }
+      : { mode: "create", hex: "#888888", x: r.left, y: r.bottom + 6 });
+  }
+
+  function createPaletteColor(hex) {
+    const id = board.nextPaletteId;
+    commitAndSave({ ...board, palette: [...board.palette, { id, hex }], nextPaletteId: id + 1 });
+    setPaletteUI(null);
+  }
+
+  // Popover ở lại sau khi đổi màu: sửa xong còn có thể chọn lại hoặc xoá luôn.
+  function updatePaletteColor(id, hex) {
+    commitAndSave({ ...board, palette: board.palette.map((c) => (c.id === id ? { ...c, hex } : c)) });
+  }
+
+  function deletePaletteColor(id) {
+    commitAndSave(removePaletteColor(board, id));
+    setPaletteUI(null);
+  }
+
+  function handleColorMouseDown(e, token) {
+    if (e.button !== 0) return;
+    const startX = e.clientX, startY = e.clientY;
+    let dragging = false;
+    const THRESHOLD = 5;
+
+    // Badge phải kiểm TRƯỚC thẻ: .status-pill nằm bên trong .idea-card, nếu xét
+    // thẻ trước thì thả vào pill sẽ tô thẻ chứ không đổi màu badge.
+    function colorTargetAt(clientX, clientY) {
+      const el = document.elementFromPoint(clientX, clientY);
+      if (!el) return null;
+      const badge = el.closest("[data-badge-kind][data-badge-id]");
+      if (badge) return { kind: badge.getAttribute("data-badge-kind"), id: Number(badge.getAttribute("data-badge-id")) };
+      const card = el.closest(".idea-card[data-id]");
+      if (card) return { kind: "node", id: Number(card.getAttribute("data-id")) };
+      const edge = el.closest("[data-edge-id]");
+      if (edge) return { kind: "edge", id: Number(edge.getAttribute("data-edge-id")) };
+      return null;
+    }
+
+    function onMove(ev) {
+      if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
+      if (!dragging) return;
+      setColorDrag({ token, x: ev.clientX, y: ev.clientY });
+      const target = colorTargetAt(ev.clientX, ev.clientY);
+      setDropTargetId(target && target.kind === "node" ? { id: target.id, kind: "node" } : null);
+    }
+    function onUp(ev) {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      if (!dragging) return;
+      const target = colorTargetAt(ev.clientX, ev.clientY);
+      setColorDrag(null);
+      setDropTargetId(null);
+      if (target) commitAndSave(applyColorTo(board, target, token));
+    }
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  }
+
   return (
     <div className={"shell" + (presentIndex != null ? " presenting" : "")} onContextMenu={handlePageContextMenu}>
+      {/* Khai báo màu tự tạo trong cây React: sửa hex là mọi card/dây/badge dùng
+          var(--pal-N) repaint ngay, không cần đi ghi lại từng chỗ tham chiếu. */}
+      <style>{paletteCss(board.palette)}</style>
       <div className="topbar">
         <div>
           <div className="eyebrow"><Trans>Bản đồ ý tưởng</Trans></div>
@@ -1494,95 +1664,127 @@ export default function IdeaMap() {
       </div>
 
       <div className="filterbar">
-        <div className="fb-group">
-          <span className="fb-label"><Trans>Trạng thái</Trans></span>
-          <div className="fb-chips">
-            {board.statuses.map((s) => {
-              const key = String(s.id);
-              return (
-                <span
-                  key={key}
-                  className={"chip-toggle status" + (filterStatus[key] ? " on" : "")}
-                  onMouseDown={(e) => handleChipMouseDown(e, "status", key)}
-                  onContextMenu={(e) => openBadgeMenu(e, "status", s)}
-                  onClick={() => setFilterStatus((prev) => ({ ...prev, [key]: !prev[key] }))}
-                  title={t`Bấm để lọc — kéo thả vào thẻ để gán trạng thái — chuột phải để sửa`}
-                >
-                  <span className="dot" style={{ background: colorVar(s.color) }}></span>
-                  {s.name}
-                </span>
-              );
-            })}
-            {hasNoStatus && (
-              <span
-                className={"chip-toggle status" + (filterStatus["none"] ? " on" : "")}
-                onMouseDown={(e) => handleChipMouseDown(e, "status", "none")}
-                onClick={() => setFilterStatus((prev) => ({ ...prev, none: !prev["none"] }))}
-                title={t`Lọc thẻ chưa có trạng thái`}
-              >
-                <span className="dot dot-empty"></span>
-                <Trans>Không trạng thái</Trans>
+        <div className="fb-tabs">
+          <button className={"btn ghost toggle" + (panels.status ? " active" : "")} onClick={() => togglePanel("status")}><Trans>Trạng thái</Trans></button>
+          <button className={"btn ghost toggle" + (panels.tag ? " active" : "")} onClick={() => togglePanel("tag")}><Trans>Nhãn</Trans></button>
+          <button className={"btn ghost toggle" + (panels.palette ? " active" : "")} onClick={() => togglePanel("palette")}><Trans>Bảng màu</Trans></button>
+          <span
+            className={"chip-toggle" + (filterFav ? " on" : "")}
+            onClick={() => setFilterFav((v) => !v)}
+          >
+            ★ <Trans>Yêu thích</Trans>
+          </span>
+          <div className="spacer" />
+          {activeFilterCount > 0 && (
+            <div className="fb-tail">
+              <span className="fb-count mono" title={t`Số ý tưởng khớp bộ lọc`}>
+                <Trans>Khớp {matchCount}/{board.nodes.length}</Trans>
               </span>
-            )}
-            <button className="fb-add" onClick={(e) => openBadgeCreate(e, "status")} title={t`Thêm trạng thái`}>+</button>
-          </div>
+              <button className="fb-clear" onClick={clearFilters}><Trans>Xoá lọc</Trans></button>
+            </div>
+          )}
         </div>
 
-        <div className="fb-group">
-          <span className="fb-label"><Trans>Nhãn</Trans></span>
-          <div className="fb-chips">
-            {board.tags.map((tg) => {
-              const key = String(tg.id);
-              return (
+        {/* Khay neo: LUÔN hiện, kể cả rỗng, và chính nó là vùng thả. Panel neo chảy
+            cùng một hàng, hết chỗ mới xuống dòng — bật panel thứ ba không được đẩy
+            hai panel kia thành ba tầng. Giữ chỗ cả khi rỗng để panel vừa bật lên
+            luôn có dải riêng của nó, không bị panel nổi đậu đè lên che mất. */}
+        <div className={"fb-dock" + (hasDockedPanel ? " on" : "")} ref={fbDockRef}>
+        {panels.status && (
+          <DockPanel title={t`Trạng thái`} layout={layouts.status} barRef={fbDockRef} onLayout={(l) => setLayout("status", l)}>
+            <div className="fb-chips">
+              {board.statuses.map((s) => {
+                const key = String(s.id);
+                return (
+                  <span
+                    key={key}
+                    className={"chip-toggle status" + (filterStatus[key] ? " on" : "")}
+                    data-badge-kind="status"
+                    data-badge-id={s.id}
+                    onMouseDown={(e) => handleChipMouseDown(e, "status", key)}
+                    onContextMenu={(e) => openBadgeMenu(e, "status", s)}
+                    onClick={() => setFilterStatus((prev) => ({ ...prev, [key]: !prev[key] }))}
+                    title={t`Bấm để lọc — kéo thả vào thẻ để gán trạng thái — chuột phải để sửa`}
+                  >
+                    <span className="dot" style={{ background: colorVar(s.color) }}></span>
+                    {s.name}
+                  </span>
+                );
+              })}
+              {hasNoStatus && (
                 <span
-                  key={key}
-                  className={"chip-toggle tag" + (filterTags[key] ? " on" : "")}
-                  onMouseDown={(e) => handleChipMouseDown(e, "tag", key)}
-                  onContextMenu={(e) => openBadgeMenu(e, "tag", tg)}
-                  onClick={() => setFilterTags((prev) => ({ ...prev, [key]: !prev[key] }))}
-                  title={t`Bấm để lọc — kéo thả vào thẻ để gán nhãn — chuột phải để sửa`}
+                  className={"chip-toggle status" + (filterStatus["none"] ? " on" : "")}
+                  onMouseDown={(e) => handleChipMouseDown(e, "status", "none")}
+                  onClick={() => setFilterStatus((prev) => ({ ...prev, none: !prev["none"] }))}
+                  title={t`Lọc thẻ chưa có trạng thái`}
                 >
-                  <span className="dot" style={{ background: colorVar(tg.color) }}></span>
-                  {tg.name}
+                  <span className="dot dot-empty"></span>
+                  <Trans>Không trạng thái</Trans>
                 </span>
-              );
-            })}
-            {hasNoTag && (
-              <span
-                className={"chip-toggle tag" + (filterTags["none"] ? " on" : "")}
-                onMouseDown={(e) => handleChipMouseDown(e, "tag", "none")}
-                onClick={() => setFilterTags((prev) => ({ ...prev, none: !prev["none"] }))}
-                title={t`Lọc thẻ chưa gắn nhãn`}
-              >
-                <span className="dot dot-empty"></span>
-                <Trans>Không nhãn</Trans>
-              </span>
-            )}
-            <button className="fb-add" onClick={(e) => openBadgeCreate(e, "tag")} title={t`Thêm nhãn`}>+</button>
-          </div>
-        </div>
-
-        <div className="fb-group">
-          <div className="fb-chips">
-            <span
-              className={"chip-toggle" + (filterFav ? " on" : "")}
-              onClick={() => setFilterFav((v) => !v)}
-            >
-              ★ <Trans>Yêu thích</Trans>
-            </span>
-          </div>
-        </div>
-
-        <div className="spacer" />
-
-        {activeFilterCount > 0 && (
-          <div className="fb-tail">
-            <span className="fb-count mono" title={t`Số ý tưởng khớp bộ lọc`}>
-              <Trans>Khớp {matchCount}/{board.nodes.length}</Trans>
-            </span>
-            <button className="fb-clear" onClick={clearFilters}><Trans>Xoá lọc</Trans></button>
-          </div>
+              )}
+              <button className="fb-add" onClick={(e) => openBadgeCreate(e, "status")} title={t`Thêm trạng thái`}>+</button>
+            </div>
+          </DockPanel>
         )}
+
+        {panels.tag && (
+          <DockPanel title={t`Nhãn`} layout={layouts.tag} barRef={fbDockRef} onLayout={(l) => setLayout("tag", l)}>
+            <div className="fb-chips">
+              {board.tags.map((tg) => {
+                const key = String(tg.id);
+                return (
+                  <span
+                    key={key}
+                    className={"chip-toggle tag" + (filterTags[key] ? " on" : "")}
+                    data-badge-kind="tag"
+                    data-badge-id={tg.id}
+                    onMouseDown={(e) => handleChipMouseDown(e, "tag", key)}
+                    onContextMenu={(e) => openBadgeMenu(e, "tag", tg)}
+                    onClick={() => setFilterTags((prev) => ({ ...prev, [key]: !prev[key] }))}
+                    title={t`Bấm để lọc — kéo thả vào thẻ để gán nhãn — chuột phải để sửa`}
+                  >
+                    <span className="dot" style={{ background: colorVar(tg.color) }}></span>
+                    {tg.name}
+                  </span>
+                );
+              })}
+              {hasNoTag && (
+                <span
+                  className={"chip-toggle tag" + (filterTags["none"] ? " on" : "")}
+                  onMouseDown={(e) => handleChipMouseDown(e, "tag", "none")}
+                  onClick={() => setFilterTags((prev) => ({ ...prev, none: !prev["none"] }))}
+                  title={t`Lọc thẻ chưa gắn nhãn`}
+                >
+                  <span className="dot dot-empty"></span>
+                  <Trans>Không nhãn</Trans>
+                </span>
+              )}
+              <button className="fb-add" onClick={(e) => openBadgeCreate(e, "tag")} title={t`Thêm nhãn`}>+</button>
+            </div>
+          </DockPanel>
+        )}
+
+        {panels.palette && (
+          <DockPanel title={t`Bảng màu`} layout={layouts.palette} barRef={fbDockRef} onLayout={(l) => setLayout("palette", l)}>
+            <div className="fb-chips">
+              {board.palette.map((c) => (
+                <button
+                  key={c.id}
+                  className="pal-swatch"
+                  style={{ background: colorVar(`pal-${c.id}`) }}
+                  onMouseDown={(e) => handleColorMouseDown(e, `pal-${c.id}`)}
+                  onClick={(e) => openPaletteEditor(e, c)}
+                  title={t`Bấm để sửa màu — kéo thả vào thẻ / dây / badge để tô màu`}
+                />
+              ))}
+              <button className="fb-add" onClick={(e) => openPaletteEditor(e, null)} title={t`Thêm màu`}>+</button>
+            </div>
+            {board.palette.length === 0 && (
+              <span className="fb-count"><Trans>Chưa có màu nào — bấm + để tạo.</Trans></span>
+            )}
+          </DockPanel>
+        )}
+        </div>
       </div>
 
       <div
@@ -1590,6 +1792,8 @@ export default function IdeaMap() {
         ref={viewportRef}
         onMouseDown={handleViewportMouseDown}
         onDoubleClick={handleViewportDoubleClick}
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={handleViewportImageDrop}
       >
         <div
           className="canvas"
@@ -1618,7 +1822,7 @@ export default function IdeaMap() {
           <svg className="edge-layer">
             <defs>
               <marker id="edge-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-                <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--ink-dim)" />
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="context-stroke" />
               </marker>
             </defs>
             {board.edges.map((edge) => {
@@ -1631,14 +1835,16 @@ export default function IdeaMap() {
                 <g key={edge.id}>
                   <line
                     className="hit"
+                    data-edge-id={edge.id}
                     x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                     onClick={(e) => { setColorMenu(null); setCommentsFor(null); setEdgeMenu({ id: edge.id, x: e.clientX, y: e.clientY }); }}
                   />
                   <line
                     className="visible"
                     x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+                    style={edge.color ? { stroke: colorVar(edge.color) } : undefined}
                     strokeDasharray={edge.style === "dashed" ? "6 5" : undefined}
-                    markerEnd="url(#edge-arrow)"
+                    markerEnd={edge.arrow === "none" ? undefined : "url(#edge-arrow)"}
                   />
                   {edge.label && (
                     <text className="edge-label" x={(p1.x + p2.x) / 2} y={(p1.y + p2.y) / 2 - 4} textAnchor="middle">{edge.label}</text>
@@ -1681,6 +1887,7 @@ export default function IdeaMap() {
               onCancel={() => setEditingId(null)}
               onDropImage={(e) => handleImageDrop(e, node.id)}
               onRemoveImage={() => removeNodeImage(node.id)}
+              onImageResize={(e) => handleImageResizeMouseDown(e, node)}
             />
           ))}
         </div>
@@ -1771,7 +1978,11 @@ export default function IdeaMap() {
                 <button key={token} className="be-swatch" style={{ background: colorVar(token) }} onClick={() => applyToSelection({ color: token })} title={token} />
               ))}
             </div>
+            <button className="bb-clear" onClick={groupSelectedCards}><Trans>Gom nhóm</Trans></button>
             <button className="bb-clear" onClick={tidySelection}><Trans>Xếp gọn</Trans></button>
+            <button className="bb-clear" onClick={duplicateSelection}><Trans>Nhân bản</Trans></button>
+            <button className="bb-clear danger" onClick={deleteSelection}><Trans>Xoá</Trans></button>
+            <span className="bb-sep" />
             <button className="bb-clear" onClick={() => setSelectedIds(new Set())}><Trans>Bỏ chọn</Trans></button>
           </div>
         )}
@@ -1824,30 +2035,49 @@ export default function IdeaMap() {
         </div>
       )}
 
+      {colorDrag && (
+        <div className="chip-ghost" style={{ left: colorDrag.x, top: colorDrag.y }}>
+          <span className="dot" style={{ background: colorVar(colorDrag.token) }}></span>
+        </div>
+      )}
+
       {colorMenu && colorMenu.kind === "card" && (() => {
         const node = board.nodes.find((n) => n.id === colorMenu.id);
         if (!node) return null;
+        // Chuột phải vào thẻ đang nằm trong vùng chọn thì tác động lên cả vùng chọn.
+        // Trước đây nó chỉ đổi đúng một thẻ, im lặng — chọn 5 thẻ rồi bấm màu là ra
+        // một thẻ đổi màu. Lúc đó chỉ hiện những việc có nghĩa với nhiều thẻ.
+        const multi = selectedIds.size > 1 && selectedIds.has(node.id);
+        const one = (fn) => (multi ? undefined : fn);
         return (
           <ColorMenu
             x={colorMenu.x}
             y={colorMenu.y}
-            color={node.color ?? null}
-            onPick={(color) => applyNodeColor(node.id, color)}
-            onEdit={() => { setColorMenu(null); setEditingId(node.id); }}
-            onGroup={selectedIds.size >= 2 && selectedIds.has(node.id) ? groupSelectedCards : undefined}
-            onFocus={() => { setColorMenu(null); setFocusId(node.id); }}
-            onDuplicate={() => { setColorMenu(null); const { next, cloneIds } = duplicateNodes([node.id]); commitAndSave(next); setSelectedIds(new Set(cloneIds)); }}
-            onComments={() => { setColorMenu(null); setEdgeMenu(null); setCommentsFor({ id: node.id, x: colorMenu.x, y: colorMenu.y }); }}
-            onCopyLink={() => {
+            count={multi ? selectedIds.size : 1}
+            color={multi ? null : node.color ?? null}
+            onPick={(color) => (multi ? applyToSelection({ color }) : applyNodeColor(node.id, color))}
+            onEdit={one(() => { setColorMenu(null); setEditingId(node.id); })}
+            onGroup={multi ? groupSelectedCards : undefined}
+            onTidy={multi ? () => { setColorMenu(null); tidySelection(); } : undefined}
+            onFocus={one(() => { setColorMenu(null); setFocusId(node.id); })}
+            onDuplicate={() => {
+              setColorMenu(null);
+              if (multi) return duplicateSelection();
+              const { next, cloneIds } = duplicateNodes([node.id]);
+              commitAndSave(next);
+              setSelectedIds(new Set(cloneIds));
+            }}
+            onComments={one(() => { setColorMenu(null); setEdgeMenu(null); setCommentsFor({ id: node.id, x: colorMenu.x, y: colorMenu.y }); })}
+            onCopyLink={one(() => {
               const url = new URL(window.location.href);
               url.searchParams.set("card", String(node.id));
               navigator.clipboard.writeText(url.toString());
               setColorMenu(null);
-            }}
-            onDelete={() => { setColorMenu(null); deleteNode(node.id); }}
+            })}
+            onDelete={() => { setColorMenu(null); multi ? deleteSelection() : deleteNode(node.id); }}
             onClose={() => setColorMenu(null)}
             locked={node.locked ?? false}
-            onToggleLock={() => toggleNodeLock(node.id)}
+            onToggleLock={one(() => toggleNodeLock(node.id))}
           />
         );
       })()}
@@ -1894,6 +2124,18 @@ export default function IdeaMap() {
         />
       )}
 
+      {paletteUI && (
+        <PaletteEditor
+          key={paletteUI.mode + "-" + (paletteUI.id ?? "new")}
+          x={paletteUI.x}
+          y={paletteUI.y}
+          hex={paletteUI.hex}
+          onPick={(hex) => (paletteUI.mode === "create" ? createPaletteColor(hex) : updatePaletteColor(paletteUI.id, hex))}
+          onDelete={paletteUI.mode === "edit" ? () => deletePaletteColor(paletteUI.id) : undefined}
+          onClose={() => setPaletteUI(null)}
+        />
+      )}
+
       {edgeMenu && (() => {
         const edge = board.edges.find((e) => e.id === edgeMenu.id);
         if (!edge) return null;
@@ -1903,7 +2145,10 @@ export default function IdeaMap() {
             x={edgeMenu.x} y={edgeMenu.y}
             edge={edge}
             onStyleToggle={() => updateEdge(edge.id, { style: (edge.style === "dashed" ? "solid" : "dashed") })}
+            onArrowToggle={() => updateEdge(edge.id, { arrow: edge.arrow === "none" ? undefined : "none" })}
+            onReverse={() => updateEdge(edge.id, { from: edge.to, fromKind: edge.toKind, to: edge.from, toKind: edge.fromKind })}
             onLabel={(label) => updateEdge(edge.id, { label: label.trim() || undefined })}
+            onColorChange={(color) => updateEdge(edge.id, { color: color || undefined })}
             onDelete={() => deleteEdge(edge.id)}
             onClose={() => setEdgeMenu(null)}
           />
@@ -1977,7 +2222,66 @@ function MdLite({ text }) {
   );
 }
 
-function EdgeMenu({ x, y, edge, onStyleToggle, onLabel, onDelete, onClose }) {
+function LineSolidIcon() {
+  return <svg viewBox="0 0 20 12" width="20" height="12"><line x1="2" y1="6" x2="18" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>;
+}
+function LineDashedIcon() {
+  return <svg viewBox="0 0 20 12" width="20" height="12"><line x1="2" y1="6" x2="18" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="4 3" /></svg>;
+}
+function LineUndirectedIcon() {
+  return (
+    <svg viewBox="0 0 20 12" width="20" height="12">
+      <line x1="3" y1="6" x2="17" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="3" cy="6" r="1.8" fill="currentColor" />
+      <circle cx="17" cy="6" r="1.8" fill="currentColor" />
+    </svg>
+  );
+}
+function LineDirectedIcon() {
+  return (
+    <svg viewBox="0 0 20 12" width="20" height="12">
+      <line x1="2" y1="6" x2="14" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M12 2l5 4-5 4" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+function ReverseIcon() {
+  return (
+    <svg viewBox="0 0 20 16" width="20" height="16">
+      <path d="M2 5h13M11 2l3 3-3 3" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M18 11H5M9 8l-3 3 3 3" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function PaletteEditor({ x, y, hex, onPick, onDelete, onClose }) {
+  const { t } = useLingui();
+  const ref = useRef(null);
+  const inputRef = useRef(null);
+  useCloseOnOutside(ref, onClose);
+
+  // Listener "change" thật, không dùng onChange của React: React map onChange
+  // của input màu sang sự kiện "input", tức là mỗi bước kéo trong bộ chọn màu
+  // thành một entry undo + một lần lưu. "change" chỉ nổ một lần khi chốt màu.
+  useEffect(() => {
+    const el = inputRef.current;
+    const handler = (e) => onPick(e.target.value);
+    el.addEventListener("change", handler);
+    return () => el.removeEventListener("change", handler);
+  }, [onPick]);
+
+  return (
+    <div className="badge-editor pal-editor" ref={ref} style={{ left: x, top: y }} onMouseDown={(e) => e.stopPropagation()}>
+      <div className="eyebrow">{onDelete ? t`Sửa màu` : t`Màu mới`}</div>
+      <input className="pal-input" type="color" defaultValue={hex} ref={inputRef} />
+      {onDelete && (
+        <button className="em-delete" onClick={onDelete}>🗑 <Trans>Xoá màu</Trans></button>
+      )}
+    </div>
+  );
+}
+
+function EdgeMenu({ x, y, edge, onStyleToggle, onArrowToggle, onReverse, onLabel, onColorChange, onDelete, onClose }) {
   const { t } = useLingui();
   const ref = useRef(null);
   useCloseOnOutside(ref, onClose);
@@ -1993,6 +2297,9 @@ function EdgeMenu({ x, y, edge, onStyleToggle, onLabel, onDelete, onClose }) {
     onLabel(rawValue);
   }
 
+  const isDashed = edge.style === "dashed";
+  const isDirected = edge.arrow !== "none";
+
   return (
     <div className="badge-editor edge-menu" ref={ref} style={{ left: x, top: y }} onMouseDown={(e) => e.stopPropagation()}>
       <input
@@ -2004,13 +2311,47 @@ function EdgeMenu({ x, y, edge, onStyleToggle, onLabel, onDelete, onClose }) {
         onKeyDown={(e) => { if (e.key === "Enter") commitLabel(e.currentTarget.value); }}
         onBlur={(e) => commitLabel(e.target.value)}
       />
-      <div className="be-actions">
-        <button className="save-btn" onClick={onStyleToggle}>
-          {edge.style === "dashed" ? <Trans>Nét liền</Trans> : <Trans>Nét đứt</Trans>}
-        </button>
-        <button className="be-delete" onClick={onDelete} title={t`Xoá cạnh`}>🗑</button>
-        <button className="cancel-btn" onClick={onClose}><Trans>Đóng</Trans></button>
+
+      <div className="em-section">
+        <div className="eyebrow"><Trans>Kiểu nét</Trans></div>
+        <div className="em-toggle-group">
+          <button className={"em-icon-btn" + (!isDashed ? " on" : "")} onClick={() => isDashed && onStyleToggle()} title={t`Nét liền`}>
+            <LineSolidIcon />
+          </button>
+          <button className={"em-icon-btn" + (isDashed ? " on" : "")} onClick={() => !isDashed && onStyleToggle()} title={t`Nét đứt`}>
+            <LineDashedIcon />
+          </button>
+        </div>
       </div>
+
+      <div className="em-section">
+        <div className="eyebrow"><Trans>Hướng</Trans></div>
+        <div className="em-toggle-group">
+          <button className={"em-icon-btn" + (!isDirected ? " on" : "")} onClick={() => isDirected && onArrowToggle()} title={t`Vô hướng`}>
+            <LineUndirectedIcon />
+          </button>
+          <button className={"em-icon-btn" + (isDirected ? " on" : "")} onClick={() => !isDirected && onArrowToggle()} title={t`Có hướng`}>
+            <LineDirectedIcon />
+          </button>
+          {isDirected && (
+            <button className="em-icon-btn" onClick={onReverse} title={t`Đảo chiều`}>
+              <ReverseIcon />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="em-section">
+        <div className="eyebrow"><Trans>Màu dây</Trans></div>
+        <div className="be-swatches">
+          <button className={"be-swatch dot-empty" + (!edge.color ? " on" : "")} onClick={() => onColorChange(null)} title={t`Mặc định`} />
+          {BADGE_PALETTE.map((token) => (
+            <button key={token} className={"be-swatch" + (edge.color === token ? " on" : "")} style={{ background: colorVar(token) }} onClick={() => onColorChange(token)} title={token} />
+          ))}
+        </div>
+      </div>
+
+      <button className="em-delete" onClick={onDelete}>🗑 <Trans>Xoá cạnh</Trans></button>
     </div>
   );
 }
@@ -2065,7 +2406,7 @@ function CommentsPopover({ x, y, comments, onAdd, onDelete, onClose }) {
   );
 }
 
-function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, dropTarget, selected, flash, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onToggleFavorite, onOpenComments, onSave, onSaveAndNext, onCancel, onDropImage, onRemoveImage }) {
+function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, dropTarget, selected, flash, onMouseDown, onClick, onContextMenu, onConnectorMouseDown, onEdit, onDelete, onToggleFavorite, onOpenComments, onSave, onSaveAndNext, onCancel, onDropImage, onRemoveImage, onImageResize }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(node.title);
   const [desc, setDesc] = useState(node.desc);
@@ -2099,7 +2440,7 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
 
   if (editing) {
     return (
-      <div className={classNames.join(" ")} data-id={node.id} style={{ left: node.x, top: node.y }} onMouseDown={(e) => e.stopPropagation()}>
+      <div className={classNames.join(" ")} data-id={node.id} style={{ left: node.x, top: node.y, ...(node.w ? { width: node.w } : {}) }} onMouseDown={(e) => e.stopPropagation()}>
         <div className="edit-form">
           <input type="text" autoFocus value={title} onChange={(e) => setTitle(e.target.value)} placeholder={t`Tên ý tưởng`} onKeyDown={handleEditKeyDown} />
           <textarea value={desc} onChange={(e) => setDesc(e.target.value)} placeholder={t`Mô tả ngắn`} onKeyDown={handleEditKeyDown} />
@@ -2130,6 +2471,7 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
       data-id={node.id}
       style={{
         left: node.x, top: node.y,
+        ...(node.w ? { width: node.w } : {}),
         ...(node.color ? { borderLeftColor: colorVar(node.color), borderLeftWidth: 4 } : {})
       }}
       onMouseDown={onMouseDown}
@@ -2138,33 +2480,42 @@ function IdeaCard({ node, board, currentUser, editing, dimmed, linkPending, drop
       onDragOver={(e) => e.preventDefault()}
       onDrop={onDropImage}
     >
-      <div className="card-actions">
-        <button
-          className={"icon-btn fav-btn" + ((node.favorites ?? []).includes(currentUser) ? " on" : "")}
-          title={t`Yêu thích`}
-          onMouseDown={(e) => e.stopPropagation()}
-          onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
-        >
-          ★{(node.favorites?.length ?? 0) > 0 ? node.favorites.length : ""}
-        </button>
-        <button className="icon-btn" title={t`Sửa`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(); }}>✎</button>
-        <button className="icon-btn" title={t`Xoá`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onDelete(); }}>×</button>
-      </div>
-      {node.locked && <span className="lock-badge">🔒</span>}
+      {/* Nút nằm cùng hàng với tiêu đề, không absolute: absolute thì tiêu đề dài
+          chạy xuống dưới ngôi sao và bị đè. Tiêu đề co lại, nút giữ nguyên. */}
       <div className="card-top">
+        {node.locked && <span className="lock-badge">🔒</span>}
         <div className="title">{node.title}</div>
+        <div className="card-actions">
+          <button
+            className={"icon-btn fav-btn" + ((node.favorites ?? []).includes(currentUser) ? " on" : "")}
+            title={t`Yêu thích`}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); onToggleFavorite(); }}
+          >
+            ★{(node.favorites?.length ?? 0) > 0 ? node.favorites.length : ""}
+          </button>
+          <button className="icon-btn" title={t`Sửa`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onEdit(); }}>✎</button>
+          <button className="icon-btn" title={t`Xoá`} onMouseDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); onDelete(); }}>×</button>
+        </div>
       </div>
-      {node.image && <img className="card-img" src={node.image} alt="" draggable={false} />}
+      {node.image && (
+        <div className="card-img-wrap">
+          <img className="card-img" src={node.image} alt="" draggable={false} />
+          {!node.locked && (
+            <span className="img-resize" title={t`Kéo để đổi cỡ ảnh`} onMouseDown={onImageResize} onClick={(e) => e.stopPropagation()} />
+          )}
+        </div>
+      )}
       <div className="desc">{node.desc ? <MdLite text={node.desc} /> : null}</div>
       <div className="meta-row">
         {(() => {
           const s = statusById(board, node.statusId);
-          return s ? <span className="status-pill" style={{ background: colorVar(s.color) }}>{s.name}</span> : null;
+          return s ? <span className="status-pill" data-badge-kind="status" data-badge-id={s.id} style={{ background: colorVar(s.color) }}>{s.name}</span> : null;
         })()}
         {(() => {
           const tg = tagById(board, node.tagId);
           return tg ? (
-            <span className="tag-pill">
+            <span className="tag-pill" data-badge-kind="tag" data-badge-id={tg.id}>
               <span className="dot" style={{ background: colorVar(tg.color) }}></span>
               {tg.name}
             </span>

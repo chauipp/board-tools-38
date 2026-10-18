@@ -46,14 +46,16 @@ export function drawBoardToCanvas(board, sizeOf, theme) {
     if (e.style === "dashed") ctx.setLineDash([6, 5]);
     ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
     ctx.setLineDash([]);
-    const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x);
-    ctx.beginPath();
-    ctx.moveTo(p2.x, p2.y);
-    ctx.lineTo(p2.x - 8 * Math.cos(ang - 0.4), p2.y - 8 * Math.sin(ang - 0.4));
-    ctx.lineTo(p2.x - 8 * Math.cos(ang + 0.4), p2.y - 8 * Math.sin(ang + 0.4));
-    ctx.closePath();
-    ctx.fillStyle = theme.inkDim;
-    ctx.fill();
+    if (e.arrow !== "none") {
+      const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+      ctx.beginPath();
+      ctx.moveTo(p2.x, p2.y);
+      ctx.lineTo(p2.x - 8 * Math.cos(ang - 0.4), p2.y - 8 * Math.sin(ang - 0.4));
+      ctx.lineTo(p2.x - 8 * Math.cos(ang + 0.4), p2.y - 8 * Math.sin(ang + 0.4));
+      ctx.closePath();
+      ctx.fillStyle = theme.inkDim;
+      ctx.fill();
+    }
     if (e.label) {
       ctx.fillStyle = theme.inkDim;
       ctx.fillText(e.label, (p1.x + p2.x) / 2 - ctx.measureText(e.label).width / 2, (p1.y + p2.y) / 2 - 5);
