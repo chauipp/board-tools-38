@@ -1,4 +1,4 @@
-// game-tools/client/src/lib/board-geometry.test.js
+// board-tools/client/src/lib/board-geometry.test.js
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { pointInRect, nodesInFrame, edgeEndpoint, edgesMatch } from "./board-geometry.js";

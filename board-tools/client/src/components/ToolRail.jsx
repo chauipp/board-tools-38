@@ -1,4 +1,6 @@
-import { useLingui } from "@lingui/react/macro";
+import { useState } from "react";
+import { Trans, useLingui } from "@lingui/react/macro";
+import { GAME_DESIGN_TYPES } from "../lib/game-design.js";
 
 // Icon là inline SVG, không phải emoji: nó theo được currentColor nên tự đúng ở
 // nền sáng và nền tối, cùng cách ColorMenu.jsx đang làm.
@@ -26,6 +28,9 @@ function IconLink() {
 function IconCapture() {
   return <svg viewBox="0 0 20 20" width="18" height="18"><path d="M4 5.5 L16 5.5 M4 10 L16 10 M4 14.5 L11 14.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>;
 }
+function IconGameDesign() {
+  return <svg viewBox="0 0 20 20" width="18" height="18"><path d="M3 4.5 H17 V15.5 H3 Z M6.5 8 H13.5 M6.5 11 H11" fill="none" stroke="currentColor" strokeWidth="1.55" strokeLinecap="round" strokeLinejoin="round" /><path d="M15.4 3.1 L16.9 4.6 M16.9 3.1 L15.4 4.6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>;
+}
 // Chữ "T" vẽ bằng path, KHÔNG dùng ký tự thật: ký tự sẽ đổi hình theo font, và
 // ở skin vẽ tay thì nó thành chữ T viết tay — nút công cụ phải đứng yên.
 function IconText() {
@@ -49,9 +54,10 @@ function IconLaser() {
 
 export default function ToolRail({
   mode, tool, placeTool, canEdit, linkMode,
-  onMode, onTool, onPlace, onToggleLink, onCapture
+  gameDesign, onGameTemplate, onMode, onTool, onPlace, onToggleLink, onCapture
 }) {
   const { t } = useLingui();
+  const [gameMenuOpen, setGameMenuOpen] = useState(false);
   return (
     // Bấm vào thanh không được lọt xuống canvas thành một cú quét chọn. Handler
     // đặt ở đây chứ không ở từng khung: sự kiện từ nút vẫn nổi bọt qua bao ngoài
@@ -133,6 +139,27 @@ export default function ToolRail({
           disabled={!canEdit}
           onClick={() => onPlace("node")}
         ><IconCard /></button>
+        {gameDesign && (
+          <div className="tool-gd-wrap">
+            <button
+              type="button"
+              className={"tool-btn" + (gameMenuOpen ? " on" : "")}
+              title={t`Thêm thẻ Game Design`}
+              disabled={!canEdit}
+              onClick={() => setGameMenuOpen((open) => !open)}
+            ><IconGameDesign /></button>
+            {gameMenuOpen && (
+              <div className="tool-gd-menu">
+                <div className="tool-gd-title"><Trans>Thêm thẻ Game Design</Trans></div>
+                {GAME_DESIGN_TYPES.map((item) => (
+                  <button key={item.id} type="button" onClick={() => { onGameTemplate(item.id); setGameMenuOpen(false); }}>
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
         <button
           type="button"
           className={"tool-btn" + (placeTool === "group" ? " on" : "")}

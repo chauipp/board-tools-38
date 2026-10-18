@@ -9,6 +9,9 @@ export default function BoardList() {
   const [boards, setBoards] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [creating, setCreating] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createKind, setCreateKind] = useState("idea");
+  const [createTemplate, setCreateTemplate] = useState("");
   const [deletingId, setDeletingId] = useState(null);
   const navigate = useNavigate();
   const { toggle: toggleTheme } = useTheme();
@@ -34,7 +37,7 @@ export default function BoardList() {
     if (name == null) return;            // bấm Huỷ
     setCreating(true);
     try {
-      const { id } = await createBoard(name.trim() || t`Board mới`);
+      const { id } = await createBoard(name.trim() || t`Board mới`, createKind, createTemplate);
       navigate(`/idea-map/${id}`);
     } catch (e) {
       setLoadError(e.code || "UNKNOWN");
@@ -72,9 +75,35 @@ export default function BoardList() {
         </div>
       </div>
 
-      <button type="button" className="btn" onClick={handleCreate} disabled={creating} style={{ marginBottom: 20 }}>
+      <button type="button" className="btn" onClick={() => setCreateOpen(true)} disabled={creating} style={{ marginBottom: 20 }}>
         <Trans>+ Board mới</Trans>
       </button>
+
+      {createOpen && (
+        <div className="board-create-modal" role="dialog" aria-modal="true">
+          <div className="board-create-card">
+            <div className="board-create-head"><h2><Trans>Tạo board mới</Trans></h2><button className="btn ghost icon" onClick={() => setCreateOpen(false)}>×</button></div>
+            <p className="board-create-help"><Trans>Chọn cách bạn muốn phát triển ý tưởng.</Trans></p>
+            <div className="board-kind-grid">
+              <button type="button" className={"board-kind" + (createKind === "idea" ? " selected" : "")} onClick={() => { setCreateKind("idea"); setCreateTemplate(""); }}>
+                <span className="board-kind-icon">✦</span><strong><Trans>Bảng tư duy trực quan</Trans></strong><small><Trans>Brainstorm tự do bằng thẻ, khung và dây nối.</Trans></small>
+              </button>
+              <button type="button" className={"board-kind" + (createKind === "game-design" ? " selected" : "")} onClick={() => setCreateKind("game-design")}>
+                <span className="board-kind-icon">⚙</span><strong><Trans>Game Design</Trans></strong><small><Trans>Template mechanic, quest, skill và tiêu chí giao dev.</Trans></small>
+              </button>
+            </div>
+            {createKind === "game-design" && <label className="board-template-picker"><Trans>Khởi tạo từ template</Trans>
+              <select value={createTemplate} onChange={(event) => setCreateTemplate(event.target.value)}>
+                <option value=""><Trans>Board trống</Trans></option>
+                <option value="combat"><Trans>Combat — loop, action, balance, playtest</Trans></option>
+                <option value="level"><Trans>Level — progression, level cards, playtest</Trans></option>
+                <option value="economy"><Trans>Economy — source, sink, balance, playtest</Trans></option>
+              </select>
+            </label>}
+            <button type="button" className="btn" onClick={async () => { setCreateOpen(false); await handleCreate(); }} disabled={creating}><Trans>Tạo board</Trans></button>
+          </div>
+        </div>
+      )}
 
       {loadError && (
         <p style={{ color: "#c33" }}><Trans>Có lỗi xảy ra, thử tải lại trang.</Trans></p>
@@ -106,8 +135,9 @@ export default function BoardList() {
               }}
             >
               <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.name}</span>
-              <span style={{ fontSize: 11.5, color: "var(--ink-dim)", textTransform: "uppercase" }}>
-                {ROLE_LABEL[b.role] || b.role}
+              <span style={{ fontSize: 11.5, color: "var(--ink-dim)", textTransform: "uppercase", display: "flex", gap: 8 }}>
+                <span>{b.kind === "game-design" ? <Trans>GAME DESIGN</Trans> : <Trans>TƯ DUY</Trans>}</span>
+                <span>{ROLE_LABEL[b.role] || b.role}</span>
               </span>
             </Link>
             {b.role === "owner" && (

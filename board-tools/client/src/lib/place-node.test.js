@@ -1,4 +1,4 @@
-// game-tools/client/src/lib/place-node.test.js
+// board-tools/client/src/lib/place-node.test.js
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { placeLinkedNode, parentNodeId } from "./place-node.js";

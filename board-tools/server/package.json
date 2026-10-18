@@ -1,5 +1,5 @@
 {
-  "name": "game-tools-server",
+  "name": "board-tools-server",
   "version": "1.0.0",
   "private": true,
   "type": "module",

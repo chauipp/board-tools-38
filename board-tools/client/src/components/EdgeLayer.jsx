@@ -2,6 +2,7 @@ import { memo } from "react";
 import { colorVar } from "../lib/badges.js";
 import { edgeEndpoint, rectForEndpoint, clipToRect } from "../lib/board-geometry.js";
 import { seedFrom, sketchyLine } from "../lib/sketchy.js";
+import { relationDefinition, isGameDesignRelation } from "../lib/game-design.js";
 
 // Toàn bộ lớp dây tách riêng và bọc memo: nó là phần đắt nhất của mỗi lần
 // render (mỗi cạnh phải tra hai đầu rồi cắt đoạn thẳng vào biên hai hình chữ
@@ -12,6 +13,7 @@ import { seedFrom, sketchyLine } from "../lib/sketchy.js";
 // trước đây mỗi đầu dây quét lại cả mảng thẻ.
 function EdgeLayer({
   edges, nodeById, groupById, cardSize, sketch,
+  gameDesign, cycleEdgeIds,
   hoveredEdgeId, selectedEdgeIds, edgeDragId, snapGuides, linkDraft, edgeDraft,
   onEdgeEnter, onEdgeLeave, onEdgeClick, onEdgeContextMenu
 }) {
@@ -30,6 +32,8 @@ function EdgeLayer({
         const p1 = clipToRect(r1.cx, r1.cy, r1.w, r1.h, r2.cx, r2.cy);
         const p2 = clipToRect(r2.cx, r2.cy, r2.w, r2.h, r1.cx, r1.cy);
         const hot = hoveredEdgeId === edge.id;
+        const relationClass = gameDesign && isGameDesignRelation(edge.relation) ? ` relation-${edge.relation}` : "";
+        const cycleClass = cycleEdgeIds?.has(edge.id) ? " dependency-cycle" : "";
         return (
           <g
             key={edge.id}
@@ -48,7 +52,7 @@ function EdgeLayer({
                 không việc gì phải rung theo, và hit-test thẳng thì rẻ hơn. */}
             {sketch ? (
               <path
-                className={"visible" + (hot ? " hot" : "") + (selectedEdgeIds.has(edge.id) ? " selected" : "")}
+                className={"visible" + (hot ? " hot" : "") + (selectedEdgeIds.has(edge.id) ? " selected" : "") + relationClass + cycleClass}
                 d={sketchyLine(p1.x, p1.y, p2.x, p2.y, seedFrom(edge.id))}
                 // fill="none" là BẮT BUỘC: CSS của .edge-layer chưa bao giờ khai
                 // fill cho path, thiếu attribute này là dây thành mảng đen đặc.
@@ -59,7 +63,7 @@ function EdgeLayer({
               />
             ) : (
               <line
-                className={"visible" + (hot ? " hot" : "") + (selectedEdgeIds.has(edge.id) ? " selected" : "")}
+                className={"visible" + (hot ? " hot" : "") + (selectedEdgeIds.has(edge.id) ? " selected" : "") + relationClass + cycleClass}
                 x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
                 style={edge.color ? { stroke: colorVar(edge.color) } : undefined}
                 strokeDasharray={edge.style === "dashed" ? "6 5" : undefined}
@@ -68,6 +72,11 @@ function EdgeLayer({
             )}
             {edge.label && (
               <text className="edge-label" x={(p1.x + p2.x) / 2} y={(p1.y + p2.y) / 2 - 4} textAnchor="middle">{edge.label}</text>
+            )}
+            {gameDesign && isGameDesignRelation(edge.relation) && Math.hypot(p2.x - p1.x, p2.y - p1.y) >= 150 && (
+              <text className={`edge-label edge-relation-label relation-${edge.relation}`} x={(p1.x + p2.x) / 2} y={(p1.y + p2.y) / 2 + 12} textAnchor="middle">
+                {relationDefinition(edge.relation).label}
+              </text>
             )}
           </g>
         );

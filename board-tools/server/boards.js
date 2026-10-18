@@ -3,10 +3,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import multer from "multer";
-import { Board, User } from "./models.js";
+import { Board, BoardSnapshot, User } from "./models.js";
 import { getBoardRole, isEmailAllowed } from "./auth.js";
 import { rateLimit } from "./rate-limit.js";
-import { validateBoardPayload } from "./board-payload.js";
+import { normalizeGameDesignFlow, resolveGameDesignFields, validateBoardPayload } from "./board-payload.js";
 import { PDF_DIR, isR2Enabled, sendPdf, storePdf } from "./pdf-storage.js";
 import {
   checkRoom,
@@ -26,7 +26,52 @@ const DEFAULT_STATUSES = [
   { id: 5, name: "Đã loại", color: "st-rejected" }
 ];
 
+const GAME_DESIGN_STATUSES = [
+  { id: 1, name: "Draft", color: "st-idea" },
+  { id: 2, name: "Review", color: "st-considering" },
+  { id: 3, name: "Ready for dev", color: "st-chosen" },
+  { id: 4, name: "In dev", color: "st-parked" },
+  { id: 5, name: "Testing", color: "st-rejected" },
+  { id: 6, name: "Done", color: "st-done" }
+  , { id: 7, name: "Approved", color: "st-done" }, { id: 8, name: "Rejected", color: "st-rejected" }, { id: 9, name: "Archived", color: "st-parked" }
+];
+
+const GAME_DESIGN_TEMPLATES = {
+  combat: {
+    gameDesignBrief: { genre: "Action", targetAudience: "", playerFantasy: "Làm chủ combat", playerJourney: [] },
+    gameDesignFlow: { playerLoop: [{ id: "loop-1", title: "Engage", action: "Đọc tình huống", outcome: "Chọn hành động", note: "", cardIds: ["1"] }, { id: "loop-2", title: "Execute", action: "Dùng skill", outcome: "Tạo lợi thế", note: "", cardIds: ["2"] }], progressionMap: [] },
+    gameDesignBalance: { metrics: [{ id: "metric-1", key: "damage", name: "Damage", value: "10", min: "1", max: "999", unit: "HP", formula: "", cardIds: ["2"] }, { id: "metric-2", key: "cooldown", name: "Cooldown", value: "1", min: "0", max: "60", unit: "s", formula: "", cardIds: ["2"] }] },
+    nodes: [{ id: 1, x: 80, y: 150, title: "Combat loop", desc: "Vòng lặp chiến đấu cốt lõi", type: "core-loop", design: {} }, { id: 2, x: 380, y: 150, title: "Primary action", desc: "Đòn đánh hoặc skill chính", type: "mechanic", design: {} }, { id: 3, x: 680, y: 150, title: "Combat playtest", desc: "Kiểm nghiệm nhịp độ và độ rõ ràng", type: "playtest", design: {} }],
+    edges: [{ id: 1, from: 1, to: 2, relation: "unlocks" }, { id: 2, from: 2, to: 3, relation: "depends-on" }]
+  },
+  level: {
+    gameDesignBrief: { genre: "", targetAudience: "", playerFantasy: "Khám phá và chinh phục", playerJourney: [] },
+    gameDesignFlow: { playerLoop: [], progressionMap: [{ id: "progress-1", title: "Tutorial", objective: "Học hành động cơ bản", unlocks: "Level 1", description: "", emotion: "", cardIds: ["1"] }, { id: "progress-2", title: "Challenge", objective: "Kết hợp kỹ năng", unlocks: "Level 2", description: "", emotion: "", cardIds: ["2"] }] },
+    gameDesignBalance: { metrics: [{ id: "metric-1", key: "completion_rate", name: "Completion rate", value: "", min: "0", max: "100", unit: "%", formula: "", cardIds: ["2"] }] },
+    nodes: [{ id: 1, x: 80, y: 150, title: "Tutorial level", desc: "Dạy một hành động mới", type: "quest-level", design: {} }, { id: 2, x: 380, y: 150, title: "Challenge level", desc: "Kết hợp kỹ năng trong áp lực", type: "quest-level", design: {} }, { id: 3, x: 680, y: 150, title: "Level playtest", desc: "Kiểm completion, nhịp độ và điểm kẹt", type: "playtest", design: {} }],
+    edges: [{ id: 1, from: 1, to: 2, relation: "unlocks" }, { id: 2, from: 2, to: 3, relation: "depends-on" }]
+  },
+  economy: {
+    gameDesignBrief: { genre: "", targetAudience: "", playerFantasy: "Lựa chọn và phát triển", playerJourney: [] },
+    gameDesignFlow: { playerLoop: [{ id: "loop-1", title: "Earn", action: "Hoàn thành hoạt động", outcome: "Nhận tài nguyên", note: "", cardIds: ["1"] }, { id: "loop-2", title: "Spend", action: "Nâng cấp", outcome: "Mở sức mạnh mới", note: "", cardIds: ["2"] }], progressionMap: [] },
+    gameDesignBalance: { metrics: [{ id: "metric-1", key: "currency_reward", name: "Currency reward", value: "100", min: "0", max: "", unit: "gold", formula: "", cardIds: ["1"] }, { id: "metric-2", key: "upgrade_cost", name: "Upgrade cost", value: "100", min: "0", max: "", unit: "gold", formula: "", cardIds: ["2"] }] },
+    nodes: [{ id: 1, x: 80, y: 150, title: "Resource source", desc: "Nguồn nhận tài nguyên", type: "mechanic", design: {} }, { id: 2, x: 380, y: 150, title: "Upgrade sink", desc: "Nơi người chơi chi tiêu", type: "skill-item", design: {} }, { id: 3, x: 680, y: 150, title: "Economy playtest", desc: "Kiểm lựa chọn, nhịp kiếm và chi", type: "playtest", design: {} }],
+    edges: [{ id: 1, from: 1, to: 2, relation: "unlocks" }, { id: 2, from: 2, to: 3, relation: "depends-on" }]
+  }
+};
+
+function gameDesignTemplate(templateId) {
+  const template = GAME_DESIGN_TEMPLATES[templateId];
+  if (!template) return {};
+  return {
+    ...structuredClone(template),
+    nextNodeId: template.nodes.length + 1,
+    nextEdgeId: template.edges.length + 1
+  };
+}
+
 const router = Router();
+const MAX_SNAPSHOTS_PER_BOARD = 30;
 
 // PDF không nằm trong document MongoDB của board: chỉ metadata sống trong node.
 // Nếu đủ biến R2, bytes ở Cloudflare R2; còn local thì dùng disk để phát triển.
@@ -51,13 +96,17 @@ const AUTH_FIELDS = "ownerEmail members";
 // PUT cần thêm `updatedAt` để so với mốc client khai là mình đang dựa trên —
 // đó là toàn bộ cơ chế phát hiện hai người lưu đè nhau. Vẫn KHÔNG đọc nội dung
 // board: một Date thì rẻ, còn nodes[] có ảnh base64 thì không.
-const AUTH_FIELDS_VERSIONED = "ownerEmail members updatedAt";
+const AUTH_FIELDS_VERSIONED = "ownerEmail members updatedAt kind gameDesignBrief gameDesignFlow gameDesignBalance";
 
 // Nội dung board trả cho client. Dùng chung cho GET và cho thân của 409
 // (conflict) — hai chỗ đó phải trả ĐÚNG một hình dạng, lệch nhau là phía client
 // ghép nhầm một board thiếu field.
 function boardPayload(obj) {
   return {
+    kind: obj.kind || "idea",
+    gameDesignBrief: obj.gameDesignBrief ?? null,
+    gameDesignFlow: obj.gameDesignFlow ?? null,
+    gameDesignBalance: obj.gameDesignBalance ?? null,
     nodes: obj.nodes,
     edges: obj.edges,
     groups: obj.groups,
@@ -77,6 +126,27 @@ function boardPayload(obj) {
     nextDrawingId: obj.nextDrawingId,
     updatedAt: obj.updatedAt
   };
+}
+
+function snapshotPayload(obj) {
+  const { updatedAt, ...payload } = boardPayload(obj);
+  return payload;
+}
+
+function snapshotSummary(snapshot) {
+  return {
+    id: String(snapshot._id),
+    label: snapshot.label || "",
+    createdBy: snapshot.createdBy,
+    createdAt: snapshot.createdAt
+  };
+}
+
+async function broadcastBoardUpdate(req, boardId, payload, clientId) {
+  const io = req.app.get("io");
+  const room = "board:" + String(boardId);
+  if (clientId) io.in(room).except(clientId).emit("board:update", payload);
+  else io.in(room).emit("board:update", payload);
 }
 
 // Trả 404 (không phải 403) khi người gọi không có role nào trên board —
@@ -111,12 +181,13 @@ router.get("/", async (req, res) => {
     const boards = await Board.find({
       $or: [{ ownerEmail: email }, { "members.email": email }]
     })
-      .select("name ownerEmail members updatedAt")
+      .select("name kind ownerEmail members updatedAt")
       .lean();
     res.json(
       boards.map((b) => ({
         id: String(b._id),
         name: b.name,
+        kind: b.kind || "idea",
         role: getBoardRole(b, email),
         updatedAt: b.updatedAt
       }))
@@ -150,12 +221,16 @@ router.post("/", createBoardLimiter, async (req, res) => {
       return res.status(403).json({ error: "board_limit_reached", limit: MAX_BOARDS_PER_USER });
     }
     const name = (req.body.name || "").trim() || "Untitled board";
+    const kind = req.body.kind === "game-design" ? "game-design" : "idea";
+    const template = kind === "game-design" && typeof req.body.template === "string" ? req.body.template : "";
     const board = await Board.create({
       name,
+      kind,
       ownerEmail: email,
       members: [],
-      statuses: DEFAULT_STATUSES.map((s) => ({ ...s })),
-      nextStatusId: 6
+      statuses: (kind === "game-design" ? GAME_DESIGN_STATUSES : DEFAULT_STATUSES).map((s) => ({ ...s })),
+      nextStatusId: kind === "game-design" ? 9 : 7,
+      ...gameDesignTemplate(template)
     });
     res.status(201).json({ id: String(board._id) });
   } catch (e) {
@@ -273,6 +348,97 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+router.get("/:id/snapshots", async (req, res) => {
+  try {
+    const found = await loadBoardWithRole(req, res, "viewer", AUTH_FIELDS);
+    if (!found) return;
+    const snapshots = await BoardSnapshot.find({ boardId: found.board._id })
+      .sort({ createdAt: -1 })
+      .limit(MAX_SNAPSHOTS_PER_BOARD)
+      .lean();
+    res.json({ snapshots: snapshots.map(snapshotSummary) });
+  } catch (e) {
+    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
+    res.status(500).json({ error: "KhÃ´ng Ä‘á»c Ä‘Æ°á»£c snapshot." });
+  }
+});
+
+router.post("/:id/snapshots", async (req, res) => {
+  try {
+    const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS);
+    if (!found) return;
+    const label = typeof req.body?.label === "string" ? req.body.label.trim().slice(0, 160) : "";
+    const current = await Board.findById(found.board._id);
+    if (!current) return res.status(404).json({ error: "not_found" });
+    const snapshot = await BoardSnapshot.create({
+      boardId: current._id,
+      label,
+      createdBy: req.user.email,
+      board: snapshotPayload(current.toObject())
+    });
+    const overflow = await BoardSnapshot.find({ boardId: current._id })
+      .sort({ createdAt: -1 })
+      .skip(MAX_SNAPSHOTS_PER_BOARD)
+      .select("_id")
+      .lean();
+    if (overflow.length) await BoardSnapshot.deleteMany({ _id: { $in: overflow.map((item) => item._id) } });
+    res.status(201).json({ snapshot: snapshotSummary(snapshot) });
+  } catch (e) {
+    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
+    res.status(500).json({ error: "KhÃ´ng táº¡o Ä‘Æ°á»£c snapshot." });
+  }
+});
+
+router.post("/:id/snapshots/:snapshotId/restore", async (req, res) => {
+  try {
+    const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS_VERSIONED);
+    if (!found) return;
+    const snapshot = await BoardSnapshot.findOne({ _id: req.params.snapshotId, boardId: found.board._id }).lean();
+    if (!snapshot) return res.status(404).json({ error: "snapshot_not_found" });
+
+    const source = snapshot.board;
+    const normalized = Object.prototype.hasOwnProperty.call(source, "gameDesignFlow")
+      ? { ...source, gameDesignFlow: normalizeGameDesignFlow(source.gameDesignFlow) }
+      : source;
+    const invalid = validateBoardPayload(normalized);
+    if (invalid) return res.status(409).json({ error: "invalid_snapshot", detail: invalid });
+    const gameDesign = resolveGameDesignFields(normalized, found.board);
+    const updatedAt = new Date();
+    const restored = {
+      kind: gameDesign.kind,
+      gameDesignBrief: gameDesign.gameDesignBrief,
+      gameDesignFlow: gameDesign.gameDesignFlow,
+      gameDesignBalance: gameDesign.gameDesignBalance,
+      nodes: normalized.nodes,
+      edges: normalized.edges,
+      groups: normalized.groups,
+      statuses: normalized.statuses,
+      tags: normalized.tags,
+      palette: normalized.palette,
+      bg: normalized.bg,
+      grid: normalized.grid,
+      pack: normalized.pack,
+      drawings: normalized.drawings,
+      nextNodeId: normalized.nextNodeId,
+      nextEdgeId: normalized.nextEdgeId,
+      nextGroupId: normalized.nextGroupId,
+      nextStatusId: normalized.nextStatusId,
+      nextTagId: normalized.nextTagId,
+      nextPaletteId: normalized.nextPaletteId,
+      nextDrawingId: normalized.nextDrawingId,
+      updatedAt
+    };
+    await Board.findByIdAndUpdate(found.board._id, restored);
+    const payload = { ...restored, updatedAt: updatedAt.toISOString() };
+    await broadcastBoardUpdate(req, found.board._id, payload);
+    res.json({ ok: true, board: payload });
+    syncBoardRefs(found.board._id, normalized.nodes).catch(() => {});
+  } catch (e) {
+    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
+    res.status(500).json({ error: "KhÃ´ng khÃ´i phá»¥c Ä‘Æ°á»£c snapshot." });
+  }
+});
+
 router.put("/:id", async (req, res) => {
   try {
     const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS_VERSIONED);
@@ -280,16 +446,20 @@ router.put("/:id", async (req, res) => {
 
     // Kiểm TRƯỚC khi ghi. Client đã kiểm khá nhiều, nhưng client là thứ ai cũng
     // thay được — còn cái ghi vào Mongo thì cả phòng phải đọc lên và vẽ lại.
-    const invalid = validateBoardPayload(req.body);
+    const body = Object.prototype.hasOwnProperty.call(req.body, "gameDesignFlow")
+      ? { ...req.body, gameDesignFlow: normalizeGameDesignFlow(req.body.gameDesignFlow) }
+      : req.body;
+    const invalid = validateBoardPayload(body);
     if (invalid) return res.status(400).json({ error: "invalid_board", detail: invalid });
 
     const {
-      nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
+      kind, gameDesignBrief, gameDesignFlow, gameDesignBalance, nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
       nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, nextDrawingId,
       view,
       clientId,
       baseUpdatedAt
-    } = req.body;
+    } = body;
+    const gameDesign = resolveGameDesignFields(body, found.board);
 
     // Kiểm phiên bản. Client khai "bản tôi đang dựa trên có mốc này"; nếu mốc
     // trên server đã khác thì trong lúc client dựng payload đã có người khác lưu
@@ -315,7 +485,7 @@ router.put("/:id", async (req, res) => {
 
     const updatedAt = new Date();
     await Board.findByIdAndUpdate(req.params.id, {
-      nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
+      kind: gameDesign.kind, gameDesignBrief: gameDesign.gameDesignBrief, gameDesignFlow: gameDesign.gameDesignFlow, gameDesignBalance: gameDesign.gameDesignBalance, nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
       nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, nextDrawingId,
       view, updatedAt
     });
@@ -323,17 +493,14 @@ router.put("/:id", async (req, res) => {
     // gồm `view`: camera là riêng từng người, không đồng bộ qua kênh này.
     // clientId là socket.id của chính người lưu (nếu socket presence đã
     // kết nối) — .except() loại người gửi khỏi broadcast của chính họ.
-    const io = req.app.get("io");
     // Cùng chuẩn hoá như phòng presence trong index.js: lấy id từ document,
     // không từ URL — hex viết hoa/thường khác nhau vẫn phải vào đúng phòng.
-    const room = "board:" + String(found.board._id);
     const payload = {
-      nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
+      kind: gameDesign.kind, gameDesignBrief: gameDesign.gameDesignBrief, gameDesignFlow: gameDesign.gameDesignFlow, gameDesignBalance: gameDesign.gameDesignBalance, nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
       nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, nextDrawingId,
       updatedAt: updatedAt.toISOString()
     };
-    if (clientId) io.in(room).except(clientId).emit("board:update", payload);
-    else io.in(room).emit("board:update", payload);
+    await broadcastBoardUpdate(req, found.board._id, payload, clientId);
     res.json({ ok: true, updatedAt: updatedAt.toISOString() });
 
     // Thẻ PDF nào vừa mất khỏi nodes[] thì ghi nhận là mồ côi, để bộ dọn rác trả

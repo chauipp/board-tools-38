@@ -29,7 +29,7 @@ export const COLLECTIONS = [
 ];
 
 // Thiết lập cấp bảng: không có id, nên chỉ có luật "ai đổi thì người đó thắng".
-const SCALARS = ["bg", "grid", "pack"];
+const SCALARS = ["bg", "grid", "pack", "kind", "gameDesignBrief", "gameDesignFlow", "gameDesignBalance"];
 
 function listOf(board, key) {
   const v = board ? board[key] : null;

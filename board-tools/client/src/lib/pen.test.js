@@ -1,4 +1,4 @@
-// game-tools/client/src/lib/pen.test.js
+// board-tools/client/src/lib/pen.test.js
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { PEN_COLORS, PEN_WIDTHS, PEN_DEFAULT, penVar, loadPenPrefs, savePenPrefs, dashArray } from "./pen.js";
