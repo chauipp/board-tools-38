@@ -1,0 +1,317 @@
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2026-07-24 10:25+0700\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=utf-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: @lingui/cli\n"
+"Language: vi\n"
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: \n"
+"PO-Revision-Date: \n"
+"Last-Translator: \n"
+"Language-Team: \n"
+"Plural-Forms: \n"
+
+#: src/pages/Calculator.jsx:173
+#: src/pages/IdeaMap.jsx:608
+msgid "← Trang chủ"
+msgstr "← Trang chủ"
+
+#: src/pages/Calculator.jsx:221
+msgid "+ Thêm chỉ số"
+msgstr "+ Thêm chỉ số"
+
+#: src/pages/IdeaMap.jsx:609
+msgid "+ Ý tưởng"
+msgstr "+ Ý tưởng"
+
+#: src/pages/Calculator.jsx:239
+msgid "A gây <0>{dmgToB}</0> sát thương/lượt lên B  ·  B gây <1>{dmgToA}</1> sát thương/lượt lên A"
+msgstr "A gây <0>{dmgToB}</0> sát thương/lượt lên B  ·  B gây <1>{dmgToA}</1> sát thương/lượt lên A"
+
+#: src/pages/IdeaMap.jsx:658
+msgid "Bấm để lọc — kéo thả vào thẻ để gán nhãn"
+msgstr "Bấm để lọc — kéo thả vào thẻ để gán nhãn"
+
+#: src/pages/IdeaMap.jsx:639
+msgid "Bấm để lọc — kéo thả vào thẻ để gán trạng thái"
+msgstr "Bấm để lọc — kéo thả vào thẻ để gán trạng thái"
+
+#: src/pages/IdeaMap.jsx:858
+#: src/pages/IdeaMap.jsx:859
+#: src/pages/IdeaMap.jsx:860
+#: src/pages/IdeaMap.jsx:861
+msgid "Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác"
+msgstr "Bấm để tạo ý tưởng nối tiếp — giữ và kéo để nối tới thẻ khác"
+
+#: src/pages/Home.jsx:40
+#: src/pages/IdeaMap.jsx:605
+msgid "Bản đồ ý tưởng"
+msgstr "Bản đồ ý tưởng"
+
+#: src/pages/Home.jsx:56
+msgid "Bàn tính đối đầu"
+msgstr "Bàn tính đối đầu"
+
+#: src/pages/Calculator.jsx:169
+msgid "Bàn Tính Đối Đầu"
+msgstr "Bàn Tính Đối Đầu"
+
+#: src/pages/Calculator.jsx:256
+msgid "Bế tắc: không bên nào đủ tấn công xuyên phá giáp đối phương. Đây là dấu hiệu nên xem lại cách quy đổi điểm."
+msgstr "Bế tắc: không bên nào đủ tấn công xuyên phá giáp đối phương. Đây là dấu hiệu nên xem lại cách quy đổi điểm."
+
+#: src/pages/Calculator.jsx:200
+msgid "Build A"
+msgstr "Build A"
+
+#: src/pages/Calculator.jsx:260
+msgid "Build A thắng ở lượt {rounds}, còn lại {hp} máu."
+msgstr "Build A thắng ở lượt {rounds}, còn lại {hp} máu."
+
+#: src/pages/Calculator.jsx:201
+msgid "Build B"
+msgstr "Build B"
+
+#: src/pages/Calculator.jsx:262
+msgid "Build B thắng ở lượt {rounds}, còn lại {hp} máu."
+msgstr "Build B thắng ở lượt {rounds}, còn lại {hp} máu."
+
+#: src/pages/Calculator.jsx:258
+msgid "Cả hai cùng gục ở lượt {rounds} — hoà."
+msgstr "Cả hai cùng gục ở lượt {rounds} — hoà."
+
+#: src/pages/Calculator.jsx:240
+msgid "Cần có ít nhất Máu, Giáp và Tấn công trong bảng để xem trước đối đầu."
+msgstr "Cần có ít nhất Máu, Giáp và Tấn công trong bảng để xem trước đối đầu."
+
+#: src/pages/Calculator.jsx:198
+msgid "Chỉ số"
+msgstr "Chỉ số"
+
+#: src/pages/Calculator.jsx:135
+msgid "Chỉ số mới"
+msgstr "Chỉ số mới"
+
+#: src/pages/Calculator.jsx:170
+msgid "Chia ngân sách điểm vào chỉ số chiến đấu cho hai build, rồi mô phỏng xem ai thắng."
+msgstr "Chia ngân sách điểm vào chỉ số chiến đấu cho hai build, rồi mô phỏng xem ai thắng."
+
+#: src/pages/Home.jsx:59
+msgid "Chia ngân sách điểm vào Máu / Giáp / Xuyên giáp / Tấn công cho hai build, rồi mô phỏng xem ai thắng."
+msgstr "Chia ngân sách điểm vào Máu / Giáp / Xuyên giáp / Tấn công cho hai build, rồi mô phỏng xem ai thắng."
+
+#: src/pages/IdeaMap.jsx:32
+msgid "Chưa gắn nhãn"
+msgstr "Chưa gắn nhãn"
+
+#: src/pages/Calculator.jsx:264
+msgid "Chưa phân thắng bại sau {rounds} lượt — trận kéo dài, có thể cần xem lại tỉ lệ sát thương/máu."
+msgstr "Chưa phân thắng bại sau {rounds} lượt — trận kéo dài, có thể cần xem lại tỉ lệ sát thương/máu."
+
+#: src/pages/IdeaMap.jsx:749
+msgid "Chuột trái kéo để bôi đen chọn thẻ, chuột phải kéo để lia sa bàn, cuộn để lia, giữ Ctrl/⌘ + cuộn để phóng to."
+msgstr "Chuột trái kéo để bôi đen chọn thẻ, chuột phải kéo để lia sa bàn, cuộn để lia, giữ Ctrl/⌘ + cuộn để phóng to."
+
+#: src/components/LocaleToggle.jsx:13
+msgid "Chuyển sang tiếng Anh"
+msgstr "Chuyển sang tiếng Anh"
+
+#: src/components/LocaleToggle.jsx:13
+msgid "Chuyển sang tiếng Việt"
+msgstr "Chuyển sang tiếng Việt"
+
+#: src/pages/Calculator.jsx:226
+msgid "Còn lại — Build A"
+msgstr "Còn lại — Build A"
+
+#: src/pages/Calculator.jsx:230
+msgid "Còn lại — Build B"
+msgstr "Còn lại — Build B"
+
+#: src/pages/IdeaMap.jsx:766
+msgid "Dán JSON đã xuất trước đó, rồi bấm Nhập vào bản đồ."
+msgstr "Dán JSON đã xuất trước đó, rồi bấm Nhập vào bản đồ."
+
+#: src/pages/Calculator.jsx:106
+#: src/pages/IdeaMap.jsx:174
+msgid "Đang tải…"
+msgstr "Đang tải…"
+
+#: src/pages/Calculator.jsx:236
+msgid "Đối đầu thử"
+msgstr "Đối đầu thử"
+
+#: src/pages/Calculator.jsx:177
+#: src/pages/Home.jsx:25
+#: src/pages/IdeaMap.jsx:626
+msgid "Đổi giao diện sáng/tối"
+msgstr "Đổi giao diện sáng/tối"
+
+#: src/pages/IdeaMap.jsx:771
+msgid "Đóng"
+msgstr "Đóng"
+
+#: src/pages/Home.jsx:15
+msgid "Dự án nhóm"
+msgstr "Dự án nhóm"
+
+#: src/pages/Home.jsx:65
+msgid "Dữ liệu lưu chung trên server cho cả nhóm — ai mở link cũng thấy bản mới nhất."
+msgstr "Dữ liệu lưu chung trên server cho cả nhóm — ai mở link cũng thấy bản mới nhất."
+
+#: src/pages/IdeaMap.jsx:606
+msgid "Game Của Tôi"
+msgstr "Game Của Tôi"
+
+#: src/pages/Calculator.jsx:199
+msgid "Giá / điểm"
+msgstr "Giá / điểm"
+
+#: src/pages/Home.jsx:20
+msgid "Hai công cụ nhẹ để quản lý ý tưởng và thử cân bằng số liệu trước khi bắt tay code thật. Dữ liệu dùng chung cho cả nhóm."
+msgstr "Hai công cụ nhẹ để quản lý ý tưởng và thử cân bằng số liệu trước khi bắt tay code thật. Dữ liệu dùng chung cho cả nhóm."
+
+#: src/pages/Calculator.jsx:174
+#: src/pages/IdeaMap.jsx:610
+msgid "Hoàn tác (Ctrl+Z)"
+msgstr "Hoàn tác (Ctrl+Z)"
+
+#: src/pages/IdeaMap.jsx:826
+msgid "Hủy"
+msgstr "Hủy"
+
+#: src/pages/IdeaMap.jsx:765
+msgid "JSON hiện tại — copy để sao lưu hoặc gửi cho người khác xem."
+msgstr "JSON hiện tại — copy để sao lưu hoặc gửi cho người khác xem."
+
+#: src/pages/IdeaMap.jsx:584
+msgid "JSON không hợp lệ — kiểm tra lại nội dung đã dán."
+msgstr "JSON không hợp lệ — kiểm tra lại nội dung đã dán."
+
+#: src/pages/Calculator.jsx:181
+#: src/pages/IdeaMap.jsx:622
+msgid "Không lưu được lên server."
+msgstr "Không lưu được lên server."
+
+#: src/components/LoadError.jsx:6
+msgid "Không tải được dữ liệu. Kiểm tra server đã chạy chưa (npm run dev trong thư mục server) và biến MONGODB_URI đã đúng chưa."
+msgstr "Không tải được dữ liệu. Kiểm tra server đã chạy chưa (npm run dev trong thư mục server) và biến MONGODB_URI đã đúng chưa."
+
+#. placeholder {0}: board.nodes.length
+#: src/pages/IdeaMap.jsx:673
+msgid "Khớp {matchCount}/{0}"
+msgstr "Khớp {matchCount}/{0}"
+
+#: src/pages/Calculator.jsx:175
+#: src/pages/IdeaMap.jsx:611
+msgid "Làm lại (Ctrl+Shift+Z)"
+msgstr "Làm lại (Ctrl+Shift+Z)"
+
+#: src/pages/IdeaMap.jsx:825
+msgid "Lưu"
+msgstr "Lưu"
+
+#: src/pages/Calculator.jsx:242
+msgid "Mô phỏng đối đầu"
+msgstr "Mô phỏng đối đầu"
+
+#: src/pages/IdeaMap.jsx:817
+msgid "Mô tả ngắn"
+msgstr "Mô tả ngắn"
+
+#: src/pages/Calculator.jsx:184
+msgid "Ngân sách điểm"
+msgstr "Ngân sách điểm"
+
+#: src/pages/IdeaMap.jsx:650
+#: src/pages/IdeaMap.jsx:819
+msgid "Nhãn"
+msgstr "Nhãn"
+
+#: src/pages/IdeaMap.jsx:748
+msgid "Nhấp đúp vào khoảng trống để tạo ý tưởng đầu tiên."
+msgstr "Nhấp đúp vào khoảng trống để tạo ý tưởng đầu tiên."
+
+#: src/pages/IdeaMap.jsx:624
+msgid "Nhập JSON"
+msgstr "Nhập JSON"
+
+#: src/pages/IdeaMap.jsx:770
+msgid "Nhập vào bản đồ"
+msgstr "Nhập vào bản đồ"
+
+#: src/pages/IdeaMap.jsx:616
+msgid "Nối ý tưởng"
+msgstr "Nối ý tưởng"
+
+#: src/pages/IdeaMap.jsx:756
+msgid "Phóng to"
+msgstr "Phóng to"
+
+#: src/pages/Calculator.jsx:168
+msgid "Sa bàn thiết kế"
+msgstr "Sa bàn thiết kế"
+
+#: src/pages/Home.jsx:43
+msgid "Sơ đồ tư duy tự do: kéo-thả, nối quan hệ, gắn nhãn/trạng thái, lọc và tìm kiếm — quản lý mọi ý tưởng liên quan đến game."
+msgstr "Sơ đồ tư duy tự do: kéo-thả, nối quan hệ, gắn nhãn/trạng thái, lọc và tìm kiếm — quản lý mọi ý tưởng liên quan đến game."
+
+#: src/pages/IdeaMap.jsx:672
+msgid "Số ý tưởng khớp bộ lọc"
+msgstr "Số ý tưởng khớp bộ lọc"
+
+#: src/pages/IdeaMap.jsx:842
+msgid "Sửa"
+msgstr "Sửa"
+
+#: src/pages/IdeaMap.jsx:816
+msgid "Tên ý tưởng"
+msgstr "Tên ý tưởng"
+
+#: src/pages/Calculator.jsx:254
+msgid "Thiếu chỉ số Máu / Giáp / Tấn công — không mô phỏng được."
+msgstr "Thiếu chỉ số Máu / Giáp / Tấn công — không mô phỏng được."
+
+#: src/pages/IdeaMap.jsx:754
+msgid "Thu nhỏ"
+msgstr "Thu nhỏ"
+
+#: src/pages/IdeaMap.jsx:619
+msgid "Tìm theo tên/mô tả…"
+msgstr "Tìm theo tên/mô tả…"
+
+#: src/pages/IdeaMap.jsx:631
+msgid "Trạng thái"
+msgstr "Trạng thái"
+
+#: src/pages/IdeaMap.jsx:758
+msgid "Vừa khung"
+msgstr "Vừa khung"
+
+#: src/pages/IdeaMap.jsx:843
+msgid "Xoá"
+msgstr "Xoá"
+
+#: src/pages/Calculator.jsx:213
+msgid "Xoá chỉ số"
+msgstr "Xoá chỉ số"
+
+#: src/pages/IdeaMap.jsx:675
+msgid "Xoá lọc"
+msgstr "Xoá lọc"
+
+#: src/pages/IdeaMap.jsx:623
+msgid "Xuất JSON"
+msgstr "Xuất JSON"
+
+#: src/pages/Home.jsx:17
+msgid "Xưởng Game Của Tôi"
+msgstr "Xưởng Game Của Tôi"
+
+#: src/pages/IdeaMap.jsx:191
+#: src/pages/IdeaMap.jsx:281
+#: src/pages/IdeaMap.jsx:825
+msgid "Ý tưởng mới"
+msgstr "Ý tưởng mới"
