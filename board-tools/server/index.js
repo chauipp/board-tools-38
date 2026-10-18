@@ -225,6 +225,30 @@ const MAX_LIVE_INK_COLOR_LEN = 32;
 const MIN_LIVE_INK_W = 1;
 const MAX_LIVE_INK_W = 64;
 
+// Biên độ tuyệt đối cho từng số trong `pts`. Number.isFinite một mình KHÔNG đủ:
+// nó cho qua 1e9. Với nét bút, thiệt hại tối đa của toạ độ khổng lồ chỉ là một
+// VỆT rộng ≤ MAX_LIVE_INK_W — đó là lý do MAX_LIVE_INK_W tồn tại. Nhưng hình
+// khối có `fill`, nên gói {kind:"rect", fill:true, pts:[-1e9,-1e9,1e9,1e9]} đi
+// vòng qua chốt đó và phủ kín màn hình cả phòng tới khi hết TTL.
+//
+// .canvas là 4200×3200 nên 20000 (gần 5 lần cạnh dài) rộng hơn mọi thao tác
+// thật rất nhiều — kể cả kéo hình vượt ra ngoài mép canvas — mà vẫn giữ vùng
+// hiển thị hữu hạn. Chốt này áp cho MỌI kind, cả nét bút.
+const MAX_LIVE_INK_COORD = 20000;
+
+// Bản sao TAY của SHAPE_KINDS trong game-tools/client/src/lib/shape.js, cộng
+// "pen". Server không import được lib của client. Thêm một kind mới thì phải
+// sửa cả hai chỗ — client sẽ vẽ được nhưng server sẽ chặn gói nếu quên.
+const LIVE_INK_KINDS = new Set(["pen", "rect", "ellipse", "line", "arrow", "triangle", "diamond"]);
+// Bản sao TAY của SHAPE_CLOSED trong game-tools/client/src/lib/shape.js — cũng
+// vì server không import được lib client, cũng phải sửa hai chỗ nếu đổi.
+// Chỉ bốn hình ĐÓNG mới có vùng trong để tô. Client không bao giờ gắn `fill`
+// cho line/arrow, nên nếu server chấp thì một gói {kind:"arrow", fill:true} làm
+// đầu mũi tên hiện thành nêm tô đặc lúc peer kéo rồi biến mất khi board:update
+// về — nhấp nháy không giải thích được.
+const LIVE_INK_FILLABLE_KINDS = new Set(["rect", "ellipse", "triangle", "diamond"]);
+const LIVE_INK_BOX_NUMBERS = 4;
+
 function sanitizeInk(payload) {
   if (!payload || typeof payload !== "object") return null;
   if (!Number.isFinite(payload.strokeId)) return null;
@@ -250,16 +274,33 @@ function sanitizeInk(payload) {
   // pts phải là mảng số ĐỘ DÀI CHẴN: nó là [x0,y0,x1,y1,…], lẻ một số là dữ
   // liệu hỏng chứ không phải thiếu điểm cuối.
   if (!Array.isArray(payload.pts)) return null;
+
+  let kind = "pen";
+  if (payload.kind !== undefined) {
+    if (typeof payload.kind !== "string" || !LIVE_INK_KINDS.has(payload.kind)) return null;
+    kind = payload.kind;
+  }
+  // Hình khối: pts là hai góc đối, đúng 4 số. Kiểm ĐỘ DÀI GỐC trước khi slice —
+  // nếu kiểm sau thì một mảng 4000 số bị cắt còn MAX_LIVE_INK_NUMBERS rồi vẫn
+  // không phải 4, nhưng một mảng gửi kèm kind sai vẫn có thể lọt qua nhờ bị cắt.
+  if (kind !== "pen" && payload.pts.length !== LIVE_INK_BOX_NUMBERS) return null;
+
   const pts = payload.pts.slice(0, MAX_LIVE_INK_NUMBERS);
   if (pts.length < 2 || pts.length % 2 !== 0) return null;
-  if (!pts.every((v) => Number.isFinite(v))) return null;
+  if (!pts.every((v) => Number.isFinite(v) && Math.abs(v) <= MAX_LIVE_INK_COORD)) return null;
 
   const clean = { strokeId, seq: Number.isFinite(payload.seq) ? payload.seq : 0, pts };
+  // Nét bút không mang kind, đúng như client phát — giữ gói nhẹ và giữ
+  // mergeInkPacket mặc định về "pen".
+  if (kind !== "pen") clean.kind = kind;
   if (clean.seq === 0) {
     if (typeof payload.color !== "string" || payload.color.length > MAX_LIVE_INK_COLOR_LEN) return null;
     if (!Number.isFinite(payload.w) || payload.w < MIN_LIVE_INK_W || payload.w > MAX_LIVE_INK_W) return null;
     clean.color = payload.color;
     clean.w = payload.w;
+    // Không tin kiểu client gửi: chỉ đúng `true` mới là tô đặc. Và chỉ hình
+    // ĐÓNG mới được mang `fill` — nét bút, line, arrow thì không có field này.
+    if (LIVE_INK_FILLABLE_KINDS.has(kind)) clean.fill = payload.fill === true;
   }
   return clean;
 }

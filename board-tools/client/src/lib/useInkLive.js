@@ -19,6 +19,7 @@ export function useInkLive(socket) {
   const socketRef = useRef(socket);
   const strokeIdRef = useRef(0);       // số đếm cục bộ; server đính socketId
   const seqRef = useRef(0);
+  const kindRef = useRef("pen");       // kind của hình đang kéo, để gói giữa chừng tự mang theo
 
   useEffect(() => {
     socketRef.current = socket;
@@ -61,9 +62,24 @@ export function useInkLive(socket) {
     }, INK_SEND_MS);
   }
 
+  // KHÁC bút: ở đây KHÔNG cần bộ tích luỹ, và đó không phải sơ suất.
+  // trailingThrottle THAY tham số đang chờ (`pending = args`) — với gói mang
+  // ĐIỂM MỚI THÊM thì đó là mất dữ liệu, nhưng với gói mang CẢ HỘP thì đó đúng
+  // là hành vi mong muốn: hộp sau đã chứa trọn thông tin của hộp trước.
+  const flushBoxRef = useRef(null);
+  if (!flushBoxRef.current) {
+    flushBoxRef.current = trailingThrottle((box) => {
+      seqRef.current += 1;
+      socketRef.current?.emit("live:ink", {
+        strokeId: strokeIdRef.current, seq: seqRef.current, kind: kindRef.current, pts: box
+      });
+    }, INK_SEND_MS);
+  }
+
   useEffect(() => () => {
     flushPtsRef.current?.cancel();
     flushEraseRef.current?.cancel();
+    flushBoxRef.current?.cancel();
   }, []);
 
   useEffect(() => {
@@ -110,6 +126,27 @@ export function useInkLive(socket) {
     emitNow({ strokeId: strokeIdRef.current, done: true, drawingId: drawingId ?? null });
   }, [emitNow]);
 
+  // Gói đầu phải đi NGAY: nó mang kind, màu, độ dày và chế độ tô; thiếu nó thì
+  // mọi gói sau bị người nhận bỏ (xem mergeInkPacket).
+  const beginShape = useCallback((kind, color, w, fill, box) => {
+    flushBoxRef.current.cancel();
+    strokeIdRef.current += 1;
+    seqRef.current = 0;
+    kindRef.current = kind;
+    emitNow({ strokeId: strokeIdRef.current, seq: 0, kind, color, w, fill: fill === true, pts: box });
+  }, [emitNow]);
+
+  const pushShape = useCallback((box) => {
+    flushBoxRef.current(box);
+  }, []);
+
+  // Xả nốt hộp còn treo TRƯỚC gói done, không thì hình trên màn hình người khác
+  // đứng ở kích thước của gói gần nhất cho tới khi board:update về.
+  const endShape = useCallback((drawingId) => {
+    flushBoxRef.current.flush();
+    emitNow({ strokeId: strokeIdRef.current, done: true, drawingId: drawingId ?? null });
+  }, [emitNow]);
+
   // Gọi từ onBlur trong useInk.js để bỏ dở BẤT KỲ thứ gì đang dở — bút hay cục
   // gôm — nên phải huỷ cả hai bộ tích luỹ, không chỉ của bút. Chỉ một trong
   // hai (pendingPtsRef/pendingEraseRef) thật sự có gì để huỷ tại một thời
@@ -124,6 +161,7 @@ export function useInkLive(socket) {
     pendingPtsRef.current = [];
     flushEraseRef.current.cancel();
     pendingEraseRef.current = [];
+    flushBoxRef.current.cancel();
     emitNow({ strokeId: strokeIdRef.current, cancel: true });
   }, [emitNow]);
 
@@ -156,7 +194,15 @@ export function useInkLive(socket) {
   // một object mới mỗi render là bắt chúng dựng lại theo, kể cả khi không có gì
   // thật sự đổi.
   return useMemo(
-    () => ({ liveStrokes, beginStroke, pushPoints, endStroke, cancelStroke, beginErase, pushErase, endErase, reconcile }),
-    [liveStrokes, beginStroke, pushPoints, endStroke, cancelStroke, beginErase, pushErase, endErase, reconcile]
+    () => ({
+      liveStrokes, beginStroke, pushPoints, endStroke, cancelStroke,
+      beginShape, pushShape, endShape,
+      beginErase, pushErase, endErase, reconcile
+    }),
+    [
+      liveStrokes, beginStroke, pushPoints, endStroke, cancelStroke,
+      beginShape, pushShape, endShape,
+      beginErase, pushErase, endErase, reconcile
+    ]
   );
 }

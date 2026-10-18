@@ -16,6 +16,7 @@ test("inkKey: khoá theo socketId + strokeId", () => {
 test("mergeInkPacket: gói đầu tạo entry đủ màu, độ dày, điểm", () => {
   const m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, pts: [0, 0, 10, 10] }), NOW);
   assert.deepEqual(m.get("s1:1"), {
+    kind: "pen", fill: false,
     color: "pen-red", w: 4, pts: [0, 0, 10, 10],
     drawingId: null, erase: null, expiresAt: NOW + INK_LIVE_TTL_MS
   });
@@ -101,4 +102,60 @@ test("reconcileInkOverlay: overlay rỗng hoặc board null trả map cũ", () =
   assert.equal(reconcileInkOverlay(empty, { drawings: [] }), empty);
   const m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, pts: [0, 0] }), NOW);
   assert.equal(reconcileInkOverlay(m, null), m);
+});
+
+test("mergeInkPacket: gói đầu của hình khối giữ kind và fill", () => {
+  const m = mergeInkPacket(
+    new Map(),
+    pkt({ seq: 0, kind: "rect", color: "pen-blue", w: 8, fill: true, pts: [0, 0, 100, 60] }),
+    NOW
+  );
+  assert.deepEqual(m.get("s1:1"), {
+    kind: "rect", fill: true,
+    color: "pen-blue", w: 8, pts: [0, 0, 100, 60],
+    drawingId: null, erase: null, expiresAt: NOW + INK_LIVE_TTL_MS
+  });
+});
+
+// ĐÂY là điểm khác nhau cốt lõi giữa hai loại gói: gói hình khối mang CẢ hộp
+// nên phải THAY, không nối. Nối thì hộp dài ra thành 6, 8, 10 số và shapePath
+// đọc sai hình.
+test("mergeInkPacket: gói sau của hình khối THAY hộp chứ không nối", () => {
+  let m = mergeInkPacket(new Map(), pkt({ seq: 0, kind: "rect", color: "pen-blue", w: 8, fill: false, pts: [0, 0, 10, 10] }), NOW);
+  m = mergeInkPacket(m, pkt({ seq: 1, kind: "rect", pts: [0, 0, 50, 40] }), NOW + 40);
+  m = mergeInkPacket(m, pkt({ seq: 2, kind: "rect", pts: [0, 0, 90, 70] }), NOW + 80);
+  assert.deepEqual(m.get("s1:1").pts, [0, 0, 90, 70]);
+  assert.equal(m.get("s1:1").kind, "rect", "kind phải giữ qua các gói");
+  assert.equal(m.get("s1:1").fill, false, "fill phải giữ qua các gói");
+  assert.equal(m.get("s1:1").expiresAt, NOW + 80 + INK_LIVE_TTL_MS);
+});
+
+test("mergeInkPacket: gói done của hình khối giữ hộp và mang drawingId", () => {
+  let m = mergeInkPacket(new Map(), pkt({ seq: 0, kind: "ellipse", color: "pen-green", w: 2, fill: true, pts: [0, 0, 10, 10] }), NOW);
+  m = mergeInkPacket(m, pkt({ done: true, drawingId: 42 }), NOW + 50);
+  const e = m.get("s1:1");
+  assert.equal(e.drawingId, 42);
+  assert.equal(e.kind, "ellipse");
+  assert.deepEqual(e.pts, [0, 0, 10, 10]);
+  assert.equal(e.expiresAt, NOW + 50 + INK_SETTLE_TTL_MS);
+});
+
+// Bài này cũng là bài chốt hồi quy cho bản sửa fallback về `cur.kind` (fix
+// round 1, xem test ngay dưới): nét bút không mang kind ở gói nào cả, kể cả seq
+// 0, nên fallback không được đổi hành vi NỐI của nó.
+test("mergeInkPacket: gói không có kind vẫn là nét bút và vẫn NỐI điểm", () => {
+  let m = mergeInkPacket(new Map(), pkt({ seq: 0, color: "pen-red", w: 4, pts: [0, 0] }), NOW);
+  m = mergeInkPacket(m, pkt({ seq: 1, pts: [10, 10] }), NOW + 40);
+  assert.equal(m.get("s1:1").kind, "pen");
+  assert.deepEqual(m.get("s1:1").pts, [0, 0, 10, 10]);
+});
+
+// Fix round 1: gói seq > 0 của hình khối mà THIẾU kind (client cũ, hoặc field
+// bị rơi trên đường truyền) phải vẫn được nhận ra là hình khối qua kind của
+// entry đã lưu (cur.kind), không được mặc định về "pen" — mặc định sai sẽ rơi
+// vào nhánh NỐI và làm hộp phình từ 4 lên 8 số.
+test("mergeInkPacket: gói sau của hình khối THIẾU kind vẫn phải THAY hộp, không nối", () => {
+  let m = mergeInkPacket(new Map(), pkt({ seq: 0, kind: "rect", color: "pen-blue", w: 8, fill: false, pts: [0, 0, 10, 10] }), NOW);
+  m = mergeInkPacket(m, pkt({ seq: 1, pts: [0, 0, 50, 40] }), NOW + 40); // không có kind
+  assert.deepEqual(m.get("s1:1").pts, [0, 0, 50, 40]);
 });

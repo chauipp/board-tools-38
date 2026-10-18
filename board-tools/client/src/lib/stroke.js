@@ -64,21 +64,30 @@ export function strokePath(pts) {
   return d;
 }
 
-export function strokesHitBy(drawings, point, radius) {
-  const out = [];
-  for (const d of drawings || []) {
-    const pts = d.pts || [];
-    if (pts.length < 2) continue;
-    const limit = (d.w || 0) / 2 + radius;
-    let hit = false;
-    if (pts.length === 2) {
-      hit = Math.hypot(point.x - pts[0], point.y - pts[1]) <= limit;
-    } else {
-      for (let i = 0; i + 3 < pts.length && !hit; i += 2) {
-        hit = distToSegment(point.x, point.y, pts[i], pts[i + 1], pts[i + 2], pts[i + 3]) <= limit;
-      }
-    }
-    if (hit) out.push(d.id);
+// Tách nguyên vòng lặp của strokesHitBy cũ ra thành một phép tính dùng lại
+// được: shape.js gọi nó cho cả đường bao của hình khối, không phải chép lại.
+export function polylineHitBy(pts, point, limit) {
+  if (!pts || pts.length < 2) return false;
+  if (pts.length === 2) return Math.hypot(point.x - pts[0], point.y - pts[1]) <= limit;
+  for (let i = 0; i + 3 < pts.length; i += 2) {
+    if (distToSegment(point.x, point.y, pts[i], pts[i + 1], pts[i + 2], pts[i + 3]) <= limit) return true;
   }
-  return out;
+  return false;
+}
+
+// Ray casting: bắn một tia sang phải, đếm số cạnh cắt qua. Lẻ là trong, chẵn là
+// ngoài. Cạnh có độ dài 0 (đường bao hình đóng lặp lại điểm đầu ở cuối) tự bị
+// loại vì hai đầu có cùng y nên điều kiện cắt không thoả.
+export function pointInPolygon(pts, px, py) {
+  if (!pts || pts.length < 6) return false;
+  const n = pts.length / 2;
+  let inside = false;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = pts[i * 2], yi = pts[i * 2 + 1];
+    const xj = pts[j * 2], yj = pts[j * 2 + 1];
+    if ((yi > py) !== (yj > py) && px < ((xj - xi) * (py - yi)) / (yj - yi) + xi) {
+      inside = !inside;
+    }
+  }
+  return inside;
 }
