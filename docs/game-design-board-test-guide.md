@@ -6,11 +6,11 @@ Mở hai terminal:
 
 ```bash
 # Terminal 1 — backend thật
-cd "board-tools/server"
+cd "server"
 PORT=3345 PUBLIC_MODE=true npm run dev
 
 # Terminal 2 — frontend
-cd "board-tools/client"
+cd "client"
 CHOKIDAR_USEPOLLING=true npm run dev -- --host 0.0.0.0
 ```
 
@@ -112,7 +112,7 @@ Mở `http://localhost:7155`. Nếu Vite báo cổng 7155 đang dùng, dùng đ�
 ## 12. Kiểm tự động
 
 ```bash
-cd board-tools/client
+cd client
 npm test
 npm run build
 npm run test:smoke

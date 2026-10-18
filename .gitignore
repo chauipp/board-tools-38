@@ -3,3 +3,8 @@
 # worktrees là bản sao cả repo, commit vào đây là repo lồng repo.
 .claude/
 .playwright-mcp/
+
+# Local environment files; keep only checked-in templates.
+.env
+.env.*
+!.env.example

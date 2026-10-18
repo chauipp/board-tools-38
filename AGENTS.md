@@ -2,22 +2,22 @@
 
 ## Project
 
-- Main application: `board-tools/`
-- Client: React + Vite in `board-tools/client/`
-- Server: Express + Socket.IO + MongoDB in `board-tools/server/`
+- Main application: repository root
+- Client: React + Vite in `client/`
+- Server: Express + Socket.IO + MongoDB in `server/`
 
 ## Common commands
 
 Run these from the indicated directory:
 
 ```bash
-# board-tools/client
+# client
 npm test
 npm run build
 npm run test:smoke
 npm run dev
 
-# board-tools/server
+# server
 npm test
 npm run dev
 ```

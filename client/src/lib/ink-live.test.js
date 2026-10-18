@@ -1,4 +1,4 @@
-// board-tools/client/src/lib/ink-live.test.js
+// client/src/lib/ink-live.test.js
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
