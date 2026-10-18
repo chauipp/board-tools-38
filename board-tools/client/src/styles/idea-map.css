@@ -11,6 +11,25 @@
 }
 .spacer { flex: 1 1 auto; min-width: 8px; }
 
+.menubar-item { position: relative; }
+.menubar-trigger {
+  background: transparent; color: var(--ink); border: 1px solid transparent;
+  padding: 7px 11px; border-radius: 4px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.05em;
+  text-transform: uppercase; cursor: pointer; white-space: nowrap;
+}
+.menubar-trigger:hover, .menubar-trigger.open { background: var(--bg); border-color: var(--line); }
+.menubar-trigger.active { color: var(--accent); }
+.menubar-dropdown {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 90; min-width: 190px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+  box-shadow: var(--shadow); padding: 6px; display: flex; flex-direction: column; gap: 3px;
+}
+.menubar-dropdown.align-right { left: auto; right: 0; }
+.menubar-dropdown .btn { width: 100%; text-align: left; }
+.menubar-sep { height: 1px; background: var(--line); margin: 4px 2px; }
+.menubar-row { display: flex; gap: 6px; }
+.menubar-row .btn { width: auto; flex: 1; text-align: center; }
+
 .filterbar {
   display: flex; flex-direction: column; align-items: stretch;
   padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--surface);
@@ -102,6 +121,7 @@
 .edge-layer .hit { stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
 .edge-layer .visible { stroke: var(--ink-dim); stroke-width: 1.6; opacity: 0.75; }
 .edge-layer .visible.hot { stroke: var(--accent); stroke-width: 2.4; opacity: 1; }
+.edge-layer .visible.selected { stroke: var(--accent); stroke-width: 2.4; stroke-dasharray: 5 3; opacity: 1; }
 .edge-layer .draft { stroke: var(--accent); stroke-width: 1.8; stroke-dasharray: 5 4; pointer-events: none; }
 .edge-handle-layer { position: absolute; left: 0; top: 0; width: 4200px; height: 3200px; overflow: visible; pointer-events: none; z-index: 5; }
 .edge-handle-layer .edge-handle { fill: var(--accent); stroke: var(--bg); stroke-width: 1.5; cursor: grab; pointer-events: all; }
@@ -122,6 +142,18 @@
 .idea-card.selected { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: var(--shadow), 0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent); }
 .idea-card.dim { opacity: 0.22; pointer-events: none; }
 .idea-card.flash { animation: card-flash 1.5s ease; }
+.idea-card.border-dashed { border-style: dashed; }
+.idea-card.shape-ellipse { border-radius: 50%; padding-left: 30px; padding-right: 30px; text-align: center; }
+.idea-card.is-root {
+  width: 260px;
+  border-width: 2px; border-color: var(--accent);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 16%, var(--surface-2)), var(--surface-2) 65%);
+  box-shadow: var(--shadow), 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), 0 8px 22px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.idea-card.is-root:hover { box-shadow: var(--shadow), 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent), 0 10px 26px color-mix(in srgb, var(--accent) 34%, transparent); }
+.idea-card.is-root .title { font-size: 17px; font-weight: 700; line-height: 1.25; }
+.idea-card.is-root .desc { font-size: 12.5px; -webkit-line-clamp: 6; }
+.root-badge { font-size: 15px; flex-shrink: 0; line-height: 1.2; }
 @keyframes card-flash {
   0%, 60% { outline: 3px solid var(--accent); outline-offset: 4px; }
   100% { outline: 0 solid transparent; }
@@ -129,7 +161,7 @@
 .connector-zone {
   position: absolute; width: 46px; height: 46px;
   display: flex; align-items: center; justify-content: center;
-  cursor: crosshair; z-index: 5;
+  z-index: 5;
 }
 .connector-zone.top { top: -8px; left: 50%; transform: translate(-50%, -50%); }
 .connector-zone.right { top: 50%; left: calc(100% + 8px); transform: translate(-50%, -50%); }
@@ -139,10 +171,11 @@
   width: 16px; height: 16px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   background: var(--surface); border: 1.5px solid var(--accent); color: var(--accent);
-  font-size: 12px; font-weight: 700; line-height: 1;
+  font-size: 12px; font-weight: 700; line-height: 1; cursor: crosshair;
   opacity: 0; transform: scale(0.8); transition: opacity 0.12s ease, transform 0.12s ease;
+  pointer-events: none;
 }
-.connector-zone:hover .connector-dot { opacity: 1; transform: scale(1); }
+.connector-zone:hover .connector-dot { opacity: 1; transform: scale(1); pointer-events: auto; }
 .idea-card.dim .connector-zone { display: none; }
 .idea-card .card-top { display: flex; gap: 6px; align-items: flex-start; }
 .idea-card .title { font-size: 13px; line-height: 1.2; flex: 1; min-width: 0; overflow-wrap: break-word; }
@@ -187,7 +220,7 @@
 .edit-form input[type="text"], .edit-form textarea, .edit-form select {
   width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 3px; padding: 4px 5px; font-size: 11px;
 }
-.edit-form textarea { resize: vertical; height: 50px; }
+.edit-form textarea { field-sizing: content; min-height: 50px; max-height: 300px; }
 .edit-form .edit-row { display: flex; gap: 5px; }
 .edit-form .edit-row > * { flex: 1; min-width: 0; }
 .edit-form .edit-actions { display: flex; gap: 5px; margin-top: 2px; }
@@ -469,6 +502,18 @@
   padding: 1px 6px; border-radius: 4px;
   font-size: 10px; font-weight: 600; color: var(--accent-ink);
   white-space: nowrap;
+}
+
+/* Vùng người khác đang chọn: viền nét đứt bao quanh thẻ, màu theo người đó —
+   cùng ngôn ngữ hình ảnh với .idea-card.selected (viền liền, màu accent) của
+   chính mình, nét đứt để phân biệt "người khác chọn" với "mình chọn". */
+.peer-select-outline {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px dashed;
+  border-radius: 10px;
+  pointer-events: none;
+  z-index: 5;
 }
 
 /* Chế độ chỉ xem. Khoá cả .topbar/.filterbar thì tiện nhưng giết luôn tìm kiếm,

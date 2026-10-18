@@ -102,7 +102,8 @@ router.get("/:id", async (req, res) => {
       nextStatusId: obj.nextStatusId,
       nextTagId: obj.nextTagId,
       nextPaletteId: obj.nextPaletteId,
-      view: obj.view
+      view: obj.view,
+      updatedAt: obj.updatedAt
     });
   } catch (e) {
     if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
@@ -116,14 +117,31 @@ router.put("/:id", async (req, res) => {
     if (!found) return;
     const {
       nodes, edges, groups, statuses, tags, palette,
-      nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, view
+      nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, view,
+      clientId
     } = req.body;
+    const updatedAt = new Date();
     await Board.findByIdAndUpdate(req.params.id, {
       nodes, edges, groups, statuses, tags, palette,
       nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId,
-      view, updatedAt: new Date()
+      view, updatedAt
     });
-    res.json({ ok: true });
+    // Phát cho người khác trong board ngay sau khi lưu thành công — không
+    // gồm `view`: camera là riêng từng người, không đồng bộ qua kênh này.
+    // clientId là socket.id của chính người lưu (nếu socket presence đã
+    // kết nối) — .except() loại người gửi khỏi broadcast của chính họ.
+    const io = req.app.get("io");
+    // Cùng chuẩn hoá như phòng presence trong index.js: lấy id từ document,
+    // không từ URL — hex viết hoa/thường khác nhau vẫn phải vào đúng phòng.
+    const room = "board:" + String(found.board._id);
+    const payload = {
+      nodes, edges, groups, statuses, tags, palette,
+      nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId,
+      updatedAt: updatedAt.toISOString()
+    };
+    if (clientId) io.in(room).except(clientId).emit("board:update", payload);
+    else io.in(room).emit("board:update", payload);
+    res.json({ ok: true, updatedAt: updatedAt.toISOString() });
   } catch (e) {
     if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
     res.status(500).json({ error: "Không lưu được dữ liệu board." });

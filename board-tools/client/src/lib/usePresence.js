@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 
 const CURSOR_THROTTLE_MS = 50;
@@ -21,6 +21,11 @@ export function excludeSelf(list, selfId) {
 
 export function usePresence(user, boardId) {
   const [peers, setPeers] = useState(new Map());
+  // Socket vừa nằm ref (cho sendCursor đọc mà không cần deps) vừa nằm state:
+  // các hook khác (useLiveSync) nhận socket qua tham số nên phải có một lần
+  // render lại khi kết nối được tạo — đọc thẳng socketRef.current thì lần
+  // render đầu luôn là null và effect của chúng không bao giờ chạy lại.
+  const [socket, setSocket] = useState(null);
   const socketRef = useRef(null);
   const lastSentAtRef = useRef(0);
   const warnedRef = useRef(false);
@@ -30,6 +35,7 @@ export function usePresence(user, boardId) {
     warnedRef.current = false;
     const socket = io({ query: { boardId } });
     socketRef.current = socket;
+    setSocket(socket);
 
     socket.on("presence:sync", (list) => {
       // socket.id is only populated once the connection completes; reading
@@ -53,6 +59,20 @@ export function usePresence(user, boardId) {
       if (peer.socketId === socket.id) return;
       setPeers((prev) => new Map(prev).set(peer.socketId, peer));
     });
+    socket.on("selection:update", ({ socketId, selectedIds }) => {
+      setPeers((prev) => {
+        const p = prev.get(socketId);
+        if (!p) return prev;
+        return new Map(prev).set(socketId, { ...p, selectedIds });
+      });
+    });
+    socket.on("edge-draft:update", ({ socketId, edgeDraft }) => {
+      setPeers((prev) => {
+        const p = prev.get(socketId);
+        if (!p) return prev;
+        return new Map(prev).set(socketId, { ...p, edgeDraft });
+      });
+    });
     socket.on("connect_error", (err) => {
       // Rejected handshake (e.g. missing/invalid gt_session): degrade to no
       // presence, board still works over REST. Warn once per connection
@@ -73,6 +93,7 @@ export function usePresence(user, boardId) {
     return () => {
       socket.disconnect();
       socketRef.current = null;
+      setSocket(null);
       setPeers(new Map());
     };
   }, [user, boardId]);
@@ -80,7 +101,11 @@ export function usePresence(user, boardId) {
   // Takes a lazy coordinate getter (rather than x/y directly) so callers can
   // defer any expensive work (e.g. getBoundingClientRect()) until after the
   // throttle gate below, instead of doing it on every raw mousemove.
-  function sendCursor(getXY) {
+  // useCallback (không phải hàm thường): IdeaMap.jsx sẽ dùng sendSelection
+  // trong deps của một useEffect theo dõi selectedIds — nếu hàm đổi định
+  // danh mỗi lần render, effect đó chạy lại mỗi render thay vì chỉ khi
+  // selectedIds thực sự đổi.
+  const sendCursor = useCallback((getXY) => {
     const socket = socketRef.current;
     if (!socket) return;
     const now = Date.now();
@@ -88,7 +113,19 @@ export function usePresence(user, boardId) {
     lastSentAtRef.current = now;
     const { x, y } = getXY();
     socket.emit("cursor:move", { x, y });
-  }
+  }, []);
 
-  return { peers, sendCursor };
+  const sendSelection = useCallback((ids) => {
+    const socket = socketRef.current;
+    if (!socket) return;
+    socket.emit("selection:update", ids);
+  }, []);
+
+  const sendEdgeDraft = useCallback((draft) => {
+    const socket = socketRef.current;
+    if (!socket) return;
+    socket.emit("edge-draft:update", draft);
+  }, []);
+
+  return { peers, sendCursor, sendSelection, sendEdgeDraft, socket };
 }

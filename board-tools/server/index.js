@@ -173,6 +173,9 @@ app.get("*", (req, res, next) => {
 
 const server = http.createServer(app);
 const io = new Server(server);
+// boards.js (router riêng, mount trước io tồn tại) cần phát board:update
+// sau khi lưu REST thành công — lấy io qua app, không import vòng.
+app.set("io", io);
 
 io.use(async (socket, next) => {
   const user = parseSessionFromCookieHeader(socket.handshake.headers.cookie);
@@ -215,7 +218,7 @@ io.on("connection", (socket) => {
   const room = "board:" + socket.data.boardId;
   socket.join(room);
   const peers = peersForBoard(socket.data.boardId);
-  const peer = { socketId: socket.id, ...socket.data.user, x: 0, y: 0 };
+  const peer = { socketId: socket.id, ...socket.data.user, x: 0, y: 0, selectedIds: [], edgeDraft: null };
   peers.set(socket.id, peer);
   socket.emit("presence:sync", Array.from(peers.values()));
   socket.to(room).emit("presence:join", peer);
@@ -230,6 +233,37 @@ io.on("connection", (socket) => {
     p.x = x;
     p.y = y;
     socket.to(room).emit("cursor:move", p);
+  });
+
+  // Vị trí/kích thước tạm thời lúc đang kéo — không lưu DB, không giữ
+  // state trên server, chỉ relay nguyên payload cho người khác trong room.
+  socket.on("live:geom", (payload) => {
+    socket.to(room).emit("live:geom", payload || {});
+  });
+
+  // Nội dung đang gõ dở — không lưu DB, chỉ relay để người khác thấy chữ
+  // chạy gần real-time; bản chính thức vẫn qua saveNodeEdit → PUT như cũ.
+  socket.on("live:text", (payload) => {
+    socket.to(room).emit("live:text", payload || {});
+  });
+
+  // Vùng đang chọn của người này — presence nhẹ, không phải chỉnh sửa dữ
+  // liệu, viewer vẫn gửi/nhận được như cursor.
+  socket.on("selection:update", (payload) => {
+    const ids = Array.isArray(payload) ? payload.filter((id) => Number.isFinite(id)) : [];
+    const p = peers.get(socket.id);
+    if (!p) return;
+    p.selectedIds = ids;
+    socket.to(room).emit("selection:update", { socketId: socket.id, selectedIds: ids });
+  });
+
+  // Đầu dây đang được kéo (link mới hoặc kéo lại đầu dây có sẵn) — cùng
+  // bản chất với cursor: điểm bám theo chuột, không phải dữ liệu board.
+  socket.on("edge-draft:update", (payload) => {
+    const p = peers.get(socket.id);
+    if (!p) return;
+    p.edgeDraft = payload && Number.isFinite(payload.x) && Number.isFinite(payload.y) ? payload : null;
+    socket.to(room).emit("edge-draft:update", { socketId: socket.id, edgeDraft: p.edgeDraft });
   });
 
   socket.on("disconnect", () => {

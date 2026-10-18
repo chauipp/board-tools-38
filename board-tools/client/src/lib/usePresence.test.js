@@ -30,3 +30,13 @@ test("excludeSelf returns every peer unchanged when selfId is not in the list", 
 test("excludeSelf returns an empty list for an empty sync payload", () => {
   assert.deepEqual(excludeSelf([], "self-1"), []);
 });
+
+test("excludeSelf preserves selectedIds and edgeDraft fields on remaining peers", () => {
+  const list = [
+    { socketId: "self-1", email: "me@x.com" },
+    { socketId: "peer-2", email: "other@x.com", selectedIds: [3, 4], edgeDraft: { fromKind: "node", fromId: 3, x: 1, y: 2 } }
+  ];
+  assert.deepEqual(excludeSelf(list, "self-1"), [
+    { socketId: "peer-2", email: "other@x.com", selectedIds: [3, 4], edgeDraft: { fromKind: "node", fromId: 3, x: 1, y: 2 } }
+  ]);
+});

@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { pointInRect, nodesInFrame, edgeEndpoint, edgesMatch } from "./board-geometry.js";
-import { clipToRect, rectForEndpoint } from "./board-geometry.js";
+import { clipToRect, rectForEndpoint, segmentIntersectsRect } from "./board-geometry.js";
 
 test("pointInRect: điểm trong và ngoài hình chữ nhật, biên tính là trong", () => {
   const rect = { x: 0, y: 0, w: 100, h: 50 };
@@ -60,6 +60,26 @@ test("clipToRect: đường chéo cắt cạnh gần hơn", () => {
 
 test("clipToRect: đích trùng tâm trả về tâm (không chia 0)", () => {
   assert.deepEqual(clipToRect(0, 0, 100, 50, 0, 0), { x: 0, y: 0 });
+});
+
+test("segmentIntersectsRect: dây đi ngang qua khung marquee dù 2 đầu ở ngoài", () => {
+  const rect = { x: 40, y: 0, w: 20, h: 100 }; // dải dọc hẹp giữa đường
+  assert.equal(segmentIntersectsRect(0, 50, 100, 50, rect), true);
+});
+
+test("segmentIntersectsRect: một đầu dây nằm trong khung tính là chọn", () => {
+  const rect = { x: 0, y: 0, w: 50, h: 50 };
+  assert.equal(segmentIntersectsRect(25, 25, 200, 200, rect), true);
+});
+
+test("segmentIntersectsRect: dây hoàn toàn ngoài khung không được chọn", () => {
+  const rect = { x: 0, y: 0, w: 50, h: 50 };
+  assert.equal(segmentIntersectsRect(100, 100, 200, 200, rect), false);
+});
+
+test("segmentIntersectsRect: dây song song, ngoài khung sát cạnh vẫn không chọn", () => {
+  const rect = { x: 0, y: 0, w: 50, h: 50 };
+  assert.equal(segmentIntersectsRect(60, 0, 60, 50, rect), false);
 });
 
 test("rectForEndpoint: node dùng sizeOf, group dùng w/h, null khi không thấy", () => {

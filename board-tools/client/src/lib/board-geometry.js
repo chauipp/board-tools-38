@@ -2,6 +2,29 @@ export function pointInRect(px, py, rect) {
   return px >= rect.x && px <= rect.x + rect.w && py >= rect.y && py <= rect.y + rect.h;
 }
 
+function segmentsIntersect(ax, ay, bx, by, cx, cy, dx, dy) {
+  const d1 = (dx - cx) * (ay - cy) - (dy - cy) * (ax - cx);
+  const d2 = (dx - cx) * (by - cy) - (dy - cy) * (bx - cx);
+  const d3 = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+  const d4 = (bx - ax) * (dy - ay) - (by - ay) * (dx - ax);
+  return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+}
+
+// Đường dây chọn được qua marquee nếu 1 trong 2 đầu nằm trong khung, hoặc
+// đoạn dây cắt qua một trong 4 cạnh khung — giống kiểu "crossing selection"
+// của Figma, không cần bao trọn cả dây.
+export function segmentIntersectsRect(x1, y1, x2, y2, rect) {
+  if (pointInRect(x1, y1, rect) || pointInRect(x2, y2, rect)) return true;
+  const { x, y, w, h } = rect;
+  const corners = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+  for (let i = 0; i < 4; i++) {
+    const [cx, cy] = corners[i];
+    const [dx, dy] = corners[(i + 1) % 4];
+    if (segmentsIntersect(x1, y1, x2, y2, cx, cy, dx, dy)) return true;
+  }
+  return false;
+}
+
 export function nodesInFrame(nodes, frame, sizeOf) {
   return nodes
     .filter((n) => {
