@@ -38,7 +38,7 @@ const MdLite = memo(function MdLite({ text }) {
 function IdeaCard({
   node, boardId, statusDef, tagDef, statuses, tags, currentUser,
   editing, dimmed, linkPending, dropTarget, selected, flash,
-  observeCard, gameDesign, balance, blocked, dependencyCycle, onDesign, h
+  observeCard, gameDesign, balance, blocked, dependencyCycle, onDesign, layoutLocked, h
 }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(node.title);
@@ -145,6 +145,7 @@ function IdeaCard({
     <div
       className={classNames.join(" ")}
       data-id={node.id}
+      data-layout-locked={layoutLocked ? "true" : undefined}
       // Bốn kiểu viền méo của skin vẽ tay, chọn theo id chứ không theo chỉ số
       // trong mảng: chỉ số đổi khi xoá một thẻ khác, và thẻ này sẽ đột nhiên méo
       // sang kiểu khác dù chẳng ai đụng vào nó.
@@ -166,6 +167,7 @@ function IdeaCard({
       <div className="card-top">
         {level === 1 && <span className="root-badge" title={t`Thẻ gốc`}>👑</span>}
         {node.locked && <span className="lock-badge">🔒</span>}
+        {node.treeLayoutLock && layoutLocked && <span className="layout-lock-badge" title={t`Cây đang tự xếp và khóa vị trí`}><Trans>Tự xếp</Trans></span>}
         <div className="title">{node.title}</div>
         <div className="card-actions">
           {gameDesign && (

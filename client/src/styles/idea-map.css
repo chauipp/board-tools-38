@@ -869,6 +869,10 @@
 .tree-panel .tp-slider-head .mono { font-size: 10px; color: var(--ink-dim); }
 .tree-panel .tp-slider input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
 .tree-panel .tp-reset { align-self: flex-start; }
+.tree-panel .tp-auto-lock { display: flex; align-items: flex-start; gap: 8px; font-size: 11px; line-height: 1.5; cursor: pointer; }
+.tree-panel .tp-auto-lock input { margin: 2px 0 0; accent-color: var(--accent); flex-shrink: 0; }
+.idea-card[data-layout-locked="true"] { cursor: default; }
+.layout-lock-badge { color: var(--accent); font-size: 9px; line-height: 1.3; flex-shrink: 0; }
 
 /* Lối vào bảng nằm ngay dưới bốn nút mũi tên trong menu chuột phải, nên phải
    tách khỏi hàng nút một chút để không dính thành một khối. */

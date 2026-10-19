@@ -48,7 +48,8 @@ import { CLICK_DRAG_TOL, createMultiClick } from "../lib/multi-click.js";
 import { placeLinkedNode, parentNodeId } from "../lib/place-node.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout, layerLayout } from "../lib/layout.js";
-import { treeLayout, buildTree, edgeKey, carryGroupMembers } from "../lib/tree-layout.js";
+import { buildTree, edgeKey } from "../lib/tree-layout.js";
+import { normalizeTreeLock, treeLockOwners, arrangeTree, arrangeLockedTrees } from "../lib/locked-tree.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { usePresence } from "../lib/usePresence.js";
 import { useFollow } from "../lib/useFollow.js";
@@ -313,6 +314,7 @@ export default function IdeaMap() {
   const [treeUI, setTreeUI] = useState(null);
   const [treeOpts, setTreeOpts] = useState(TREE_OPTS);
   const treeBaseRef = useRef(null);
+  const treeMembersRef = useRef(null);
   const treeLastRef = useRef(null);
   const [ioOpen, setIoOpen] = useState(false);
   const [ioMode, setIoMode] = useState("export");
@@ -425,6 +427,12 @@ export default function IdeaMap() {
   // tại chỗ (xem lib/card-sizes.js). `frameCardSize` giữ nguyên tên cũ vì nó là
   // tham số `sizeOf` của rất nhiều hàm hình học.
   const { cardSize: frameCardSize, observeCard } = useCardSizes();
+  const treeSizeRef = useRef(frameCardSize);
+  treeSizeRef.current = frameCardSize;
+  const layoutOwners = useMemo(
+    () => board ? treeLockOwners(board, frameCardSize) : new Map(),
+    [board?.nodes, board?.groups, board?.edges, frameCardSize]
+  );
 
   const viewportRef = useRef(null);
   const canvasRef = useRef(null);
@@ -979,6 +987,12 @@ export default function IdeaMap() {
   function saveNow(next, tries = 0) {
     if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
     if (roleRef.current === "viewer") return;
+    const arranged = arrangeLockedTrees(next, treeSizeRef.current);
+    if (arranged !== next) {
+      next = arranged;
+      setBoard(next);
+      boardRef.current = next;
+    }
     // Đang có một cú PUT bay (kể cả đang ghép lại): không bắn cú mới đè lên nó.
     // `base` chốt bên dưới sẽ là bản NGAY LÚC NÀY, mà cú đang bay có thể sắp
     // thêm một thẻ mà `base` chưa biết — bắn chồng lên là hạt giống của đúng
@@ -1108,9 +1122,21 @@ export default function IdeaMap() {
 
   function commitAndSave(next, opts) {
     if (!opts || opts.historical !== false) recordHistory(board);
+    next = arrangeLockedTrees(next, treeSizeRef.current);
     setBoard(next);
+    boardRef.current = next;
     saveNow(next);
   }
+
+  useEffect(() => {
+    const current = boardRef.current;
+    if (!current || roleRef.current === "viewer") return;
+    const next = arrangeLockedTrees(current, frameCardSize);
+    if (next === current) return;
+    setBoard(next);
+    boardRef.current = next;
+    saveNow(next);
+  }, [frameCardSize]);
 
   // Hoàn tác / làm lại chỉ trả lại NỘI DUNG bảng, KHÔNG trả lại chỗ đang xem.
   //
@@ -1724,7 +1750,7 @@ export default function IdeaMap() {
       setSelectedGroupIds((prev) => toggleId(prev, group.id));
       return;
     }
-    if (group.locked) { setSelectedGroupIds(new Set([group.id])); setSelectedIds(new Set()); return; }
+    if (group.locked || layoutOwners.has(edgeKey("group", group.id))) { setSelectedGroupIds(new Set([group.id])); setSelectedIds(new Set()); return; }
 
     // Kéo một khung ĐANG nằm trong vùng chọn nhiều thứ thì mang cả vùng chọn đi;
     // kéo một khung ngoài vùng chọn thì thu vùng chọn về đúng khung đó, y như
@@ -2128,7 +2154,7 @@ export default function IdeaMap() {
 
     const id = base.nextNodeId;
     const newNode = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: null, x, y };
-    const next = {
+    let next = {
       ...base,
       nodes: [...base.nodes, newNode],
       edges: [...base.edges, { id: base.nextEdgeId, from: sourceId, to: id }],
@@ -2136,6 +2162,20 @@ export default function IdeaMap() {
       nextEdgeId: base.nextEdgeId + 1,
       view: nextView
     };
+    if (treeLockOwners(base, frameCardSize).has(edgeKey("node", sourceId))) {
+      next = arrangeLockedTrees(next, frameCardSize);
+      const placed = next.nodes.find((n) => n.id === id);
+      const sx = placed.x * view.scale + view.panX;
+      const sy = placed.y * view.scale + view.panY;
+      const visible = sx >= MARGIN && sy >= MARGIN
+        && sx + CARD_W * view.scale <= rect.width - MARGIN
+        && sy + NEW_SIZE.h * view.scale <= rect.height - MARGIN;
+      next.view = visible ? view : {
+        scale: view.scale,
+        panX: rect.width / 2 - (placed.x + CARD_W / 2) * view.scale,
+        panY: rect.height / 2 - (placed.y + NEW_SIZE.h / 2) * view.scale
+      };
+    }
     setEditingId(id);
     commitAndSave(next);
   }
@@ -2586,7 +2626,7 @@ export default function IdeaMap() {
       return;
     }
 
-    if (node.locked && !e.altKey) { setSelectedIds(new Set([node.id])); setSelectedDrawingIds(EMPTY_SET); return; }
+    if (layoutOwners.has(edgeKey("node", node.id)) || (node.locked && !e.altKey)) { setSelectedIds(new Set([node.id])); setSelectedDrawingIds(EMPTY_SET); return; }
 
     const boardBeforeDrag = board;
     let dragIds, baseBoard, isAlt = false, selectedIdsBeforeDrag;
@@ -3109,6 +3149,8 @@ export default function IdeaMap() {
   // diện (góc đó đứng yên tuyệt đối). Phép tính nằm hết ở lib/selection-box.js.
   function handleSelectionResizeMouseDown(e, corner) {
     if (e.button !== 0 || role === "viewer" || !selBounds) return;
+    if ([...selectedIds].some((id) => layoutOwners.has(edgeKey("node", id)))
+      || [...selectedGroupIds].some((id) => layoutOwners.has(edgeKey("group", id)))) return;
     e.preventDefault();
     e.stopPropagation();
     const bounds = selBounds;
@@ -3597,10 +3639,11 @@ export default function IdeaMap() {
    * mọi phần sau của cú kéo không phải nghĩ tới `locked` nữa.
    */
   function selectionDragSet(base, groupIds, nodeIds) {
-    const groups = base.groups.filter((g) => groupIds.has(g.id) && !g.locked);
+    const owners = treeLockOwners(base, frameCardSize);
+    const groups = base.groups.filter((g) => groupIds.has(g.id) && !g.locked && !owners.has(edgeKey("group", g.id)));
     const nodeSet = new Set();
-    base.nodes.forEach((n) => { if (nodeIds.has(n.id) && !n.locked) nodeSet.add(n.id); });
-    const lockedById = new Map(base.nodes.map((n) => [n.id, !!n.locked]));
+    base.nodes.forEach((n) => { if (nodeIds.has(n.id) && !n.locked && !owners.has(edgeKey("node", n.id))) nodeSet.add(n.id); });
+    const lockedById = new Map(base.nodes.map((n) => [n.id, !!n.locked || owners.has(edgeKey("node", n.id))]));
     groups.forEach((g) => {
       nodesInFrame(base.nodes, g, frameCardSize).forEach((id) => {
         if (!lockedById.get(id)) nodeSet.add(id);
@@ -3634,7 +3677,7 @@ export default function IdeaMap() {
   function tidySelection() {
     if (selectedIds.size < 2) return;
     const selected = board.nodes
-      .filter((n) => selectedIds.has(n.id) && !n.locked)
+      .filter((n) => selectedIds.has(n.id) && !n.locked && !layoutOwners.has(edgeKey("node", n.id)))
       .sort((a, b) => (a.y - b.y) || (a.x - b.x));       // thứ tự đọc
     if (selected.length < 2) return;
     const items = selected.map((n) => ({ id: n.id, ...frameCardSize(n.id) }));
@@ -3658,46 +3701,26 @@ export default function IdeaMap() {
   // Thuần một phép biến đổi board → board: bảng Xếp cây gọi lại nó mỗi lần kéo
   // thanh trượt để xem trước, nên nó không được tự ý ghi state hay lưu server.
   function treeArranged(base, rootKind, rootId, opts) {
-    const nodeById = new Map(base.nodes.map((n) => [n.id, n]));
-    const groupById = new Map(base.groups.map((g) => [g.id, g]));
-    const rootKey = edgeKey(rootKind, rootId);
-    const root = rootKind === "group" ? groupById.get(rootId) : nodeById.get(rootId);
-    if (!root) return null;
-
-    function sizeOf(key) {
-      const [kind, rawId] = key.split(":");
-      const id = Number(rawId);
-      if (kind === "group") {
-        const g = groupById.get(id);
-        return g ? { w: g.w, h: g.h } : { w: CARD_W, h: 110 };
-      }
-      return frameCardSize(id);
-    }
-
-    const pos = treeLayout({
-      edges: base.edges,
-      rootKey,
-      rootPos: { x: root.x, y: root.y },
-      sizeOf,
-      directions: opts.directions,
-      gap: { depth: opts.depth, breadth: opts.breadth, leaf: opts.leaf }
-    });
-    if (pos.size < 2) return null;            // gốc trơ trọi: không có gì để xếp
-
-    // Khung nào trong cây bị dời thì thẻ nằm trong khung đó (không có dây nối
-    // riêng) phải dời theo, không thì rớt ra ngoài khung.
-    const carried = carryGroupMembers(pos, base.groups, base.nodes, frameCardSize);
-
-    function moved(kind, item) {
-      const p = pos.get(edgeKey(kind, item.id)) || (kind === "node" ? carried.get(item.id) : null);
-      if (!p || item.locked) return item;     // thẻ khoá vẫn tính vào cây, chỉ không dời
-      return { ...item, x: p.x, y: p.y };
-    }
-    return {
+    const bucket = rootKind === "group" ? "groups" : "nodes";
+    const root = base[bucket].find((item) => item.id === rootId);
+    if (!root) return base;
+    const layoutOpts = { directions: opts.directions, depth: opts.depth, breadth: opts.breadth, leaf: opts.leaf };
+    const existing = normalizeTreeLock(root.treeLayoutLock);
+    const members = treeMembersRef.current?.rootKey === edgeKey(rootKind, rootId)
+      ? treeMembersRef.current.members : null;
+    const effectiveOpts = { ...existing, ...layoutOpts, ...(members ? { groupMembers: members } : {}) };
+    const configured = existing ? {
       ...base,
-      nodes: base.nodes.map((n) => moved("node", n)),
-      groups: base.groups.map((g) => moved("group", g))
-    };
+      [bucket]: base[bucket].map((item) => item.id === rootId ? { ...item, treeLayoutLock: effectiveOpts } : item)
+    } : base;
+    return arrangeTree(configured, rootKind, rootId, effectiveOpts, frameCardSize);
+  }
+
+  function treeOwner(kind, id) {
+    const owner = layoutOwners.get(edgeKey(kind, id));
+    if (!owner) return { kind, id };
+    const [ownerKind, ownerId] = owner.split(":");
+    return { kind: ownerKind, id: Number(ownerId) };
   }
 
   // Bốn nút mũi tên trong menu chuột phải: bấm là xếp luôn một hướng, không mở
@@ -3706,6 +3729,8 @@ export default function IdeaMap() {
   // nới thêm cho hai hướng dọc.
   function arrangeAsTree(rootKind, rootId, direction) {
     if (role === "viewer") return;
+    const owner = treeOwner(rootKind, rootId);
+    rootKind = owner.kind; rootId = owner.id;
     const vertical = direction === "down" || direction === "up";
     const next = treeArranged(board, rootKind, rootId, {
       ...TREE_OPTS, directions: [direction], depth: vertical ? 110 : 70
@@ -3719,32 +3744,68 @@ export default function IdeaMap() {
   // thì Ctrl+Z sau đó phải bấm ba chục lần mới về được chỗ cũ.
   function openTreePanel(rootKind, rootId) {
     if (role === "viewer") return;
+    const owner = treeOwner(rootKind, rootId);
+    rootKind = owner.kind; rootId = owner.id;
     setColorMenu(null);
     const base = board;
     treeBaseRef.current = base;
+    const rootKey = edgeKey(rootKind, rootId);
+    const memberKeys = new Set(buildTree(base.edges, rootKey).order);
+    const stored = normalizeTreeLock((rootKind === "group" ? base.groups : base.nodes)
+      .find((item) => item.id === rootId)?.treeLayoutLock)?.groupMembers;
+    const members = Object.fromEntries(base.groups.filter((g) => memberKeys.has(edgeKey("group", g.id)))
+      .map((g) => [g.id, stored?.[g.id] || nodesInFrame(base.nodes, g, frameCardSize)]));
+    treeMembersRef.current = { rootKey, members };
     setTreeUI({ kind: rootKind, id: rootId });
-    const next = treeArranged(base, rootKind, rootId, treeOpts);
-    if (!next) return;                        // gốc trơ trọi: bảng vẫn mở, chưa xếp gì
+    const root = (rootKind === "group" ? base.groups : base.nodes).find((item) => item.id === rootId);
+    const opts = normalizeTreeLock(root?.treeLayoutLock) || treeOpts;
+    setTreeOpts(opts);
+    const next = treeArranged(base, rootKind, rootId, opts);
     recordHistory(base);
     treeLastRef.current = next;
     setBoard(next);
+    boardRef.current = next;
     saveNow(next);
   }
 
   function previewTree(opts) {
     setTreeOpts(opts);
-    const base = treeBaseRef.current;
+    const base = boardRef.current;
     if (!base || !treeUI) return;
     const next = treeArranged(base, treeUI.kind, treeUI.id, opts);
     if (!next) return;
     treeLastRef.current = next;
     setBoard(next);                           // chỉ trên máy mình, chưa lưu
+    boardRef.current = next;
+  }
+
+  function toggleTreeLock(enabled) {
+    if (!treeUI || role === "viewer") return;
+    const base = boardRef.current;
+    const rootKey = edgeKey(treeUI.kind, treeUI.id);
+    const descendants = new Set(buildTree(base.edges, rootKey).order);
+    const update = (kind, item) => {
+      const key = edgeKey(kind, item.id);
+      if (key === rootKey) return { ...item, treeLayoutLock: enabled ? {
+        directions: [...treeOpts.directions], depth: treeOpts.depth, breadth: treeOpts.breadth, leaf: treeOpts.leaf,
+        groupMembers: treeMembersRef.current?.members || {}
+      } : null };
+      if (enabled && descendants.has(key) && item.treeLayoutLock) return { ...item, treeLayoutLock: null };
+      return item;
+    };
+    const next = arrangeLockedTrees({
+      ...base,
+      nodes: base.nodes.map((item) => update("node", item)),
+      groups: base.groups.map((item) => update("group", item))
+    }, frameCardSize);
+    treeLastRef.current = next;
+    commitAndSave(next);
   }
 
   // Nhả tay khỏi thanh trượt (hoặc bấm một hướng) mới lưu server + phát cho
   // người khác — kéo là gửi thì một cú kéo thành mấy chục lượt ghi.
   function commitTree() {
-    const next = treeLastRef.current;
+    const next = treeLastRef.current ? boardRef.current : null;
     if (next) saveNow(next);
   }
 
@@ -3752,6 +3813,7 @@ export default function IdeaMap() {
     commitTree();
     setTreeUI(null);
     treeBaseRef.current = null;
+    treeMembersRef.current = null;
     treeLastRef.current = null;
   }
 
@@ -4938,6 +5000,7 @@ export default function IdeaMap() {
               <IdeaCard
                 key={liveNode.id}
                 node={renderNode}
+                layoutLocked={layoutOwners.has(edgeKey("node", liveNode.id))}
                 boardId={boardId}
                 statusDef={statusDefById.get(liveNode.statusId) ?? null}
                 tagDef={tagDefById.get(liveNode.tagId) ?? null}
@@ -5108,6 +5171,8 @@ export default function IdeaMap() {
           return (
             <TreePanel
               opts={treeOpts}
+              locked={!!normalizeTreeLock(root.treeLayoutLock)}
+              onLock={toggleTreeLock}
               count={order.length}
               rootTitle={root.title || t`Không tên`}
               shifted={outlineOpen}

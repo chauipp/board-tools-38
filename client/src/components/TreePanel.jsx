@@ -25,7 +25,7 @@ const SLIDERS = [
   { key: "leaf", min: 4, max: 320 }
 ];
 
-export default function TreePanel({ opts, count, rootTitle, shifted, onOpts, onCommit, onReset, onClose }) {
+export default function TreePanel({ opts, count, rootTitle, shifted, locked, onLock, onOpts, onCommit, onReset, onClose }) {
   const { t } = useLingui();
   // Bấm ra ngoài (hoặc Esc) là đóng, như menu chuột phải và bảng nhãn: bảng này
   // là chỗ ghé vào chỉnh vài nhát rồi đi, không phải một khung thường trực.
@@ -69,6 +69,16 @@ export default function TreePanel({ opts, count, rootTitle, shifted, onOpts, onC
         <div className="tp-root">
           <span className="tp-root-name" title={rootTitle}>{rootTitle}</span>
           <span className="tp-count mono">{count}</span>
+        </div>
+
+        <div className="tp-section">
+          <label className="tp-auto-lock">
+            <input type="checkbox" checked={!!locked} onChange={(e) => onLock(e.target.checked)} />
+            <span><Trans>Khóa bố cục tự động</Trans></span>
+          </label>
+          <div className="tp-hint">
+            <Trans>Tự xếp cả cây khi thêm card. Tắt để kéo card tự do.</Trans>
+          </div>
         </div>
 
         <div className="tp-section">
