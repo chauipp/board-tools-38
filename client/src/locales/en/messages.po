@@ -13,10 +13,6 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-#: src/components/TreePanel.jsx:115
-msgid "\"Lá\" là thẻ không có nhánh con nào."
-msgstr "A \"leaf\" is a card with no children."
-
 #. placeholder {0}: selectedGroupIds.size
 #: src/pages/IdeaMap.jsx:4903
 msgid "{0} khung"
@@ -550,13 +546,9 @@ msgstr "Hold still after drawing to snap the stroke to a clean shape (line, circ
 msgid "Giữa các cấp"
 msgstr "Between levels"
 
-#: src/components/TreePanel.jsx:44
-msgid "Giữa các lá"
-msgstr "Between leaves"
-
-#: src/components/TreePanel.jsx:43
-msgid "Giữa các nhánh"
-msgstr "Between branches"
+#: src/components/TreePanel.jsx:39
+msgid "Giữa các card cùng cấp"
+msgstr "Between cards at the same level"
 
 #: src/components/ColorMenu.jsx:50
 #: src/pages/IdeaMap.jsx:4944

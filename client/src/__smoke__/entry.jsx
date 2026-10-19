@@ -1439,6 +1439,7 @@ export async function run(log) {
   await act(async () => { openBtn.click(); await new Promise((r) => setTimeout(r, 20)); });
   const panel = document.querySelector(".tree-panel");
   if (!panel) throw new Error("bấm 'Tuỳ chỉnh cây…' mà bảng bên phải không hiện");
+  if (panel.querySelectorAll('input[type="range"]').length !== 2) throw new Error("bảng cây phải có hai khoảng cách");
   const posAfterOpen = () => Array.from(document.querySelectorAll(".idea-card"))
     .map((c) => c.dataset.id + ":" + c.style.left + "," + c.style.top).join(" | ");
   const openedLayout = posAfterOpen();

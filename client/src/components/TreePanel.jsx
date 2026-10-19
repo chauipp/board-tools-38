@@ -16,13 +16,9 @@ function ArrowIcon({ rotate }) {
 
 const ROTATE = { down: 0, up: 180, right: -90, left: 90 };
 
-// Ba khoảng cách chỉnh được, cùng một khuôn nên khai báo bằng dữ liệu. `min` cố
-// ý không phải 0 với hai trục ngang: cho về 0 là các thẻ dính liền nhau thành
-// một mảng chữ, không đọc ra là cây nữa.
 const SLIDERS = [
   { key: "depth", min: 20, max: 400 },
-  { key: "breadth", min: 8, max: 320 },
-  { key: "leaf", min: 4, max: 320 }
+  { key: "breadth", min: 8, max: 320 }
 ];
 
 export default function TreePanel({ opts, count, rootTitle, shifted, locked, onLock, onOpts, onCommit, onReset, onClose }) {
@@ -40,8 +36,7 @@ export default function TreePanel({ opts, count, rootTitle, shifted, locked, onL
   };
   const SLIDER_LABEL = {
     depth: t`Giữa các cấp`,
-    breadth: t`Giữa các nhánh`,
-    leaf: t`Giữa các lá`
+    breadth: t`Giữa các card cùng cấp`
   };
 
   // Bỏ hướng cuối cùng thì cây không còn chỗ nào để mọc, nên hướng đang bật một
@@ -113,16 +108,19 @@ export default function TreePanel({ opts, count, rootTitle, shifted, locked, onL
                   mình); nhả tay mới lưu và phát cho người khác. */}
               <input
                 type="range"
+                aria-label={SLIDER_LABEL[key]}
                 min={min}
                 max={max}
                 value={opts[key]}
-                onChange={(e) => onOpts({ ...opts, [key]: Number(e.target.value) })}
+                onChange={(e) => {
+                  const value = Number(e.target.value);
+                  onOpts({ ...opts, [key]: value, ...(key === "breadth" ? { leaf: value } : {}) });
+                }}
                 onPointerUp={onCommit}
                 onKeyUp={onCommit}
               />
             </div>
           ))}
-          <div className="tp-hint"><Trans>"Lá" là thẻ không có nhánh con nào.</Trans></div>
         </div>
 
         <button type="button" className="btn ghost small tp-reset" onClick={onReset}>

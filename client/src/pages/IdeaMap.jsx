@@ -142,8 +142,7 @@ const PANEL_KEYS = ["status", "tag", "palette"];
 
 // Tuỳ chọn khởi điểm của bảng Xếp cây. depth 110 (chứ không 70 như hướng ngang)
 // vì hướng dọc lấy CHIỀU CAO thẻ làm khoảng cách tầng — xem ghi chú trong
-// arrangeAsTree. breadth và leaf bằng nhau: mặc định là cây đều, người dùng tự
-// bó hàng lá lại nếu muốn.
+// arrangeAsTree. breadth và leaf dùng chung khoảng cách card cùng cấp.
 const TREE_OPTS = { directions: ["down"], depth: 110, breadth: 56, leaf: 56 };
 const EMPTY_ARRAY = [];
 const EMPTY_MAP = new Map();
@@ -3835,7 +3834,8 @@ export default function IdeaMap() {
     treeMembersRef.current = { rootKey, members };
     setTreeUI({ kind: rootKind, id: rootId });
     const root = (rootKind === "group" ? base.groups : base.nodes).find((item) => item.id === rootId);
-    const opts = normalizeTreeLock(root?.treeLayoutLock) || treeOpts;
+    const savedOpts = normalizeTreeLock(root?.treeLayoutLock) || treeOpts;
+    const opts = { ...savedOpts, leaf: savedOpts.breadth };
     setTreeOpts(opts);
     const next = treeArranged(base, rootKind, rootId, opts);
     recordHistory(base);

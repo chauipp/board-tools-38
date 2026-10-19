@@ -13,10 +13,6 @@ msgstr ""
 "Language-Team: \n"
 "Plural-Forms: \n"
 
-#: src/components/TreePanel.jsx:115
-msgid "\"Lá\" là thẻ không có nhánh con nào."
-msgstr "\"Lá\" là thẻ không có nhánh con nào."
-
 #. placeholder {0}: selectedGroupIds.size
 #: src/pages/IdeaMap.jsx:4903
 msgid "{0} khung"
@@ -550,13 +546,9 @@ msgstr "Giữ tay tại chỗ khi vẽ xong để nét tự về hình chuẩn (
 msgid "Giữa các cấp"
 msgstr "Giữa các cấp"
 
-#: src/components/TreePanel.jsx:44
-msgid "Giữa các lá"
-msgstr "Giữa các lá"
-
-#: src/components/TreePanel.jsx:43
-msgid "Giữa các nhánh"
-msgstr "Giữa các nhánh"
+#: src/components/TreePanel.jsx:39
+msgid "Giữa các card cùng cấp"
+msgstr "Giữa các card cùng cấp"
 
 #: src/components/ColorMenu.jsx:50
 #: src/pages/IdeaMap.jsx:4944
