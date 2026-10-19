@@ -42,7 +42,8 @@ import PeerLayer from "../components/PeerLayer.jsx";
 import ToolRail from "../components/ToolRail.jsx";
 import PdfUsage from "../components/PdfUsage.jsx";
 import ToolOptions from "../components/ToolOptions.jsx";
-import { nodesInFrame, edgesMatch, rectForEndpoint, clipToRect, segmentIntersectsRect } from "../lib/board-geometry.js";
+import { nodesInFrame, edgesMatch } from "../lib/board-geometry.js";
+import { buildEdgeRoutes, routeIntersectsRect } from "../lib/edge-routing.js";
 import { computeSnap } from "../lib/snap.js";
 import { CLICK_DRAG_TOL, createMultiClick } from "../lib/multi-click.js";
 import { placeLinkedNode, parentNodeId } from "../lib/place-node.js";
@@ -654,17 +655,23 @@ export default function IdeaMap() {
   // người khác làm mốc.
   const liveNodes = useMemo(
     () => (board ? applyGeomOverlay(board.nodes, geomOverlay, "node:") : EMPTY_ARRAY),
-    [board, geomOverlay]
+    [board?.nodes, geomOverlay]
   );
   const liveGroups = useMemo(
     () => (board ? applyGeomOverlay(board.groups, geomOverlay, "group:") : EMPTY_ARRAY),
-    [board, geomOverlay]
+    [board?.groups, geomOverlay]
   );
   // Chỉ mục tra cứu O(1) cho lớp dây và lớp peer. Trước đây mỗi đầu dây quét
   // lại cả mảng thẻ ở mỗi lần render: bảng 150 cạnh × 100 thẻ là 30.000 phép so
   // sánh cho một khung hình, nhân với 60 khung hình mỗi giây lúc kéo.
   const nodeById = useMemo(() => new Map(liveNodes.map((n) => [n.id, n])), [liveNodes]);
   const groupById = useMemo(() => new Map(liveGroups.map((g) => [g.id, g])), [liveGroups]);
+  const edgeRoutes = useMemo(
+    () => buildEdgeRoutes(board?.edges || EMPTY_ARRAY, nodeById, groupById, frameCardSize),
+    [board?.edges, nodeById, groupById, frameCardSize]
+  );
+  const edgeRoutesRef = useRef(edgeRoutes);
+  edgeRoutesRef.current = edgeRoutes;
   const statusDefById = useMemo(
     () => (board ? new Map(board.statuses.map((s) => [s.id, s])) : EMPTY_MAP),
     [board?.statuses]
@@ -2926,16 +2933,8 @@ export default function IdeaMap() {
     }
 
     function edgeHitIdsFor(m) {
-      const { nodes, groups, edges } = boardRef.current;
-      return edges
-        .filter((edge) => {
-          const r1 = rectForEndpoint(edge.fromKind || "node", edge.from, nodes, groups, frameCardSize);
-          const r2 = rectForEndpoint(edge.toKind || "node", edge.to, nodes, groups, frameCardSize);
-          if (!r1 || !r2) return false;
-          const p1 = clipToRect(r1.cx, r1.cy, r1.w, r1.h, r2.cx, r2.cy);
-          const p2 = clipToRect(r2.cx, r2.cy, r2.w, r2.h, r1.cx, r1.cy);
-          return segmentIntersectsRect(p1.x, p1.y, p2.x, p2.y, m);
-        })
+      return boardRef.current.edges
+        .filter((edge) => routeIntersectsRect(edgeRoutesRef.current.get(edge.id), m))
         .map((edge) => edge.id);
     }
 
@@ -5056,6 +5055,7 @@ export default function IdeaMap() {
 
           <EdgeLayer
             edges={board.edges}
+            routes={edgeRoutes}
             nodeById={nodeById}
             groupById={groupById}
             cardSize={frameCardSize}
@@ -5134,11 +5134,9 @@ export default function IdeaMap() {
           {hoveredEdgeId != null && !edgeDrag && (() => {
             const edge = board.edges.find((e) => e.id === hoveredEdgeId);
             if (!edge) return null;
-            const r1 = rectForEndpoint(edge.fromKind || "node", edge.from, nodeById, groupById, frameCardSize);
-            const r2 = rectForEndpoint(edge.toKind || "node", edge.to, nodeById, groupById, frameCardSize);
-            if (!r1 || !r2) return null;
-            const p1 = clipToRect(r1.cx, r1.cy, r1.w, r1.h, r2.cx, r2.cy);
-            const p2 = clipToRect(r2.cx, r2.cy, r2.w, r2.h, r1.cx, r1.cy);
+            const route = edgeRoutes.get(edge.id);
+            if (!route) return null;
+            const p1 = route.start, p2 = route.end;
             return (
               <svg
                 className="edge-handle-layer"

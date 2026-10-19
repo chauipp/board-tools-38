@@ -1,6 +1,27 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { seedFrom, amplitude, sketchyLine, sketchyPath } from "./sketchy.js";
+import * as sketch from "./sketchy.js";
+
+test("sketchyConnector keeps routed endpoints and bends, with stable pencil passes", () => {
+  assert.equal(typeof sketch.sketchyConnector, "function");
+  const path = "M10 20 C40 20 50 100 80 100 L90 100 Q100 100 100 110";
+  const actual = sketch.sketchyConnector(path, 41);
+  assert.equal(actual, sketch.sketchyConnector(path, 41));
+  assert.notEqual(actual, sketch.sketchyConnector(path, 42));
+  const passes = actual.split(/(?=M)/).filter(Boolean);
+  assert.equal(passes.length, 2);
+  for (const pass of passes) {
+    const commands = pass.match(/[MLCQ][^MLCQ]*/g);
+    const numbers = commands.map(c => c.slice(1).trim().split(/[ ,]+/).map(Number));
+    assert.deepEqual(numbers[0], [10, 20]);
+    assert.deepEqual(numbers[1].slice(-2), [80, 100]);
+    assert.deepEqual(numbers[2], [90, 100]);
+    assert.deepEqual(numbers[3].slice(-2), [100, 110]);
+    [40, 20, 50, 100].forEach((v, i) => assert.ok(Math.abs(numbers[1][i] - v) <= 0.7));
+    [100, 100].forEach((v, i) => assert.ok(Math.abs(numbers[3][i] - v) <= 0.7));
+  }
+});
 
 // Đây là test QUAN TRỌNG NHẤT của module. Nếu nó đỏ thì độ lệch đang lấy từ
 // Math.random(): mỗi khung hình nét lại rung một kiểu, và kéo một thẻ là cả bản

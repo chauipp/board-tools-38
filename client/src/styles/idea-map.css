@@ -408,7 +408,7 @@
 }
 .edge-layer { position: absolute; left: 0; top: 0; width: 4200px; height: 3200px; overflow: visible; pointer-events: none; }
 .edge-layer .hit { stroke: transparent; stroke-width: 16; pointer-events: stroke; cursor: pointer; }
-.edge-layer .visible { stroke: var(--ink-dim); stroke-width: var(--edge-w); opacity: 0.75; }
+.edge-layer .visible { stroke: var(--ink-dim); stroke-width: var(--edge-w); stroke-linecap: round; stroke-linejoin: round; opacity: 0.75; }
 .edge-layer .visible.hot { stroke: var(--accent); stroke-width: var(--edge-w-hot); opacity: 1; }
 .edge-layer .visible.selected { stroke: var(--accent); stroke-width: var(--edge-w-hot); stroke-dasharray: 5 3; opacity: 1; }
 .edge-layer .visible.relation-unlocks { stroke: var(--success, #2d8a5b); stroke-dasharray: 2 5; }

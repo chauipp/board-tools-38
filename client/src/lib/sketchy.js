@@ -47,6 +47,15 @@ const ELLIPSE_STEPS = 16;
 
 const r1 = (v) => Math.round(v * 10) / 10;
 
+export function sketchyConnector(path, seed) {
+  const rand = rng(seed);
+  return Array.from({ length: 2 }, () => path.replace(/([CQ])([^MLCQZ]*)/g, (_, command, values) => {
+    const nums = values.match(/-?\d*\.?\d+(?:e[+-]?\d+)?/gi)?.map(Number) || [];
+    const controls = command === "C" ? 4 : 2;
+    return command + nums.map((n, i) => i < controls ? r1(n + (rand() - 0.5) * 1.2) : n).join(" ") + " ";
+  })).join(" ");
+}
+
 // Một đoạn thẳng thành một đoạn cong rung. Độ lệch chỉ lấy từ `rand` và `amp`,
 // KHÔNG lấy từ toạ độ tuyệt đối — nhờ vậy kéo thẻ thì dây uốn theo mượt thay vì
 // nhảy sang một hình rung khác ở mỗi khung hình.

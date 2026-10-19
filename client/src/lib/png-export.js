@@ -1,8 +1,9 @@
-import { clipToRect, rectForEndpoint } from "./board-geometry.js";
+import { buildEdgeRoutes } from "./edge-routing.js";
 
 const PAD = 60, SCALE = 2;
 
 export function drawBoardToCanvas(board, sizeOf, theme) {
+  const routes = buildEdgeRoutes(board.edges, board.nodes, board.groups, sizeOf);
   // theme: { bg, surface, line, ink, inkDim, accent, colorOf(token) -> css color }
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   board.nodes.forEach((n) => {
@@ -14,6 +15,12 @@ export function drawBoardToCanvas(board, sizeOf, theme) {
     minX = Math.min(minX, g.x); minY = Math.min(minY, g.y);
     maxX = Math.max(maxX, g.x + g.w); maxY = Math.max(maxY, g.y + g.h);
   });
+  for (const route of routes.values()) {
+    for (const p of route.points) {
+      minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+      maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+    }
+  }
   if (minX === Infinity) { minX = 0; minY = 0; maxX = 100; maxY = 100; }
   const w = Math.ceil(maxX - minX + PAD * 2), h = Math.ceil(maxY - minY + PAD * 2);
   const canvas = document.createElement("canvas");
@@ -36,29 +43,30 @@ export function drawBoardToCanvas(board, sizeOf, theme) {
   });
 
   board.edges.forEach((e) => {
-    const r1 = rectForEndpoint(e.fromKind || "node", e.from, board.nodes, board.groups, sizeOf);
-    const r2 = rectForEndpoint(e.toKind || "node", e.to, board.nodes, board.groups, sizeOf);
-    if (!r1 || !r2) return;
-    const p1 = clipToRect(r1.cx, r1.cy, r1.w, r1.h, r2.cx, r2.cy);
-    const p2 = clipToRect(r2.cx, r2.cy, r2.w, r2.h, r1.cx, r1.cy);
-    ctx.strokeStyle = theme.inkDim;
+    const route = routes.get(e.id);
+    if (!route) return;
+    const p2 = route.end;
+    const color = e.color ? theme.colorOf(e.color) : theme.inkDim;
+    ctx.strokeStyle = color;
     ctx.lineWidth = 1.4;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
     if (e.style === "dashed") ctx.setLineDash([6, 5]);
-    ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+    ctx.stroke(new Path2D(route.d));
     ctx.setLineDash([]);
     if (e.arrow !== "none") {
-      const ang = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+      const ang = route.endAngle;
       ctx.beginPath();
       ctx.moveTo(p2.x, p2.y);
       ctx.lineTo(p2.x - 8 * Math.cos(ang - 0.4), p2.y - 8 * Math.sin(ang - 0.4));
       ctx.lineTo(p2.x - 8 * Math.cos(ang + 0.4), p2.y - 8 * Math.sin(ang + 0.4));
       ctx.closePath();
-      ctx.fillStyle = theme.inkDim;
+      ctx.fillStyle = color;
       ctx.fill();
     }
     if (e.label) {
       ctx.fillStyle = theme.inkDim;
-      ctx.fillText(e.label, (p1.x + p2.x) / 2 - ctx.measureText(e.label).width / 2, (p1.y + p2.y) / 2 - 5);
+      ctx.fillText(e.label, route.label.x - ctx.measureText(e.label).width / 2, route.label.y - 5);
     }
   });
 

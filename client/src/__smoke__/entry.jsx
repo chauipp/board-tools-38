@@ -96,7 +96,7 @@ export async function run(log) {
   // bọc memo — nếu tín hiệu "kích thước đã đổi" không lọt vào props của
   // EdgeLayer thì cache mới nhưng dây vẫn vẽ theo số đo cũ, đầu dây lơ lửng
   // cách thẻ cả trăm pixel.
-  const edgeY = () => Array.from(document.querySelectorAll(".edge-layer g line.visible")).map((l) => l.getAttribute("y2")).join(",");
+  const edgeY = () => Array.from(document.querySelectorAll(".edge-layer g .visible")).map((l) => l.getAttribute("d")).join(",");
   const yBefore = edgeY();
   await act(async () => {
     globalThis.__resize(document.querySelector('.idea-card[data-id="2"]'), 210, 44);
@@ -1091,7 +1091,7 @@ export async function run(log) {
     await new Promise((r) => setTimeout(r, 30));
   });
 
-  // Skin vẽ tay: lưới an toàn cho việc đổi <line> thành <path> ở lớp dây. Bấm
+  // Skin vẽ tay: lưới an toàn cho việc đổi nét ở lớp dây. Bấm
   // đúng cái nút thật thay vì tự đặt data-skin — làm vậy mới đi qua useSkin (nạp
   // font lười, ghi localStorage) và mới bắt được lỗi ở đó.
   // Nút giờ là bảng Giao diện bung ra dưới nút của nó trên đảo trên trái — cùng
@@ -1099,6 +1099,7 @@ export async function run(log) {
   // Tìm theo title chứ không theo thứ tự: đảo trên trái có HAI .menubar-trigger
   // (☰ và Giao diện), lấy theo index thì thêm cái thứ ba là test trỏ nhầm.
   const edgesClean = document.querySelectorAll(".edge-layer .visible").length;
+  const cleanPath = document.querySelector(".edge-layer .visible")?.getAttribute("d");
   const stylePanelBtn = Array.from(document.querySelectorAll(".island.tl .menubar-trigger"))
     .find((b) => b.title === "Giao diện");
   if (!stylePanelBtn) throw new Error("không tìm thấy nút Giao diện trên đảo trên trái");
@@ -1119,17 +1120,18 @@ export async function run(log) {
   const skinAttr = document.documentElement.getAttribute("data-skin");
   const edgePaths = document.querySelectorAll(".edge-layer path.visible").length;
   const edgeLines = document.querySelectorAll(".edge-layer line.visible").length;
-  log(`skin vẽ tay: data-skin=${skinAttr} · dây ${edgesClean} <line> → ${edgePaths} <path> (còn ${edgeLines} line)`);
+  log(`skin vẽ tay: data-skin=${skinAttr} · ${edgePaths}/${edgesClean} dây path (còn ${edgeLines} line)`);
   if (skinAttr !== "sketch") throw new Error("bấm nút mà data-skin không thành sketch");
   if (edgePaths !== edgesClean) throw new Error(`mất dây khi đổi skin: ${edgesClean} → ${edgePaths}`);
   if (edgeLines !== 0) throw new Error("còn sót <line> hiển thị ở skin vẽ tay");
   const dAttr = document.querySelector(".edge-layer path.visible")?.getAttribute("d") || "";
-  if (!dAttr.includes("C")) throw new Error("path dây không phải nét rung (không có đoạn cong)");
+  if (!/[CQ]/.test(dAttr) || dAttr === cleanPath) throw new Error("skin vẽ tay không tạo nét cong rung khác nét sạch");
 
   // Tắt đi phải về đúng trạng thái cũ — không phải đường một chiều.
   await pickSkin("Sạch");
   if (document.documentElement.getAttribute("data-skin") !== "clean") throw new Error("tắt skin không về clean");
-  if (document.querySelectorAll(".edge-layer line.visible").length !== edgesClean) throw new Error("tắt skin mà dây không về <line>");
+  if (document.querySelectorAll(".edge-layer path.visible").length !== edgesClean) throw new Error("mất dây cong khi tắt skin");
+  if (document.querySelector(".edge-layer .visible")?.getAttribute("d") !== cleanPath) throw new Error("tắt skin không khôi phục tuyến sạch ban đầu");
 
   // Panel Giao diện gom cả thiết lập của MÌNH lẫn dữ liệu của BOARD; hai nửa đó
   // phải có nhãn phân định, nếu không thì người ta đổi nền bảng mà tưởng chỉ mình
@@ -1682,7 +1684,7 @@ export async function run(log) {
   if (inkSelCount() !== 0) throw new Error("xoá xong mà viền chọn vẫn còn");
 
   // ── Dây nối: trái để chọn, phải để sửa ──────────────────────────────────
-  const edgeHit = document.querySelector(".edge-layer line.hit");
+  const edgeHit = document.querySelector(".edge-layer .hit");
   if (!edgeHit) throw new Error("không thấy vùng bấm của dây nối");
   const edgeId = edgeHit.getAttribute("data-edge-id");
   await act(async () => {
@@ -1695,7 +1697,7 @@ export async function run(log) {
   if (selectedEdges() !== 1) throw new Error("chuột trái lên dây phải chọn đúng dây đó");
 
   // Ctrl+trái cộng dồn dây thứ hai.
-  const edgeHits = document.querySelectorAll(".edge-layer line.hit");
+  const edgeHits = document.querySelectorAll(".edge-layer .hit");
   if (edgeHits.length > 1) {
     await act(async () => {
       edgeHits[1].dispatchEvent(new window.MouseEvent("click", { bubbles: true, clientX: 420, clientY: 420, button: 0, ctrlKey: true }));

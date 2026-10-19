@@ -1,18 +1,11 @@
 import { memo } from "react";
 import { colorVar } from "../lib/badges.js";
-import { edgeEndpoint, rectForEndpoint, clipToRect } from "../lib/board-geometry.js";
-import { seedFrom, sketchyLine } from "../lib/sketchy.js";
+import { edgeEndpoint } from "../lib/board-geometry.js";
+import { seedFrom, sketchyConnector } from "../lib/sketchy.js";
 import { relationDefinition, isGameDesignRelation } from "../lib/game-design.js";
 
-// Toàn bộ lớp dây tách riêng và bọc memo: nó là phần đắt nhất của mỗi lần
-// render (mỗi cạnh phải tra hai đầu rồi cắt đoạn thẳng vào biên hai hình chữ
-// nhật), mà phần lớn thứ làm IdeaMap render lại — con trỏ người khác, mở/đóng
-// menu, gõ vào ô tìm kiếm — không đụng gì tới dây cả.
-//
-// nodeById/groupById là Map (không phải mảng) nên tra đầu dây là O(1);
-// trước đây mỗi đầu dây quét lại cả mảng thẻ.
 function EdgeLayer({
-  edges, nodeById, groupById, cardSize, sketch,
+  edges, routes, nodeById, groupById, cardSize, sketch,
   gameDesign, cycleEdgeIds,
   hoveredEdgeId, selectedEdgeIds, edgeDragId, snapGuides, linkDraft, edgeDraft,
   onEdgeEnter, onEdgeLeave, onEdgeClick, onEdgeContextMenu
@@ -26,11 +19,8 @@ function EdgeLayer({
       </defs>
       {edges.map((edge) => {
         if (edgeDragId === edge.id) return null;
-        const r1 = rectForEndpoint(edge.fromKind || "node", edge.from, nodeById, groupById, cardSize);
-        const r2 = rectForEndpoint(edge.toKind || "node", edge.to, nodeById, groupById, cardSize);
-        if (!r1 || !r2) return null;
-        const p1 = clipToRect(r1.cx, r1.cy, r1.w, r1.h, r2.cx, r2.cy);
-        const p2 = clipToRect(r2.cx, r2.cy, r2.w, r2.h, r1.cx, r1.cy);
+        const route = routes.get(edge.id);
+        if (!route) return null;
         const hot = hoveredEdgeId === edge.id;
         const relationClass = gameDesign && isGameDesignRelation(edge.relation) ? ` relation-${edge.relation}` : "";
         const cycleClass = cycleEdgeIds?.has(edge.id) ? " dependency-cycle" : "";
@@ -40,41 +30,27 @@ function EdgeLayer({
             onMouseEnter={() => onEdgeEnter(edge.id)}
             onMouseLeave={() => onEdgeLeave(edge.id)}
           >
-            <line
+            <path
               className="hit"
               data-edge-id={edge.id}
-              x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
+              d={route.d}
+              fill="none"
               onClick={(e) => onEdgeClick(e, edge.id)}
               onContextMenu={(e) => onEdgeContextMenu(e, edge.id)}
             />
-            {/* Chỉ nét NHÌN THẤY đổi sang path rung. Thẻ <line className="hit">
-                bên trên — vùng bấm dày 16px — giữ nguyên đường thẳng: vùng bấm
-                không việc gì phải rung theo, và hit-test thẳng thì rẻ hơn. */}
-            {sketch ? (
-              <path
-                className={"visible" + (hot ? " hot" : "") + (selectedEdgeIds.has(edge.id) ? " selected" : "") + relationClass + cycleClass}
-                d={sketchyLine(p1.x, p1.y, p2.x, p2.y, seedFrom(edge.id))}
-                // fill="none" là BẮT BUỘC: CSS của .edge-layer chưa bao giờ khai
-                // fill cho path, thiếu attribute này là dây thành mảng đen đặc.
-                fill="none"
-                style={edge.color ? { stroke: colorVar(edge.color) } : undefined}
-                strokeDasharray={edge.style === "dashed" ? "6 5" : undefined}
-                markerEnd={edge.arrow === "none" ? undefined : "url(#edge-arrow)"}
-              />
-            ) : (
-              <line
-                className={"visible" + (hot ? " hot" : "") + (selectedEdgeIds.has(edge.id) ? " selected" : "") + relationClass + cycleClass}
-                x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y}
-                style={edge.color ? { stroke: colorVar(edge.color) } : undefined}
-                strokeDasharray={edge.style === "dashed" ? "6 5" : undefined}
-                markerEnd={edge.arrow === "none" ? undefined : "url(#edge-arrow)"}
-              />
-            )}
+            <path
+              className={"visible" + (hot ? " hot" : "") + (selectedEdgeIds.has(edge.id) ? " selected" : "") + relationClass + cycleClass}
+              d={sketch ? sketchyConnector(route.d, seedFrom(edge.id)) : route.d}
+              fill="none"
+              style={edge.color ? { stroke: colorVar(edge.color) } : undefined}
+              strokeDasharray={edge.style === "dashed" ? "6 5" : undefined}
+              markerEnd={edge.arrow === "none" ? undefined : "url(#edge-arrow)"}
+            />
             {edge.label && (
-              <text className="edge-label" x={(p1.x + p2.x) / 2} y={(p1.y + p2.y) / 2 - 4} textAnchor="middle">{edge.label}</text>
+              <text className="edge-label" x={route.label.x} y={route.label.y - 4} textAnchor="middle">{edge.label}</text>
             )}
-            {gameDesign && isGameDesignRelation(edge.relation) && Math.hypot(p2.x - p1.x, p2.y - p1.y) >= 150 && (
-              <text className={`edge-label edge-relation-label relation-${edge.relation}`} x={(p1.x + p2.x) / 2} y={(p1.y + p2.y) / 2 + 12} textAnchor="middle">
+            {gameDesign && isGameDesignRelation(edge.relation) && route.length >= 150 && (
+              <text className={`edge-label edge-relation-label relation-${edge.relation}`} x={route.label.x} y={route.label.y + 12} textAnchor="middle">
                 {relationDefinition(edge.relation).label}
               </text>
             )}
