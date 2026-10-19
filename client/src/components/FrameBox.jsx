@@ -4,7 +4,7 @@ import { colorVar } from "../lib/badges.js";
 
 // Cùng lý do như IdeaCard: `h` là object hành động có định danh ổn định, nhờ
 // vậy memo() mới chặn được việc mọi khung vẽ lại theo mỗi nhịp kéo/con trỏ.
-function FrameBox({ group, editingTitle, dropTarget, selected, h }) {
+function FrameBox({ group, editingTitle, dropTarget, selected, treeSwapState, h }) {
   const { t } = useLingui();
   const [title, setTitle] = useState(group.title);
   const doneRef = useRef(false);
@@ -17,6 +17,7 @@ function FrameBox({ group, editingTitle, dropTarget, selected, h }) {
     <div
       className={"frame-box" + (dropTarget ? " drop-target" : "") + (selected ? " selected" : "") + (group.color ? " tinted" : "")}
       data-group-id={group.id}
+      data-tree-swap={treeSwapState}
       data-wob={group.id % 4}
       style={{
         left: group.x, top: group.y, width: group.w, height: group.h,

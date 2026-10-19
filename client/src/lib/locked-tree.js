@@ -1,5 +1,5 @@
 import { nodesInFrame } from "./board-geometry.js";
-import { buildTree, carryGroupMembers, edgeKey, treeLayout, TREE_DIRECTIONS } from "./tree-layout.js";
+import { buildTree, carryGroupMembers, edgeKey, normalizeTreeSlots, treeLayout, treeLayoutBranches, TREE_DIRECTIONS } from "./tree-layout.js";
 
 // Keep persisted gaps within the ranges offered by TreePanel. Malformed data
 // must not silently enable a lock using defaults.
@@ -18,11 +18,13 @@ export function normalizeTreeLock(value) {
     depth: clamp(value.depth, 20, 400),
     breadth: clamp(value.breadth, 8, 320),
     leaf: clamp(value.leaf, 4, 320),
-    ...(groupMembers ? { groupMembers } : {})
+    ...(groupMembers ? { groupMembers } : {}),
+    ...normalizeTreeSlots(value, value.directions)
   };
 }
 
 const positive = (value) => Number.isFinite(value) && value > 0;
+const validId = (value) => Number.isFinite(value) || (typeof value === "string" && value.length > 0);
 const compareKeys = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 
 function context(board, nodeSize) {
@@ -40,7 +42,7 @@ function context(board, nodeSize) {
       h: Math.max(positive(measured.h) ? measured.h : 110, positive(n.pdfH) ? n.pdfH : 0)
     }];
   }));
-  const edges = (board.edges || []).filter((e) => e &&
+  const edges = (board.edges || []).filter((e) => e && validId(e.from) && validId(e.to) &&
     items.has(edgeKey(e.fromKind || "node", e.from)) &&
     items.has(edgeKey(e.toKind || "node", e.to)));
   return { nodes, groups, items, edges, nodeSize: (id) => sizes.get(id), sizeOf: (key) => {
@@ -81,13 +83,18 @@ export function treeLockOwners(board, nodeSize) {
   return ownersIn(context(board, nodeSize));
 }
 
+function edgesFor(ctx, rootKey, owners) {
+  const allowed = (key) => !owners || owners.get(key) === rootKey;
+  return ctx.edges.filter((e) => allowed(edgeKey(e.fromKind || "node", e.from)) &&
+    allowed(edgeKey(e.toKind || "node", e.to)));
+}
+
 function positionsFor(ctx, rootKey, opts, owners) {
   const root = ctx.items.get(rootKey);
   const allowed = (key) => !owners || owners.get(key) === rootKey;
-  const edges = ctx.edges.filter((e) => allowed(edgeKey(e.fromKind || "node", e.from)) &&
-    allowed(edgeKey(e.toKind || "node", e.to)));
+  const edges = edgesFor(ctx, rootKey, owners);
   const positions = treeLayout({ edges, rootKey, rootPos: root, sizeOf: ctx.sizeOf,
-    directions: opts.directions, gap: opts });
+    directions: opts.directions, gap: opts, siblingOrder: opts.siblingOrder, branchDirections: opts.branchDirections });
   // treeLayout rounds coordinates; the anchor must retain its exact position.
   positions.set(rootKey, { x: root.x, y: root.y });
   const groups = ctx.groups.filter((g) => allowed(edgeKey("group", g.id)))
@@ -155,11 +162,75 @@ export function arrangeLockedTrees(board, nodeSize) {
   }
   const owners = ownersIn(ctx);
   const positions = new Map();
+  const updates = new Map();
   // Calculate against one snapshot so moving a group cannot capture cards
   // from another tree midway through this operation.
   for (const rootKey of new Set(owners.values())) {
     const opts = normalizeTreeLock(ctx.items.get(rootKey).treeLayoutLock);
+    if (opts.branchDirections) {
+      const layout = treeLayoutBranches({ edges: edgesFor(ctx, rootKey, owners), rootKey,
+        sizeOf: ctx.sizeOf, directions: opts.directions, gap: opts,
+        siblingOrder: opts.siblingOrder, branchDirections: opts.branchDirections });
+      const branchDirections = Object.fromEntries(layout.buckets.flatMap((keys, i) =>
+        keys.map((key) => [key, layout.dirList[i]])));
+      if (Object.keys(branchDirections).length !== Object.keys(opts.branchDirections).length ||
+          Object.entries(branchDirections).some(([key, dir]) => opts.branchDirections[key] !== dir)) {
+        opts.branchDirections = branchDirections;
+        updates.set(rootKey, { ...ctx.items.get(rootKey), treeLayoutLock: opts });
+      }
+    }
     for (const [key, pos] of positionsFor(ctx, rootKey, opts, owners)) positions.set(key, pos);
   }
+  if (updates.size) board = { ...board,
+    nodes: ctx.nodes.map((n) => updates.get(edgeKey("node", n.id)) || n),
+    groups: ctx.groups.map((g) => updates.get(edgeKey("group", g.id)) || g)
+  };
   return applyPositions(board, positions);
+}
+
+function siblingContext(board, sourceKey, nodeSize) {
+  if (typeof sourceKey !== "string" || !/^(node|group):.+$/.test(sourceKey)) return null;
+  const ctx = context(board, nodeSize);
+  const source = ctx.items.get(sourceKey);
+  if (!source || !validId(source.id) || source.locked) return null;
+  const owners = ownersIn(ctx);
+  const rootKey = owners.get(sourceKey);
+  if (!rootKey || rootKey === sourceKey) return null;
+  const opts = normalizeTreeLock(ctx.items.get(rootKey).treeLayoutLock);
+  const layout = treeLayoutBranches({ edges: edgesFor(ctx, rootKey, owners), rootKey,
+    sizeOf: ctx.sizeOf, directions: opts.directions, gap: opts,
+    siblingOrder: opts.siblingOrder, branchDirections: opts.branchDirections });
+  // Carried group members have an owner but no BFS parent or sibling slots.
+  for (const [parentKey, kids] of layout.children) {
+    if (kids.includes(sourceKey)) return { ctx, rootKey, opts, layout, parentKey, kids };
+  }
+  return null;
+}
+
+export function lockedTreeSiblings(board, sourceKey, nodeSize) {
+  const info = siblingContext(board, sourceKey, nodeSize);
+  return info ? info.kids.filter((key) => key !== sourceKey && !info.ctx.items.get(key).locked) : [];
+}
+
+export function swapLockedSiblings(board, sourceKey, targetKey, nodeSize) {
+  if (sourceKey === targetKey) return board;
+  const info = siblingContext(board, sourceKey, nodeSize);
+  if (!info || !info.kids.includes(targetKey) || info.ctx.items.get(targetKey).locked) return board;
+  const { ctx, rootKey, opts, layout, parentKey } = info;
+  const kids = [...info.kids];
+  const sourceAt = kids.indexOf(sourceKey), targetAt = kids.indexOf(targetKey);
+  [kids[sourceAt], kids[targetAt]] = [kids[targetAt], kids[sourceAt]];
+  // Freeze ALL effective assignments before changing order, including on a
+  // nested swap. Rebalancing by weight after swapping would undo direction slots.
+  const branchDirections = Object.fromEntries(layout.buckets.flatMap((keys, i) =>
+    keys.map((key) => [key, layout.dirList[i]])));
+  if (parentKey === rootKey) {
+    [branchDirections[sourceKey], branchDirections[targetKey]] = [branchDirections[targetKey], branchDirections[sourceKey]];
+  }
+  const root = { ...ctx.items.get(rootKey), treeLayoutLock: { ...opts,
+    siblingOrder: { ...opts.siblingOrder, [parentKey]: kids }, branchDirections } };
+  return arrangeLockedTrees({ ...board,
+    nodes: ctx.nodes.map((n) => edgeKey("node", n.id) === rootKey ? root : n),
+    groups: ctx.groups.map((g) => edgeKey("group", g.id) === rootKey ? root : g)
+  }, nodeSize);
 }

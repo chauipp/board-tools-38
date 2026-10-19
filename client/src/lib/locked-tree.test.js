@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { normalizeTreeLock, treeLockOwners, arrangeTree, arrangeLockedTrees } from "./locked-tree.js";
+import * as lockedTree from "./locked-tree.js";
 
 const opts = (directions = ["down"]) => ({ directions, depth: 70, breadth: 28, leaf: 20 });
 const size = () => ({ w: 100, h: 40 });
@@ -215,4 +216,203 @@ test("undirected and incoming edges do not grant ownership or move items", () =>
     [edge(1, 2, { arrow: "none" }), edge(3, 1)]);
   assert.deepEqual([...treeLockOwners(b, size)], [["node:1", "node:1"]]);
   assert.equal(arrangeLockedTrees(b, size), b);
+});
+
+test("same-side siblings exchange persisted slots without changing edges or input", () => {
+  assert.equal(typeof lockedTree.swapLockedSiblings, "function");
+  const b = arrangeLockedTrees(board([node(1, { treeLayoutLock: opts(["right"]) }),
+    node(2), node(3), node(4)], [edge(1, 2), edge(1, 3), edge(1, 4)]), size);
+  const saved = structuredClone(b);
+  assert.deepEqual(lockedTree.lockedTreeSiblings(b, "node:2", size), ["node:3", "node:4"]);
+  const result = lockedTree.swapLockedSiblings(b, "node:2", "node:4", size);
+  assert.deepEqual(xy(find(result, 2)), xy(find(b, 4)));
+  assert.deepEqual(xy(find(result, 4)), xy(find(b, 2)));
+  assert.deepEqual(xy(find(result, 3)), xy(find(b, 3)));
+  assert.deepEqual(find(result, 1).treeLayoutLock.siblingOrder, { "node:1": ["node:4", "node:3", "node:2"] });
+  assert.equal(result.edges, b.edges);
+  assert.deepEqual(b, saved);
+  assert.equal(arrangeLockedTrees(result, size), result);
+  const restored = lockedTree.swapLockedSiblings(result, "node:2", "node:4", size);
+  for (const id of [1, 2, 3, 4]) assert.deepEqual(xy(find(restored, id)), xy(find(b, id)));
+});
+
+for (const directions of [["down", "up"], ["right", "left"], ["up", "right"]]) {
+  test(`weighted branches exchange direction slots and carry descendants: ${directions}`, () => {
+    const measured = (id) => ({ w: id === 3 ? 320 : 100, h: id === 3 ? 180 : 40 });
+    const b = arrangeLockedTrees(board([node(1, { treeLayoutLock: opts(directions) }),
+      ...[2, 3, 4, 5, 6, 7].map((id) => node(id))],
+    [edge(1, 2), edge(1, 3), edge(1, 4), edge(3, 5), edge(3, 6), edge(2, 7)]), measured);
+    const result = lockedTree.swapLockedSiblings(b, "node:2", "node:3", measured);
+    assert.deepEqual(find(result, 1).treeLayoutLock.branchDirections,
+      { "node:2": directions[0], "node:3": directions[1], "node:4": directions[1] });
+    const along = (id, dir) => (dir === "down" ? find(result, id).y - 300 :
+      dir === "up" ? 300 - find(result, id).y : dir === "right" ? find(result, id).x - 500 : 500 - find(result, id).x);
+    assert.ok(along(2, directions[0]) > 0);
+    assert.ok(along(7, directions[0]) > along(2, directions[0]));
+    assert.ok(along(3, directions[1]) > 0);
+    assert.ok(along(5, directions[1]) > along(3, directions[1]));
+    assert.ok(along(6, directions[1]) > along(3, directions[1]));
+    assert.ok(along(4, directions[1]) > 0);
+    noOverlap(result.nodes, measured);
+    assert.equal(arrangeLockedTrees(result, measured), result);
+  });
+}
+
+test("nested siblings use BFS parents and capture every current root direction", () => {
+  const b = arrangeLockedTrees(board([node(1, { treeLayoutLock: opts(["down", "up"]) }),
+    ...[2, 3, 4, 5, 6, 7].map((id) => node(id))],
+  [edge(1, 2), edge(1, 3), edge(2, 4), edge(2, 5), edge(3, 5), edge(3, 6), edge(4, 7)]), size);
+  assert.deepEqual(lockedTree.lockedTreeSiblings(b, "node:4", size), ["node:5"]);
+  const result = lockedTree.swapLockedSiblings(b, "node:4", "node:5", size);
+  assert.ok(find(result, 4).x > find(result, 5).x);
+  assert.equal(find(result, 7).x, find(result, 4).x);
+  assert.deepEqual(find(result, 1).treeLayoutLock.branchDirections, { "node:2": "down", "node:3": "up" });
+  assert.deepEqual(find(result, 1).treeLayoutLock.siblingOrder, { "node:2": ["node:5", "node:4"] });
+  assert.deepEqual(xy(find(result, 6)), xy(find(b, 6)));
+});
+
+test("invalid, root, manually locked, different parent and different owner pairs preserve identity", () => {
+  const b = board([node(1, { treeLayoutLock: opts() }), node(2), node(3), node(4, { locked: true }),
+    node(5), node(9, { treeLayoutLock: opts() }), node(10), node(11), node(12)],
+  [edge(1, 2), edge(1, 3), edge(1, 4), edge(2, 5), edge(9, 10), edge(9, 3),
+    edge(1, 99), edge(99, 11), edge(1, 12, { arrow: "none" }), null, {}, edge(1, 12, { toKind: "bogus" })]);
+  assert.deepEqual(lockedTree.lockedTreeSiblings(b, "node:2", size), ["node:3"]);
+  for (const key of [null, {}, 2, "", "node:", "bad:2", "node:99", "node:11", "node:12", "node:1", "node:4"]) {
+    assert.deepEqual(lockedTree.lockedTreeSiblings(b, key, size), []);
+    assert.equal(lockedTree.swapLockedSiblings(b, key, "node:2", size), b);
+    assert.equal(lockedTree.swapLockedSiblings(b, "node:2", key, size), b);
+  }
+  for (const [a, z] of [[2, 2], [2, 5], [2, 10], [3, 10], [9, 10]]) {
+    assert.equal(lockedTree.swapLockedSiblings(b, `node:${a}`, `node:${z}`, size), b);
+  }
+});
+
+test("group siblings carry only their captured members and survive repeated reflow", () => {
+  const b = arrangeLockedTrees(board([node(1, { treeLayoutLock: opts(["right", "left"]) }),
+    node(2, { x: 20, y: 20 }), node(3, { x: 1020, y: 20 }), node(4, { x: 40, y: 40, locked: true })],
+  [edge(1, "a", { toKind: "group" }), edge(1, "b", { toKind: "group" })],
+  [{ id: "a", x: 0, y: 0, w: 300, h: 200 }, { id: "b", x: 1000, y: 0, w: 400, h: 250 }]), size);
+  const snapshots = structuredClone(find(b, 1).treeLayoutLock.groupMembers);
+  assert.deepEqual(lockedTree.lockedTreeSiblings(b, "group:a", size), ["group:b"]);
+  assert.deepEqual(lockedTree.lockedTreeSiblings(b, "node:2", size), []);
+  assert.equal(lockedTree.swapLockedSiblings(b, "node:2", "node:3", size), b);
+  assert.ok(b.groups[0].x < 500);
+  assert.ok(b.groups[1].x > 500);
+  const result = lockedTree.swapLockedSiblings(b, "group:a", "group:b", size);
+  assert.ok(result.groups[0].x > 500);
+  assert.ok(result.groups[1].x < 500);
+  for (const [id, index] of [[2, 0], [3, 1]]) {
+    assert.equal(find(result, id).x - result.groups[index].x, 20);
+    assert.equal(find(result, id).y - result.groups[index].y, 20);
+  }
+  assert.deepEqual(find(result, 1).treeLayoutLock.groupMembers, snapshots);
+  assert.equal(find(result, 4), find(b, 4));
+  assert.equal(arrangeLockedTrees(result, size), result);
+  const locked = { ...b, groups: b.groups.map((g) => ({ ...g, locked: true })) };
+  assert.deepEqual(lockedTree.lockedTreeSiblings(locked, "group:a", size), []);
+  assert.equal(lockedTree.swapLockedSiblings(locked, "group:a", "group:b", size), locked);
+});
+
+test("group root supports mixed node/group siblings without exchanging the root", () => {
+  const b = board([node(2)], [edge("root", 2, { fromKind: "group" }),
+    edge("root", "child", { fromKind: "group", toKind: "group" })],
+  [{ id: "root", x: 500, y: 300, w: 200, h: 100, treeLayoutLock: opts() },
+    { id: "child", x: 3000, y: 3000, w: 300, h: 100 }]);
+  assert.deepEqual(lockedTree.lockedTreeSiblings(b, "node:2", size), ["group:child"]);
+  const result = lockedTree.swapLockedSiblings(b, "node:2", "group:child", size);
+  assert.ok(find(result, 2).x > result.groups[1].x);
+  assert.deepEqual(xy(result.groups[0]), { x: 500, y: 300 });
+  assert.equal(lockedTree.swapLockedSiblings(b, "group:root", "group:child", size), b);
+});
+
+test("serialization, size changes, additions and deletions preserve saved order and directions", () => {
+  const b = board([node(1, { treeLayoutLock: opts(["down", "up"]) }),
+    ...[2, 3, 4, 5, 6].map((id) => node(id))],
+  [edge(1, 2), edge(1, 3), edge(1, 4), edge(3, 5), edge(3, 6)]);
+  const swapped = lockedTree.swapLockedSiblings(b, "node:2", "node:3", size);
+  const loaded = JSON.parse(JSON.stringify(swapped));
+  assert.equal(arrangeLockedTrees(loaded, size), loaded);
+  const added = { ...loaded, nodes: [...loaded.nodes, node(7), node(8)],
+    edges: [...loaded.edges, edge(1, 7), edge(2, 8)] };
+  const measured = (id) => ({ w: id === 4 ? 800 : 100, h: 40 });
+  const result = arrangeLockedTrees(added, measured);
+  assert.ok(find(result, 2).y > 300);
+  assert.ok(find(result, 3).y < 300);
+  assert.ok(find(result, 4).y < 300);
+  assert.ok(find(result, 3).x < find(result, 4).x);
+  assert.ok(find(result, 8).y > find(result, 2).y);
+  const deleted = { ...result, nodes: result.nodes.filter((n) => n.id !== 2) };
+  const final = arrangeLockedTrees(deleted, measured);
+  assert.ok(find(final, 3).y < 300);
+  assert.ok(find(final, 4).y < 300);
+  assert.ok(find(final, 3).x < find(final, 4).x);
+  assert.equal(find(final, 8), find(deleted, 8));
+  assert.equal(arrangeLockedTrees(final, measured), final);
+});
+
+test("normalization copies valid metadata and ignores malformed optional entries", () => {
+  const input = { ...opts(["right", "left"]), groupMembers: { g: [2, 3] },
+    siblingOrder: { "node:1": ["node:3", "node:2", "node:3"], bad: ["node:2"], "node:2": [null] },
+    branchDirections: { "node:2": "left", "node:3": "right", "node:4": "down", bad: "left" } };
+  const normalized = normalizeTreeLock(input);
+  assert.deepEqual(normalized.siblingOrder, { "node:1": ["node:3", "node:2"] });
+  assert.deepEqual(normalized.branchDirections, { "node:2": "left", "node:3": "right" });
+  normalized.siblingOrder["node:1"].reverse();
+  normalized.branchDirections["node:2"] = "right";
+  normalized.groupMembers.g.push(4);
+  assert.deepEqual(input.siblingOrder["node:1"], ["node:3", "node:2", "node:3"]);
+  assert.equal(input.branchDirections["node:2"], "left");
+  assert.deepEqual(input.groupMembers.g, [2, 3]);
+  for (const invalid of [null, [], "bad", 42, { "node:1": null }]) {
+    const config = { ...opts(), siblingOrder: invalid, branchDirections: invalid };
+    const b = board([node(1, { treeLayoutLock: config }), node(2), node(3)], [edge(1, 2), edge(1, 3)]);
+    assert.deepEqual(arrangeLockedTrees(b, size).nodes.map(xy), [{ x: 500, y: 300 }, { x: 440, y: 410 }, { x: 560, y: 410 }]);
+  }
+});
+
+test("new root children acquire persistent directions on their first reflow after a swap", () => {
+  const initial = board([node(1, { treeLayoutLock: opts(["down", "up"]) }), node(2), node(3)],
+    [edge(1, 2), edge(1, 3)]);
+  const swapped = lockedTree.swapLockedSiblings(initial, "node:2", "node:3", size);
+  const added = arrangeLockedTrees({ ...swapped, nodes: [...swapped.nodes, node(4)],
+    edges: [...swapped.edges, edge(1, 4)] }, size);
+  assert.equal(find(added, 1).treeLayoutLock.branchDirections["node:4"], "down");
+  const loaded = JSON.parse(JSON.stringify(added));
+  const changedSizes = (id) => ({ w: id === 3 ? 500 : 100, h: 40 });
+  const result = arrangeLockedTrees(loaded, changedSizes);
+  assert.ok(find(result, 4).y > 300);
+  assert.ok(find(result, 2).y < 300);
+  assert.ok(find(result, 3).y > 300);
+  assert.equal(arrangeLockedTrees(result, changedSizes), result);
+});
+
+test("malformed endpoint ids cannot create swappable siblings", () => {
+  const b = board([node(1, { treeLayoutLock: opts() }), node(2), node(null), node(undefined), node(NaN)],
+    [edge(1, 2), edge(1, null), edge(1, undefined), edge(1, NaN)]);
+  assert.deepEqual(lockedTree.lockedTreeSiblings(b, "node:2", size), []);
+  for (const key of ["node:null", "node:undefined", "node:NaN"]) {
+    assert.deepEqual(lockedTree.lockedTreeSiblings(b, key, size), []);
+    assert.equal(lockedTree.swapLockedSiblings(b, "node:2", key, size), b);
+  }
+});
+
+test("adding a new heavy root branch never rebalances existing explicit direction slots", () => {
+  const initial = board([node(1, { treeLayoutLock: opts(["right", "left"]) }),
+    node(2), node(3), node(4)], [edge(1, 2), edge(1, 3), edge(1, 4)]);
+  const swapped = lockedTree.swapLockedSiblings(initial, "node:2", "node:3", size);
+  const added = { ...swapped, nodes: [...swapped.nodes, node(5, { w: 1000, pdfH: 1000 }), node(6)],
+    edges: [...swapped.edges, edge(1, 5), edge(5, 6)] };
+  const saved = structuredClone(added);
+  const result = arrangeLockedTrees(added, size);
+  assert.deepEqual(find(result, 1).treeLayoutLock.branchDirections,
+    { "node:2": "left", "node:3": "right", "node:4": "right", "node:5": "right" });
+  assert.ok(find(result, 2).x < 500);
+  assert.ok(find(result, 3).x > 500);
+  assert.ok(find(result, 4).x > 500);
+  assert.ok(find(result, 3).y < find(result, 4).y);
+  assert.ok(find(result, 6).x > find(result, 5).x + 1000);
+  assert.equal(result.edges, added.edges);
+  assert.deepEqual(added, saved);
+  const loaded = JSON.parse(JSON.stringify(result));
+  assert.equal(arrangeLockedTrees(loaded, size), loaded);
 });

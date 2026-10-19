@@ -2,6 +2,61 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildTree, edgeKey, treeLayout, carryGroupMembers, splitBranches } from "./tree-layout.js";
 
+test("treeLayout consumes persisted order at each level without changing BFS parentage", () => {
+  const args = { edges: [E(1, 2), E(1, 3), E(2, 4), E(2, 5), E(3, 5)],
+    rootKey: "node:1", rootPos: { x: 0, y: 0 }, sizeOf: SIZE,
+    siblingOrder: { "node:1": ["node:3", "node:2"], "node:2": ["node:5", "node:4"] } };
+  const snapshot = structuredClone(args.edges);
+  const pos = treeLayout(args);
+  assert.ok(pos.get("node:3").x < pos.get("node:2").x);
+  assert.ok(pos.get("node:5").x < pos.get("node:4").x);
+  assert.equal(pos.get("node:5").y, 220);
+  assert.deepEqual(args.edges, snapshot);
+});
+
+test("treeLayout pins valid directions while appending new siblings and ignoring stale keys", () => {
+  const pos = treeLayout({ edges: [E(1, 2), E(1, 3), E(1, 4), E(1, 5), E(2, 6)],
+    rootKey: "node:1", rootPos: { x: 0, y: 0 }, sizeOf: SIZE, directions: ["down", "up"],
+    siblingOrder: { "node:1": ["node:99", "node:4", "node:2", "node:4", "node:6"] },
+    branchDirections: { "node:2": "up", "node:3": "down", "node:4": "up", "node:6": "down" } });
+  assert.ok(pos.get("node:2").y < 0);
+  assert.ok(pos.get("node:3").y > 0);
+  assert.ok(pos.get("node:4").y < 0);
+  assert.ok(pos.get("node:4").x < pos.get("node:2").x);
+  assert.ok(pos.get("node:6").y < pos.get("node:2").y);
+  assert.ok(pos.has("node:5"));
+  assert.equal(pos.size, 6);
+});
+
+test("treeLayout malformed metadata retains the default layout", () => {
+  const args = { edges: [E(1, 2), E(1, 3)], rootKey: "node:1",
+    rootPos: { x: 0, y: 0 }, sizeOf: SIZE, directions: ["down", "up"] };
+  const defaultPositions = treeLayout(args);
+  for (const metadata of [null, [], "invalid", 3, { "node:1": [null], "node:2": "diagonal" }]) {
+    assert.deepEqual(treeLayout({ ...args, siblingOrder: metadata, branchDirections: metadata }), defaultPositions);
+  }
+});
+
+test("persisted negative direction slots use each branch size to keep the depth gap", () => {
+  for (const direction of ["up", "left"]) {
+    const pos = treeLayout({ edges: [E(1, 2), E(2, 3)], rootKey: "node:1",
+      rootPos: { x: 0, y: 0 }, sizeOf: (key) => key === "node:2" ? { w: 400, h: 200 } : SIZE(),
+      directions: [direction], branchDirections: { "node:2": direction } });
+    if (direction === "up") {
+      assert.equal(pos.get("node:2").y + 200, -70);
+      assert.equal(pos.get("node:3").y + 40, pos.get("node:2").y - 70);
+    } else {
+      assert.equal(pos.get("node:2").x + 400, -70);
+      assert.equal(pos.get("node:3").x + 100, pos.get("node:2").x - 70);
+    }
+  }
+});
+
+test("an isolated root keeps the legacy fast path without requiring measurements", () => {
+  assert.deepEqual(treeLayout({ edges: [], rootKey: "node:1", rootPos: { x: 7, y: 9 } }),
+    new Map([["node:1", { x: 7, y: 9 }]]));
+});
+
 test("edgeKey ghép kind và id thành khoá chuỗi", () => {
   assert.equal(edgeKey("node", 3), "node:3");
   assert.equal(edgeKey("group", 1), "group:1");

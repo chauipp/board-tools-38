@@ -46,6 +46,22 @@ export function buildTree(edges, rootKey) {
 export const TREE_DIRECTIONS = ["down", "up", "right", "left"];
 const DEFAULT_GAP = { depth: 70, breadth: 28 };
 
+// Optional persisted slots are hints: malformed entries never disable a tree.
+// Actual parentage is checked against BFS below, after these shape checks.
+export function normalizeTreeSlots(value, directions) {
+  const entries = (v) => v && typeof v === "object" && !Array.isArray(v) ? Object.entries(v) : [];
+  const key = (v) => typeof v === "string" && /^(node|group):.+$/.test(v);
+  const siblingOrder = Object.fromEntries(entries(value?.siblingOrder)
+    .filter(([parent, kids]) => key(parent) && Array.isArray(kids) && kids.every(key))
+    .map(([parent, kids]) => [parent, [...new Set(kids)]]));
+  const branchDirections = Object.fromEntries(entries(value?.branchDirections)
+    .filter(([child, dir]) => key(child) && directions.includes(dir)));
+  return {
+    ...(Object.keys(siblingOrder).length ? { siblingOrder } : {}),
+    ...(Object.keys(branchDirections).length ? { branchDirections } : {})
+  };
+}
+
 function isVertical(direction) {
   return direction === "down" || direction === "up";
 }
@@ -122,7 +138,7 @@ export function splitBranches(kids, weightOf, count) {
 }
 
 // Toạ độ trên hệ quy chiếu riêng của một hướng (gốc chưa dịch về chỗ thật).
-function layoutBranch({ order, children, sizeOf, rootKey, direction, g }) {
+function layoutBranch({ order, children, sizeOf, rootKey, direction, g, persistedSlots }) {
   const vertical = isVertical(direction);
   const size = new Map(order.map((key) => [key, axisSize(sizeOf(key), vertical)]));
 
@@ -167,7 +183,10 @@ function layoutBranch({ order, children, sizeOf, rootKey, direction, g }) {
   const raw = new Map();
   order.forEach((key) => {
     const b = breadthOf.get(key);
-    const d = depthStart[depthOf.get(key)] * sign;
+    // Saved slots reflect rectangle edges, so a larger swapped branch cannot
+    // grow back into its parent. Trees without saved slots retain legacy positions.
+    const correction = persistedSlots && sign < 0 ? size.get(rootKey).depth - size.get(key).depth : 0;
+    const d = depthStart[depthOf.get(key)] * sign + correction;
     raw.set(key, vertical ? { x: b, y: d } : { x: d, y: b });
   });
   return raw;
@@ -177,7 +196,7 @@ function layoutBranch({ order, children, sizeOf, rootKey, direction, g }) {
 // được chia về từng hướng, mỗi phía chạy đúng một lần thuật toán trên, và gốc
 // là điểm neo chung của mọi phía — đó là hình sao/mindmap toả ra hai bên.
 // `direction` (số ít) vẫn nhận được, coi như danh sách một phần tử.
-export function treeLayout({ edges, rootKey, rootPos, sizeOf, direction, directions, gap }) {
+export function treeLayoutBranches({ edges, rootKey, sizeOf, direction, directions, gap, siblingOrder, branchDirections }) {
   const g = { ...DEFAULT_GAP, ...(gap || {}) };
   if (g.leaf == null) g.leaf = g.breadth;
   const dirs = (directions && directions.length ? directions : [direction || "down"])
@@ -185,22 +204,39 @@ export function treeLayout({ edges, rootKey, rootPos, sizeOf, direction, directi
   const dirList = dirs.length ? dirs : ["down"];
 
   const { order, children } = buildTree(edges, rootKey);
-  const positions = new Map([[rootKey, { x: Math.round(rootPos.x), y: Math.round(rootPos.y) }]]);
+  const slots = normalizeTreeSlots({ siblingOrder, branchDirections }, dirList);
+  for (const [parent, kids] of children) {
+    const saved = slots.siblingOrder?.[parent] || [];
+    const current = new Set(kids);
+    const ordered = saved.filter((key) => current.has(key));
+    const placed = new Set(ordered);
+    children.set(parent, [...ordered, ...kids.filter((key) => !placed.has(key))]);
+  }
   const rootKids = children.get(rootKey) || [];
-  if (rootKids.length === 0) return positions;
+  if (!rootKids.length) return { children, g, dirList, buckets: dirList.map(() => []), persistedSlots: false };
 
   // Cân theo bề rộng thật của nhánh, đo trên trục breadth của hướng ĐẦU TIÊN —
   // hai hướng đối nhau (lên/xuống, trái/phải) dùng chung trục nên đo thế là
   // chính xác; trường hợp trộn trục (lên + phải) thì đây là ước lượng.
   const weightVertical = isVertical(dirList[0]);
   const weight = spansOf(order, children, (key) => axisSize(sizeOf(key), weightVertical).breadth, g);
-  const buckets = splitBranches(rootKids, (key) => weight.get(key), dirList.length);
+  const defaults = splitBranches(rootKids, (key) => weight.get(key), dirList.length);
+  const assigned = new Map(defaults.flatMap((kids, i) => kids.map((key) => [key, dirList[i]])));
+  const buckets = dirList.map((dir) => rootKids.filter((key) =>
+    (slots.branchDirections?.[key] || assigned.get(key)) === dir));
+  const persistedSlots = rootKids.some((key) => slots.branchDirections?.[key]);
+  return { children, g, dirList, buckets, persistedSlots };
+}
+
+export function treeLayout({ rootKey, rootPos, sizeOf, ...options }) {
+  const { children, g, dirList, buckets, persistedSlots } = treeLayoutBranches({ ...options, rootKey, sizeOf });
+  const positions = new Map([[rootKey, { x: Math.round(rootPos.x), y: Math.round(rootPos.y) }]]);
 
   dirList.forEach((dir, i) => {
     const kids = buckets[i];
     if (!kids || kids.length === 0) return;
     const branch = branchOf(rootKey, children, kids);
-    const raw = layoutBranch({ ...branch, sizeOf, rootKey, direction: dir, g });
+    const raw = layoutBranch({ ...branch, sizeOf, rootKey, direction: dir, g, persistedSlots });
     // Dịch cả phía này một lần sao cho gốc rơi đúng chỗ nó đang đứng — người
     // dùng thấy gốc bất động, cây mọc ra quanh nó.
     const rootRaw = raw.get(rootKey);

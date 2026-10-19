@@ -77,7 +77,7 @@ export default function TreePanel({ opts, count, rootTitle, shifted, locked, onL
             <span><Trans>Khóa bố cục tự động</Trans></span>
           </label>
           <div className="tp-hint">
-            <Trans>Tự xếp cả cây khi thêm card. Tắt để kéo card tự do.</Trans>
+            <Trans>Tự xếp cả cây khi thêm card. Kéo lên card cùng cấp để đổi chỗ nhánh. Tắt để kéo card tự do.</Trans>
           </div>
         </div>
 

@@ -49,7 +49,7 @@ import { placeLinkedNode, parentNodeId } from "../lib/place-node.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout, layerLayout } from "../lib/layout.js";
 import { buildTree, edgeKey } from "../lib/tree-layout.js";
-import { normalizeTreeLock, treeLockOwners, arrangeTree, arrangeLockedTrees } from "../lib/locked-tree.js";
+import { normalizeTreeLock, treeLockOwners, arrangeTree, arrangeLockedTrees, lockedTreeSiblings, swapLockedSiblings } from "../lib/locked-tree.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { usePresence } from "../lib/usePresence.js";
 import { useFollow } from "../lib/useFollow.js";
@@ -433,6 +433,10 @@ export default function IdeaMap() {
     () => board ? treeLockOwners(board, frameCardSize) : new Map(),
     [board?.nodes, board?.groups, board?.edges, frameCardSize]
   );
+  const [treeSwap, setTreeSwap] = useState(null);
+  const treeSwapCancelRef = useRef(null);
+  const treeSwapClickUntilRef = useRef(0);
+  useEffect(() => () => treeSwapCancelRef.current?.(), []);
 
   const viewportRef = useRef(null);
   const canvasRef = useRef(null);
@@ -1750,7 +1754,11 @@ export default function IdeaMap() {
       setSelectedGroupIds((prev) => toggleId(prev, group.id));
       return;
     }
-    if (group.locked || layoutOwners.has(edgeKey("group", group.id))) { setSelectedGroupIds(new Set([group.id])); setSelectedIds(new Set()); return; }
+    if (group.locked || layoutOwners.has(edgeKey("group", group.id))) {
+      setSelectedGroupIds(new Set([group.id])); setSelectedIds(new Set());
+      if (!group.locked && !e.altKey) startLockedTreeSwap(e, edgeKey("group", group.id));
+      return;
+    }
 
     // Kéo một khung ĐANG nằm trong vùng chọn nhiều thứ thì mang cả vùng chọn đi;
     // kéo một khung ngoài vùng chọn thì thu vùng chọn về đúng khung đó, y như
@@ -2083,6 +2091,11 @@ export default function IdeaMap() {
   }
 
   function handleViewportClickCapture(e) {
+    if (Date.now() < treeSwapClickUntilRef.current) {
+      e.preventDefault(); e.stopPropagation();
+      multiClickRef.current.cancel();
+      return;
+    }
     const mc = multiClickRef.current;
     const anchor = clickAnchorRef.current;
     const dragged = !anchor || Math.hypot(e.clientX - anchor.x, e.clientY - anchor.y) > CLICK_DRAG_TOL;
@@ -2606,6 +2619,66 @@ export default function IdeaMap() {
     else { toggleEdge(pendingSource, "node", nodeId, "node"); setPendingSource(null); }
   }
 
+  function startLockedTreeSwap(e, sourceKey) {
+    if (roleRef.current === "viewer") return;
+    treeSwapCancelRef.current?.();
+    const candidates = new Set(lockedTreeSiblings(boardRef.current, sourceKey, treeSizeRef.current));
+    if (!candidates.size) return;
+    const startX = e.clientX, startY = e.clientY;
+    let moved = false;
+    function targetAt(ev) {
+      const elements = document.elementsFromPoint(ev.clientX, ev.clientY);
+      for (const el of elements) {
+        const card = el.closest(".idea-card[data-id]");
+        const frame = el.closest(".frame-box[data-group-id]");
+        const key = card ? edgeKey("node", card.dataset.id)
+          : frame ? edgeKey("group", frame.dataset.groupId) : null;
+        if (key && candidates.has(key)) return key;
+      }
+      return null;
+    }
+    function onMove(ev) {
+      if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 5) return;
+      moved = true;
+      setTreeSwap({ source: sourceKey, candidates, target: targetAt(ev), x: ev.clientX, y: ev.clientY });
+    }
+    function cleanup() {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("keydown", onKey, true);
+      window.removeEventListener("blur", cancel);
+      treeSwapCancelRef.current = null;
+      setTreeSwap(null);
+      if (moved) treeSwapClickUntilRef.current = Date.now() + 250;
+    }
+    function cancel() { cleanup(); }
+    function onKey(ev) {
+      if (ev.key === "Escape") { ev.preventDefault(); ev.stopImmediatePropagation(); cancel(); }
+    }
+    function onUp(ev) {
+      const target = moved ? targetAt(ev) : null;
+      cleanup();
+      if (!target || roleRef.current === "viewer") return;
+      const current = boardRef.current;
+      const next = swapLockedSiblings(current, sourceKey, target, treeSizeRef.current);
+      if (next !== current) {
+        recordHistory(current);
+        commitAndSave(next, { historical: false });
+      }
+    }
+    treeSwapCancelRef.current = cancel;
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("keydown", onKey, true);
+    window.addEventListener("blur", cancel);
+  }
+
+  function treeSwapState(key) {
+    if (!treeSwap) return undefined;
+    return treeSwap.source === key ? "source" : treeSwap.target === key ? "target"
+      : treeSwap.candidates.has(key) ? "candidate" : undefined;
+  }
+
   function handleNodeMouseDown(e, nodeId) {
     const node = board.nodes.find((n) => n.id === nodeId);
     if (!node || linkMode || editingId === node.id) return;
@@ -2626,7 +2699,12 @@ export default function IdeaMap() {
       return;
     }
 
-    if (layoutOwners.has(edgeKey("node", node.id)) || (node.locked && !e.altKey)) { setSelectedIds(new Set([node.id])); setSelectedDrawingIds(EMPTY_SET); return; }
+    if (layoutOwners.has(edgeKey("node", node.id)) || (node.locked && !e.altKey)) {
+      setSelectedIds(new Set([node.id])); setSelectedDrawingIds(EMPTY_SET);
+      setSelectedGroupIds(EMPTY_SET); setSelectedEdgeIds(EMPTY_SET);
+      if (!node.locked && !e.altKey) startLockedTreeSwap(e, edgeKey("node", node.id));
+      return;
+    }
 
     const boardBeforeDrag = board;
     let dragIds, baseBoard, isAlt = false, selectedIdsBeforeDrag;
@@ -3787,6 +3865,7 @@ export default function IdeaMap() {
     const update = (kind, item) => {
       const key = edgeKey(kind, item.id);
       if (key === rootKey) return { ...item, treeLayoutLock: enabled ? {
+        ...normalizeTreeLock(item.treeLayoutLock),
         directions: [...treeOpts.directions], depth: treeOpts.depth, breadth: treeOpts.breadth, leaf: treeOpts.leaf,
         groupMembers: treeMembersRef.current?.members || {}
       } : null };
@@ -4334,6 +4413,9 @@ export default function IdeaMap() {
 
   return (
     <div className={"shell" + (presentIndex != null ? " presenting" : "") + (role === "viewer" ? " readonly" : "")} onContextMenu={handlePageContextMenu}>
+      {treeSwap && <div className="tree-swap-hint" role="status" style={{ left: Math.max(8, Math.min(treeSwap.x + 16, viewportSize.w - 240)), top: Math.max(8, Math.min(treeSwap.y + 18, viewportSize.h - 64)) }}>
+        {treeSwap.target ? <Trans>Thả để đổi chỗ hai nhánh</Trans> : <Trans>Kéo lên card cùng cấp để đổi chỗ · Esc hủy</Trans>}
+      </div>}
       {role === "viewer" && (
         <div className="readonly-banner"><Trans>Chỉ xem — bạn không có quyền chỉnh sửa board này.</Trans></div>
       )}
@@ -4964,6 +5046,7 @@ export default function IdeaMap() {
             <FrameBox
               key={group.id}
               group={group}
+              treeSwapState={treeSwapState(edgeKey("group", group.id))}
               editingTitle={editingGroupTitleId === group.id}
               dropTarget={!!dropTargetId && dropTargetId.kind === "group" && dropTargetId.id === group.id}
               selected={selectedGroupIds.has(group.id)}
@@ -5001,6 +5084,8 @@ export default function IdeaMap() {
                 key={liveNode.id}
                 node={renderNode}
                 layoutLocked={layoutOwners.has(edgeKey("node", liveNode.id))}
+                layoutSwappable={!liveNode.locked && layoutOwners.has(edgeKey("node", liveNode.id)) && layoutOwners.get(edgeKey("node", liveNode.id)) !== edgeKey("node", liveNode.id)}
+                treeSwapState={treeSwapState(edgeKey("node", liveNode.id))}
                 boardId={boardId}
                 statusDef={statusDefById.get(liveNode.statusId) ?? null}
                 tagDef={tagDefById.get(liveNode.tagId) ?? null}
