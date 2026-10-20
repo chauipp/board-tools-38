@@ -15,6 +15,43 @@ import { drawingsHitBy } from "../lib/shape.js";
 import GameDesignFlowPanel from "../components/GameDesignFlowPanel.jsx";
 import GameDesignPanel from "../components/GameDesignPanel.jsx";
 
+export async function runTreePanelExclusive(log) {
+  const root = createRoot(document.getElementById("root"));
+  await act(async () => {
+    root.render(<I18nProvider i18n={i18n}><AuthProvider><MemoryRouter initialEntries={["/idea-map/b1"]}>
+      <Routes><Route path="/idea-map/:boardId" element={<IdeaMap />} /></Routes>
+    </MemoryRouter></AuthProvider></I18nProvider>);
+  });
+  const click = async (element) => {
+    if (!element) throw new Error("thiếu nút trong luồng chuyển bảng");
+    await act(async () => { element.click(); });
+  };
+  const openTree = async () => {
+    await act(async () => {
+      document.querySelector('.idea-card[data-id="1"]').dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true, clientX: 200, clientY: 200 }));
+    });
+    await click(document.querySelector(".tp-open"));
+    if (!document.querySelector(".tree-panel")) throw new Error("Xếp cây không mở");
+    if (document.querySelector(".edit-dock")) throw new Error("dock Chi tiết thiết kế vẫn che bảng Xếp cây");
+  };
+  await click(document.querySelector('.idea-card[data-id="1"]'));
+  if (!document.querySelector(".gd-panel")) throw new Error("chọn card không mở Chi tiết thiết kế");
+  await openTree();
+  await click(document.querySelector('.idea-card[data-id="2"] .gd-card-btn'));
+  if (document.querySelector(".edit-dock")) throw new Error("dock tái xuất hiện khi bảng cây còn mở");
+  await click(document.querySelector(".tree-panel .op-close"));
+  if (document.querySelector(".tree-panel")) throw new Error("không đóng được bảng cây");
+  await click(document.querySelector('.idea-card[data-id="2"]'));
+  if (!document.querySelector(".gd-panel")) throw new Error("không mở lại được Chi tiết thiết kế");
+  await openTree();
+  await act(async () => { window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+  if (document.querySelector(".tree-panel")) throw new Error("Escape không đóng bảng cây");
+  await click(document.querySelector('.idea-card[data-id="1"]'));
+  if (!document.querySelector(".gd-panel")) throw new Error("không mở lại thiết kế sau Escape");
+  log("chọn card → Xếp cây không có dock chồng → đóng/Escape → chọn lại card: đạt");
+  await act(async () => { root.unmount(); });
+}
+
 export async function run(log) {
   const root = createRoot(document.getElementById("root"));
   await act(async () => {

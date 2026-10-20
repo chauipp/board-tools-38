@@ -28,6 +28,8 @@ const board = {
   view: { panX: 0, panY: 0, scale: 1 }
 };
 
+if (process.env.SMOKE_SCENARIO === "tree-panel") board.kind = "game-design";
+
 const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
   url: "http://localhost/",
   pretendToBeVisual: true
@@ -229,7 +231,8 @@ setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process
   console.log("  ·", "InkLayer: Stroke và TextEl đều bọc memo (nét đã lưu không dựng lại path ở mỗi khung hình lúc đang vẽ)");
 }
 
-const { run } = await import("./smoke-dist/smoke.js");
+const scenarios = await import("./smoke-dist/smoke.js");
+const run = process.env.SMOKE_SCENARIO === "tree-panel" ? scenarios.runTreePanelExclusive : scenarios.run;
 try {
   await run((m) => console.log("  ·", m));
   console.log("\n✅ SMOKE PASS");
