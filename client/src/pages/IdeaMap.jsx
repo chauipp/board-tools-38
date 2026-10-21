@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useWorkspaceState } from "../lib/useWorkspaceState.js";
+import { cameraToCenter, centerToCamera, normalizeWorkspace } from "../lib/workspace-state.js";
 import { Link, useParams } from "react-router-dom";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { createBoardSnapshot, getBoard, listBoardSnapshots, restoreBoardSnapshot, saveBoard } from "../lib/api.js";
@@ -59,7 +61,6 @@ import { rebaseBoard } from "../lib/rebase.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { rafThrottle } from "../lib/raf-throttle.js";
 import { replaceIdSet, toggleId, unionIdSet } from "../lib/selection.js";
-import { loadCamera, saveCamera } from "../lib/camera.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 import { readImageFile } from "../lib/image-utils.js";
 import { canAddImage, formatMB } from "../lib/image-budget.js";
@@ -275,6 +276,28 @@ function IconRedo() {
 }
 
 export default function IdeaMap() {
+  const { user, logout } = useAuth();
+  const { boardId } = useParams();
+  const workspace = useWorkspaceState(user?.email, boardId);
+  const workspaceState = workspace.state;
+  const workspaceSetters = useMemo(() => {
+    const controller = workspace.controller;
+    const flag = (key) => (value) => {
+      const current = controller.getSnapshot().state[key];
+      controller.update({ [key]: typeof value === "function" ? value(current) : value });
+    };
+    const inspector = (type) => (value) => {
+      const current = controller.getSnapshot().state.inspector;
+      if (value == null || value === false) {
+        if (current?.type === type) controller.update({ inspector: null });
+      } else if (current?.type !== type || type === "tree" || type === "design") controller.update({ inspector: { type, ...(type === "tree" ? value : type === "design" ? { id: value } : {}) } });
+    };
+    return { flag, inspector, panels: (value) => {
+      const current = controller.getSnapshot().state;
+      const next = typeof value === "function" ? value({ status: current.statusOpen, tag: current.tagOpen, palette: current.paletteOpen }) : value;
+      controller.update({ statusOpen: next.status, tagOpen: next.tag, paletteOpen: next.palette });
+    } };
+  }, [workspace.controller]);
   const { theme, setTheme } = useTheme();
   const { skin, toggle: toggleSkin } = useSkin();
   const { t } = useLingui();
@@ -302,18 +325,22 @@ export default function IdeaMap() {
   const [filterTags, setFilterTags] = useState({});
   const [filterFav, setFilterFav] = useState(false);
   const [search, setSearch] = useState("");
-  const [outlineOpen, setOutlineOpen] = useState(false);
+  const outlineOpen = workspaceState.outlineOpen;
+  const setOutlineOpen = useMemo(() => workspaceSetters.flag("outlineOpen"), [workspaceSetters]);
   // Bản đồ thu nhỏ ở góc dưới phải. Mặc định BẬT: nó chỉ có nghĩa khi luôn ở
   // đó — thứ phải bật lên mới xem được thì lúc lạc đường đã không nhớ là có.
-  const [miniOpen, setMiniOpen] = useState(true);
+  const miniOpen = workspaceState.miniOpen;
+  const setMiniOpen = useMemo(() => workspaceSetters.flag("miniOpen"), [workspaceSetters]);
   // Bảng Xếp cây bên phải: { kind, id } của thẻ/khung đang làm gốc. Tuỳ chọn
   // sống riêng để đóng bảng rồi mở lại cây khác vẫn giữ nguyên cách xếp vừa dò
   // được. treeBaseRef giữ board TRƯỚC khi mở bảng: mọi lần kéo thanh trượt đều
   // tính lại từ đó chứ không chồng lên kết quả lần trước, nên kéo qua kéo lại
   // không làm cây trôi dần đi.
-  const [treeUI, setTreeUI] = useState(null);
+  const treeUI = workspaceState.inspector?.type === "tree" ? workspaceState.inspector : null;
+  const setTreeUI = useMemo(() => workspaceSetters.inspector("tree"), [workspaceSetters]);
   const [treeOpts, setTreeOpts] = useState(TREE_OPTS);
   const treeBaseRef = useRef(null);
+  const treeControllerRef = useRef(null);
   const treeMembersRef = useRef(null);
   const treeLastRef = useRef(null);
   const [ioOpen, setIoOpen] = useState(false);
@@ -328,8 +355,9 @@ export default function IdeaMap() {
   const [dropTargetId, setDropTargetId] = useState(null);
   const [chipDrag, setChipDrag] = useState(null);
   // Mặc định mở Trạng thái + Nhãn để giữ đúng hành vi cũ khi mới vào; Bảng màu
-  // đóng. Chỉ giữ trong state — không lưu qua reload.
-  const [panels, setPanels] = useState({ status: true, tag: true, palette: false });
+  // đóng. Trạng thái riêng của tài khoản, board và nhóm màn hình.
+  const panels = useMemo(() => ({ status: workspaceState.statusOpen, tag: workspaceState.tagOpen, palette: workspaceState.paletteOpen }), [workspaceState.statusOpen, workspaceState.tagOpen, workspaceState.paletteOpen]);
+  const setPanels = workspaceSetters.panels;
   // Ô tìm kiếm thu về một nút: 170px + nhãn là chỗ thường trực cho việc thỉnh
   // thoảng mới dùng. Đóng lại thì XOÁ luôn từ khoá — từ khoá còn sống mà ô nhập
   // biến mất là một bộ lọc vô hình, thẻ bị làm mờ mà không thấy vì sao.
@@ -399,24 +427,27 @@ export default function IdeaMap() {
   const [spotlightPeerId, setSpotlightPeerId] = useState(null);
   const [matchIdx, setMatchIdx] = useState(-1);
   const [presentIndex, setPresentIndex] = useState(null); // null = không trình chiếu
-  const [designEditId, setDesignEditId] = useState(null);
-  const [briefOpen, setBriefOpen] = useState(false);
-  const [flowOpen, setFlowOpen] = useState(false);
-  const [handoffOpen, setHandoffOpen] = useState(false);
-  const [balanceOpen, setBalanceOpen] = useState(false);
-  const [decisionTimelineOpen, setDecisionTimelineOpen] = useState(false);
-  const [snapshotsOpen, setSnapshotsOpen] = useState(false);
+  const inspector = workspaceState.inspector;
+  const designEditId = inspector?.type === "design" ? inspector.id : null;
+  const setDesignEditId = useMemo(() => workspaceSetters.inspector("design"), [workspaceSetters]);
+  const briefOpen = inspector?.type === "brief", flowOpen = inspector?.type === "flow", handoffOpen = inspector?.type === "handoff", balanceOpen = inspector?.type === "balance", decisionTimelineOpen = inspector?.type === "decisions", snapshotsOpen = inspector?.type === "snapshots";
+  const setBriefOpen = useMemo(() => workspaceSetters.inspector("brief"), [workspaceSetters]);
+  const setFlowOpen = useMemo(() => workspaceSetters.inspector("flow"), [workspaceSetters]);
+  const setHandoffOpen = useMemo(() => workspaceSetters.inspector("handoff"), [workspaceSetters]);
+  const setBalanceOpen = useMemo(() => workspaceSetters.inspector("balance"), [workspaceSetters]);
+  const setDecisionTimelineOpen = useMemo(() => workspaceSetters.inspector("decisions"), [workspaceSetters]);
+  const setSnapshotsOpen = useMemo(() => workspaceSetters.inspector("snapshots"), [workspaceSetters]);
   const [snapshots, setSnapshots] = useState([]);
   const [snapshotsLoading, setSnapshotsLoading] = useState(false);
-  const [insightsOpen, setInsightsOpen] = useState(false);
-  const [reportsOpen, setReportsOpen] = useState(false);
-  const [impactOpen, setImpactOpen] = useState(false);
-  const [impactCardId, setImpactCardId] = useState(null);
-  const [playtestsOpen, setPlaytestsOpen] = useState(false);
+  const insightsOpen = inspector?.type === "insights", reportsOpen = inspector?.type === "reports", impactOpen = inspector?.type === "impact", playtestsOpen = inspector?.type === "playtests";
+  const setInsightsOpen = useMemo(() => workspaceSetters.inspector("insights"), [workspaceSetters]);
+  const setReportsOpen = useMemo(() => workspaceSetters.inspector("reports"), [workspaceSetters]);
+  const setImpactOpen = useMemo(() => workspaceSetters.inspector("impact"), [workspaceSetters]);
+  const impactCardId = inspector?.type === "impact" ? inspector.id ?? null : null;
+  const setImpactCardId = useCallback((id) => workspace.update({ inspector: { type: "impact", ...(id != null ? { id } : {}) } }), [workspace.controller]);
+  const setPlaytestsOpen = useMemo(() => workspaceSetters.inspector("playtests"), [workspaceSetters]);
   const [initialCardParam] = useState(() => new URLSearchParams(window.location.search).get("card"));
 
-  const { user, logout } = useAuth();
-  const { boardId } = useParams();
   const [role, setRole] = useState(null);
   const [boardName, setBoardName] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -522,13 +553,9 @@ export default function IdeaMap() {
         setRole(r);
         setBoardName(name);
         lastUpdatedAtRef.current = updatedAt;
-        // Camera riêng từng người: ưu tiên vị trí đã lưu local của chính
-        // trình duyệt này, bỏ qua `view` server trả về (giá trị cũ, không
-        // còn được ghi từ khi camera tách riêng — xem lib/camera.js).
-        const camera = loadCamera(window.localStorage, boardId);
         // Board cũ chưa có palette → mặc định rỗng, để mọi chỗ đọc board.palette
         // không phải ?? [] khắp nơi.
-        const loaded = normalizeGameDesignBoard({ kind: "idea", palette: [], nextPaletteId: 1, drawings: [], nextDrawingId: 1, bg: null, grid: null, pack: null, ...boardData, ...(camera ? { view: camera } : {}) });
+        const loaded = normalizeGameDesignBoard({ kind: "idea", palette: [], nextPaletteId: 1, drawings: [], nextDrawingId: 1, bg: null, grid: null, pack: null, ...boardData, view: { panX: 0, panY: 0, scale: 1 } });
         setBoard(loaded);
         serverBaseRef.current = loaded;
       })
@@ -575,15 +602,60 @@ export default function IdeaMap() {
     return () => ro.disconnect();
   }, [board != null]);
 
-  // Camera đổi từ nhiều chỗ (lăn chuột, kéo nền, zoom vừa khung, thoát trình
-  // chiếu). Lưu ở một effect theo board.view — rải saveCamera vào từng handler
-  // thì sót, mà `view` cũng không còn được PUT lên server nữa (api.js bỏ nó).
-  // Hoãn một nhịp: lăn chuột đổi view liên tục.
+  const workspaceCameraRef = useRef(null);
+  useLayoutEffect(() => {
+    if (!workspace.ready || !board || !viewportSize.w || !viewportSize.h) return;
+    const previous = workspaceCameraRef.current;
+    if (previous?.controller === workspace.controller && previous.hydration === workspace.hydration && previous.w === viewportSize.w && previous.h === viewportSize.h) return;
+    const camera = previous?.controller === workspace.controller && previous.hydration === workspace.hydration
+      ? cameraToCenter(boardRef.current.view, previous)
+      : workspace.state.camera;
+    const view = camera ? centerToCamera(camera, viewportSize) : { panX: 0, panY: 0, scale: 1 };
+    workspaceCameraRef.current = { controller: workspace.controller, hydration: workspace.hydration, ...viewportSize, applying: view };
+    setBoard((current) => ({ ...current, view }));
+  }, [workspace.ready, workspace.hydration, workspace.controller, viewportSize, board != null]);
+
   useEffect(() => {
-    if (!board?.view) return;
-    const id = setTimeout(() => saveCamera(window.localStorage, boardId, board.view), 200);
-    return () => clearTimeout(id);
-  }, [board?.view, boardId]);
+    const applied = workspaceCameraRef.current;
+    if (!workspace.ready || !board?.view || applied?.controller !== workspace.controller) return;
+    if (applied.applying) {
+      if (applied.applying === board.view) applied.applying = null;
+      return;
+    }
+    workspace.update({ camera: cameraToCenter(board.view, viewportSize) });
+  }, [board?.view, workspace.ready, workspace.controller, viewportSize]);
+
+  useEffect(() => {
+    if (!workspace.ready || !board || !inspector) return;
+    const valid = inspector.type === "tree"
+      ? (inspector.kind === "group" ? board.groups : board.nodes).some((item) => item.id === inspector.id)
+      : inspector.type === "design" ? board.kind === "game-design" && board.nodes.some((item) => item.id === inspector.id)
+      : inspector.type === "snapshots" || board.kind === "game-design";
+    if (!valid) workspace.update({ inspector: null });
+  }, [workspace.ready, workspace.controller, inspector, board?.nodes, board?.groups, board?.kind]);
+
+  useEffect(() => {
+    if (!treeUI || !board) return;
+    const key = edgeKey(treeUI.kind, treeUI.id);
+    if (treeControllerRef.current === workspace.controller && treeMembersRef.current?.rootKey === key && treeBaseRef.current) return;
+    const root = (treeUI.kind === "group" ? board.groups : board.nodes).find((item) => item.id === treeUI.id);
+    if (!root) return;
+    const opts = normalizeTreeLock(root.treeLayoutLock) || TREE_OPTS;
+    setTreeOpts({ ...opts, leaf: opts.breadth });
+    treeBaseRef.current = board;
+    treeControllerRef.current = workspace.controller;
+    treeMembersRef.current = { rootKey: edgeKey(treeUI.kind, treeUI.id), members: opts.groupMembers || {} };
+    treeLastRef.current = null;
+  }, [treeUI?.kind, treeUI?.id, workspace.controller, board != null]);
+
+  useEffect(() => {
+    if (!snapshotsOpen) return;
+    let cancelled = false;
+    setSnapshotsLoading(true);
+    listBoardSnapshots(boardId).then((result) => { if (!cancelled) setSnapshots(result.snapshots || []); })
+      .catch(() => { if (!cancelled) setSaveError(true); }).finally(() => { if (!cancelled) setSnapshotsLoading(false); });
+    return () => { cancelled = true; };
+  }, [snapshotsOpen, boardId]);
 
   // Gán ngay trong lúc render, không qua useEffect: các handler kéo đọc
   // boardRef.current để biết trạng thái MỚI NHẤT, mà effect thì chạy sau khi
@@ -924,14 +996,14 @@ export default function IdeaMap() {
   }, [selectedIds]);
 
   useEffect(() => {
-    if (!board || pendingJumpRef.current == null) return;
+    if (!workspace.ready || !board || pendingJumpRef.current == null) return;
     const id = pendingJumpRef.current;
     pendingJumpRef.current = null;
     setSelectedIds(new Set([id]));
     setFlashId(id);
     zoomToNodes([id]);
     setTimeout(() => setFlashId(null), 1600);
-  }, [board != null]);
+  }, [board != null, workspace.ready]);
 
   useEffect(() => { setMatchIdx(-1); }, [search]);
 
@@ -1066,17 +1138,8 @@ export default function IdeaMap() {
     saveTimerRef.current = setTimeout(() => saveNow(next), 500);
   }
 
-  async function openSnapshots() {
+  function openSnapshots() {
     setSnapshotsOpen(true);
-    setSnapshotsLoading(true);
-    try {
-      const result = await listBoardSnapshots(boardId);
-      setSnapshots(result.snapshots || []);
-    } catch {
-      setSaveError(true);
-    } finally {
-      setSnapshotsLoading(false);
-    }
   }
 
   async function createSnapshot(label) {
@@ -3825,6 +3888,7 @@ export default function IdeaMap() {
     setColorMenu(null);
     const base = board;
     treeBaseRef.current = base;
+    treeControllerRef.current = workspace.controller;
     const rootKey = edgeKey(rootKind, rootId);
     const memberKeys = new Set(buildTree(base.edges, rootKey).order);
     const stored = normalizeTreeLock((rootKind === "group" ? base.groups : base.nodes)
@@ -3846,9 +3910,11 @@ export default function IdeaMap() {
   }
 
   function previewTree(opts) {
+    if (role === "viewer") return;
     setTreeOpts(opts);
     const base = boardRef.current;
     if (!base || !treeUI) return;
+    if (!treeLastRef.current) recordHistory(base);
     const next = treeArranged(base, treeUI.kind, treeUI.id, opts);
     if (!next) return;
     treeLastRef.current = next;
@@ -4411,7 +4477,7 @@ export default function IdeaMap() {
   };
 
   return (
-    <div className={"shell" + (presentIndex != null ? " presenting" : "") + (role === "viewer" ? " readonly" : "")} onContextMenu={handlePageContextMenu}>
+    <div className={"shell" + (presentIndex != null ? " presenting" : "") + (role === "viewer" ? " readonly" : "")} style={{ visibility: workspace.ready ? "visible" : "hidden" }} onContextMenu={handlePageContextMenu}>
       {treeSwap && <div className="tree-swap-hint" role="status" style={{ left: Math.max(8, Math.min(treeSwap.x + 16, viewportSize.w - 240)), top: Math.max(8, Math.min(treeSwap.y + 18, viewportSize.h - 64)) }}>
         {treeSwap.target ? <Trans>Thả để đổi chỗ hai nhánh</Trans> : <Trans>Kéo lên card cùng cấp để đổi chỗ · Esc hủy</Trans>}
       </div>}
@@ -4537,6 +4603,17 @@ export default function IdeaMap() {
                 chỉ mình thấy. Hai hàng dưới đã mang data-mutating nên tài khoản
                 chỉ xem thấy chúng mờ đi — thêm một tín hiệu nữa cùng hướng. */}
             <div className="theme-section"><Trans>Chỉ mình bạn thấy</Trans></div>
+            <div className="theme-row workspace-settings">
+              <span role="status" aria-live="polite">{workspace.status === "account-changed" ? t`Tài khoản đã thay đổi — tải lại trang để đồng bộ` : workspace.status === "local" ? t`Giao diện lưu trên máy — chờ đồng bộ` : workspace.status === "saved" ? t`Giao diện đã đồng bộ` : t`Đang lưu giao diện…`}</span>
+              <button type="button" className="btn ghost small" onClick={() => {
+                const defaults = normalizeWorkspace();
+                workspace.update({ ...defaults, camera: { x: viewportSize.w / 2, y: viewportSize.h / 2, scale: 1 } });
+                const view = { panX: 0, panY: 0, scale: 1 };
+                workspaceCameraRef.current = { controller: workspace.controller, hydration: workspace.hydration, ...viewportSize, applying: view };
+                setBoard((current) => ({ ...current, view }));
+                void workspace.flush();
+              }}><Trans>Đặt lại giao diện</Trans></button>
+            </div>
             <div className="theme-row">
               <span className="fb-count"><Trans>Ngôn ngữ</Trans></span>
               <div className="fb-chips"><LocaleToggle /></div>
@@ -5253,6 +5330,7 @@ export default function IdeaMap() {
           const { order } = buildTree(board.edges, edgeKey(treeUI.kind, treeUI.id));
           return (
             <TreePanel
+              canEdit={role !== "viewer"}
               opts={treeOpts}
               locked={!!normalizeTreeLock(root.treeLayoutLock)}
               onLock={toggleTreeLock}

@@ -21,7 +21,7 @@ const SLIDERS = [
   { key: "breadth", min: 8, max: 320 }
 ];
 
-export default function TreePanel({ opts, count, rootTitle, shifted, locked, onLock, onOpts, onCommit, onReset, onClose }) {
+export default function TreePanel({ opts, count, rootTitle, shifted, locked, onLock, onOpts, onCommit, onReset, onClose, canEdit = true }) {
   const { t } = useLingui();
   // Bấm ra ngoài (hoặc Esc) là đóng, như menu chuột phải và bảng nhãn: bảng này
   // là chỗ ghé vào chỉnh vài nhát rồi đi, không phải một khung thường trực.
@@ -68,7 +68,7 @@ export default function TreePanel({ opts, count, rootTitle, shifted, locked, onL
 
         <div className="tp-section">
           <label className="tp-auto-lock">
-            <input type="checkbox" checked={!!locked} onChange={(e) => onLock(e.target.checked)} />
+            <input type="checkbox" checked={!!locked} disabled={!canEdit} onChange={(e) => onLock(e.target.checked)} />
             <span><Trans>Khóa bố cục tự động</Trans></span>
           </label>
           <div className="tp-hint">
@@ -83,6 +83,7 @@ export default function TreePanel({ opts, count, rootTitle, shifted, locked, onL
               <button
                 key={dir}
                 type="button"
+                disabled={!canEdit}
                 className={"tp-dir" + (opts.directions.includes(dir) ? " on" : "")}
                 title={DIR_LABEL[dir]}
                 onClick={() => toggleDir(dir)}
@@ -108,6 +109,7 @@ export default function TreePanel({ opts, count, rootTitle, shifted, locked, onL
                   mình); nhả tay mới lưu và phát cho người khác. */}
               <input
                 type="range"
+                disabled={!canEdit}
                 aria-label={SLIDER_LABEL[key]}
                 min={min}
                 max={max}
@@ -123,7 +125,7 @@ export default function TreePanel({ opts, count, rootTitle, shifted, locked, onL
           ))}
         </div>
 
-        <button type="button" className="btn ghost small tp-reset" onClick={onReset}>
+        <button type="button" className="btn ghost small tp-reset" disabled={!canEdit} onClick={onReset}>
           <Trans>Đặt lại</Trans>
         </button>
       </div>

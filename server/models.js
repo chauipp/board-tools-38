@@ -70,6 +70,20 @@ const boardSchema = new mongoose.Schema(
 
 export const Board = mongoose.model("Board", boardSchema);
 
+// Trạng thái riêng của từng người/profile, không sửa document Board.
+const workspaceStateSchema = new mongoose.Schema(
+  {
+    email: { type: String, required: true, lowercase: true, trim: true },
+    boardId: { type: mongoose.Schema.Types.ObjectId, required: true },
+    profile: { type: String, enum: ["desktop", "mobile"], required: true },
+    state: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+    updatedAt: { type: Date, required: true }
+  },
+  { minimize: false, versionKey: false }
+);
+workspaceStateSchema.index({ email: 1, boardId: 1, profile: 1 }, { unique: true });
+export const WorkspaceState = mongoose.model("WorkspaceState", workspaceStateSchema);
+
 // Snapshot tách collection thay vì nhét vào Board: mỗi snapshot có thể chứa cả
 // ảnh base64 trong nodes[], nên để chúng trong document board sẽ rất dễ chạm
 // giới hạn 16 MB của Mongo. 30 snapshot vẫn đủ cho một vòng review/iteration,

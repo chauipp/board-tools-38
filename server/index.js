@@ -20,6 +20,7 @@ import {
 } from "./auth.js";
 import { Board, upsertUser } from "./models.js";
 import boardsRouter from "./boards.js";
+import workspaceRouter from "./workspace.js";
 import { sanitizeView, resolveFollow, countWatchers, releaseFollowersOf } from "./follow.js";
 import { sanitizeLiveText, sanitizeLiveMoves } from "./live-text.js";
 import { runQuotaCheck, usageReport, usageReportFor, describeUsage } from "./pdf-quota.js";
@@ -145,6 +146,7 @@ const app = express();
 app.set("trust proxy", 1);
 app.use(express.json({ limit: "20mb" }));
 app.use(cookieParser());
+app.use("/api/boards", requireAuth, workspaceRouter);
 app.use("/api/boards", requireAuth, boardsRouter);
 
 // Đăng nhập: chặn theo IP. Mỗi lần gọi là một lượt xác minh token với Google,

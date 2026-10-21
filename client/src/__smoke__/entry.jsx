@@ -15,6 +15,27 @@ import { drawingsHitBy } from "../lib/shape.js";
 import GameDesignFlowPanel from "../components/GameDesignFlowPanel.jsx";
 import GameDesignPanel from "../components/GameDesignPanel.jsx";
 
+export async function runWorkspaceRestore(log) {
+  const root = createRoot(document.getElementById("root"));
+  await act(async () => {
+    root.render(<I18nProvider i18n={i18n}><AuthProvider><MemoryRouter initialEntries={["/idea-map/b1"]}>
+      <Routes><Route path="/idea-map/:boardId" element={<IdeaMap />} /></Routes>
+    </MemoryRouter></AuthProvider></I18nProvider>);
+  });
+  if (!document.querySelector(".tree-panel") || document.querySelector(".edit-dock")) throw new Error("không khôi phục được inspector cây duy nhất");
+  if (document.querySelector(".minimap")) throw new Error("minimap đã đóng nhưng lại hiện sau khôi phục");
+  if (!document.querySelector(".outline-panel")) throw new Error("mục lục không được khôi phục");
+  if (globalThis.__puts.length) throw new Error("khôi phục giao diện đã ghi board");
+  const undo = document.querySelector('button[title="Hoàn tác (Ctrl+Z)"]');
+  if (!undo?.disabled) throw new Error("khôi phục cây đã thêm history");
+  const transform = document.querySelector(".canvas").style.transform;
+  if (transform !== "translate(152px, 144px) scale(1.2)") throw new Error("camera đã lưu không được khôi phục: " + transform);
+  await act(async () => { document.querySelector(".tree-panel .op-close").click(); });
+  if (globalThis.__puts.length) throw new Error("đóng cây vừa khôi phục đã ghi board");
+  log("workspace restore: camera/panel/minimap được phục hồi, không ghi board hoặc tạo undo");
+  await act(async () => { root.unmount(); });
+}
+
 export async function runTreePanelExclusive(log) {
   const root = createRoot(document.getElementById("root"));
   await act(async () => {
@@ -38,7 +59,8 @@ export async function runTreePanelExclusive(log) {
   if (!document.querySelector(".gd-panel")) throw new Error("chọn card không mở Chi tiết thiết kế");
   await openTree();
   await click(document.querySelector('.idea-card[data-id="2"] .gd-card-btn'));
-  if (document.querySelector(".edit-dock")) throw new Error("dock tái xuất hiện khi bảng cây còn mở");
+  if (document.querySelector(".tree-panel") || !document.querySelector(".gd-panel")) throw new Error("chọn thiết kế phải thay bảng cây, không mở chồng");
+  await openTree();
   await click(document.querySelector(".tree-panel .op-close"));
   if (document.querySelector(".tree-panel")) throw new Error("không đóng được bảng cây");
   await click(document.querySelector('.idea-card[data-id="2"]'));

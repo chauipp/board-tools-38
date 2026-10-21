@@ -830,6 +830,14 @@
 /* Mục lục đang mở thì hai bảng cùng neo mép phải sẽ chồng lên nhau: bảng cây né
    sang trái đúng bề ngang mục lục (240) + khe 12. */
 .tree-panel.shifted { right: 264px; }
+.tree-panel, .outline-panel, .edit-dock { max-width: calc(100vw - 24px); }
+.workspace-settings { flex-wrap: wrap; gap: 8px; }
+.workspace-settings [role="status"] { font-size: 10px; color: var(--ink-dim); }
+@media (max-width: 767px) {
+  .tree-panel.shifted { right: 12px; }
+  .shell:has(.tree-panel) .outline-panel,
+  .shell:has(.edit-dock) .outline-panel { display: none; }
+}
 .tree-panel .tp-head {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 10px; border-bottom: 1px solid var(--line);

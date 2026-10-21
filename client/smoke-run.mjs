@@ -28,7 +28,7 @@ const board = {
   view: { panX: 0, panY: 0, scale: 1 }
 };
 
-if (process.env.SMOKE_SCENARIO === "tree-panel") board.kind = "game-design";
+if (["tree-panel", "workspace"].includes(process.env.SMOKE_SCENARIO)) board.kind = "game-design";
 
 const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
   url: "http://localhost/",
@@ -88,6 +88,8 @@ globalThis.__hitAt = (el) => { hitTarget = el; };
 
 globalThis.__board = board;
 globalThis.__puts = [];
+globalThis.__workspaceWrites = [];
+let workspaceState = process.env.SMOKE_SCENARIO === "workspace" ? { miniOpen: false, outlineOpen: true, inspector: { type: "tree", kind: "node", id: 1 }, camera: { x: 300, y: 200, scale: 1.2 } } : {};
 
 // Bản mà "server" đang giữ — chính là thân của lần PUT được nhận gần nhất. Cần
 // nó để dựng được một cú 409 THẬT: bản server trả về lúc va chạm phải là bản
@@ -101,6 +103,10 @@ globalThis.__conflictOnce = (mutate) => { pendingConflict = mutate; };
 
 globalThis.fetch = async (url, opts = {}) => {
   const method = opts.method || "GET";
+  if (url.includes("/workspace/")) {
+    if (method === "PATCH") { const { changes } = JSON.parse(opts.body); globalThis.__workspaceWrites.push(changes); workspaceState = { ...workspaceState, ...changes }; }
+    return json({ version: 1, state: workspaceState });
+  }
   if (url.includes("/api/auth/me")) return json({ user: { name: "Tôi", email: "toi@example.com" } });
   if (url.includes("/api/boards/b1") && method === "GET") return json(board);
   if (url.includes("/api/boards/b1") && method === "PUT") {
@@ -232,7 +238,7 @@ setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process
 }
 
 const scenarios = await import("./smoke-dist/smoke.js");
-const run = process.env.SMOKE_SCENARIO === "tree-panel" ? scenarios.runTreePanelExclusive : scenarios.run;
+const run = process.env.SMOKE_SCENARIO === "workspace" ? scenarios.runWorkspaceRestore : process.env.SMOKE_SCENARIO === "tree-panel" ? scenarios.runTreePanelExclusive : scenarios.run;
 try {
   await run((m) => console.log("  ·", m));
   console.log("\n✅ SMOKE PASS");
