@@ -179,6 +179,14 @@ test("workspace HTTP: closed v1 schema accepts all variants and camera boundarie
   }
 });
 
+test("workspace HTTP: persists toolbar visibility and rejects non-boolean settings", async (t) => {
+  const request = await fixture(t);
+  assert.equal((await request("PATCH", { changes: { toolsOpen: false } })).status, 200);
+  assert.equal((await request()).body.state.toolsOpen, false);
+  assert.equal((await request("PATCH", { changes: { toolsOpen: "false" } })).status, 400);
+  assert.equal((await request()).body.state.toolsOpen, false);
+});
+
 test("workspace HTTP: rejects malformed, unknown, prototype and nested injection without writes", async (t) => {
   const request = await fixture(t);
   const bodies = [null, [], {}, { changes: {} }, { changes: [] }, { changes: null },

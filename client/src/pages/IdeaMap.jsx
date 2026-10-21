@@ -330,6 +330,7 @@ export default function IdeaMap() {
   // Bản đồ thu nhỏ ở góc dưới phải. Mặc định BẬT: nó chỉ có nghĩa khi luôn ở
   // đó — thứ phải bật lên mới xem được thì lúc lạc đường đã không nhớ là có.
   const miniOpen = workspaceState.miniOpen;
+  const toolsOpen = workspaceState.toolsOpen;
   const setMiniOpen = useMemo(() => workspaceSetters.flag("miniOpen"), [workspaceSetters]);
   // Bảng Xếp cây bên phải: { kind, id } của thẻ/khung đang làm gốc. Tuỳ chọn
   // sống riêng để đóng bảng rồi mở lại cây khác vẫn giữ nguyên cách xếp vừa dò
@@ -4522,41 +4523,6 @@ export default function IdeaMap() {
 
           <span className="island-name" title={boardName}>{boardName}</span>
 
-          {board.kind === "game-design" && <button
-            type="button"
-            className={"btn ghost gd-brief-trigger" + (briefOpen ? " active" : "")}
-            title="Mở Game brief"
-            onClick={() => {
-              setDesignEditId(null);
-              setSelectedEdgeIds(EMPTY_SET);
-              setFlowOpen(false);
-              setHandoffOpen(false);
-              setDecisionTimelineOpen(false);
-              setBriefOpen(true);
-            }}
-          >Game brief</button>}
-
-          {board.kind === "game-design" && <button
-            type="button"
-            className={"btn ghost gd-brief-trigger" + (flowOpen ? " active" : "")}
-            title="Mở Game flow"
-            onClick={() => {
-              setDesignEditId(null);
-              setSelectedEdgeIds(EMPTY_SET);
-              setBriefOpen(false);
-              setHandoffOpen(false);
-              setDecisionTimelineOpen(false);
-              setFlowOpen(true);
-            }}
-          >Game flow</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (balanceOpen ? " active" : "")} title="Mở Balance sheet" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setBalanceOpen(true); }}>Balance</button>}
-
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (handoffOpen ? " active" : "")} title="Mở Team handoff" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setDecisionTimelineOpen(false); setHandoffOpen(true); }}>Handoff</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (decisionTimelineOpen ? " active" : "")} title="Mở Decision timeline" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(true); }}>Decisions</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (insightsOpen ? " active" : "")} title="Mở Game Design insights" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setInsightsOpen(true); }}>Insights</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (impactOpen ? " active" : "")} title="Mở dependency impact map" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setInsightsOpen(false); setReportsOpen(false); setImpactCardId(null); setImpactOpen(true); }}>Impact</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (playtestsOpen ? " active" : "")} onClick={() => { setDesignEditId(null); setPlaytestsOpen(true); }}>Playtests</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (reportsOpen ? " active" : "")} title="Mở Report Center" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setReportsOpen(true); }}>Reports</button>}
 
           <button
             type="button"
@@ -4749,6 +4715,57 @@ export default function IdeaMap() {
             </div>
           </TopMenu>
         </div>
+
+        {board.kind === "game-design" && <div className="island-row gd-tools-row">
+          {board.kind === "game-design" && <button
+            type="button"
+            className="btn ghost gd-tools-toggle"
+            aria-expanded={toolsOpen}
+            aria-controls="game-design-toolbar"
+            title={toolsOpen ? t`Thu gọn công cụ thiết kế` : t`Mở công cụ thiết kế`}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={() => workspace.update({ toolsOpen: !toolsOpen })}
+          ><Trans>Thiết kế</Trans> <span aria-hidden="true">{toolsOpen ? "▾" : "▸"}</span></button>}
+
+          {board.kind === "game-design" && <div id="game-design-toolbar" className="gd-toolbar-actions" hidden={!toolsOpen}>
+
+          {board.kind === "game-design" && <button
+            type="button"
+            className={"btn ghost gd-brief-trigger" + (briefOpen ? " active" : "")}
+            title="Mở Game brief"
+            onClick={() => {
+              setDesignEditId(null);
+              setSelectedEdgeIds(EMPTY_SET);
+              setFlowOpen(false);
+              setHandoffOpen(false);
+              setDecisionTimelineOpen(false);
+              setBriefOpen(true);
+            }}
+          >Game brief</button>}
+
+          {board.kind === "game-design" && <button
+            type="button"
+            className={"btn ghost gd-brief-trigger" + (flowOpen ? " active" : "")}
+            title="Mở Game flow"
+            onClick={() => {
+              setDesignEditId(null);
+              setSelectedEdgeIds(EMPTY_SET);
+              setBriefOpen(false);
+              setHandoffOpen(false);
+              setDecisionTimelineOpen(false);
+              setFlowOpen(true);
+            }}
+          >Game flow</button>}
+          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (balanceOpen ? " active" : "")} title="Mở Balance sheet" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setBalanceOpen(true); }}>Balance</button>}
+
+          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (handoffOpen ? " active" : "")} title="Mở Team handoff" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setDecisionTimelineOpen(false); setHandoffOpen(true); }}>Handoff</button>}
+          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (decisionTimelineOpen ? " active" : "")} title="Mở Decision timeline" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(true); }}>Decisions</button>}
+          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (insightsOpen ? " active" : "")} title="Mở Game Design insights" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setInsightsOpen(true); }}>Insights</button>}
+          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (impactOpen ? " active" : "")} title="Mở dependency impact map" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setInsightsOpen(false); setReportsOpen(false); setImpactCardId(null); setImpactOpen(true); }}>Impact</button>}
+          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (playtestsOpen ? " active" : "")} onClick={() => { setDesignEditId(null); setPlaytestsOpen(true); }}>Playtests</button>}
+          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (reportsOpen ? " active" : "")} title="Mở Report Center" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setReportsOpen(true); }}>Reports</button>}
+          </div>}
+        </div>}
 
         {activeFilterCount > 0 && (
           <div className="fb-tail">

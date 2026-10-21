@@ -1,4 +1,4 @@
-const FLAGS = { miniOpen: true, outlineOpen: false, statusOpen: true, tagOpen: true, paletteOpen: false };
+const FLAGS = { miniOpen: true, outlineOpen: false, statusOpen: true, tagOpen: true, paletteOpen: false, toolsOpen: true };
 const INSPECTORS = new Set(["brief", "flow", "balance", "handoff", "decisions", "insights", "impact", "playtests", "reports", "snapshots"]);
 const finite = (n, max) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) <= max;
 export const workspaceProfile = (width) => width < 768 ? "mobile" : "desktop";

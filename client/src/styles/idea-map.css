@@ -53,6 +53,11 @@
 .hud-bottom > .island { pointer-events: auto; }
 
 .island-row { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.gd-tools-row { margin-top: 6px; }
+.gd-tools-toggle { flex-shrink: 0; white-space: nowrap; }
+.gd-toolbar-actions { display: flex; align-items: center; gap: 5px; min-width: 0; overflow-x: auto; }
+.gd-toolbar-actions[hidden] { display: none; }
+.gd-toolbar-actions > button { flex-shrink: 0; }
 .island-sep { width: 1px; align-self: stretch; margin: 3px; background: var(--line); flex-shrink: 0; }
 /* Tên board 13px thường, thay cho h1 Anton 19px + dòng eyebrow phía trên nó:
    riêng hai dòng đó là ~37px chiều cao của .topbar cũ. */

@@ -6,6 +6,19 @@ const memory = () => { const data = new Map(); return { getItem: (key) => data.g
 const response = (state) => ({ ok: true, json: async () => ({ version: 1, state }) });
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
+test("design toolbar defaults open and remembers a collapsed setting across devices", async () => {
+  assert.equal(normalizeWorkspace().toolsOpen, true);
+  const sent = [];
+  const controller = createWorkspaceController({ email: "a@example.com", boardId: "b", profile: "desktop", storage: memory(), delay: 60000, fetcher: async (_url, opts) => {
+    if (opts?.method) sent.push(JSON.parse(opts.body)); return response({ toolsOpen: false });
+  } });
+  try {
+    await controller.start(); assert.equal(controller.getSnapshot().state.toolsOpen, false);
+    controller.update({ toolsOpen: true }); await controller.flush();
+    assert.deepEqual(sent, [{ changes: { toolsOpen: true } }]);
+  } finally { controller.dispose(); }
+});
+
 test("camera restores the same board center on a smaller screen without changing zoom", () => {
   const center = cameraToCenter({ panX: -100, panY: 50, scale: 2 }, { w: 1200, h: 800 });
   assert.deepEqual(center, { x: 350, y: 175, scale: 2 });

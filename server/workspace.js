@@ -2,7 +2,7 @@ import { Router } from "express";
 import { Board, WorkspaceState } from "./models.js";
 import { getBoardRole } from "./auth.js";
 
-const toggles = ["miniOpen", "outlineOpen", "statusOpen", "tagOpen", "paletteOpen"];
+const toggles = ["miniOpen", "outlineOpen", "statusOpen", "tagOpen", "paletteOpen", "toolsOpen"];
 const panels = ["brief", "flow", "balance", "handoff", "decisions", "insights", "impact", "playtests", "reports", "snapshots"];
 const fields = ["camera", ...toggles, "inspector"];
 const plain = (value) => value !== null && typeof value === "object" &&
