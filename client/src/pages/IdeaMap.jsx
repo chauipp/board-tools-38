@@ -47,7 +47,7 @@ import ToolOptions from "../components/ToolOptions.jsx";
 import { nodesInFrame, edgesMatch } from "../lib/board-geometry.js";
 import { buildEdgeRoutes, routeIntersectsRect } from "../lib/edge-routing.js";
 import { computeSnap } from "../lib/snap.js";
-import { CLICK_DRAG_TOL, createMultiClick } from "../lib/multi-click.js";
+import { createMultiClick, isDragGesture } from "../lib/multi-click.js";
 import { placeLinkedNode, parentNodeId } from "../lib/place-node.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout, layerLayout } from "../lib/layout.js";
@@ -916,6 +916,7 @@ export default function IdeaMap() {
   const cardHandlers = useMemo(() => ({
     mouseDown: (e, id) => actionsRef.current.nodeMouseDown(e, id),
     click: (id) => actionsRef.current.cardClick(id),
+    isClick: (e) => actionsRef.current.isCardClick(e),
     contextMenu: (e, id) => actionsRef.current.openColorMenu(e, "card", id),
     connectorMouseDown: (e, id, direction) => actionsRef.current.connectorMouseDown(e, id, direction),
     edit: (id) => setEditingId(id),
@@ -2168,7 +2169,7 @@ export default function IdeaMap() {
     }
     const mc = multiClickRef.current;
     const anchor = clickAnchorRef.current;
-    const dragged = !anchor || Math.hypot(e.clientX - anchor.x, e.clientY - anchor.y) > CLICK_DRAG_TOL;
+    const dragged = !anchor || isDragGesture(anchor, { x: e.clientX, y: e.clientY });
     // Kéo, bấm trúng một vật thể, hoặc không có quyền sửa: chuỗi đứt tại đây.
     if (role === "viewer" || dragged || !isBoardBackground(e.target)) { mc.cancel(); return; }
 
@@ -4458,6 +4459,7 @@ export default function IdeaMap() {
   actionsRef.current = {
     nodeMouseDown: handleNodeMouseDown,
     cardClick: handleCardClick,
+    isCardClick: (e) => !isDragGesture(clickAnchorRef.current, { x: e.clientX, y: e.clientY }),
     openColorMenu,
     connectorMouseDown: handleConnectorMouseDown,
     deleteNode,

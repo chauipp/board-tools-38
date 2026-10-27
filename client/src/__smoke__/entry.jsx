@@ -57,6 +57,17 @@ export async function runTreePanelExclusive(log) {
   };
   await click(document.querySelector('.idea-card[data-id="1"]'));
   if (!document.querySelector(".gd-panel")) throw new Error("chọn card không mở Chi tiết thiết kế");
+  await click(document.querySelector(".gd-panel-head .btn.icon"));
+  const draggedCard = document.querySelector('.idea-card[data-id="1"]');
+  await act(async () => {
+    draggedCard.dispatchEvent(new window.MouseEvent("mousedown", { bubbles: true, clientX: 100, clientY: 100, button: 0 }));
+    window.dispatchEvent(new window.MouseEvent("mousemove", { bubbles: true, clientX: 180, clientY: 150, button: 0 }));
+    window.dispatchEvent(new window.MouseEvent("mouseup", { bubbles: true, clientX: 180, clientY: 150, button: 0 }));
+    draggedCard.dispatchEvent(new window.MouseEvent("click", { bubbles: true, clientX: 180, clientY: 150, button: 0 }));
+  });
+  if (document.querySelector(".gd-panel")) throw new Error("kéo thẻ không được mở Chi tiết thiết kế");
+  await click(document.querySelector('.idea-card[data-id="1"]'));
+  if (!document.querySelector(".gd-panel")) throw new Error("click thẻ sau khi kéo không mở lại Chi tiết thiết kế");
   await openTree();
   await click(document.querySelector('.idea-card[data-id="2"] .gd-card-btn'));
   if (document.querySelector(".tree-panel") || !document.querySelector(".gd-panel")) throw new Error("chọn thiết kế phải thay bảng cây, không mở chồng");

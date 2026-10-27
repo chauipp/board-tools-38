@@ -160,7 +160,7 @@ function IdeaCard({
         ...tintStyle
       }}
       onMouseDown={(e) => h.mouseDown(e, node.id)}
-      onClick={() => { h.click(node.id); if (gameDesign) onDesign(); }}
+      onClick={(e) => { h.click(node.id); if (gameDesign && h.isClick(e)) onDesign(); }}
       onContextMenu={(e) => h.contextMenu(e, node.id)}
       onDragOver={(e) => e.preventDefault()}
       onDrop={(e) => h.dropImage(e, node.id)}

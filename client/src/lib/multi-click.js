@@ -16,6 +16,11 @@ export const MULTI_CLICK_MS = 300;
 // nền, và hai lần quét liền nhau sẽ thành một cú hoàn tác không ai gọi.
 export const CLICK_DRAG_TOL = 4;
 
+export function isDragGesture(anchor, point, tolerance = CLICK_DRAG_TOL) {
+  if (!anchor || !point) return false;
+  return Math.hypot(point.x - anchor.x, point.y - anchor.y) > tolerance;
+}
+
 // Bộ đếm bấm liên tiếp. `now` truyền từ ngoài vào (Date.now) chứ không đọc trong
 // hàm: test phải chạy được mà không cần đợi thật.
 export function createMultiClick(windowMs = MULTI_CLICK_MS) {

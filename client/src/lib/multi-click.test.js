@@ -1,8 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  MULTI_CLICK_MS, CLICK_DRAG_TOL, createMultiClick
+  MULTI_CLICK_MS, CLICK_DRAG_TOL, createMultiClick, isDragGesture
 } from "./multi-click.js";
+
+test("phân biệt click với drag theo khoảng cách con trỏ", () => {
+  assert.equal(isDragGesture({ x: 100, y: 100 }, { x: 102, y: 102 }), false);
+  assert.equal(isDragGesture({ x: 100, y: 100 }, { x: 104, y: 100 }), false);
+  assert.equal(isDragGesture({ x: 100, y: 100 }, { x: 105, y: 100 }), true);
+});
 
 test("bấm liên tiếp trong cửa sổ thì cộng dồn", () => {
   const mc = createMultiClick();
