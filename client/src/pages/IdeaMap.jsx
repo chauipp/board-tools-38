@@ -47,7 +47,7 @@ import ToolOptions from "../components/ToolOptions.jsx";
 import { nodesInFrame, edgesMatch } from "../lib/board-geometry.js";
 import { buildEdgeRoutes, routeIntersectsRect } from "../lib/edge-routing.js";
 import { computeSnap } from "../lib/snap.js";
-import { createMultiClick, isDragGesture } from "../lib/multi-click.js";
+import { createDragClickGuard, createMultiClick, isDragGesture } from "../lib/multi-click.js";
 import { placeLinkedNode, parentNodeId } from "../lib/place-node.js";
 import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout, layerLayout } from "../lib/layout.js";
@@ -513,6 +513,8 @@ export default function IdeaMap() {
   // vì component có nhánh `if (!board) return` ở giữa.
   const multiClickRef = useRef(null);
   if (!multiClickRef.current) multiClickRef.current = createMultiClick();
+  const cardDragClickGuardRef = useRef(null);
+  if (!cardDragClickGuardRef.current) cardDragClickGuardRef.current = createDragClickGuard();
   const clickAnchorRef = useRef(null);
   // Đang giữ chuột trái ở mode Laser. Ref chứ không state: nó đổi ở mỗi lần bấm
   // và chỉ được đọc trong handler chuột, không có gì trên màn hình phụ thuộc nó.
@@ -916,7 +918,7 @@ export default function IdeaMap() {
   const cardHandlers = useMemo(() => ({
     mouseDown: (e, id) => actionsRef.current.nodeMouseDown(e, id),
     click: (id) => actionsRef.current.cardClick(id),
-    isClick: (e) => actionsRef.current.isCardClick(e),
+    isClick: () => actionsRef.current.isCardClick(),
     contextMenu: (e, id) => actionsRef.current.openColorMenu(e, "card", id),
     connectorMouseDown: (e, id, direction) => actionsRef.current.connectorMouseDown(e, id, direction),
     edit: (id) => setEditingId(id),
@@ -2711,6 +2713,7 @@ export default function IdeaMap() {
     function onMove(ev) {
       if (!moved && Math.hypot(ev.clientX - startX, ev.clientY - startY) < 5) return;
       moved = true;
+      cardDragClickGuardRef.current.markDragged();
       setTreeSwap({ source: sourceKey, candidates, target: targetAt(ev), x: ev.clientX, y: ev.clientY });
     }
     function cleanup() {
@@ -2756,6 +2759,7 @@ export default function IdeaMap() {
     if (e.button === 2) { e.stopPropagation(); startPan(e); return; }
     if (e.button === 0 && spacePanRef.current) { e.stopPropagation(); startPan(e); return; }
     if (e.button !== 0) return;
+    cardDragClickGuardRef.current.begin();
     e.stopPropagation();
 
     // Ctrl/Cmd+click = thêm/bớt thẻ khỏi vùng chọn, và KHÔNG kéo: không gắn
@@ -2872,7 +2876,10 @@ export default function IdeaMap() {
     const onMove = rafThrottle((ev) => {
       let dx = (ev.clientX - startX) / scale;
       let dy = (ev.clientY - startY) / scale;
-      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
+      if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
+        moved = true;
+        cardDragClickGuardRef.current.markDragged();
+      }
 
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       dragIds.forEach((id) => {
@@ -4459,7 +4466,7 @@ export default function IdeaMap() {
   actionsRef.current = {
     nodeMouseDown: handleNodeMouseDown,
     cardClick: handleCardClick,
-    isCardClick: (e) => !isDragGesture(clickAnchorRef.current, { x: e.clientX, y: e.clientY }),
+    isCardClick: () => cardDragClickGuardRef.current.consume(),
     openColorMenu,
     connectorMouseDown: handleConnectorMouseDown,
     deleteNode,

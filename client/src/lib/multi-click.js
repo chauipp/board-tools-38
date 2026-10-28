@@ -21,6 +21,19 @@ export function isDragGesture(anchor, point, tolerance = CLICK_DRAG_TOL) {
   return Math.hypot(point.x - anchor.x, point.y - anchor.y) > tolerance;
 }
 
+export function createDragClickGuard() {
+  let dragged = false;
+  return {
+    begin() { dragged = false; },
+    markDragged() { dragged = true; },
+    consume() {
+      const shouldOpen = !dragged;
+      dragged = false;
+      return shouldOpen;
+    }
+  };
+}
+
 // Bộ đếm bấm liên tiếp. `now` truyền từ ngoài vào (Date.now) chứ không đọc trong
 // hàm: test phải chạy được mà không cần đợi thật.
 export function createMultiClick(windowMs = MULTI_CLICK_MS) {
