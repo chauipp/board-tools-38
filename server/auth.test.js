@@ -12,7 +12,9 @@ import {
   hashPassword,
   verifyPasswordLogin,
   getPasswordAccounts,
-  passwordAccountsStartupError
+  passwordAccountsStartupError,
+  isGmailAddress,
+  canLogin
 } from "./auth.js";
 
 before(() => {
@@ -170,4 +172,54 @@ test("passwordAccountsStartupError: báo entry sai định dạng và tên trùn
   process.env.PASSWORD_ACCOUNTS = entry;
   assert.equal(passwordAccountsStartupError(), null);
   delete process.env.PASSWORD_ACCOUNTS;
+});
+
+test("isGmailAddress: chỉ nhận @gmail.com và @googlemail.com, không khớp đuôi giả", () => {
+  assert.equal(isGmailAddress("Bob@Gmail.com"), true);
+  assert.equal(isGmailAddress("bob@googlemail.com"), true);
+  assert.equal(isGmailAddress("bob@company.com"), false);
+  assert.equal(isGmailAddress("bob@gmail.com.evil.io"), false);
+  assert.equal(isGmailAddress("bob@notgmail.com"), false);
+  assert.equal(isGmailAddress(""), false);
+});
+
+// Board giả: canLogin chỉ cần Board.exists, nên không cần Mongo.
+function fakeModels(hasGrant) {
+  const calls = [];
+  return {
+    calls,
+    Board: {
+      exists: async (query) => {
+        calls.push(query);
+        return hasGrant ? { _id: "x" } : null;
+      }
+    }
+  };
+}
+
+test("canLogin: người trong ALLOWED_EMAILS vào được mà không cần tra board", async () => {
+  process.env.ALLOWED_EMAILS = "alice@gmail.com";
+  const models = fakeModels(false);
+  assert.equal(await canLogin("ALICE@gmail.com", models), true);
+  assert.equal(models.calls.length, 0);
+  delete process.env.ALLOWED_EMAILS;
+});
+
+test("canLogin: Gmail ngoài danh sách chỉ vào được khi có board cấp grantsLogin", async () => {
+  process.env.ALLOWED_EMAILS = "alice@gmail.com";
+  assert.equal(await canLogin("friend@gmail.com", fakeModels(true)), true);
+  assert.equal(await canLogin("friend@gmail.com", fakeModels(false)), false);
+  const models = fakeModels(true);
+  await canLogin("Friend@Gmail.com", models);
+  assert.deepEqual(models.calls[0], {
+    members: { $elemMatch: { email: "friend@gmail.com", grantsLogin: true } }
+  });
+  delete process.env.ALLOWED_EMAILS;
+});
+
+test("canLogin: email rỗng không bao giờ vào được, dù board có ghi gì", async () => {
+  process.env.ALLOWED_EMAILS = "alice@gmail.com";
+  assert.equal(await canLogin("", fakeModels(true)), false);
+  assert.equal(await canLogin(undefined, fakeModels(true)), false);
+  delete process.env.ALLOWED_EMAILS;
 });

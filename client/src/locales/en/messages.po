@@ -498,13 +498,17 @@ msgstr "Ellipse / circle"
 msgid "Email"
 msgstr "Email"
 
+#: src/components/InviteModal.jsx:79
+msgid "Email Gmail"
+msgstr "Gmail address"
+
 #: src/components/InviteModal.jsx:12
 msgid "Email hoặc vai trò không hợp lệ."
 msgstr "Invalid email or role."
 
 #: src/components/InviteModal.jsx:10
-msgid "Email này chưa được cấp quyền đăng nhập vào hệ thống."
-msgstr "This email has not been granted access to sign in."
+msgid "Chỉ mời được địa chỉ Gmail hoặc email đã được cấp quyền đăng nhập."
+msgstr "Only Gmail addresses or emails already granted sign-in access can be invited."
 
 #: src/components/InviteModal.jsx:11
 msgid "Email này đã là chủ sở hữu board."

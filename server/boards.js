@@ -4,7 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import multer from "multer";
 import { Board, BoardSnapshot, User } from "./models.js";
-import { getBoardRole, isEmailAllowed } from "./auth.js";
+import { getBoardRole, isEmailAllowed, isGmailAddress } from "./auth.js";
 import { rateLimit } from "./rate-limit.js";
 import { normalizeGameDesignFlow, resolveGameDesignFields, validateBoardPayload } from "./board-payload.js";
 import { PDF_DIR, isR2Enabled, sendPdf, storePdf } from "./pdf-storage.js";
@@ -566,17 +566,22 @@ router.post("/:id/members", async (req, res) => {
     if (!email || !["editor", "viewer"].includes(role)) {
       return res.status(400).json({ error: "invalid_input" });
     }
-    if (!isEmailAllowed(email)) {
+    // Mời được người trong ALLOWED_EMAILS, hoặc bất kỳ địa chỉ Gmail nào. Gmail
+    // ngoài danh sách được cấp quyền đăng nhập qua chính lời mời này (grantsLogin).
+    const allowlisted = isEmailAllowed(email);
+    if (!allowlisted && !isGmailAddress(email)) {
       return res.status(400).json({ error: "not_allowed" });
     }
     if (email === board.ownerEmail) {
       return res.status(400).json({ error: "already_owner" });
     }
+    const grantsLogin = !allowlisted;
     const existing = board.members.find((m) => m.email === email);
     if (existing) {
       existing.role = role;
+      if (grantsLogin) existing.grantsLogin = true;
     } else {
-      board.members.push({ email, role, addedAt: new Date() });
+      board.members.push({ email, role, addedAt: new Date(), grantsLogin });
     }
     await board.save();
     res.status(201).json({ ok: true });

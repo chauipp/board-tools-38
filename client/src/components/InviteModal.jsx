@@ -7,7 +7,7 @@ export default function InviteModal({ boardId, onClose }) {
   // Dựng trong component: chuỗi phải đi qua t`` mới vào được catalog, ngoài
   // component thì `t` chưa có và bản tiếng Anh sẽ hiện nguyên tiếng Việt.
   const ERROR_MESSAGES = {
-    not_allowed: t`Email này chưa được cấp quyền đăng nhập vào hệ thống.`,
+    not_allowed: t`Chỉ mời được địa chỉ Gmail hoặc email đã được cấp quyền đăng nhập.`,
     already_owner: t`Email này đã là chủ sở hữu board.`,
     invalid_input: t`Email hoặc vai trò không hợp lệ.`
   };
@@ -76,7 +76,7 @@ export default function InviteModal({ boardId, onClose }) {
           <input
             type="email"
             required
-            placeholder={t`Email`}
+            placeholder={t`Email Gmail`}
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             style={{ flex: 1, minWidth: 0, padding: "7px 9px", borderRadius: 4, border: "1px solid var(--line)", background: "var(--bg)", color: "var(--ink)", fontSize: 12.5 }}

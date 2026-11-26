@@ -8,7 +8,7 @@ import http from "node:http";
 import { Server } from "socket.io";
 import {
   requireAuth,
-  isEmailAllowed,
+  canLogin,
   isPublicMode,
   allowlistStartupError,
   passwordAccountsStartupError,
@@ -196,7 +196,14 @@ app.post("/api/auth/google", loginLimiter, async (req, res) => {
   } catch (e) {
     return res.status(401).json({ error: "invalid_token" });
   }
-  if (!isEmailAllowed(googleUser.email)) {
+  let allowed;
+  try {
+    allowed = await canLogin(googleUser.email);
+  } catch (e) {
+    console.error("Kiểm tra quyền đăng nhập thất bại:", e);
+    return res.status(500).json({ error: "login_error" });
+  }
+  if (!allowed) {
     return res.status(403).json({ error: "not_allowed" });
   }
   return startSession(res, googleUser);
@@ -311,7 +318,15 @@ app.set("io", io);
 
 io.use(async (socket, next) => {
   const user = parseSessionFromCookieHeader(socket.handshake.headers.cookie);
-  if (!user || !isEmailAllowed(user.email)) return next(new Error("unauthorized"));
+  if (!user) return next(new Error("unauthorized"));
+  let allowed;
+  try {
+    allowed = await canLogin(user.email);
+  } catch (e) {
+    console.error("Socket handshake: không kiểm tra được quyền đăng nhập", e);
+    return next(new Error("forbidden"));
+  }
+  if (!allowed) return next(new Error("unauthorized"));
   const boardId = socket.handshake.query.boardId;
   if (!boardId) return next(new Error("missing_board"));
   let board;

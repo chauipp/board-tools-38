@@ -25,7 +25,11 @@ const boardMemberSchema = new mongoose.Schema(
   {
     email: { type: String, required: true, lowercase: true, trim: true },
     role: { type: String, enum: ["editor", "viewer"], required: true },
-    addedAt: { type: Date, default: Date.now }
+    addedAt: { type: Date, default: Date.now },
+    // true = lời mời Gmail cho người không có trong ALLOWED_EMAILS: đây là thứ
+    // cho phép họ đăng nhập (xem canLogin trong auth.js). Gỡ khỏi mọi board là
+    // mất quyền vào; người đã có trong ALLOWED_EMAILS thì field này luôn false.
+    grantsLogin: { type: Boolean, default: false }
   },
   { _id: false }
 );
