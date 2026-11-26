@@ -2,6 +2,7 @@ import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import { scrypt as scryptCallback, randomBytes, timingSafeEqual } from "node:crypto";
 import { promisify } from "node:util";
+import { Board } from "./models.js";
 
 const scrypt = promisify(scryptCallback);
 
@@ -38,6 +39,26 @@ export function isEmailAllowed(email) {
   const allowed = getAllowedEmails();
   if (allowed.length === 0) return isPublicMode();
   return allowed.includes(normalized);
+}
+
+// Chỉ địa chỉ Gmail mới được mời ngoài ALLOWED_EMAILS. Giới hạn theo miền chứ
+// không theo "bất kỳ email nào" để lời mời không biến thành mở cửa cho mọi người.
+const GMAIL_RE = /@(gmail|googlemail)\.com$/;
+export function isGmailAddress(email) {
+  return GMAIL_RE.test(String(email || "").trim().toLowerCase());
+}
+
+// Ai được đăng nhập: có trong ALLOWED_EMAILS (hoặc tài khoản mật khẩu, PUBLIC_MODE),
+// hoặc đang là thành viên của ít nhất một board với lời mời có grantsLogin.
+// Tách khỏi isEmailAllowed để phần tra cứu board (cần Mongo) chỉ chạy khi cần.
+export async function canLogin(email, models = { Board }) {
+  const normalized = String(email || "").trim().toLowerCase();
+  if (!normalized) return false;
+  if (isEmailAllowed(normalized)) return true;
+  const grant = await models.Board.exists({
+    members: { $elemMatch: { email: normalized, grantsLogin: true } }
+  });
+  return Boolean(grant);
 }
 
 // Lý do phải dừng ngay lúc khởi động, hoặc null nếu cấu hình dùng được. Tách
@@ -90,12 +111,17 @@ export function parseSessionFromCookieHeader(cookieHeader) {
   return verifySession(decodeURIComponent(match.slice(prefix.length)));
 }
 
-export function requireAuth(req, res, next) {
+export async function requireAuth(req, res, next) {
   const token = req.cookies && req.cookies[SESSION_COOKIE_NAME];
   const user = token && verifySession(token);
-  if (!user || !isEmailAllowed(user.email)) {
-    return res.status(401).json({ error: "unauthorized" });
+  if (!user) return res.status(401).json({ error: "unauthorized" });
+  let allowed;
+  try {
+    allowed = await canLogin(user.email);
+  } catch (e) {
+    return next(e);
   }
+  if (!allowed) return res.status(401).json({ error: "unauthorized" });
   req.user = user;
   next();
 }
