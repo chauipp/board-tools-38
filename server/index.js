@@ -11,6 +11,8 @@ import {
   isEmailAllowed,
   isPublicMode,
   allowlistStartupError,
+  passwordAccountsStartupError,
+  verifyPasswordLogin,
   signSession,
   verifyGoogleIdToken,
   parseSessionFromCookieHeader,
@@ -58,6 +60,12 @@ if (!process.env.SESSION_SECRET) {
 // Dừng hẳn chứ không cảnh báo. Cảnh báo cũ nằm lẫn giữa hàng chục dòng log lúc
 // khởi động và đã bị bỏ qua suốt nhiều tháng — app chạy public mà không ai để ý.
 // Mở cửa là một quyết định, nên phải viết ra thành PUBLIC_MODE=true.
+const passwordAccountsError = passwordAccountsStartupError();
+if (passwordAccountsError) {
+  console.error(passwordAccountsError);
+  process.exit(1);
+}
+
 const allowlistError = allowlistStartupError();
 if (allowlistError) {
   console.error(allowlistError);
@@ -158,24 +166,16 @@ const loginLimiter = rateLimit({
   keyOf: (req) => req.ip
 });
 
-app.post("/api/auth/google", loginLimiter, async (req, res) => {
-  let googleUser;
+// Dùng chung cho mọi cách đăng nhập: ghi user, ký JWT, đặt cookie.
+async function startSession(res, user) {
   try {
-    googleUser = await verifyGoogleIdToken(req.body.idToken);
-  } catch (e) {
-    return res.status(401).json({ error: "invalid_token" });
-  }
-  if (!isEmailAllowed(googleUser.email)) {
-    return res.status(403).json({ error: "not_allowed" });
-  }
-  try {
-    await upsertUser(googleUser);
+    await upsertUser(user);
   } catch (e) {
     console.error("Không lưu được thông tin user:", e);
   }
   let token;
   try {
-    token = signSession(googleUser);
+    token = signSession(user);
   } catch (e) {
     console.error("signSession thất bại:", e);
     return res.status(500).json({ error: "session_error" });
@@ -186,7 +186,51 @@ app.post("/api/auth/google", loginLimiter, async (req, res) => {
     sameSite: "lax",
     maxAge: SESSION_COOKIE_MAX_AGE_MS
   });
-  res.json({ user: googleUser });
+  res.json({ user });
+}
+
+app.post("/api/auth/google", loginLimiter, async (req, res) => {
+  let googleUser;
+  try {
+    googleUser = await verifyGoogleIdToken(req.body.idToken);
+  } catch (e) {
+    return res.status(401).json({ error: "invalid_token" });
+  }
+  if (!isEmailAllowed(googleUser.email)) {
+    return res.status(403).json({ error: "not_allowed" });
+  }
+  return startSession(res, googleUser);
+});
+
+// Chặt hơn cửa Google: ở đây mỗi lượt là một lần đoán mật khẩu, không có Google
+// đứng giữa lọc hộ. 10 lần / 10 phút / IP là dư cho người gõ nhầm.
+const passwordLoginLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 10,
+  keyOf: (req) => req.ip
+});
+
+app.post("/api/auth/password", passwordLoginLimiter, async (req, res) => {
+  const { username, password } = req.body || {};
+  if (
+    typeof username !== "string" ||
+    typeof password !== "string" ||
+    !username.trim() ||
+    !password ||
+    username.length > 64 ||
+    password.length > 256
+  ) {
+    return res.status(400).json({ error: "invalid_request" });
+  }
+  let user;
+  try {
+    user = await verifyPasswordLogin(username, password);
+  } catch (e) {
+    console.error("Kiểm tra mật khẩu thất bại:", e);
+    return res.status(500).json({ error: "login_error" });
+  }
+  if (!user) return res.status(401).json({ error: "invalid_credentials" });
+  return startSession(res, user);
 });
 
 app.get("/api/auth/me", requireAuth, (req, res) => {

@@ -24,6 +24,19 @@ export async function loginWithGoogle(idToken) {
   return data.user;
 }
 
+export async function loginWithPassword(username, password) {
+  const res = await fetch("/api/auth/password", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password })
+  });
+  if (res.status === 401 || res.status === 400) throw apiError("INVALID_CREDENTIALS");
+  if (res.status === 429) throw apiError("TOO_MANY_ATTEMPTS");
+  if (!res.ok) throw apiError("LOGIN_FAILED");
+  const data = await res.json();
+  return data.user;
+}
+
 export async function logout() {
   await fetch("/api/auth/logout", { method: "POST" });
 }

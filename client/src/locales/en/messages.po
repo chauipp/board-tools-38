@@ -406,10 +406,6 @@ msgstr "Paste previously exported JSON, then click Import to map."
 msgid "Đang ghim màn hình của {0}…"
 msgstr "Pinning to {0}'s screen…"
 
-#: src/components/LoginGate.jsx:85
-msgid "Đăng nhập bằng Google để tiếp tục."
-msgstr "Sign in with Google to continue."
-
 #: src/components/LoginGate.jsx:99
 msgid "Đăng nhập thất bại, thử lại."
 msgstr "Sign-in failed, try again."
@@ -1312,3 +1308,35 @@ msgstr "New idea"
 #: src/components/IdeaCard.jsx:163
 msgid "Yêu thích"
 msgstr "Favorites"
+
+#: src/components/LoginGate.jsx
+msgid "Đăng nhập để tiếp tục."
+msgstr "Sign in to continue."
+
+#: src/components/LoginGate.jsx
+msgid "hoặc"
+msgstr "or"
+
+#: src/components/LoginGate.jsx
+msgid "Tên đăng nhập"
+msgstr "Username"
+
+#: src/components/LoginGate.jsx
+msgid "Mật khẩu"
+msgstr "Password"
+
+#: src/components/LoginGate.jsx
+msgid "Đang đăng nhập…"
+msgstr "Signing in…"
+
+#: src/components/LoginGate.jsx
+msgid "Đăng nhập"
+msgstr "Sign in"
+
+#: src/components/LoginGate.jsx
+msgid "Sai tên đăng nhập hoặc mật khẩu."
+msgstr "Incorrect username or password."
+
+#: src/components/LoginGate.jsx
+msgid "Thử sai quá nhiều lần, đợi vài phút rồi thử lại."
+msgstr "Too many failed attempts. Wait a few minutes and try again."

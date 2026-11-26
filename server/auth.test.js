@@ -8,7 +8,11 @@ import {
   verifySession,
   parseSessionFromCookieHeader,
   SESSION_COOKIE_NAME,
-  getBoardRole
+  getBoardRole,
+  hashPassword,
+  verifyPasswordLogin,
+  getPasswordAccounts,
+  passwordAccountsStartupError
 } from "./auth.js";
 
 before(() => {
@@ -122,4 +126,48 @@ test("getBoardRole: empty or missing email returns null", () => {
   const board = { ownerEmail: "owner@x.com", members: [] };
   assert.equal(getBoardRole(board, ""), null);
   assert.equal(getBoardRole(board, undefined), null);
+});
+
+async function passwordEntry(username, email, password) {
+  const { salt, hash } = await hashPassword(password);
+  return `${username}:${email}:${salt}:${hash}`;
+}
+
+test("verifyPasswordLogin: đúng tên + mật khẩu thì trả user, email mặc định là @password.local", async () => {
+  process.env.PASSWORD_ACCOUNTS = await passwordEntry("alice", "", "s3cret");
+  const user = await verifyPasswordLogin("Alice", "s3cret");
+  assert.deepEqual(user, { email: "alice@password.local", name: "alice", picture: null });
+  delete process.env.PASSWORD_ACCOUNTS;
+});
+
+test("verifyPasswordLogin: sai mật khẩu hoặc tên không tồn tại thì null", async () => {
+  process.env.PASSWORD_ACCOUNTS = await passwordEntry("alice", "a@b.com", "s3cret");
+  assert.equal(await verifyPasswordLogin("alice", "wrong"), null);
+  assert.equal(await verifyPasswordLogin("bob", "s3cret"), null);
+  assert.equal((await verifyPasswordLogin("alice", "s3cret")).email, "a@b.com");
+  delete process.env.PASSWORD_ACCOUNTS;
+});
+
+test("tài khoản mật khẩu được vào dù ALLOWED_EMAILS trống, nhưng không mở cửa cho người khác", async () => {
+  delete process.env.ALLOWED_EMAILS;
+  delete process.env.PUBLIC_MODE;
+  process.env.PASSWORD_ACCOUNTS = await passwordEntry("alice", "", "s3cret");
+  assert.equal(isEmailAllowed("alice@password.local"), true);
+  assert.equal(isEmailAllowed("stranger@gmail.com"), false);
+  assert.equal(allowlistStartupError(), null);
+  delete process.env.PASSWORD_ACCOUNTS;
+});
+
+test("passwordAccountsStartupError: báo entry sai định dạng và tên trùng", async () => {
+  process.env.PASSWORD_ACCOUNTS = "alice:plaintext-password";
+  assert.match(passwordAccountsStartupError(), /alice/);
+  assert.equal(getPasswordAccounts().length, 0);
+
+  const entry = await passwordEntry("alice", "", "x");
+  process.env.PASSWORD_ACCOUNTS = `${entry},${entry}`;
+  assert.match(passwordAccountsStartupError(), /trùng/);
+
+  process.env.PASSWORD_ACCOUNTS = entry;
+  assert.equal(passwordAccountsStartupError(), null);
+  delete process.env.PASSWORD_ACCOUNTS;
 });

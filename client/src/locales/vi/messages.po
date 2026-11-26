@@ -406,10 +406,6 @@ msgstr "Dán JSON đã xuất trước đó, rồi bấm Nhập vào bản đồ
 msgid "Đang ghim màn hình của {0}…"
 msgstr "Đang ghim màn hình của {0}…"
 
-#: src/components/LoginGate.jsx:85
-msgid "Đăng nhập bằng Google để tiếp tục."
-msgstr "Đăng nhập bằng Google để tiếp tục."
-
 #: src/components/LoginGate.jsx:99
 msgid "Đăng nhập thất bại, thử lại."
 msgstr "Đăng nhập thất bại, thử lại."
@@ -1312,3 +1308,35 @@ msgstr "Ý tưởng mới"
 #: src/components/IdeaCard.jsx:163
 msgid "Yêu thích"
 msgstr "Yêu thích"
+
+#: src/components/LoginGate.jsx
+msgid "Đăng nhập để tiếp tục."
+msgstr "Đăng nhập để tiếp tục."
+
+#: src/components/LoginGate.jsx
+msgid "hoặc"
+msgstr "hoặc"
+
+#: src/components/LoginGate.jsx
+msgid "Tên đăng nhập"
+msgstr "Tên đăng nhập"
+
+#: src/components/LoginGate.jsx
+msgid "Mật khẩu"
+msgstr "Mật khẩu"
+
+#: src/components/LoginGate.jsx
+msgid "Đang đăng nhập…"
+msgstr "Đang đăng nhập…"
+
+#: src/components/LoginGate.jsx
+msgid "Đăng nhập"
+msgstr "Đăng nhập"
+
+#: src/components/LoginGate.jsx
+msgid "Sai tên đăng nhập hoặc mật khẩu."
+msgstr "Sai tên đăng nhập hoặc mật khẩu."
+
+#: src/components/LoginGate.jsx
+msgid "Thử sai quá nhiều lần, đợi vài phút rồi thử lại."
+msgstr "Thử sai quá nhiều lần, đợi vài phút rồi thử lại."
