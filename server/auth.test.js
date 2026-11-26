@@ -14,7 +14,8 @@ import {
   getPasswordAccounts,
   passwordAccountsStartupError,
   isGmailAddress,
-  canLogin
+  canLogin,
+  hasAllBoardsAccess
 } from "./auth.js";
 
 before(() => {
@@ -222,4 +223,29 @@ test("canLogin: email rỗng không bao giờ vào được, dù board có ghi g
   assert.equal(await canLogin("", fakeModels(true)), false);
   assert.equal(await canLogin(undefined, fakeModels(true)), false);
   delete process.env.ALLOWED_EMAILS;
+});
+
+test("hasAllBoardsAccess: chỉ tài khoản mật khẩu có tên trong FULL_BOARD_ACCESS_ACCOUNTS", async () => {
+  process.env.PASSWORD_ACCOUNTS = [await passwordEntry("alice", "", "s3cret"), await passwordEntry("bob", "", "x")].join(",");
+  delete process.env.FULL_BOARD_ACCESS_ACCOUNTS;
+  assert.equal(hasAllBoardsAccess("alice@password.local"), false);
+  process.env.FULL_BOARD_ACCESS_ACCOUNTS = " Alice ";
+  assert.equal(hasAllBoardsAccess("alice@password.local"), true);
+  assert.equal(hasAllBoardsAccess("bob@password.local"), false);
+  assert.equal(hasAllBoardsAccess("alice@gmail.com"), false);
+  delete process.env.FULL_BOARD_ACCESS_ACCOUNTS;
+  delete process.env.PASSWORD_ACCOUNTS;
+});
+
+test("getBoardRole: tài khoản toàn quyền là editor trên mọi board, nhưng không phải owner", async () => {
+  process.env.PASSWORD_ACCOUNTS = await passwordEntry("alice", "", "s3cret");
+  process.env.FULL_BOARD_ACCESS_ACCOUNTS = "alice";
+  const board = { ownerEmail: "owner@gmail.com", members: [{ email: "ed@gmail.com", role: "viewer" }] };
+  assert.equal(getBoardRole(board, "alice@password.local"), "editor");
+  assert.equal(getBoardRole(board, "owner@gmail.com"), "owner");
+  assert.equal(getBoardRole(board, "ed@gmail.com"), "viewer");
+  assert.equal(getBoardRole(board, "stranger@gmail.com"), null);
+  delete process.env.FULL_BOARD_ACCESS_ACCOUNTS;
+  delete process.env.PASSWORD_ACCOUNTS;
+  assert.equal(getBoardRole(board, "alice@password.local"), null);
 });

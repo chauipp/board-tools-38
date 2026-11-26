@@ -73,10 +73,25 @@ export function allowlistStartupError() {
   );
 }
 
+// Tài khoản mật khẩu có tên trong FULL_BOARD_ACCESS_ACCOUNTS (tên đăng nhập, cách
+// nhau bởi dấu phẩy) thấy và sửa được MỌI board với quyền editor, không cần là
+// thành viên. Cố ý không cấp owner: không xoá board, không mời hay gỡ thành viên.
+export function hasAllBoardsAccess(email) {
+  const normalized = String(email || "").trim().toLowerCase();
+  if (!normalized) return false;
+  const names = (process.env.FULL_BOARD_ACCESS_ACCOUNTS || "")
+    .split(",")
+    .map((n) => n.trim().toLowerCase())
+    .filter(Boolean);
+  if (names.length === 0) return false;
+  return getPasswordAccounts().some((a) => a.email === normalized && names.includes(a.username));
+}
+
 export function getBoardRole(board, email) {
   const normalized = String(email || "").toLowerCase();
   if (!normalized) return null;
   if (String(board.ownerEmail || "").toLowerCase() === normalized) return "owner";
+  if (hasAllBoardsAccess(normalized)) return "editor";
   const member = (board.members || []).find(
     (m) => String(m.email || "").toLowerCase() === normalized
   );

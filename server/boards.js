@@ -4,7 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import multer from "multer";
 import { Board, BoardSnapshot, User } from "./models.js";
-import { getBoardRole, isEmailAllowed, isGmailAddress } from "./auth.js";
+import { getBoardRole, hasAllBoardsAccess, isEmailAllowed, isGmailAddress } from "./auth.js";
 import { rateLimit } from "./rate-limit.js";
 import { normalizeGameDesignFlow, resolveGameDesignFields, validateBoardPayload } from "./board-payload.js";
 import { PDF_DIR, isR2Enabled, sendPdf, storePdf } from "./pdf-storage.js";
@@ -178,9 +178,11 @@ async function loadBoardWithRole(req, res, minRole, projection) {
 router.get("/", async (req, res) => {
   try {
     const email = req.user.email.toLowerCase();
-    const boards = await Board.find({
-      $or: [{ ownerEmail: email }, { "members.email": email }]
-    })
+    // Tài khoản có quyền xem mọi board thì danh sách không lọc theo thành viên.
+    const scope = hasAllBoardsAccess(email)
+      ? {}
+      : { $or: [{ ownerEmail: email }, { "members.email": email }] };
+    const boards = await Board.find(scope)
       .select("name kind ownerEmail members updatedAt")
       .lean();
     res.json(

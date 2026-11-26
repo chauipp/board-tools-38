@@ -49,6 +49,11 @@ services:
       # being listed in ALLOWED_EMAILS.
       - key: PASSWORD_ACCOUNTS
         sync: false
+      # Optional: usernames from PASSWORD_ACCOUNTS that can open and edit EVERY
+      # board (editor role, not owner). Comma-separated. Leave unset for normal
+      # per-board membership only.
+      - key: FULL_BOARD_ACCESS_ACCOUNTS
+        sync: false
       # NODE_ENV can't be "production" here: the build command runs
       # `npm install` for the client, and npm omits devDependencies under
       # NODE_ENV=production, which would delete vite/@lingui/cli and break
