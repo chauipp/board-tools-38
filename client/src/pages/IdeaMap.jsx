@@ -2822,7 +2822,7 @@ export default function IdeaMap() {
     let moved = false;
     inkLive.beginMove();
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       const k = scaleFactorFor(bounds, corner, eventToCanvas(ev));
       if (!moved && Math.abs(k - 1) < 0.02) return;
       moved = true;
@@ -2871,13 +2871,9 @@ export default function IdeaMap() {
           groups: latest.groups.filter((g) => sel.groupIds.has(g.id))
         });
       }
-    });
+    };
 
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      window.removeEventListener("blur", onUp);
-      onMove.flush();
       if (!moved) { inkLive.cancelMove(); return; }
       inkLive.endMove(movingPayload(latest, sel.drawingIds));
       if (sel.nodeIds.size || sel.groupIds.size) {
@@ -2889,11 +2885,9 @@ export default function IdeaMap() {
       recordHistory(base);
       saveNow(latest);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
     // Mất focus giữa cú kéo: vị trí mới đã nằm sẵn trong board rồi, nên đường
     // thoát đúng là CHỐT nó lại — cùng lý do đã ghi ở startDrawingDrag.
-    window.addEventListener("blur", onUp);
+    startDrag(e, { onMove, onEnd: onUp, blur: "end" });
   }
 
   // Nhường đường cho lia bảng TRƯỚC khi nghĩ tới việc vẽ — đúng thứ tự
