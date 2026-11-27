@@ -4,6 +4,9 @@ import { once } from "node:events";
 import express from "express";
 import { Board, BoardSnapshot, PdfFile } from "./models.js";
 import boardsRouter from "./boards.js";
+import {
+  BOARD_LIST_FIELDS, BOARD_COUNTER_FIELDS, BOARD_THEME_FIELDS, BOARD_GAME_DESIGN_FIELDS, pickBoardContent
+} from "./board-fields.js";
 
 // Tập key của các payload board, chụp lại TRƯỚC khi gom danh sách field về
 // board-fields.js. Đổi một tập ở đây là đổi hợp đồng với client: thiếu một key
@@ -157,4 +160,27 @@ test("board shape: restore snapshot ghi, broadcast và trả về đúng tập k
   assert.deepEqual(sorted(Object.keys(res.body.board)), sorted(RESTORE_KEYS));
   assert.deepEqual(sorted(Object.keys(calls.updates[0])), sorted(RESTORE_KEYS));
   assert.deepEqual(sorted(Object.keys(calls.emits[0].payload)), sorted(RESTORE_KEYS));
+});
+
+test("board-fields: các danh sách field khớp hợp đồng đã chụp", () => {
+  assert.deepEqual(BOARD_LIST_FIELDS, ["nodes", "edges", "groups", "drawings", "statuses", "tags", "palette"]);
+  assert.deepEqual(BOARD_COUNTER_FIELDS, [
+    "nextNodeId", "nextEdgeId", "nextGroupId", "nextStatusId", "nextTagId", "nextPaletteId", "nextDrawingId"
+  ]);
+  assert.deepEqual(BOARD_THEME_FIELDS, ["bg", "grid", "pack"]);
+  assert.deepEqual(BOARD_GAME_DESIGN_FIELDS, ["gameDesignBrief", "gameDesignFlow", "gameDesignBalance"]);
+  assert.deepEqual(
+    sorted(["kind", ...BOARD_GAME_DESIGN_FIELDS, ...BOARD_LIST_FIELDS, ...BOARD_THEME_FIELDS, ...BOARD_COUNTER_FIELDS]),
+    sorted(CONTENT_KEYS)
+  );
+});
+
+test("board-fields: pickBoardContent chỉ lấy field nội dung, luôn đủ key", () => {
+  const picked = pickBoardContent({ nodes: [1], bg: "dots", view: { x: 1 }, kind: "idea", gameDesignBrief: {}, clientId: "x" });
+  assert.deepEqual(sorted(Object.keys(picked)), sorted([...BOARD_LIST_FIELDS, ...BOARD_THEME_FIELDS, ...BOARD_COUNTER_FIELDS]));
+  assert.deepEqual(picked.nodes, [1]);
+  assert.equal(picked.bg, "dots");
+  assert.equal(picked.edges, undefined);
+  assert.equal(Object.hasOwn(picked, "view"), false);
+  assert.equal(Object.hasOwn(picked, "kind"), false);
 });

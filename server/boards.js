@@ -7,6 +7,7 @@ import { Board, BoardSnapshot, User } from "./models.js";
 import { getBoardRole, hasAllBoardsAccess, isEmailAllowed, isGmailAddress } from "./auth.js";
 import { rateLimit } from "./rate-limit.js";
 import { normalizeGameDesignFlow, resolveGameDesignFields, validateBoardPayload } from "./board-payload.js";
+import { BOARD_GAME_DESIGN_FIELDS, pickBoardContent } from "./board-fields.js";
 import { PDF_DIR, isR2Enabled, sendPdf, storePdf } from "./pdf-storage.js";
 import {
   checkRoom,
@@ -104,26 +105,8 @@ const AUTH_FIELDS_VERSIONED = "ownerEmail members updatedAt kind gameDesignBrief
 function boardPayload(obj) {
   return {
     kind: obj.kind || "idea",
-    gameDesignBrief: obj.gameDesignBrief ?? null,
-    gameDesignFlow: obj.gameDesignFlow ?? null,
-    gameDesignBalance: obj.gameDesignBalance ?? null,
-    nodes: obj.nodes,
-    edges: obj.edges,
-    groups: obj.groups,
-    statuses: obj.statuses,
-    tags: obj.tags,
-    palette: obj.palette,
-    bg: obj.bg,
-    grid: obj.grid,
-    pack: obj.pack,
-    drawings: obj.drawings,
-    nextNodeId: obj.nextNodeId,
-    nextEdgeId: obj.nextEdgeId,
-    nextGroupId: obj.nextGroupId,
-    nextStatusId: obj.nextStatusId,
-    nextTagId: obj.nextTagId,
-    nextPaletteId: obj.nextPaletteId,
-    nextDrawingId: obj.nextDrawingId,
+    ...Object.fromEntries(BOARD_GAME_DESIGN_FIELDS.map((field) => [field, obj[field] ?? null])),
+    ...pickBoardContent(obj),
     updatedAt: obj.updatedAt
   };
 }
@@ -407,27 +390,8 @@ router.post("/:id/snapshots/:snapshotId/restore", async (req, res) => {
     const gameDesign = resolveGameDesignFields(normalized, found.board);
     const updatedAt = new Date();
     const restored = {
-      kind: gameDesign.kind,
-      gameDesignBrief: gameDesign.gameDesignBrief,
-      gameDesignFlow: gameDesign.gameDesignFlow,
-      gameDesignBalance: gameDesign.gameDesignBalance,
-      nodes: normalized.nodes,
-      edges: normalized.edges,
-      groups: normalized.groups,
-      statuses: normalized.statuses,
-      tags: normalized.tags,
-      palette: normalized.palette,
-      bg: normalized.bg,
-      grid: normalized.grid,
-      pack: normalized.pack,
-      drawings: normalized.drawings,
-      nextNodeId: normalized.nextNodeId,
-      nextEdgeId: normalized.nextEdgeId,
-      nextGroupId: normalized.nextGroupId,
-      nextStatusId: normalized.nextStatusId,
-      nextTagId: normalized.nextTagId,
-      nextPaletteId: normalized.nextPaletteId,
-      nextDrawingId: normalized.nextDrawingId,
+      ...gameDesign,
+      ...pickBoardContent(normalized),
       updatedAt
     };
     await Board.findByIdAndUpdate(found.board._id, restored);
@@ -454,13 +418,8 @@ router.put("/:id", async (req, res) => {
     const invalid = validateBoardPayload(body);
     if (invalid) return res.status(400).json({ error: "invalid_board", detail: invalid });
 
-    const {
-      kind, gameDesignBrief, gameDesignFlow, gameDesignBalance, nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
-      nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, nextDrawingId,
-      view,
-      clientId,
-      baseUpdatedAt
-    } = body;
+    const { view, clientId, baseUpdatedAt } = body;
+    const content = pickBoardContent(body);
     const gameDesign = resolveGameDesignFields(body, found.board);
 
     // Kiểm phiên bản. Client khai "bản tôi đang dựa trên có mốc này"; nếu mốc
@@ -487,8 +446,7 @@ router.put("/:id", async (req, res) => {
 
     const updatedAt = new Date();
     await Board.findByIdAndUpdate(req.params.id, {
-      kind: gameDesign.kind, gameDesignBrief: gameDesign.gameDesignBrief, gameDesignFlow: gameDesign.gameDesignFlow, gameDesignBalance: gameDesign.gameDesignBalance, nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
-      nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, nextDrawingId,
+      ...gameDesign, ...content,
       view, updatedAt
     });
     // Phát cho người khác trong board ngay sau khi lưu thành công — không
@@ -498,8 +456,7 @@ router.put("/:id", async (req, res) => {
     // Cùng chuẩn hoá như phòng presence trong index.js: lấy id từ document,
     // không từ URL — hex viết hoa/thường khác nhau vẫn phải vào đúng phòng.
     const payload = {
-      kind: gameDesign.kind, gameDesignBrief: gameDesign.gameDesignBrief, gameDesignFlow: gameDesign.gameDesignFlow, gameDesignBalance: gameDesign.gameDesignBalance, nodes, edges, groups, statuses, tags, palette, bg, grid, pack, drawings,
-      nextNodeId, nextEdgeId, nextGroupId, nextStatusId, nextTagId, nextPaletteId, nextDrawingId,
+      ...gameDesign, ...content,
       updatedAt: updatedAt.toISOString()
     };
     await broadcastBoardUpdate(req, found.board._id, payload, clientId);
@@ -509,7 +466,7 @@ router.put("/:id", async (req, res) => {
     // lại dung lượng sau thời gian chờ. Chạy SAU khi đã trả lời và không await:
     // đây là sổ sách nội bộ, không bao giờ được làm chậm hay làm chết một cú lưu
     // của người dùng — hỏng thì vòng reconcile của cron sửa lại.
-    syncBoardRefs(found.board._id, nodes).catch((e) => {
+    syncBoardRefs(found.board._id, content.nodes).catch((e) => {
       console.warn(`[pdf-quota] không đồng bộ được sổ PDF của board ${found.board._id}: ${e.message}`);
     });
   } catch (e) {

@@ -16,6 +16,8 @@
 // Field nào KHÔNG có trong payload thì bỏ qua, không coi là lỗi: findByIdAndUpdate
 // bỏ qua field undefined, nên thiếu field nghĩa là "không đổi phần này".
 
+import { BOARD_LIST_FIELDS as LIST_FIELDS, BOARD_COUNTER_FIELDS as COUNTER_FIELDS } from "./board-fields.js";
+
 export const BOARD_LIMITS = {
   nodes: 5000,
   edges: 10000,
@@ -47,11 +49,6 @@ export const GAME_DESIGN_POST_LAUNCH_LIMITS = { text: 4000, references: 100 };
 const BOARD_KINDS = new Set(["idea", "game-design"]);
 const RELATION_IDS = new Set(["depends-on", "unlocks", "replaces", "conflicts-with"]);
 
-const LIST_FIELDS = ["nodes", "edges", "groups", "drawings", "statuses", "tags", "palette"];
-const COUNTER_FIELDS = [
-  "nextNodeId", "nextEdgeId", "nextGroupId",
-  "nextStatusId", "nextTagId", "nextPaletteId", "nextDrawingId"
-];
 
 // Số "dùng được": phải là number thật, không NaN, không Infinity. Chuỗi số cũng
 // bị loại — client luôn gửi number, nên chuỗi ở đây là dấu hiệu dữ liệu đã méo
