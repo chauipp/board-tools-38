@@ -2572,7 +2572,7 @@ export default function IdeaMap() {
     let dragging = false;
     const THRESHOLD = 4;
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) {
         dragging = true;
         setIsPanning(true);
@@ -2581,11 +2581,8 @@ export default function IdeaMap() {
       const nx = startPanX + (ev.clientX - startX);
       const ny = startPanY + (ev.clientY - startY);
       setView((prev) => ({ ...prev, panX: nx, panY: ny }));
-    });
+    };
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.flush();
       if (dragging) {
         setIsPanning(false);
         // KHÔNG lưu: lia sa bàn chỉ đổi camera, mà camera là riêng từng người
@@ -2597,8 +2594,7 @@ export default function IdeaMap() {
         setTimeout(() => { suppressContextMenuRef.current = false; }, 0);
       }
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp });
   }
 
   // Bấm trúng nét bút / hình khối / chữ ở mode Sửa: chọn nó (Ctrl để cộng dồn),
