@@ -1848,18 +1848,15 @@ export default function IdeaMap() {
 
     // rAF: mỗi nhịp gọi document.elementFromPoint — một phép hit-test buộc
     // trình duyệt tính lại layout. Ở tần số chuột thô đó là vài trăm lần/giây.
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
       if (!dragging) return;
       const p = toCanvas(ev.clientX, ev.clientY);
       setLinkDraft({ fromId: nodeId, fromKind: "node", x: p.x, y: p.y });
       const t = targetAt(ev.clientX, ev.clientY);
       setDropTargetId(t ? { id: t.id, kind: t.kind } : null);
-    });
+    };
     function onUp(ev) {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.cancel();
       if (dragging) {
         setLinkDraft(null);
         const t = targetAt(ev.clientX, ev.clientY);
@@ -1869,8 +1866,7 @@ export default function IdeaMap() {
         createLinkedNode(nodeId, direction);
       }
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp, release: "cancel" });
   }
 
   function handleGroupConnectorMouseDown(e, groupId) {
