@@ -2639,7 +2639,7 @@ export default function IdeaMap() {
     let latest = base;
     inkLive.beginMove();
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       const p = eventToCanvas(ev);
       const dx = p.x - start.x, dy = p.y - start.y;
       if (!moved && Math.hypot(dx, dy) < TEXT_DRAG_THRESHOLD) return;
@@ -2673,17 +2673,9 @@ export default function IdeaMap() {
           groups: latest.groups.filter((g) => startGroups.has(g.id))
         });
       }
-    });
-
-    function cleanup() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      window.removeEventListener("blur", onUp);
-      onMove.cancel();
-    }
+    };
 
     function onUp(ev) {
-      cleanup();
       // bấm-không-kéo: chỉ là cú chọn (hoặc cú bỏ chọn), không lưu gì. Chỉ tính
       // là "bấm" khi thật sự có cú NHẢ CHUỘT — hàm này còn là handler của `blur`,
       // mà mất focus giữa lúc đang giữ chuột thì người dùng không hề bấm xong,
@@ -2700,13 +2692,11 @@ export default function IdeaMap() {
       saveNow(latest);
     }
 
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
     // Cửa sổ mất focus giữa lượt kéo thì mouseup không bao giờ tới (cùng cái bẫy
     // đã ghi ở startTextDrag). Ở đây vị trí mới đã nằm sẵn trong board rồi, nên
     // đường thoát đúng là CHỐT nó lại — bỏ ngang thì người dùng thấy nét đã dời
     // mà server không hề biết, và F5 một cái là nó nhảy về chỗ cũ.
-    window.addEventListener("blur", onUp);
+    startDrag(e, { onMove, onEnd: onUp, release: "cancel", blur: "end" });
   }
 
   function handleViewportMouseDown(e) {
