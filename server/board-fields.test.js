@@ -3,7 +3,10 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import express from "express";
 import { Board, BoardSnapshot, PdfFile } from "./models.js";
-import boardsRouter from "./boards.js";
+import boardFilesRouter from "./routes/board-files.js";
+import boardsRouter from "./routes/boards.js";
+import boardSnapshotsRouter from "./routes/board-snapshots.js";
+import boardMembersRouter from "./routes/board-members.js";
 import {
   BOARD_LIST_FIELDS, BOARD_COUNTER_FIELDS, BOARD_THEME_FIELDS, BOARD_GAME_DESIGN_FIELDS, pickBoardContent
 } from "./board-fields.js";
@@ -100,7 +103,7 @@ async function fixture(t) {
   app.set("io", io);
   app.use(express.json({ limit: "10mb" }));
   app.use((req, _res, next) => { req.user = { email: OWNER }; next(); });
-  app.use("/api/boards", boardsRouter);
+  app.use("/api/boards", boardFilesRouter, boardsRouter, boardSnapshotsRouter, boardMembersRouter);
   const server = app.listen(0, "127.0.0.1");
   await once(server, "listening");
   t.after(() => new Promise((resolve) => server.close(resolve)));

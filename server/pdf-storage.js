@@ -1,4 +1,4 @@
-// boards.js được import trước thân index.js trong ESM, nên nạp .env (qua
+// routes/board-files.js được import trước thân index.js trong ESM, nên nạp .env (qua
 // config.js) ngay tại đây để local R2 nhận được cấu hình; trên Render các biến
 // đã có sẵn sớm hơn.
 import "./config.js";

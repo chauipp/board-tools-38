@@ -3,7 +3,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import cookieParser from "cookie-parser";
 import { requireAuth } from "./auth.js";
-import boardsRouter from "./boards.js";
+import boardFilesRouter from "./routes/board-files.js";
+import boardsRouter from "./routes/boards.js";
+import boardSnapshotsRouter from "./routes/board-snapshots.js";
+import boardMembersRouter from "./routes/board-members.js";
 import workspaceRouter from "./workspace.js";
 import { usageReportFor } from "./pdf-quota.js";
 import authRouter from "./routes/auth.js";
@@ -31,7 +34,9 @@ export function createApp() {
   app.use(express.json({ limit: "20mb" }));
   app.use(cookieParser());
   app.use("/api/boards", requireAuth, workspaceRouter);
-  app.use("/api/boards", requireAuth, boardsRouter);
+  // Một requireAuth cho cả bốn router, đúng như khi còn chung một router.
+  // Thứ tự giữ nguyên thứ tự khớp route cũ: file (/:id/files/:fileId) trước /:id.
+  app.use("/api/boards", requireAuth, boardFilesRouter, boardsRouter, boardSnapshotsRouter, boardMembersRouter);
 
   app.use("/api/auth", authRouter);
   app.use("/api/calculator", calculatorRouter);

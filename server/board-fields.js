@@ -26,3 +26,15 @@ export function pickBoardContent(obj) {
   for (const field of CONTENT_FIELDS) out[field] = obj[field];
   return out;
 }
+
+// Nội dung board trả cho client. Dùng chung cho GET và cho thân của 409
+// (conflict) — hai chỗ đó phải trả ĐÚNG một hình dạng, lệch nhau là phía client
+// ghép nhầm một board thiếu field.
+export function boardPayload(obj) {
+  return {
+    kind: obj.kind || "idea",
+    ...Object.fromEntries(BOARD_GAME_DESIGN_FIELDS.map((field) => [field, obj[field] ?? null])),
+    ...pickBoardContent(obj),
+    updatedAt: obj.updatedAt
+  };
+}

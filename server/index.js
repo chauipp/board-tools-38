@@ -21,8 +21,9 @@ const server = http.createServer(app);
 // board:update kèm TOÀN BỘ board cho các peer — board có một tấm ảnh gốc là gói
 // đó vượt 1MB và socket.io ngắt kết nối phía nhận. Nới cho khớp trần của REST.
 const io = new Server(server, { maxHttpBufferSize: 20 * 1024 * 1024 });
-// boards.js (router riêng, mount trước io tồn tại) cần phát board:update
-// sau khi lưu REST thành công — lấy io qua app, không import vòng.
+// routes/boards.js và routes/board-snapshots.js (router riêng, mount trước io
+// tồn tại) cần phát board:update sau khi lưu REST thành công — lấy io qua app,
+// không import vòng.
 app.set("io", io);
 
 io.use(handshake);
