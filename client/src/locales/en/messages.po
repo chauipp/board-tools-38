@@ -1362,3 +1362,43 @@ msgstr "Resolve unsaved changes before importing JSON."
 
 msgid "Hãy xử lý thay đổi chưa lưu trước khi khôi phục snapshot."
 msgstr "Resolve unsaved changes before restoring a snapshot."
+
+#. js-lingui-explicit-id
+msgid "board.conflict.refresh"
+msgstr "Load latest server version"
+
+#. js-lingui-explicit-id
+msgid "board.conflict.review"
+msgstr "Review and resolve conflict"
+
+#. js-lingui-explicit-id
+msgid "board.conflict.server.value"
+msgstr "Server"
+
+#. js-lingui-explicit-id
+msgid "board.conflict.draft.value"
+msgstr "Draft"
+
+#. js-lingui-explicit-id
+msgid "board.conflict.merge.help"
+msgstr "Changes in other fields will still be merged."
+
+#. js-lingui-explicit-id
+msgid "board.conflict.unmergeable"
+msgstr "The two versions could not be merged. You can download both as JSON."
+
+#. js-lingui-explicit-id
+msgid "board.conflict.download.server"
+msgstr "Download server JSON"
+
+#. js-lingui-explicit-id
+msgid "board.conflict.merge"
+msgstr "Merge and save"
+
+#. js-lingui-explicit-id
+msgid "board.conflict.keep.server"
+msgstr "Keep server values for conflicts"
+
+#. js-lingui-explicit-id
+msgid "board.conflict.keep.draft"
+msgstr "Keep draft values for conflicts"

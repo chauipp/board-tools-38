@@ -110,12 +110,12 @@ function IdeaCard({
   function handleEditKeyDown(e) {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
       e.preventDefault();
-      h.saveAndNext(node.id, editPatch());
+      h.saveAndNext(node.id, editPatch(), editBaseRef.current);
     } else if (e.key === "Enter" && e.currentTarget.tagName === "INPUT") {
       // Enter thường chỉ lưu ở ô tiêu đề (input 1 dòng) — textarea mô tả
       // vẫn cần Enter để xuống dòng.
       e.preventDefault();
-      h.save(node.id, editPatch());
+      h.save(node.id, editPatch(), editBaseRef.current);
     } else if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
@@ -147,7 +147,7 @@ function IdeaCard({
             </select>
           </div>
           <div className="edit-actions">
-            <button className="save-btn" onClick={() => h.save(node.id, editPatch())}><Trans>Lưu</Trans></button>
+            <button className="save-btn" onClick={() => h.save(node.id, editPatch(), editBaseRef.current)}><Trans>Lưu</Trans></button>
             <button className="cancel-btn" onClick={h.cancelEdit}><Trans>Hủy</Trans></button>
             {node.image && <button className="cancel-btn" onClick={() => h.removeImage(node.id)}><Trans>Xoá ảnh</Trans></button>}
           </div>

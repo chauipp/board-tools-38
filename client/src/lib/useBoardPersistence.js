@@ -1,8 +1,8 @@
-import { useCallback, useRef } from "react";
-import { restoreBoardSnapshot, saveBoard } from "./api.js";
+import { useCallback, useRef, useState } from "react";
+import { getBoard, restoreBoardSnapshot, saveBoard } from "./api.js";
 import { normalizeGameDesignBoard } from "./game-design.js";
 import { arrangeLockedTrees } from "./locked-tree.js";
-import { rebaseBoard } from "./rebase.js";
+import { diffBoard, isEmptyDelta, rebaseBoard } from "./rebase.js";
 import { isStaleUpdate, mergeRemoteBoard } from "./useLiveSync.js";
 
 export function useBoardPersistence({ boardId, boardRef, roleRef, socketRef, treeSizeRef, setBoard, setSaveError, reconcileInk, acceptRemoteHistory }) {
@@ -13,6 +13,15 @@ export function useBoardPersistence({ boardId, boardRef, roleRef, socketRef, tre
   const pendingSaveRef = useRef(null);
   const deferredRemoteRef = useRef(null);
   const saveBlockedRef = useRef(false);
+  const [conflictServer, setConflictServer] = useState(null);
+
+  const rememberRemote = useCallback((incoming) => {
+    if (!isStaleUpdate(deferredRemoteRef.current?.updatedAt, incoming?.updatedAt)) {
+      deferredRemoteRef.current = normalizeGameDesignBoard(incoming);
+      if (saveBlockedRef.current) setConflictServer(deferredRemoteRef.current);
+    }
+    return deferredRemoteRef.current;
+  }, []);
 
   function adoptServerVersion(version, board) {
     lastUpdatedAtRef.current = version;
@@ -23,9 +32,7 @@ export function useBoardPersistence({ boardId, boardRef, roleRef, socketRef, tre
   // tục vẽ một bản tạm đè lên dữ liệu thật vừa nhận — nét nhấp nháy.
   const applyRemoteBoard = useCallback((next, incoming) => {
     if (savingRef.current || saveTimerRef.current || saveBlockedRef.current) {
-      if (!isStaleUpdate(deferredRemoteRef.current?.updatedAt, incoming.updatedAt)) {
-        deferredRemoteRef.current = incoming;
-      }
+      rememberRemote(incoming);
       return false;
     }
     const normalized = normalizeGameDesignBoard(next);
@@ -40,7 +47,7 @@ export function useBoardPersistence({ boardId, boardRef, roleRef, socketRef, tre
     serverBaseRef.current = server;
     reconcileInk(normalized);
     return true;
-  }, [boardRef, setBoard, reconcileInk, acceptRemoteHistory]);
+  }, [boardRef, setBoard, reconcileInk, acceptRemoteHistory, rememberRemote]);
 
   // Chạm trần thì giữ bản nháp để người dùng xử lý.
   const MAX_REBASE_TRIES = 3;
@@ -67,6 +74,7 @@ export function useBoardPersistence({ boardId, boardRef, roleRef, socketRef, tre
   function pauseBoardSave(error) {
     savingRef.current = false;
     saveBlockedRef.current = true;
+    if (error === "conflict") setConflictServer(deferredRemoteRef.current);
     setSaveError(error);
   }
 
@@ -74,6 +82,49 @@ export function useBoardPersistence({ boardId, boardRef, roleRef, socketRef, tre
     pendingSaveRef.current = null;
     saveBlockedRef.current = false;
     saveNow(boardRef.current);
+  }
+
+  async function refreshConflictServer() {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    try {
+      const { id, name, role, ...latest } = await getBoard(boardId);
+      rememberRemote(latest);
+    } catch {
+      return;
+    } finally {
+      savingRef.current = false;
+    }
+  }
+
+  function resolveBoardConflict(preference, reviewedVersion) {
+    const server = deferredRemoteRef.current;
+    if (!saveBlockedRef.current || !server || server.updatedAt !== reviewedVersion) return;
+    const base = serverBaseRef.current;
+    const draft = boardRef.current;
+    const rebased = rebaseBoard(server, base, draft, { resolveConflict: () => preference });
+    if (!rebased) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+    pendingSaveRef.current = null;
+    deferredRemoteRef.current = null;
+    saveBlockedRef.current = false;
+    setConflictServer(null);
+    const merged = applyRebase(server, base, rebased);
+    if (isEmptyDelta(diffBoard(server, merged))) setSaveError(null);
+    else saveNow(merged);
+  }
+
+  function applyRebase(server, base, rebased) {
+    const local = boardRef.current;
+    const merged = normalizeGameDesignBoard(local ? mergeRemoteBoard(local, rebased) : rebased);
+    lastUpdatedAtRef.current = server.updatedAt;
+    acceptRemoteHistory(base, server);
+    serverBaseRef.current = server;
+    setBoard(merged);
+    boardRef.current = merged;
+    reconcileInk(merged);
+    return merged;
   }
 
   function saveNow(next, tries = 0) {
@@ -106,6 +157,7 @@ export function useBoardPersistence({ boardId, boardRef, roleRef, socketRef, tre
         lastUpdatedAtRef.current = res.updatedAt;
         serverBaseRef.current = { ...next, updatedAt: res.updatedAt };
         setBoard((current) => current && { ...current, updatedAt: res.updatedAt });
+        setConflictServer(null);
         setSaveError(null);
         settleSave();
       })
@@ -113,7 +165,8 @@ export function useBoardPersistence({ boardId, boardRef, roleRef, socketRef, tre
         if (e.code !== "CONFLICT") { pauseBoardSave("save"); return; }
         // Có người lưu chen vào giữa. Bản của họ đi kèm ngay trong lỗi; đắp
         // những gì mình đã đổi (base → next) lên đó rồi lưu lại.
-        const server = e.board ? normalizeGameDesignBoard(e.board) : null;
+        const latestServer = rememberRemote(e.board);
+        const server = isStaleUpdate(baseUpdatedAt, latestServer?.updatedAt) ? null : latestServer;
         const latestDraft = saveTimerRef.current ? boardRef.current : pendingSaveRef.current || next;
         const rebased = server ? rebaseBoard(server, base, latestDraft) : null;
         if (!rebased || tries >= MAX_REBASE_TRIES) {
@@ -122,14 +175,7 @@ export function useBoardPersistence({ boardId, boardRef, roleRef, socketRef, tre
         }
         pendingSaveRef.current = null;
         // Giữ camera cục bộ, dùng dữ liệu đã ghép cho nội dung board.
-        const local = boardRef.current;
-        const merged = normalizeGameDesignBoard(local ? mergeRemoteBoard(local, rebased) : rebased);
-        lastUpdatedAtRef.current = server.updatedAt;
-        acceptRemoteHistory(base, server);
-        serverBaseRef.current = server;
-        setBoard(merged);
-        boardRef.current = merged;
-        reconcileInk(merged);
+        const merged = applyRebase(server, base, rebased);
         saveNow(merged, tries + 1);
       });
   }
@@ -153,6 +199,7 @@ export function useBoardPersistence({ boardId, boardRef, roleRef, socketRef, tre
       const result = await restoreBoardSnapshot(boardId, snapshotId, lastUpdatedAtRef.current);
       const restored = normalizeGameDesignBoard({ ...result.board, view: boardRef.current?.view });
       if (pendingSaveRef.current || saveTimerRef.current) {
+        rememberRemote(restored);
         pauseBoardSave("conflict");
         return;
       }
@@ -164,9 +211,7 @@ export function useBoardPersistence({ boardId, boardRef, roleRef, socketRef, tre
       reconcileInk(restored);
       setSaveError(null);
     } catch (error) {
-      if (error.code === "CONFLICT" && !isStaleUpdate(deferredRemoteRef.current?.updatedAt, error.board?.updatedAt)) {
-        deferredRemoteRef.current = error.board;
-      }
+      if (error.code === "CONFLICT") rememberRemote(error.board);
       throw error;
     } finally {
       if (!saveBlockedRef.current) settleSave();
@@ -175,6 +220,7 @@ export function useBoardPersistence({ boardId, boardRef, roleRef, socketRef, tre
 
   return {
     adoptServerVersion, applyRemoteBoard, lastUpdatedAtRef, saveNow, saveDebounced,
-    retryBoardSave, restoreSnapshot, hasPendingSave, saveBlocked: saveBlockedRef.current
+    retryBoardSave, restoreSnapshot, hasPendingSave, saveBlocked: saveBlockedRef.current,
+    conflictServer, conflictBase: serverBaseRef.current, refreshConflictServer, resolveBoardConflict
   };
 }

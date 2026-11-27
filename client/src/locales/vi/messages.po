@@ -1362,3 +1362,43 @@ msgstr "Hãy xử lý thay đổi chưa lưu trước khi nhập JSON."
 
 msgid "Hãy xử lý thay đổi chưa lưu trước khi khôi phục snapshot."
 msgstr "Hãy xử lý thay đổi chưa lưu trước khi khôi phục snapshot."
+
+#. js-lingui-explicit-id
+msgid "board.conflict.refresh"
+msgstr "Tải bản server mới nhất"
+
+#. js-lingui-explicit-id
+msgid "board.conflict.review"
+msgstr "Xem và xử lý xung đột"
+
+#. js-lingui-explicit-id
+msgid "board.conflict.server.value"
+msgstr "Server"
+
+#. js-lingui-explicit-id
+msgid "board.conflict.draft.value"
+msgstr "Bản nháp"
+
+#. js-lingui-explicit-id
+msgid "board.conflict.merge.help"
+msgstr "Các chỉnh sửa ở phần khác vẫn được ghép."
+
+#. js-lingui-explicit-id
+msgid "board.conflict.unmergeable"
+msgstr "Chưa thể ghép hai bản. Bạn có thể tải cả hai bản JSON."
+
+#. js-lingui-explicit-id
+msgid "board.conflict.download.server"
+msgstr "Tải bản server JSON"
+
+#. js-lingui-explicit-id
+msgid "board.conflict.merge"
+msgstr "Ghép và lưu"
+
+#. js-lingui-explicit-id
+msgid "board.conflict.keep.server"
+msgstr "Giữ phần trùng của server"
+
+#. js-lingui-explicit-id
+msgid "board.conflict.keep.draft"
+msgstr "Giữ phần trùng của bản nháp"

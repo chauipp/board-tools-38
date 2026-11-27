@@ -17,6 +17,35 @@ function boardOf(patch = {}) {
 
 const N = (id, patch = {}) => ({ id, title: "T" + id, desc: "", x: 0, y: 0, tagId: null, statusId: null, ...patch });
 
+test("explicit conflict choice merges independent changes and reports both values", () => {
+  const base = boardOf({ nodes: [N(1)], nextNodeId: 2 });
+  const remote = { ...base, nodes: [N(1, { title: "Server name", y: 12 })] };
+  const draft = { ...base, nodes: [N(1, { title: "Draft name", x: 40 })] };
+  assert.equal(rebaseBoard(remote, base, draft), null);
+  const conflicts = [];
+  const merged = rebaseBoard(remote, base, draft, { resolveConflict: (conflict) => {
+    conflicts.push(conflict);
+    return "server";
+  } });
+  assert.deepEqual(conflicts, [{ collection: "nodes", id: 1, field: "title", server: "Server name", draft: "Draft name" }]);
+  assert.deepEqual(merged.nodes, [N(1, { title: "Server name", x: 40, y: 12 })]);
+  assert.deepEqual(rebaseBoard(remote, base, draft, { resolveConflict: () => "draft" }).nodes,
+    [N(1, { title: "Draft name", x: 40, y: 12 })]);
+});
+
+test("Game Design conflicts are resolved per design field", () => {
+  const base = boardOf({ nodes: [N(1, { design: { goal: "Base", rules: "", owner: "" } })] });
+  const remote = { ...base, nodes: [N(1, { design: { goal: "Server", rules: "Peer rule", owner: "" } })] };
+  const draft = { ...base, nodes: [N(1, { design: { goal: "Draft", rules: "", owner: "Local owner" } })] };
+  const conflicts = [];
+  const merged = rebaseBoard(remote, base, draft, { resolveConflict: (item) => {
+    conflicts.push(item);
+    return "draft";
+  } });
+  assert.deepEqual(conflicts, [{ collection: "nodes", id: 1, field: "design.goal", server: "Server", draft: "Draft" }]);
+  assert.deepEqual(merged.nodes[0].design, { goal: "Draft", rules: "Peer rule", owner: "Local owner" });
+});
+
 test("diffCollection tách đúng thêm / sửa / xoá", () => {
   const d = diffCollection([N(1), N(2), N(3)], [N(1), N(2, { x: 99 }), N(4)]);
   assert.deepEqual(d.removed, [3]);

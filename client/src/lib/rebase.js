@@ -204,13 +204,38 @@ function rewriteRefs(key, item, plan) {
   return out;
 }
 
+function mergeItemFields(original, local, mapped, remote, context, resolveConflict, prefix = "") {
+  const item = { ...remote };
+  for (const field of new Set([...Object.keys(original), ...Object.keys(local)])) {
+    if (same(original[field], local[field]) && same(local[field], mapped[field])) continue;
+    if (prefix === "" && context.collection === "nodes" && field === "design"
+      && [original.design, local.design, mapped.design, remote.design].every((value) => value && typeof value === "object" && !Array.isArray(value))) {
+      const design = mergeItemFields(original.design, local.design, mapped.design, remote.design, context, resolveConflict, "design.");
+      if (!design) return null;
+      item.design = design;
+      continue;
+    }
+    if (!same(original[field], remote[field]) && !same(mapped[field], remote[field])) {
+      const choice = resolveConflict?.({ ...context, field: prefix + field, server: remote[field], draft: mapped[field] });
+      if (choice === "server") continue;
+      if (choice !== "draft") return null;
+    }
+    if (Object.prototype.hasOwnProperty.call(mapped, field)) {
+      Object.defineProperty(item, field, { value: mapped[field], enumerable: true, writable: true, configurable: true });
+    } else {
+      delete item[field];
+    }
+  }
+  return item;
+}
+
 /**
  * Đắp thay đổi của mình (base → next) lên bản `server`.
  *
  * Trả về null khi kết quả không lành lặn (id trùng, dây nối trỏ vào hư không).
  * Trả null cả khi hai người sửa cùng một trường thành hai giá trị khác nhau.
  */
-export function rebaseBoard(server, base, next, { strict = false } = {}) {
+export function rebaseBoard(server, base, next, { strict = false, resolveConflict } = {}) {
   if (!server || !base || !next) return null;
   const delta = diffBoard(base, next);
   const plan = planRemap(server, base, delta);
@@ -221,10 +246,13 @@ export function rebaseBoard(server, base, next, { strict = false } = {}) {
     const before = byId(listOf(base, key));
     const current = byId(listOf(server, key));
     if (strict && d.added.some(({ id }) => current.has(id))) return null;
-    for (const id of d.removed) {
-      if (current.has(id) && !same(before.get(id), current.get(id))) return null;
-    }
     const dropped = new Set(d.removed);
+    for (const id of d.removed) {
+      if (!current.has(id) || same(before.get(id), current.get(id))) continue;
+      const choice = resolveConflict?.({ collection: key, id, server: current.get(id), draft: undefined });
+      if (choice === "server") dropped.delete(id);
+      else if (choice !== "draft") return null;
+    }
     const list = listOf(server, key).filter((o) => !dropped.has(o.id));
     const pos = new Map(list.map((o, i) => [o.id, i]));
 
@@ -239,16 +267,8 @@ export function rebaseBoard(server, base, next, { strict = false } = {}) {
       const original = before.get(raw.id);
       const remote = list[at];
       const mapped = rewriteRefs(key, raw, plan);
-      const item = { ...remote };
-      for (const field of new Set([...Object.keys(original), ...Object.keys(raw)])) {
-        if (same(original[field], raw[field]) && same(raw[field], mapped[field])) continue;
-        if (!same(original[field], remote[field]) && !same(mapped[field], remote[field])) return null;
-        if (Object.prototype.hasOwnProperty.call(mapped, field)) {
-          Object.defineProperty(item, field, { value: mapped[field], enumerable: true, writable: true, configurable: true });
-        } else {
-          delete item[field];
-        }
-      }
+      const item = mergeItemFields(original, raw, mapped, remote, { collection: key, id: raw.id }, resolveConflict);
+      if (!item) return null;
       list[at] = item;
     }
     for (const raw of d.added) {
@@ -274,7 +294,11 @@ export function rebaseBoard(server, base, next, { strict = false } = {}) {
       : k === "gameDesignBalance" ? ["metrics"] : [];
     const mapped = remapDesignReferences(v, fields, plan.nodes);
     const remote = server[k] ?? null;
-    if (!same(remote, base[k] ?? null) && !same(remote, mapped)) return null;
+    if (!same(remote, base[k] ?? null) && !same(remote, mapped)) {
+      const choice = resolveConflict?.({ field: k, server: remote, draft: mapped });
+      if (choice === "server") continue;
+      if (choice !== "draft") return null;
+    }
     out[k] = mapped;
   }
 

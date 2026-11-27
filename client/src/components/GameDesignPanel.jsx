@@ -216,21 +216,25 @@ export default function GameDesignPanel({ node, nodes, balance, canEdit, onSave,
       teamHandoff, review, delivery, analyticsEvents, abTests, liveOps, postLaunchReview, followUpTasks
     }, nodes);
     const base = editBaseRef.current;
-    const next = { ...node, design: { ...node.design } };
-    if (!base || title !== base.title) next.title = title.trim() || template.label;
-    if (!base || desc !== base.desc) next.desc = desc.trim();
+    const patch = {};
+    const designPatch = {};
+    if (!base || title !== base.title) patch.title = title.trim() || template.label;
+    if (!base || desc !== base.desc) patch.desc = desc.trim();
     for (const [field, value] of Object.entries(draft)) {
-      if (JSON.stringify(value) !== JSON.stringify(base?.design[field])) next.design[field] = value;
+      if (JSON.stringify(value) !== JSON.stringify(base?.design[field])) designPatch[field] = value;
     }
-    onSave(next);
+    if (Object.keys(designPatch).length) patch.design = designPatch;
+    const next = { ...node, ...patch, design: { ...node.design, ...designPatch } };
+    if (onSave(next, base, patch) === false) return false;
     setDirty(false);
+    return true;
   }
 
   // Bấm ra ngoài phải trả lại không gian cho canvas. Nhưng form có dữ liệu cục
   // bộ trước nút Lưu; đóng thẳng sẽ làm mất bài âm thầm. Vì vậy nếu đang sửa,
   // chốt thay đổi trước rồi mới thu inspector.
   function closeFromOutside() {
-    if (dirty && canEdit) save();
+    if (dirty && canEdit && !save()) return;
     onClose();
   }
   useCloseOnOutside(outsideRef || panelRef, closeFromOutside);

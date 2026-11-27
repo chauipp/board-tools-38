@@ -6,6 +6,8 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { createBoardSnapshot, getBoard, listBoardSnapshots } from "../lib/api.js";
 import { useBoardPersistence } from "../lib/useBoardPersistence.js";
 import { useBoardHistory } from "../lib/useBoardHistory.js";
+import { cardEditConflicts, formatConflictValue } from "../lib/card-edit.js";
+import { normalizeGameDesignCardDesign } from "../lib/game-design-model.js";
 import { useTheme } from "../lib/useTheme.js";
 import { useSkin } from "../lib/useSkin.js";
 import {
@@ -42,6 +44,7 @@ import DevHandoffPanel from "../components/DevHandoffPanel.jsx";
 import GameDesignBalancePanel from "../components/GameDesignBalancePanel.jsx";
 import DecisionTimelinePanel from "../components/DecisionTimelinePanel.jsx";
 import BoardSnapshotsPanel from "../components/BoardSnapshotsPanel.jsx";
+import BoardSaveConflict from "../components/BoardSaveConflict.jsx";
 import BoardOutlinePanel from "../components/BoardOutlinePanel.jsx";
 import { CommentsPopover, EdgeMenu, PaletteEditor } from "../components/BoardPopovers.jsx";
 import GameDesignInsightsPanel from "../components/GameDesignInsightsPanel.jsx";
@@ -455,7 +458,8 @@ export default function IdeaMap() {
   }, []);
   const {
     adoptServerVersion, applyRemoteBoard, lastUpdatedAtRef, saveNow, saveDebounced,
-    retryBoardSave, restoreSnapshot: restoreSavedSnapshot, hasPendingSave, saveBlocked
+    retryBoardSave, restoreSnapshot: restoreSavedSnapshot, hasPendingSave, saveBlocked,
+    conflictServer, conflictBase, refreshConflictServer, resolveBoardConflict
   } = useBoardPersistence({
     boardId, boardRef, roleRef, socketRef, treeSizeRef,
     setBoard, setSaveError, reconcileInk: inkLive.reconcile, acceptRemoteHistory
@@ -875,8 +879,8 @@ export default function IdeaMap() {
     toggleFavorite: (id) => actionsRef.current.toggleFavorite(id),
     openComments: (e, id) => actionsRef.current.openComments(e, id),
     liveText: (id, field, value) => actionsRef.current.liveText(id, field, value),
-    save: (id, fields) => actionsRef.current.saveNodeEdit(id, fields),
-    saveAndNext: (id, fields) => actionsRef.current.saveNodeEditAndNext(id, fields),
+    save: (id, fields, base) => actionsRef.current.saveNodeEdit(id, fields, base),
+    saveAndNext: (id, fields, base) => actionsRef.current.saveNodeEditAndNext(id, fields, base),
     dropImage: (e, id) => actionsRef.current.dropImage(e, id),
     removeImage: (id) => actionsRef.current.removeImage(id),
     imageResize: (e, id) => actionsRef.current.imageResize(e, id),
@@ -1284,13 +1288,20 @@ export default function IdeaMap() {
     recordHistory(board); setBoard(next); boardRef.current = next; saveNow(next); setDesignEditId(node.id);
   }
 
-  function saveDesignNode(nextNode) {
+  function saveDesignNode(nextNode, base, patch) {
     const current = boardRef.current;
-    const next = { ...current, nodes: current.nodes.map((n) => n.id === nextNode.id ? nextNode : n) };
+    const latest = current.nodes.find((node) => node.id === nextNode.id);
+    if (!latest) return false;
+    if (Object.keys(patch).length === 0) return true;
+    const comparable = { ...latest, desc: latest.desc ?? "", design: normalizeGameDesignCardDesign(latest.design, current.nodes) };
+    if (!confirmCardEdit(base, comparable, patch)) return false;
+    const edited = { ...latest, ...patch, design: { ...latest.design, ...patch.design } };
+    const next = { ...current, nodes: current.nodes.map((n) => n.id === edited.id ? edited : n) };
     // Panel là inspector của thẻ đang chọn, không phải modal dùng một lần. Giữ
     // nó mở sau khi lưu để người thiết kế nhìn ngay phần vừa điền và chuyển qua
     // thẻ khác bằng một cú bấm trên canvas.
     recordHistory(current); setBoard(next); boardRef.current = next; saveNow(next);
+    return true;
   }
   function createRelatedDesignNode(sourceId, type, relation) {
     const current = boardRef.current; const next = createRelatedGameDesignCard(current, sourceId, type, relation);
@@ -2225,17 +2236,39 @@ export default function IdeaMap() {
     });
   }
 
-  function saveNodeEdit(id, fields) {
-    setEditingId(null);
-    if (Object.keys(fields).length === 0) return;
-    const current = boardRef.current;
-    commitAndSave({ ...current, nodes: current.nodes.map((n) => (n.id === id ? { ...n, ...fields } : n)) });
+  function confirmCardEdit(base, current, fields) {
+    const conflicts = cardEditConflicts(base, current, fields);
+    if (!conflicts.length) return true;
+    const intro = t`Người khác vừa lưu các trường bạn đang sửa. Bạn có muốn lưu bản nháp của mình cho các trường sau?`;
+    const serverLabel = t`Server`;
+    const draftLabel = t`Bản nháp`;
+    const rows = conflicts.map(({ field, server, draft }) =>
+      `${field}\n${serverLabel} · ${formatConflictValue(server)}\n${draftLabel} · ${formatConflictValue(draft)}`
+    );
+    return window.confirm([intro, ...rows].join("\n\n"));
   }
 
-  function saveNodeEditAndNext(id, fields) {
-    setEditingId(null);
+  function editCurrentNode(id, fields, base) {
     const current = boardRef.current;
-    const edited = { ...current, nodes: current.nodes.map((n) => (n.id === id ? { ...n, ...fields } : n)) };
+    const node = current.nodes.find((item) => item.id === id);
+    if (!node) return null;
+    const comparable = { ...node, desc: node.desc ?? "", tagId: node.tagId ?? null, statusId: node.statusId ?? null };
+    if (!confirmCardEdit(base, comparable, fields)) return null;
+    return { ...current, nodes: current.nodes.map((n) => (n.id === id ? { ...n, ...fields } : n)) };
+  }
+
+  function saveNodeEdit(id, fields, base) {
+    const edited = editCurrentNode(id, fields, base);
+    if (!edited) return;
+    setEditingId(null);
+    if (Object.keys(fields).length === 0) return;
+    commitAndSave(edited);
+  }
+
+  function saveNodeEditAndNext(id, fields, base) {
+    const edited = editCurrentNode(id, fields, base);
+    if (!edited) return;
+    setEditingId(null);
     createLinkedNode(id, "right", edited);
   }
 
@@ -3704,10 +3737,14 @@ export default function IdeaMap() {
   }
 
   function exportVersionedJson() {
-    const payload = board.kind === "game-design" ? exportPackage({ ...board, name: boardName }) : board;
+    downloadBoardJson(board);
+  }
+
+  function downloadBoardJson(source, suffix = "") {
+    const payload = source.kind === "game-design" ? exportPackage({ ...source, name: boardName }) : source;
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
     const url = URL.createObjectURL(blob); const a = document.createElement("a");
-    a.href = url; a.download = `${board.kind === "game-design" ? "game-design" : "idea-map"}-${exportVersion(board).replace(/[^a-zA-Z0-9]/g, "-")}.json`; a.click(); URL.revokeObjectURL(url);
+    a.href = url; a.download = `${source.kind === "game-design" ? "game-design" : "idea-map"}-${exportVersion(source).replace(/[^a-zA-Z0-9]/g, "-")}${suffix}.json`; a.click(); URL.revokeObjectURL(url);
   }
 
   function exportPng() {
@@ -4528,7 +4565,9 @@ export default function IdeaMap() {
             <div className="board-save-feedback" role="status">
               {saveError === "conflict" ? <Trans id="board.save.conflict">Board có xung đột. Bản nháp chưa được lưu.</Trans> : <Trans>Không lưu được lên server.</Trans>}
               {saveBlocked && <>
-                <button type="button" onClick={retryBoardSave}><Trans id="board.save.retry">Thử lưu lại</Trans></button>
+                {saveError === "conflict"
+                  ? <BoardSaveConflict server={conflictServer} base={conflictBase} draft={board} onResolve={resolveBoardConflict} onRefresh={refreshConflictServer} onDownloadServer={() => downloadBoardJson(conflictServer, "-server")} />
+                  : <button type="button" onClick={retryBoardSave}><Trans id="board.save.retry">Thử lưu lại</Trans></button>}
                 <button type="button" onClick={exportVersionedJson}><Trans id="board.save.download">Tải bản nháp JSON</Trans></button>
               </>}
             </div>

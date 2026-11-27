@@ -63,6 +63,21 @@
   font-size: 11px;
   color: var(--danger);
 }
+.board-save-conflict {
+  max-width: min(460px, calc(100vw - 112px));
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+.board-save-conflict summary { cursor: pointer; font-weight: 600; }
+.board-save-conflict p { margin: 6px 0; }
+.board-conflict-list {
+  max-height: min(32vh, 220px);
+  overflow-y: auto;
+  padding-left: 18px;
+  margin: 6px 0;
+}
+.board-conflict-list li + li { margin-top: 6px; }
+.board-conflict-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
 .gd-tools-row { margin-top: 6px; }
 .gd-tools-toggle { flex-shrink: 0; white-space: nowrap; }
 .gd-toolbar-actions { display: flex; align-items: center; gap: 5px; min-width: 0; overflow-x: auto; }
