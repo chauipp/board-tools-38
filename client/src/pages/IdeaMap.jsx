@@ -2235,17 +2235,9 @@ export default function IdeaMap() {
       setTreeSwap({ source: sourceKey, candidates, target: targetAt(ev), x: ev.clientX, y: ev.clientY });
     }
     function cleanup() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      window.removeEventListener("keydown", onKey, true);
-      window.removeEventListener("blur", cancel);
       treeSwapCancelRef.current = null;
       setTreeSwap(null);
       if (moved) treeSwapClickUntilRef.current = Date.now() + 250;
-    }
-    function cancel() { cleanup(); }
-    function onKey(ev) {
-      if (ev.key === "Escape") { ev.preventDefault(); ev.stopImmediatePropagation(); cancel(); }
     }
     function onUp(ev) {
       const target = moved ? targetAt(ev) : null;
@@ -2258,11 +2250,11 @@ export default function IdeaMap() {
         store.commit(next, { historical: false });
       }
     }
-    treeSwapCancelRef.current = cancel;
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    window.addEventListener("keydown", onKey, true);
-    window.addEventListener("blur", cancel);
+    // Esc hoặc mất focus: huỷ, không đổi chỗ gì. treeSwapCancelRef giữ hàm huỷ
+    // để một lượt đổi chỗ mới (hoặc unmount) dọn lượt cũ còn dở.
+    treeSwapCancelRef.current = startDrag(e, {
+      onMove, onEnd: onUp, onCancel: cleanup, throttle: false, blur: "cancel", cancelOnEscape: true
+    });
   }
 
   function treeSwapState(key) {
