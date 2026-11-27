@@ -2773,7 +2773,7 @@ export default function IdeaMap() {
     const oneId = new Set([id]);
     inkLive.beginMove();
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       const p = eventToCanvas(ev);
       if (!moved && Math.hypot(p.x - handle.x, p.y - handle.y) < TEXT_DRAG_THRESHOLD / view.scale) return;
       moved = true;
@@ -2789,23 +2789,17 @@ export default function IdeaMap() {
         return next;
       });
       inkLive.pushMove(movingPayload(latest, oneId));
-    });
+    };
 
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      window.removeEventListener("blur", onUp);
-      onMove.flush();
       if (!moved) { inkLive.cancelMove(); return; }
       inkLive.endMove(movingPayload(latest, oneId));
       recordHistory(base);
       saveNow(latest);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
     // Mất focus giữa cú kéo: hình mới đã nằm sẵn trong board, nên đường thoát
     // đúng là CHỐT nó lại — cùng lý do đã ghi ở startDrawingDrag.
-    window.addEventListener("blur", onUp);
+    startDrag(e, { onMove, onEnd: onUp, blur: "end" });
   }
 
   // Kéo một trong bốn góc hộp bao = co giãn CẢ CỤM, đều hai chiều, quanh góc đối
