@@ -1,4 +1,6 @@
-import dotenv from "dotenv";
+// Cùng lý do như trong pdf-storage.js: module này được nạp trước thân index.js,
+// nên phải tự nạp .env (qua config.js) mới đọc được ngưỡng cấu hình lúc chạy local.
+import "./config.js";
 import { Board, PdfFile, PdfQuotaState } from "./models.js";
 import { deletePdf, listStoredPdfs, isR2Enabled } from "./pdf-storage.js";
 import { sendAlert } from "./notify.js";
@@ -8,10 +10,6 @@ import { sendAlert } from "./notify.js";
 // Cloudflare đếm, đúng cái phải tránh.
 const GB = 1_000_000_000;
 const HOUR = 60 * 60 * 1000;
-
-// Cùng lý do như trong pdf-storage.js: module này được nạp trước thân index.js,
-// nên phải tự nạp .env mới đọc được ngưỡng cấu hình lúc chạy local.
-dotenv.config();
 
 function envNumber(name, fallback) {
   const raw = process.env[name];

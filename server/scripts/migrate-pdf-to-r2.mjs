@@ -11,15 +11,13 @@
 //
 // File local KHÔNG bị xoá sau khi đẩy — giữ lại làm bản dự phòng cho tới khi bạn
 // tự tin là R2 chạy ổn.
+import "../config.js";
 import fs from "node:fs";
 import path from "node:path";
 import mongoose from "mongoose";
-import dotenv from "dotenv";
 import { PdfFile } from "../models.js";
 import { PDF_DIR, isR2Enabled, storePdf, listStoredPdfs } from "../pdf-storage.js";
 import { formatBytes } from "../pdf-quota.js";
-
-dotenv.config();
 
 const go = process.argv.includes("--go");
 

@@ -1,9 +1,9 @@
 // Ghim màn hình: ai đang bám camera của ai. Trạng thái nằm trên peer
-// (`followingId`), module này chỉ giữ phần LOGIC THUẦN để test được — index.js
+// (`followingId`), module này chỉ giữ phần LOGIC THUẦN để test được — realtime/presence.js
 // còn socket, room và io thì không test bằng node --test được.
 
 // Giới hạn cho gói view:update. Cùng lý do với MAX_LIVE_INK_COORD trong
-// index.js: Number.isFinite một mình cho qua 1e9, mà camera của người bị ghim
+// realtime/sanitize-ink.js: Number.isFinite một mình cho qua 1e9, mà camera của người bị ghim
 // được áp thẳng lên màn hình người ghim — một scale khổng lồ hay pan ra vô cực
 // là màn hình trắng không hiểu vì sao.
 //
@@ -48,7 +48,7 @@ export function findsCycle(peers, followerId, targetId) {
   return true;
 }
 
-// Trả về { ok, targetId } hoặc { ok: false, reason } — index.js chỉ việc gán và
+// Trả về { ok, targetId } hoặc { ok: false, reason } — realtime/presence.js chỉ việc gán và
 // phát, không phải tự nghĩ ra luật.
 export function resolveFollow(peers, followerId, targetId) {
   if (targetId == null) return { ok: true, targetId: null };
@@ -67,7 +67,7 @@ export function countWatchers(peers, targetId) {
 
 // Người bị ghim rời phòng: người ghim phải được thả ra, không thì họ ngồi im
 // chờ view của một socket không còn tồn tại và tưởng là mạng lag. Trả về danh
-// sách socketId vừa bị thả để index.js phát tiếp cho cả phòng.
+// sách socketId vừa bị thả để realtime/presence.js phát tiếp cho cả phòng.
 export function releaseFollowersOf(peers, targetId) {
   const released = [];
   for (const [id, p] of peers) {

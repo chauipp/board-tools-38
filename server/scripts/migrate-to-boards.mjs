@@ -3,11 +3,9 @@
 // Chuyển IdeaBoard singleton cũ (collection "ideaboards") thành Board đầu
 // tiên, owner = chaupt2823@gmail.com. Idempotent: nếu đã có Board nào rồi
 // thì dừng ngay, không tạo trùng.
+import "../config.js";
 import mongoose from "mongoose";
-import dotenv from "dotenv";
 import { User, Board } from "../models.js";
-
-dotenv.config();
 
 const OWNER_EMAIL = "chaupt2823@gmail.com";
 const BOARD_NAME = "Board của Châu";

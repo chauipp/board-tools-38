@@ -17,7 +17,7 @@ export const MAX_LIVE_INK_TEXT_LEN = 4000;
 
 // Cỡ chữ client hiện cho chọn là 14–48. Chấp một dải rộng hơn để không phải
 // redeploy server mỗi khi client đổi danh sách cỡ, cùng lý do với
-// MIN/MAX_LIVE_INK_W bên index.js. Vẫn phải có trần: một gói size khổng lồ là
+// MIN/MAX_LIVE_INK_W bên realtime/sanitize-ink.js. Vẫn phải có trần: một gói size khổng lồ là
 // một chữ cái phủ kín màn hình cả phòng cho tới khi hết TTL, và chữ đang gõ thì
 // chưa có id nên không ai gôm nó đi được.
 export const MIN_LIVE_INK_TEXT_SIZE = 6;
@@ -60,7 +60,7 @@ export function sanitizeLiveText(payload, isOpen) {
 const MAX_MOVE_ITEMS = 60;
 const MAX_MOVE_NUMBERS = 4000;
 
-// Cùng biên độ toạ độ với MAX_LIVE_INK_COORD bên index.js, chép lại vì module
+// Cùng biên độ toạ độ với MAX_LIVE_INK_COORD bên realtime/sanitize-ink.js, chép lại vì module
 // này không import ngược lên đó. Number.isFinite một mình cho qua 1e9.
 const MAX_MOVE_COORD = 20000;
 
@@ -70,7 +70,7 @@ const MAX_MOVE_COORD = 20000;
 // chữ, một bản bị cắt vẫn đọc được và vẫn có ích. Với một cú kéo, danh sách bị
 // cắt nghĩa là người nhận thấy nửa cụm nhúc nhích còn nửa kia đứng yên — sai
 // lệch đó khó hiểu hơn hẳn việc không thấy gì.
-// `kindAllowed` là vị từ kiểm kind, do index.js truyền vào — danh sách kind hợp
+// `kindAllowed` là vị từ kiểm kind, do realtime/sanitize-ink.js truyền vào — danh sách kind hợp
 // lệ là bản sao tay của SHAPE_KINDS bên client và nó phải có ĐÚNG MỘT chỗ ở.
 export function sanitizeLiveMoves(list, kindAllowed) {
   if (!Array.isArray(list) || !list.length || list.length > MAX_MOVE_ITEMS) return null;
