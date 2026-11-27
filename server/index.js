@@ -18,7 +18,9 @@ import { Board } from "./models.js";
 import boardsRouter from "./boards.js";
 import workspaceRouter from "./workspace.js";
 import { sanitizeView, resolveFollow, countWatchers, releaseFollowersOf } from "./follow.js";
-import { sanitizeLiveText, sanitizeLiveMoves } from "./live-text.js";
+import { sanitizeInk } from "./realtime/sanitize-ink.js";
+import { sanitizeGeom } from "./realtime/sanitize-geom.js";
+import { sanitizeLaser } from "./realtime/sanitize-laser.js";
 import { runQuotaCheck, usageReport, usageReportFor, describeUsage } from "./pdf-quota.js";
 import authRouter from "./routes/auth.js";
 import calculatorRouter from "./routes/calculator.js";
@@ -116,184 +118,7 @@ io.use(async (socket, next) => {
 // boardId -> Map<socket.id, { socketId, email, name, picture, x, y, followingId }>
 const presencePeers = new Map();
 
-// Kênh live:geom giờ chỉ mang ĐÚNG những item đang bị kéo (thường là 1), không
-// mang cả board như trước. Chặn ở đây để một client lỗi (hoặc cố tình) không
-// bơm được mảng khổng lồ rồi bắt server phát cho cả phòng.
-const MAX_LIVE_GEOM_ITEMS = 200;
 const MAX_LIVE_TEXT_LEN = 20000;
-
-// Gói live:ink mang ĐIỂM MỚI THÊM của một nét đang vẽ. Trần này để một client
-// lỗi (hoặc cố tình) không bơm được mảng khổng lồ rồi bắt server phát cho cả
-// phòng — cùng lý do với MAX_LIVE_GEOM_ITEMS.
-const MAX_LIVE_INK_NUMBERS = 200;
-const MAX_LIVE_ERASE_IDS = 200;
-// color là token kiểu "pen-red" — 32 ký tự là quá rộng rãi cho nó. w hợp lệ từ
-// client hiện là 2/4/8; chấp một dải rộng hơn thay vì đúng ba giá trị đó để
-// không phải redeploy server mỗi khi client đổi danh sách độ dày. Chặn ở đây
-// để một client lỗi (hoặc cố tình) không bơm chuỗi màu khổng lồ hay w khổng lồ
-// rồi bắt server phát vệt bút phủ kín màn hình cho cả phòng tới khi hết TTL.
-const MAX_LIVE_INK_COLOR_LEN = 32;
-const MIN_LIVE_INK_W = 1;
-const MAX_LIVE_INK_W = 64;
-
-// Biên độ tuyệt đối cho từng số trong `pts`. Number.isFinite một mình KHÔNG đủ:
-// nó cho qua 1e9. Với nét bút, thiệt hại tối đa của toạ độ khổng lồ chỉ là một
-// VỆT rộng ≤ MAX_LIVE_INK_W — đó là lý do MAX_LIVE_INK_W tồn tại. Nhưng hình
-// khối có `fill`, nên gói {kind:"rect", fill:true, pts:[-1e9,-1e9,1e9,1e9]} đi
-// vòng qua chốt đó và phủ kín màn hình cả phòng tới khi hết TTL.
-//
-// .canvas là 4200×3200 nên 20000 (gần 5 lần cạnh dài) rộng hơn mọi thao tác
-// thật rất nhiều — kể cả kéo hình vượt ra ngoài mép canvas — mà vẫn giữ vùng
-// hiển thị hữu hạn. Chốt này áp cho MỌI kind, cả nét bút.
-const MAX_LIVE_INK_COORD = 20000;
-
-// Gói live:laser mang các điểm mới của vệt laser. Cùng lý do trần với
-// MAX_LIVE_INK_NUMBERS; nhỏ hơn vì client chỉ gom điểm trong 40ms rồi xả.
-const MAX_LIVE_LASER_NUMBERS = 120;
-
-// Thời gian tan của vệt, do người chỉ đặt ở khu 4 (LASER_FADE_MIN/MAX trong
-// client/src/lib/laser.js). Chấp một dải rộng hơn client một chút, cùng lý do
-// với MIN/MAX_LIVE_INK_W: không phải redeploy server mỗi khi client nới biên độ.
-// Vẫn phải có trần — một gói fade: 1e9 là vệt của người đó không bao giờ tan
-// trên màn hình cả phòng, và không ai xoá được nó vì laser không có id để gôm.
-const MIN_LIVE_LASER_FADE = 100;
-const MAX_LIVE_LASER_FADE = 10000;
-
-// Bản sao TAY của SHAPE_KINDS trong client/src/lib/shape.js, cộng
-// "pen". Server không import được lib của client. Thêm một kind mới thì phải
-// sửa cả hai chỗ — client sẽ vẽ được nhưng server sẽ chặn gói nếu quên.
-const LIVE_INK_KINDS = new Set(["pen", "rect", "ellipse", "line", "arrow", "triangle", "diamond", "quad", "text"]);
-// Bản sao TAY của SHAPE_CLOSED trong client/src/lib/shape.js — cũng
-// vì server không import được lib client, cũng phải sửa hai chỗ nếu đổi.
-// Chỉ bốn hình ĐÓNG mới có vùng trong để tô. Client không bao giờ gắn `fill`
-// cho line/arrow, nên nếu server chấp thì một gói {kind:"arrow", fill:true} làm
-// đầu mũi tên hiện thành nêm tô đặc lúc peer kéo rồi biến mất khi board:update
-// về — nhấp nháy không giải thích được.
-const LIVE_INK_FILLABLE_KINDS = new Set(["rect", "ellipse", "triangle", "diamond", "quad"]);
-const LIVE_INK_BOX_NUMBERS = 4;
-// Hình có dạng ĐỈNH THẬT thì pts dài hơn 4 số. Hộp bao chỉ tả được hình "chuẩn"
-// (tam giác cân, chữ nhật thẳng trục), mà hình nhận ra từ nét vẽ tay — hoặc hình
-// vừa bị kéo tay cầm đỉnh — thì đủ loại: tam giác vuông/tù/bè, hình bình hành,
-// hình thang. Xem ghi chú đầu client/src/lib/shape.js.
-//
-// Đây là bản sao TAY của VERTEX_NUMBERS ở đó, cùng lý do với LIVE_INK_KINDS:
-// server không import được lib của client. Thêm một hình N đỉnh mới thì phải sửa
-// cả hai chỗ — client sẽ vẽ được nhưng server sẽ chặn gói nếu quên.
-const LIVE_INK_VERTEX_NUMBERS = { triangle: 6, quad: 8 };
-
-function sanitizeInk(payload) {
-  if (!payload || typeof payload !== "object") return null;
-  if (!Number.isFinite(payload.strokeId)) return null;
-  const strokeId = payload.strokeId;
-  const done = payload.done === true;
-
-  if (payload.cancel === true) return { strokeId, cancel: true };
-
-  // Lượt dời / co giãn / sửa hình: gói mang trạng thái tuyệt đối của các nét
-  // đang bị thao tác. Xét TRƯỚC nhánh pts vì nó không có `pts` ở cấp gói.
-  if (Array.isArray(payload.moving)) {
-    const moving = sanitizeLiveMoves(payload.moving, (k) => LIVE_INK_KINDS.has(k));
-    if (!moving) return null;
-    return { strokeId, seq: Number.isFinite(payload.seq) ? payload.seq : 0, moving, done };
-  }
-
-  if (Array.isArray(payload.erase)) {
-    const erase = payload.erase
-      .filter((id) => Number.isFinite(id))
-      .slice(0, MAX_LIVE_ERASE_IDS);
-    return { strokeId, erase, done };
-  }
-
-  if (done) {
-    return {
-      strokeId, done: true,
-      drawingId: Number.isFinite(payload.drawingId) ? payload.drawingId : null
-    };
-  }
-
-  // pts phải là mảng số ĐỘ DÀI CHẴN: nó là [x0,y0,x1,y1,…], lẻ một số là dữ
-  // liệu hỏng chứ không phải thiếu điểm cuối.
-  if (!Array.isArray(payload.pts)) return null;
-
-  let kind = "pen";
-  if (payload.kind !== undefined) {
-    if (typeof payload.kind !== "string" || !LIVE_INK_KINDS.has(payload.kind)) return null;
-    kind = payload.kind;
-  }
-  // Hình khối: pts là hai góc đối, đúng 4 số — riêng hình có dạng đỉnh thật thì
-  // nhận thêm đúng số toạ độ của dạng đó (tam giác 6, tứ giác 8). Kiểm ĐỘ DÀI GỐC trước khi slice — nếu kiểm sau thì một mảng
-  // 4000 số bị cắt còn MAX_LIVE_INK_NUMBERS rồi vẫn không phải 4, nhưng một mảng
-  // gửi kèm kind sai vẫn có thể lọt qua nhờ bị cắt.
-  // Chữ neo bằng ĐÚNG một điểm (góc trên trái), không phải hộp hai góc: bề rộng
-  // và chiều cao của nó do nội dung và cỡ chữ quyết định, không do người kéo.
-  if (kind === "text") {
-    if (payload.pts.length !== 2) return null;
-  } else if (kind !== "pen") {
-    const okLen = payload.pts.length === LIVE_INK_BOX_NUMBERS
-      || payload.pts.length === LIVE_INK_VERTEX_NUMBERS[kind];
-    if (!okLen) return null;
-  }
-
-  const pts = payload.pts.slice(0, MAX_LIVE_INK_NUMBERS);
-  if (pts.length < 2 || pts.length % 2 !== 0) return null;
-  if (!pts.every((v) => Number.isFinite(v) && Math.abs(v) <= MAX_LIVE_INK_COORD)) return null;
-
-  const clean = { strokeId, seq: Number.isFinite(payload.seq) ? payload.seq : 0, pts };
-  // Nét bút không mang kind, đúng như client phát — giữ gói nhẹ và giữ
-  // mergeInkPacket mặc định về "pen".
-  if (kind !== "pen") clean.kind = kind;
-
-  // Phần riêng của chữ nằm ở server/live-text.js — xem ghi chú đầu file đó về
-  // việc vì sao đúng nhánh này phải tách ra để test được.
-  if (kind === "text") {
-    const t = sanitizeLiveText(payload, clean.seq === 0);
-    if (!t) return null;
-    Object.assign(clean, t);
-  }
-
-  if (clean.seq === 0) {
-    if (typeof payload.color !== "string" || payload.color.length > MAX_LIVE_INK_COLOR_LEN) return null;
-    // Chữ không có `w` — cỡ chữ của nó đã được sanitizeLiveText kiểm ở trên.
-    if (kind !== "text") {
-      if (!Number.isFinite(payload.w) || payload.w < MIN_LIVE_INK_W || payload.w > MAX_LIVE_INK_W) return null;
-      clean.w = payload.w;
-    }
-    clean.color = payload.color;
-    // Không tin kiểu client gửi: chỉ đúng `true` mới là tô đặc. Và chỉ hình
-    // ĐÓNG mới được mang `fill` — nét bút, line, arrow thì không có field này.
-    if (LIVE_INK_FILLABLE_KINDS.has(kind)) clean.fill = payload.fill === true;
-    // Nét đứt thì áp cho MỌI kind, kể cả nét bút — khác `fill` ngay trên, vốn chỉ
-    // có nghĩa với hình đóng. Cũng không tin kiểu client gửi: chỉ đúng `true`.
-    clean.dashed = payload.dashed === true;
-  }
-  return clean;
-}
-
-function sanitizeGeom(payload) {
-  if (!payload || typeof payload !== "object") return null;
-  const nodes = [];
-  const groups = [];
-  for (const n of Array.isArray(payload.nodes) ? payload.nodes : []) {
-    if (nodes.length >= MAX_LIVE_GEOM_ITEMS) break;
-    if (!n || !Number.isFinite(n.id) || !Number.isFinite(n.x) || !Number.isFinite(n.y)) continue;
-    nodes.push({
-      id: n.id, x: n.x, y: n.y,
-      w: Number.isFinite(n.w) ? n.w : undefined,
-      h: Number.isFinite(n.h) ? n.h : undefined
-    });
-  }
-  for (const g of Array.isArray(payload.groups) ? payload.groups : []) {
-    if (groups.length >= MAX_LIVE_GEOM_ITEMS) break;
-    if (!g || !Number.isFinite(g.id) || !Number.isFinite(g.x) || !Number.isFinite(g.y)) continue;
-    groups.push({
-      id: g.id, x: g.x, y: g.y,
-      w: Number.isFinite(g.w) ? g.w : undefined,
-      h: Number.isFinite(g.h) ? g.h : undefined
-    });
-  }
-  if (!nodes.length && !groups.length) return null;
-  return { nodes, groups, done: payload.done === true };
-}
 
 function peersForBoard(boardId) {
   let m = presencePeers.get(boardId);
@@ -383,40 +208,11 @@ io.on("connection", (socket) => {
   // một khúc trong chưa tới một giây rồi biến mất cùng cả vệt — không có gì để
   // "không bao giờ tự lành" như nét bút sẽ được lưu lại vĩnh viễn.
   socket.on("live:laser", (payload) => {
-    if (!payload || !Array.isArray(payload.pts)) return;
-    const pts = payload.pts.slice(0, MAX_LIVE_LASER_NUMBERS);
-    // pts là [x0,y0,x1,y1,…] — lẻ một số là dữ liệu hỏng, không phải thiếu điểm.
-    if (pts.length < 2 || pts.length % 2 !== 0) return;
-    // Number.isFinite một mình không đủ: nó cho qua 1e9, và một vệt laser toạ
-    // độ khổng lồ vẫn là một vạch phủ ngang màn hình cả phòng. Dùng chung biên
-    // độ với live:ink.
-    if (!pts.every((v) => Number.isFinite(v) && Math.abs(v) <= MAX_LIVE_INK_COORD)) return;
-    // Màu và độ đậm đi kèm MỌI gói, không chỉ gói đầu. Cố ý: gói đầu ở kênh này
-    // đi đường .volatile nên có thể rơi, mà nếu chỉ gói đầu mang kiểu vệt thì
-    // rơi nó là cả lượt chỉ đó mất màu. Lặp lại hai field nhỏ 25 lần/giây rẻ hơn
-    // nhiều so với việc phải làm gói đầu tin cậy.
-    //
-    // Ở đây chỉ chặn được "chuỗi ngắn" và "số trong biên độ" — server không
-    // import được bảng màu của client. Client lọc lần hai bằng
-    // sanitizeLaserStyle(), nơi mới biết đâu là token màu thật.
-    if (typeof payload.color !== "string" || payload.color.length > MAX_LIVE_INK_COLOR_LEN) return;
-    if (!Number.isFinite(payload.w) || payload.w < MIN_LIVE_INK_W || payload.w > MAX_LIVE_INK_W) return;
-    // fade VẮNG MẶT thì cho qua chứ không chặn gói: client bản cũ (tab đang mở từ
-    // trước lần deploy này) không gửi field đó, và chặn nghĩa là vệt của họ biến
-    // mất hẳn với cả phòng. Bên nhận tự lùi về mặc định (sanitizeLaserStyle).
-    // Có gửi thì phải là số trong biên độ — số rác thì bỏ RIÊNG field đó.
-    const fade = Number.isFinite(payload.fade)
-      && payload.fade >= MIN_LIVE_LASER_FADE
-      && payload.fade <= MAX_LIVE_LASER_FADE
-      ? payload.fade : undefined;
+    const clean = sanitizeLaser(payload);
+    if (!clean) return;
     // socketId do SERVER đính vào, không tin id client tự khai — cùng cách
     // live:ink và selection:update đang làm.
-    socket.volatile.to(room).emit("live:laser", {
-      pts, color: payload.color, w: payload.w, fade,
-      // Cú bấm chuột mới bên người gửi: người nhận bỏ vệt cũ thay vì nối tiếp.
-      reset: payload.reset === true,
-      socketId: socket.id
-    });
+    socket.volatile.to(room).emit("live:laser", { ...clean, socketId: socket.id });
   });
 
   // Khung nhìn (pan/zoom) của người này, cho tính năng ghim màn hình. Presence
