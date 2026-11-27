@@ -34,6 +34,7 @@
 .island.tl { left: 12px; top: 12px; }
 .island.tr { right: 12px; top: 12px; }
 .island.bl { left: 12px; bottom: 12px; }
+.island.bl.has-save-error { z-index: 51; }
 
 /* Thanh đáy: đảo NÚT (luôn hiện) + đảo NỘI DUNG (chỉ khi có panel bật). Hai khối
    rời chứ không một dải liền, cùng lối chia khung của .tool-rail bên trái.
@@ -53,6 +54,15 @@
 .hud-bottom > .island { pointer-events: auto; }
 
 .island-row { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.board-save-feedback {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  font-size: 11px;
+  color: var(--danger);
+}
 .gd-tools-row { margin-top: 6px; }
 .gd-tools-toggle { flex-shrink: 0; white-space: nowrap; }
 .gd-toolbar-actions { display: flex; align-items: center; gap: 5px; min-width: 0; overflow-x: auto; }

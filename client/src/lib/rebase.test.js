@@ -55,6 +55,30 @@ test("rebase giữ Game Flow local khi server đổi node", () => {
   assert.equal(out.nodes[0].x, 50);
 });
 
+test("rebase đổi cả tham chiếu Game Design nếu hai người tạo thẻ trùng ID", () => {
+  const base = boardOf({ kind: "game-design", nodes: [N(1)], nextNodeId: 2 });
+  const server = { ...base, nodes: [N(1), N(2, { title: "Peer card" })], nextNodeId: 3 };
+  const mine = {
+    ...base,
+    nodes: [
+      N(1, { design: { playtestSession: { cardIds: ["2"] }, decisionLog: [{ cardIds: ["2"] }] } }),
+      N(2, { title: "New mechanic", design: { followUpTasks: [{ cardIds: ["1", "2"] }], postLaunchReview: { cardIds: ["2"] } } })
+    ],
+    nextNodeId: 3,
+    gameDesignFlow: { playerLoop: [{ cardIds: ["2"] }], progressionMap: [{ cardIds: ["1", "2"] }] },
+    gameDesignBalance: { metrics: [{ cardIds: ["2"] }] }
+  };
+  const merged = rebaseBoard(server, base, mine);
+  assert.deepEqual(merged.nodes.map(({ id, title }) => [id, title]), [[1, "T1"], [2, "Peer card"], [3, "New mechanic"]]);
+  assert.deepEqual(merged.nodes[0].design.playtestSession.cardIds, ["3"]);
+  assert.deepEqual(merged.nodes[0].design.decisionLog[0].cardIds, ["3"]);
+  assert.deepEqual(merged.nodes[2].design.followUpTasks[0].cardIds, ["1", "3"]);
+  assert.deepEqual(merged.nodes[2].design.postLaunchReview.cardIds, ["3"]);
+  assert.deepEqual(merged.gameDesignFlow.playerLoop[0].cardIds, ["3"]);
+  assert.deepEqual(merged.gameDesignFlow.progressionMap[0].cardIds, ["1", "3"]);
+  assert.deepEqual(merged.gameDesignBalance.metrics[0].cardIds, ["3"]);
+});
+
 test("rebase giữ checklist GD của mình và relation edge của server", () => {
   const base = boardOf({
     kind: "game-design",
@@ -279,4 +303,12 @@ test("board cũ thiếu field vẫn ghép được", () => {
   assert.equal(out.nodes.length, 2);
   assert.equal(out.nodes.find((n) => n.id === 1).x, 40);
   assert.deepEqual(out.drawings, []);
+});
+test("rebase merges separate fields on a card and stops on an overlapping edit", () => {
+  const base = { nodes: [{ id: 1, title: "Dash", x: 0 }] };
+  const server = { nodes: [{ id: 1, title: "Quick Dash", x: 0 }] };
+  const moved = { nodes: [{ id: 1, title: "Dash", x: 20 }] };
+  assert.deepEqual(rebaseBoard(server, base, moved).nodes, [{ id: 1, title: "Quick Dash", x: 20 }]);
+  const renamed = { nodes: [{ id: 1, title: "Air Dash", x: 0 }] };
+  assert.equal(rebaseBoard(server, base, renamed), null);
 });

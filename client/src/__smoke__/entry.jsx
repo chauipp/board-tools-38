@@ -15,6 +15,54 @@ import { drawingsHitBy } from "../lib/shape.js";
 import GameDesignFlowPanel from "../components/GameDesignFlowPanel.jsx";
 import GameDesignPanel from "../components/GameDesignPanel.jsx";
 
+export async function runCollaborativeHistory(log) {
+  const root = createRoot(document.getElementById("root"));
+  const card = () => document.querySelector('.idea-card[data-id="1"]');
+  const wait = () => new Promise((resolve) => setTimeout(resolve, 70));
+  const mouse = (target, type, x, y) => target.dispatchEvent(
+    new window.MouseEvent(type, { bubbles: true, clientX: x, clientY: y, button: 0 })
+  );
+  const lastPut = () => globalThis.__puts.at(-1);
+  await act(async () => {
+    root.render(<I18nProvider i18n={i18n}><AuthProvider><MemoryRouter initialEntries={["/idea-map/b1"]}>
+      <Routes><Route path="/idea-map/:boardId" element={<IdeaMap />} /></Routes>
+    </MemoryRouter></AuthProvider></I18nProvider>);
+  });
+  const start = parseFloat(card().style.left);
+  await act(async () => {
+    mouse(card(), "mousedown", 100, 100);
+    mouse(window, "mousemove", 155, 100);
+    mouse(window, "mousemove", 200, 100);
+    await wait();
+  });
+  await act(async () => {
+    mouse(window, "mouseup", 200, 100);
+    await wait();
+  });
+  const dragged = lastPut();
+  const moved = dragged.nodes.find(({ id }) => id === 1).x;
+  if (moved === start) throw new Error("Không kéo được thẻ để thử lịch sử cộng tác");
+  await act(async () => {
+    globalThis.__deliver("board:update", {
+      ...dragged,
+      updatedAt: new Date().toISOString(),
+      nodes: dragged.nodes.map((node) => node.id === 1 ? { ...node, title: "Air Dash" } : node)
+    });
+  });
+  for (const [shiftKey, expected] of [[false, start], [true, moved]]) {
+    await act(async () => {
+      window.dispatchEvent(new window.KeyboardEvent("keydown", { key: "z", ctrlKey: true, shiftKey, bubbles: true }));
+      await wait();
+    });
+    const saved = lastPut().nodes.find(({ id }) => id === 1);
+    if (saved.x !== expected || saved.title !== "Air Dash") {
+      throw new Error(`Undo/redo làm mất chỉnh sửa của peer hoặc sai vị trí: ${JSON.stringify(saved)}`);
+    }
+  }
+  log("Undo/redo đổi vị trí cục bộ và giữ tên thẻ do peer sửa");
+  await act(async () => { root.unmount(); });
+}
+
 export async function runWorkspaceRestore(log) {
   const root = createRoot(document.getElementById("root"));
   await act(async () => {
@@ -2852,9 +2900,7 @@ export async function run(log) {
   log(`Ctrl+Z sau khi kéo góc: hộp ${box2.w.toFixed(0)} → ${box3.w.toFixed(0)} (phải về ${box1.w.toFixed(0)})`);
   if (Math.abs(box3.w - box1.w) > 2) throw new Error("một cú kéo góc phải hoàn tác được trong đúng một bước");
 
-  // ── Bấm nhiều lần trên NỀN TRỐNG: 2 lần hoàn tác, 3 lần làm lại ──────────
-  // Cử chỉ này thay chỗ "bấm đúp nền trống để tạo thẻ", nên phần đầu canh luôn
-  // rằng bấm đúp KHÔNG còn đẻ ra thẻ nữa.
+  // Bấm nhiều lần trên nền trống không thay đổi board.
   const mcCard = () => document.querySelector('.idea-card[data-id="1"]');
   const viewportEl = document.querySelector(".viewport");
   const bgClick = (x, y, upX, upY) => {
@@ -2866,10 +2912,10 @@ export async function run(log) {
   };
   const settle = () => new Promise((r) => setTimeout(r, MULTI_CLICK_MS + 150));
 
-  // Chỗ NỀN THẬT SỰ TRỐNG để thử cử chỉ hoàn tác. Không viết cứng một toạ độ
+  // Chỗ NỀN THẬT SỰ TRỐNG để kiểm tra bấm trên nền. Không viết cứng một toạ độ
   // được: tới đoạn này bảng đã có 20 nét vẽ rải khắp nơi, camera đã lia và zoom
   // vài lần, mà bấm trúng một cái nét thì cử chỉ chạy là "đổi nét liền/đứt" chứ
-  // không phải hoàn tác — test sẽ đỏ ở một chỗ chẳng liên quan gì tới nguyên
+  // không phải bấm nền — test sẽ đỏ ở một chỗ chẳng liên quan gì tới nguyên
   // nhân. Dò bằng ĐÚNG hàm hit-test mà ứng dụng dùng, nên nó tự đúng lại mỗi khi
   // có ai thêm một nét vẽ mới vào các khối phía trên.
   const emptyBg = (() => {
@@ -2888,7 +2934,7 @@ export async function run(log) {
   })();
   log(`chỗ nền trống để thử cử chỉ: ${emptyBg.x},${emptyBg.y}`);
 
-  // Một bước để mà lùi: kéo thẻ 1 đi một đoạn.
+  // Tạo một bước trong lịch sử để phát hiện hoàn tác ngoài ý muốn.
   const mcStart = mcCard().style.left;
   await act(async () => {
     mouse("mousedown", 300, 300, mcCard());
@@ -2901,18 +2947,18 @@ export async function run(log) {
 
   const mcCardsBefore = document.querySelectorAll(".idea-card").length;
   await act(async () => { bgClick(emptyBg.x, emptyBg.y); bgClick(emptyBg.x, emptyBg.y); await settle(); });
-  const mcUndone = mcCard().style.left;
-  log(`bấm 2 lần nền trống: thẻ ${mcMoved} → ${mcUndone} (phải về ${mcStart})`
+  const afterDoubleClick = mcCard().style.left;
+  log(`bấm 2 lần nền trống: thẻ ${mcMoved} → ${afterDoubleClick} (phải giữ nguyên)`
     + ` · số thẻ ${mcCardsBefore} → ${document.querySelectorAll(".idea-card").length}`);
   if (document.querySelectorAll(".idea-card").length !== mcCardsBefore) {
     throw new Error("bấm đúp nền trống vẫn đẻ ra thẻ mới — cử chỉ cũ chưa được gỡ");
   }
-  if (mcUndone !== mcStart) throw new Error(`bấm 2 lần phải hoàn tác về ${mcStart}, đang ở ${mcUndone}`);
+  if (afterDoubleClick !== mcMoved) throw new Error("bấm 2 lần nền trống làm đổi vị trí thẻ");
 
   await act(async () => { bgClick(emptyBg.x, emptyBg.y); bgClick(emptyBg.x, emptyBg.y); bgClick(emptyBg.x, emptyBg.y); await settle(); });
-  log(`bấm 3 lần nền trống: thẻ ${mcUndone} → ${mcCard().style.left} (phải về ${mcMoved})`);
+  log(`bấm 3 lần nền trống: thẻ vẫn ở ${mcCard().style.left} (phải giữ nguyên)`);
   if (mcCard().style.left !== mcMoved) {
-    throw new Error(`bấm 3 lần phải làm lại về ${mcMoved}, đang ở ${mcCard().style.left}`);
+    throw new Error("bấm 3 lần nền trống làm đổi vị trí thẻ");
   }
 
   // Bấm 1 lần: không được động vào dữ liệu. Đây là cú bấm hay dùng nhất trên
@@ -4017,7 +4063,7 @@ export async function run(log) {
   const detailNode = { id: "detail-card", title: "Dash", desc: "", type: "mechanic", design: {} };
   let savedDetails = null;
   await act(async () => {
-    detailsRoot.render(<GameDesignPanel node={detailNode} canEdit onSave={(next) => { savedDetails = next; }} onClose={() => {}} />);
+    detailsRoot.render(<GameDesignPanel node={detailNode} nodes={[detailNode]} canEdit onSave={(next) => { savedDetails = next; }} onClose={() => {}} />);
   });
   const detailAdd = Array.from(detailsHost.querySelectorAll(".gd-detail-add")).find((button) => button.textContent.includes("ví dụ"));
   await act(async () => { detailAdd.click(); });
@@ -4030,14 +4076,13 @@ export async function run(log) {
   const failureAdd = Array.from(detailsHost.querySelectorAll(".gd-detail-add")).find((button) => button.textContent.includes("failure state"));
   await act(async () => { failureAdd.click(); });
   const failureSection = Array.from(detailsHost.querySelectorAll(".gd-detail-section")).find((section) => section.textContent.includes("Failure States"));
-  await act(async () => { failureSection.querySelector(".gd-detail-collapse").click(); });
   await act(async () => { failureSection.querySelector(".gd-detail-remove").click(); });
   if (failureSection.querySelector(".gd-detail-item")) throw new Error("Game Design details không xóa được failure state");
   await act(async () => { detailsHost.querySelector(".gd-save").click(); });
   if (savedDetails?.design?.examples?.[0]?.title !== "Đòn lướt qua bẫy") {
     throw new Error("Game Design panel không lưu được Example");
   }
-  const detailSection = detailsHost.querySelector(".gd-detail-section");
+  const detailSection = detailAdd.closest(".gd-detail-section");
   await act(async () => { detailSection.querySelector(".gd-detail-collapse").click(); });
   if (detailSection.querySelector(".gd-detail-list")) throw new Error("Game Design details không thu được section");
   await act(async () => { detailsRoot.unmount(); });
@@ -4047,10 +4092,15 @@ export async function run(log) {
   document.body.append(detailViewerHost);
   const detailViewerRoot = createRoot(detailViewerHost);
   await act(async () => {
-    detailViewerRoot.render(<GameDesignPanel node={savedDetails} canEdit={false} onSave={() => { throw new Error("viewer không được lưu details"); }} onClose={() => {}} />);
+    detailViewerRoot.render(<GameDesignPanel node={savedDetails} nodes={[savedDetails]} canEdit={false} onSave={() => { throw new Error("viewer không được lưu details"); }} onClose={() => {}} />);
   });
-  await act(async () => { detailViewerHost.querySelector(".gd-detail-collapse").click(); });
-  if (!detailViewerHost.querySelector(".gd-detail-item input")?.disabled || detailViewerHost.querySelector(".gd-detail-add, .gd-detail-remove, .gd-save")) {
+  const viewerExamples = Array.from(detailViewerHost.querySelectorAll("button.gd-detail-collapse"))
+    .find((button) => button.textContent.includes("Examples"));
+  await act(async () => { viewerExamples.click(); });
+  const viewerExamplesSection = viewerExamples.closest(".gd-detail-section");
+  if (!viewerExamplesSection.querySelector(".gd-detail-item input")?.disabled
+    || viewerExamplesSection.querySelector(".gd-detail-add, .gd-detail-remove")
+    || detailViewerHost.querySelector(".gd-save")) {
     throw new Error("viewer Game Design details còn control chỉnh sửa");
   }
   log("Game Design details: lưu Example, thu section, viewer read-only");

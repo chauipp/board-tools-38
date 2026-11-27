@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { normalizeGameDesignBoard } from "./game-design-model.js";
 import { BALANCE_TEMPLATES, acceptanceProgress, abTestProgress, appendBalanceTemplate, balanceCurveTable, balanceMetricsForCard, balanceWarnings, createGameDesignNode, createRelatedGameDesignCard, decisionTimeline, dependencyAnalysis, dependencyImpact, duplicateGameDesignCard, emptyDecisionLog, emptyDelivery, emptyGameDesignBalance, emptyGameDesignBrief, emptyGameDesignDetails, emptyGameDesignFlow, emptyLiveOps, emptyPlaytestSession, emptyPostLaunchReview, emptyReview, emptyTeamHandoff, exportPackage, exportVersion, evaluateBalanceFormula, followUpProgress, gameDesignMarkdown, gameDesignPreview, gameDesignReport, gameDesignReportNodeIds, gameDesignType, hasDelivery, hasGameDesignBrief, hasGameDesignFlow, hasLiveOps, hasPlaytestSession, hasPostLaunchReview, normalizeABTests, normalizeAcceptanceCriteria, normalizeAnalyticsEvents, normalizeDecisionLog, normalizeDelivery, normalizeFollowUpTasks, normalizeGameDesignBalance, normalizeGameDesignBrief, normalizeGameDesignDetails, normalizeGameDesignFlow, normalizeLiveOps, normalizePlaytestSession, normalizePostLaunchReview, normalizeReview, normalizeTeamHandoff, normalizeTechnicalNotes, playtestComparison, relationDefinition } from "./game-design.js";
 
 test("chuẩn hóa brief rỗng, cắt khoảng trắng và bỏ stage thiếu title", () => {
@@ -13,6 +14,15 @@ test("chuẩn hóa brief rỗng, cắt khoảng trắng và bỏ stage thiếu t
     playerJourney: [{ id: "journey-2", title: "Khám phá", experience: "Thử build", emotion: "Tò mò" }]
   });
   assert.equal(hasGameDesignBrief(null), false);
+});
+
+test("board Game Design đời cũ cấp ID mới sau trạng thái Archived", () => {
+  const archived = { id: 9, name: "Archived", color: "st-parked" };
+  const board = { kind: "game-design", statuses: [archived], nextStatusId: 9, nodes: [] };
+  const normalized = normalizeGameDesignBoard(board);
+  assert.equal(normalized.nextStatusId, 10);
+  assert.deepEqual(normalized.statuses, [archived]);
+  assert.equal(normalizeGameDesignBoard({ ...board, nextStatusId: 15 }).nextStatusId, 15);
 });
 
 test("Markdown thêm Game Context trước Game Design khi brief có nội dung", () => {

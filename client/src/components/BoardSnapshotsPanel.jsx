@@ -9,13 +9,17 @@ export default function BoardSnapshotsPanel({ snapshots, loading, canEdit, onCre
   const [label, setLabel] = useState("");
   const [creating, setCreating] = useState(false);
   const [restoringId, setRestoringId] = useState(null);
+  const [error, setError] = useState(null);
 
   async function create() {
     if (creating) return;
     setCreating(true);
+    setError(null);
     try {
       await onCreate(label);
       setLabel("");
+    } catch {
+      setError("Không tạo được snapshot.");
     } finally {
       setCreating(false);
     }
@@ -24,8 +28,11 @@ export default function BoardSnapshotsPanel({ snapshots, loading, canEdit, onCre
   async function restore(snapshot) {
     if (restoringId || !window.confirm(`Khôi phục snapshot “${snapshot.label || timestamp(snapshot.createdAt)}”? Các thay đổi hiện tại trên board sẽ bị thay thế.`)) return;
     setRestoringId(snapshot.id);
+    setError(null);
     try {
       await onRestore(snapshot.id);
+    } catch (error) {
+      setError(error.code ? "Không khôi phục được snapshot. Hãy kiểm tra phiên bản board rồi thử lại." : error.message);
     } finally {
       setRestoringId(null);
     }
@@ -35,6 +42,7 @@ export default function BoardSnapshotsPanel({ snapshots, loading, canEdit, onCre
     <aside className="gd-panel snapshot-panel" ref={outsideRef} aria-label="Version snapshots">
       <div className="gd-panel-head"><div><span className="gd-kicker">Version history</span><h2>Snapshots</h2></div><button className="btn ghost icon" type="button" onClick={onClose} aria-label="Đóng Snapshots">×</button></div>
       <p className="gd-help">Lưu tối đa 30 mốc an toàn cho board. Khôi phục sẽ thay toàn bộ nội dung board và đồng bộ cho mọi người đang xem.</p>
+      {error && <p className="gd-help" role="alert">{error}</p>}
       {canEdit && <div className="snapshot-create">
         <input value={label} maxLength={160} placeholder="Tên mốc, ví dụ: Trước playtest 03" onChange={(event) => setLabel(event.target.value)} />
         <button className="btn primary" type="button" disabled={creating} onClick={create}>{creating ? "Đang lưu…" : "Tạo snapshot"}</button>

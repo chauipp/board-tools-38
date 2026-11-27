@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { DESIGN_FIELD_LABELS, TEAM_HANDOFF_TEAMS, balanceMetricsForCard, emptyReview, evaluateBalanceFormula, gameDesignType, normalizeABTests, normalizeAcceptanceCriteria, normalizeAnalyticsEvents, normalizeDecisionLog, normalizeDelivery, normalizeFollowUpTasks, normalizeGameDesignDetails, normalizeLiveOps, normalizePlaytestSession, normalizePostLaunchReview, normalizeReview, normalizeTeamHandoff, normalizeTechnicalNotes } from "../lib/game-design.js";
+import { DESIGN_FIELD_LABELS, TEAM_HANDOFF_TEAMS, balanceMetricsForCard, emptyReview, evaluateBalanceFormula, gameDesignType, normalizeABTests, normalizeAcceptanceCriteria, normalizeAnalyticsEvents, normalizeDecisionLog, normalizeDelivery, normalizeFollowUpTasks, normalizeGameDesignDetails, normalizeLiveOps, normalizePlaytestSession, normalizePostLaunchReview, normalizeReview, normalizeTeamHandoff } from "../lib/game-design.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
+import { normalizeGameDesignCardDesign } from "../lib/game-design-model.js";
 
 const DETAIL_SECTIONS = [
   {
@@ -184,16 +185,44 @@ export default function GameDesignPanel({ node, nodes, balance, canEdit, onSave,
   const [collapsedDetails, setCollapsedDetails] = useState({ examples: true, failureStates: true, tuningParameters: true, playtest: true, decisions: true, handoff: true, review: true, delivery: true, analytics: true, abTests: true, liveOps: true, postLaunch: true, followUps: true, balanceLinks: true });
   const [dirty, setDirty] = useState(false);
   const panelRef = useRef(null);
+  const editBaseRef = useRef(null);
   const template = gameDesignType(node.type);
 
   useEffect(() => {
-    setTitle(node.title); setDesc(node.desc || ""); setDesign({ ...(node.design || {}) });
-    setCriteria(normalizeAcceptanceCriteria(node.design?.acceptanceCriteria)); setDetails(normalizeGameDesignDetails(node.design)); setPlaytestSession(normalizePlaytestSession(node.design?.playtestSession, nodes)); setDecisionLog(normalizeDecisionLog(node.design?.decisionLog, nodes)); setTeamHandoff(normalizeTeamHandoff(node.design?.teamHandoff)); setReview(normalizeReview(node.design?.review)); setDelivery(normalizeDelivery(node.design?.delivery)); setAnalyticsEvents(normalizeAnalyticsEvents(node.design?.analyticsEvents)); setABTests(normalizeABTests(node.design?.abTests)); setLiveOps(normalizeLiveOps(node.design?.liveOps)); setPostLaunchReview(normalizePostLaunchReview(node.design?.postLaunchReview, nodes)); setFollowUpTasks(normalizeFollowUpTasks(node.design?.followUpTasks, nodes)); setDirty(false);
-  }, [node.id, nodes]);
+    if (dirty) return;
+    const normalized = normalizeGameDesignCardDesign(node.design, nodes);
+    editBaseRef.current = { title: node.title, desc: node.desc || "", design: normalized };
+    setTitle(node.title);
+    setDesc(node.desc || "");
+    setDesign(normalized);
+    setCriteria(normalized.acceptanceCriteria);
+    setDetails({ examples: normalized.examples, failureStates: normalized.failureStates, tuningParameters: normalized.tuningParameters });
+    setPlaytestSession(normalized.playtestSession);
+    setDecisionLog(normalized.decisionLog);
+    setTeamHandoff(normalized.teamHandoff);
+    setReview(normalized.review);
+    setDelivery(normalized.delivery);
+    setAnalyticsEvents(normalized.analyticsEvents);
+    setABTests(normalized.abTests);
+    setLiveOps(normalized.liveOps);
+    setPostLaunchReview(normalized.postLaunchReview);
+    setFollowUpTasks(normalized.followUpTasks);
+  }, [node, nodes, dirty]);
 
   function save() {
     const nextCriteria = criteria.filter((item) => item.text.trim()).map((item) => ({ ...item, text: item.text.trim() }));
-    onSave({ ...node, title: title.trim() || template.label, desc: desc.trim(), design: { ...node.design, ...design, technicalNotes: normalizeTechnicalNotes(design.technicalNotes), acceptanceCriteria: nextCriteria, ...normalizeGameDesignDetails(details), playtestSession: normalizePlaytestSession(playtestSession, nodes), decisionLog: normalizeDecisionLog(decisionLog, nodes), teamHandoff: normalizeTeamHandoff(teamHandoff), review: normalizeReview(review), delivery: normalizeDelivery(delivery), analyticsEvents: normalizeAnalyticsEvents(analyticsEvents), abTests: normalizeABTests(abTests), liveOps: normalizeLiveOps(liveOps), postLaunchReview: normalizePostLaunchReview(postLaunchReview, nodes), followUpTasks: normalizeFollowUpTasks(followUpTasks, nodes) } });
+    const draft = normalizeGameDesignCardDesign({
+      ...design, ...details, acceptanceCriteria: nextCriteria, playtestSession, decisionLog,
+      teamHandoff, review, delivery, analyticsEvents, abTests, liveOps, postLaunchReview, followUpTasks
+    }, nodes);
+    const base = editBaseRef.current;
+    const next = { ...node, design: { ...node.design } };
+    if (!base || title !== base.title) next.title = title.trim() || template.label;
+    if (!base || desc !== base.desc) next.desc = desc.trim();
+    for (const [field, value] of Object.entries(draft)) {
+      if (JSON.stringify(value) !== JSON.stringify(base?.design[field])) next.design[field] = value;
+    }
+    onSave(next);
     setDirty(false);
   }
 

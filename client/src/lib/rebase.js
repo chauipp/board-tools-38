@@ -28,7 +28,7 @@ export const COLLECTIONS = [
   { key: "drawings", counter: "nextDrawingId" }
 ];
 
-// Thiết lập cấp bảng: không có id, nên chỉ có luật "ai đổi thì người đó thắng".
+// Thiết lập cấp bảng được ghép theo từng trường.
 const SCALARS = ["bg", "grid", "pack", "kind", "gameDesignBrief", "gameDesignFlow", "gameDesignBalance"];
 
 function listOf(board, key) {
@@ -78,7 +78,7 @@ export function diffBoard(base, next) {
   for (const k of SCALARS) {
     const before = base ? base[k] ?? null : null;
     const after = next ? next[k] ?? null : null;
-    if (before !== after) scalars[k] = after;
+    if (!same(before, after)) scalars[k] = after;
   }
   return { collections, scalars };
 }
@@ -136,6 +136,28 @@ function remapped(plan, key, id) {
   return next === undefined ? id : next;
 }
 
+function remapCardReferences(item, nodes) {
+  if (!Array.isArray(item?.cardIds)) return item;
+  const cardIds = item.cardIds.map((id) => {
+    const mapped = nodes.get(Number(id));
+    return mapped === undefined ? id : String(mapped);
+  });
+  return same(item.cardIds, cardIds) ? item : { ...item, cardIds };
+}
+
+function remapDesignReferences(value, fields, nodes) {
+  if (!nodes || !value) return value;
+  let result = value;
+  for (const field of fields) {
+    const original = value[field];
+    const mapped = Array.isArray(original)
+      ? original.map((item) => remapCardReferences(item, nodes))
+      : remapCardReferences(original, nodes);
+    if (!same(original, mapped)) result = { ...result, [field]: mapped };
+  }
+  return result;
+}
+
 // Viết lại mọi tham chiếu id bên trong MỘT phần tử của mình. Phần tử của server
 // không bao giờ đi qua đây: chúng đã nhất quán với nhau rồi, chỉ có phía mình
 // mới bị đổi id.
@@ -163,6 +185,9 @@ function rewriteRefs(key, item, plan) {
   if (key === "nodes") {
     if (Number.isFinite(item.statusId)) set("statusId", remapped(plan, "statuses", item.statusId));
     if (Number.isFinite(item.tagId)) set("tagId", remapped(plan, "tags", item.tagId));
+    if (item.design) set("design", remapDesignReferences(item.design, [
+      "playtestSession", "decisionLog", "postLaunchReview", "followUpTasks"
+    ], plan.nodes));
   }
 
   if (key === "edges") {
@@ -183,10 +208,9 @@ function rewriteRefs(key, item, plan) {
  * Đắp thay đổi của mình (base → next) lên bản `server`.
  *
  * Trả về null khi kết quả không lành lặn (id trùng, dây nối trỏ vào hư không).
- * Người gọi phải coi null là "không ghép được, đi đường dự phòng" — thà quay về
- * đúng hành vi cũ còn hơn ghi một board hỏng.
+ * Trả null cả khi hai người sửa cùng một trường thành hai giá trị khác nhau.
  */
-export function rebaseBoard(server, base, next) {
+export function rebaseBoard(server, base, next, { strict = false } = {}) {
   if (!server || !base || !next) return null;
   const delta = diffBoard(base, next);
   const plan = planRemap(server, base, delta);
@@ -194,16 +218,37 @@ export function rebaseBoard(server, base, next) {
 
   for (const { key, counter } of COLLECTIONS) {
     const d = delta.collections[key];
+    const before = byId(listOf(base, key));
+    const current = byId(listOf(server, key));
+    if (strict && d.added.some(({ id }) => current.has(id))) return null;
+    for (const id of d.removed) {
+      if (current.has(id) && !same(before.get(id), current.get(id))) return null;
+    }
     const dropped = new Set(d.removed);
     const list = listOf(server, key).filter((o) => !dropped.has(o.id));
     const pos = new Map(list.map((o, i) => [o.id, i]));
 
     for (const raw of d.changed) {
-      const item = rewriteRefs(key, raw, plan);
-      const at = pos.get(item.id);
+      const at = pos.get(raw.id);
       // Người kia XOÁ thứ mình vừa sửa: tôn trọng cú xoá. Dựng lại một thẻ đã bị
       // xoá chỉ vì mình lỡ đổi màu nó là hồi sinh thứ người ta cố ý bỏ đi.
-      if (at === undefined) continue;
+      if (at === undefined) {
+        if (strict) return null;
+        continue;
+      }
+      const original = before.get(raw.id);
+      const remote = list[at];
+      const mapped = rewriteRefs(key, raw, plan);
+      const item = { ...remote };
+      for (const field of new Set([...Object.keys(original), ...Object.keys(raw)])) {
+        if (same(original[field], raw[field]) && same(raw[field], mapped[field])) continue;
+        if (!same(original[field], remote[field]) && !same(mapped[field], remote[field])) return null;
+        if (Object.prototype.hasOwnProperty.call(mapped, field)) {
+          Object.defineProperty(item, field, { value: mapped[field], enumerable: true, writable: true, configurable: true });
+        } else {
+          delete item[field];
+        }
+      }
       list[at] = item;
     }
     for (const raw of d.added) {
@@ -224,7 +269,14 @@ export function rebaseBoard(server, base, next) {
     );
   }
 
-  for (const [k, v] of Object.entries(delta.scalars)) out[k] = v;
+  for (const [k, v] of Object.entries(delta.scalars)) {
+    const fields = k === "gameDesignFlow" ? ["playerLoop", "progressionMap"]
+      : k === "gameDesignBalance" ? ["metrics"] : [];
+    const mapped = remapDesignReferences(v, fields, plan.nodes);
+    const remote = server[k] ?? null;
+    if (!same(remote, base[k] ?? null) && !same(remote, mapped)) return null;
+    out[k] = mapped;
+  }
 
   // Dây mồ côi. Mình xoá một cái thẻ (nên delta có cả cú xoá thẻ LẪN cú xoá
   // những dây nối vào nó), nhưng cùng lúc người kia vừa nối thêm một dây mới
@@ -233,11 +285,13 @@ export function rebaseBoard(server, base, next) {
   // như deleteNode vẫn làm khi xoá một thẻ.
   const nodeIds = new Set(listOf(out, "nodes").map((n) => n.id));
   const groupIds = new Set(listOf(out, "groups").map((g) => g.id));
-  out.edges = listOf(out, "edges").filter((e) => {
+  const edges = listOf(out, "edges");
+  out.edges = edges.filter((e) => {
     const from = (e.fromKind || "node") === "group" ? groupIds : nodeIds;
     const to = (e.toKind || "node") === "group" ? groupIds : nodeIds;
     return from.has(e.from) && to.has(e.to);
   });
+  if (strict && out.edges.length !== edges.length) return null;
 
   return isSaneBoard(out) ? out : null;
 }

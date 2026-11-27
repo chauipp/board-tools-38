@@ -37,6 +37,7 @@ const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></
 const { window } = dom;
 globalThis.window = window;
 globalThis.document = window.document;
+globalThis.Element = window.Element;
 globalThis.localStorage = window.localStorage;
 Object.defineProperty(globalThis, "navigator", { value: window.navigator, configurable: true });
 globalThis.location = window.location;
@@ -238,7 +239,12 @@ setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process
 }
 
 const scenarios = await import("./smoke-dist/smoke.js");
-const run = process.env.SMOKE_SCENARIO === "workspace" ? scenarios.runWorkspaceRestore : process.env.SMOKE_SCENARIO === "tree-panel" ? scenarios.runTreePanelExclusive : scenarios.run;
+const focusedScenarios = {
+  workspace: scenarios.runWorkspaceRestore,
+  "tree-panel": scenarios.runTreePanelExclusive,
+  "collaborative-history": scenarios.runCollaborativeHistory
+};
+const run = focusedScenarios[process.env.SMOKE_SCENARIO] ?? scenarios.run;
 try {
   await run((m) => console.log("  ·", m));
   console.log("\n✅ SMOKE PASS");

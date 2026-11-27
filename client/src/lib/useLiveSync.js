@@ -31,19 +31,10 @@ export function isStaleUpdate(localUpdatedAt, incomingUpdatedAt) {
   return new Date(incomingUpdatedAt).getTime() <= new Date(localUpdatedAt).getTime();
 }
 
-// Trộn board:update từ người khác vào board hiện tại:
-// - Giữ nguyên đúng 1 thẻ đang được sửa tại chỗ (editingId) — tránh xoá mất chữ
-//   đang gõ dở của chính người xem.
-// - Giữ nguyên view (camera) — camera là riêng từng người, không đồng bộ.
-export function mergeRemoteBoard(local, incoming, editingId) {
-  const merged = { ...local, ...incoming, view: local.view };
-  if (editingId != null) {
-    const localNode = local.nodes.find((n) => n.id === editingId);
-    if (localNode) {
-      merged.nodes = merged.nodes.map((n) => (n.id === editingId ? localNode : n));
-    }
-  }
-  return merged;
+// Drafts are owned by their forms. Board data takes the incoming content and
+// keeps the local camera so a later save cannot replay an old copy of a card.
+export function mergeRemoteBoard(local, incoming) {
+  return { ...local, ...incoming, view: local.view };
 }
 
 // Chỉ gửi vị trí/kích thước — KHÔNG BAO GIỜ gửi ảnh/tiêu đề/mô tả. Ảnh nhúng
@@ -157,7 +148,7 @@ function sameGeom(a, b) {
 // hết TTL lại về đúng chỗ. Đó chính là vòng vọng làm thẻ "giật đi giật lại giữa
 // hai vị trí". Chỉ người ĐANG THẬT SỰ kéo mới được phát; người nhận không bao
 // giờ phát lại, nên vòng lặp không thể hình thành.
-export function useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, applyRemoteBoard) {
+export function useLiveSync(socket, boardRef, lastUpdatedAtRef, applyRemoteBoard) {
   const [geomOverlay, setGeomOverlay] = useState(EMPTY_MAP);
   const [textOverlay, setTextOverlay] = useState(EMPTY_MAP);
   const socketRef = useRef(socket);
@@ -248,9 +239,8 @@ export function useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, ap
       const local = boardRef.current;
       if (!local) return;
       if (isStaleUpdate(lastUpdatedAtRef.current, incoming.updatedAt)) return;
-      lastUpdatedAtRef.current = incoming.updatedAt;
-      const merged = mergeRemoteBoard(local, incoming, editingIdRef.current);
-      applyRemoteBoard(merged);
+      const merged = mergeRemoteBoard(local, incoming);
+      if (!applyRemoteBoard(merged, incoming)) return;
       setGeomOverlay((prev) => reconcileGeomOverlay(prev, merged));
     }
     socket.on("live:geom", onLiveGeom);
@@ -265,7 +255,7 @@ export function useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, ap
       setGeomOverlay(EMPTY_MAP);
       setTextOverlay(EMPTY_MAP);
     };
-  }, [socket, boardRef, editingIdRef, lastUpdatedAtRef, applyRemoteBoard, isLocallyDragged]);
+  }, [socket, boardRef, lastUpdatedAtRef, applyRemoteBoard, isLocallyDragged]);
 
   // Một interval duy nhất, và chỉ chạy khi thật sự có gì để dọn.
   const hasOverlay = geomOverlay.size > 0 || textOverlay.size > 0;

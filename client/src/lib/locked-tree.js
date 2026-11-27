@@ -1,6 +1,20 @@
 import { nodesInFrame } from "./board-geometry.js";
 import { buildTree, carryGroupMembers, edgeKey, normalizeTreeSlots, treeLayout, treeLayoutBranches, TREE_DIRECTIONS } from "./tree-layout.js";
 
+export function movableSelection(base, groupIds, nodeIds, frameCardSize) {
+  const owners = treeLockOwners(base, frameCardSize);
+  const groups = base.groups.filter((g) => groupIds.has(g.id) && !g.locked && !owners.has(edgeKey("group", g.id)));
+  const nodeSet = new Set();
+  base.nodes.forEach((n) => { if (nodeIds.has(n.id) && !n.locked && !owners.has(edgeKey("node", n.id))) nodeSet.add(n.id); });
+  const lockedById = new Map(base.nodes.map((n) => [n.id, !!n.locked || owners.has(edgeKey("node", n.id))]));
+  groups.forEach((g) => {
+    nodesInFrame(base.nodes, g, frameCardSize).forEach((id) => {
+      if (!lockedById.get(id)) nodeSet.add(id);
+    });
+  });
+  return { groupIds: groups.map((g) => g.id), nodeIds: Array.from(nodeSet) };
+}
+
 // Keep persisted gaps within the ranges offered by TreePanel. Malformed data
 // must not silently enable a lock using defaults.
 export function normalizeTreeLock(value) {

@@ -3,16 +3,22 @@ import { useWorkspaceState } from "../lib/useWorkspaceState.js";
 import { cameraToCenter, centerToCamera, normalizeWorkspace } from "../lib/workspace-state.js";
 import { Link, useParams } from "react-router-dom";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { createBoardSnapshot, getBoard, listBoardSnapshots, restoreBoardSnapshot, saveBoard } from "../lib/api.js";
+import { createBoardSnapshot, getBoard, listBoardSnapshots } from "../lib/api.js";
+import { useBoardPersistence } from "../lib/useBoardPersistence.js";
+import { useBoardHistory } from "../lib/useBoardHistory.js";
 import { useTheme } from "../lib/useTheme.js";
 import { useSkin } from "../lib/useSkin.js";
 import {
-  drawingsHitBy, drawingsInRect, moveDrawing, drawingBox,
+  drawingsHitBy, moveDrawing, drawingBox,
   shapeHandles, moveShapeHandle, HANDLE_EDGE
 } from "../lib/shape.js";
 import { textLines, textBox, TEXT_LINE_H } from "../lib/text-el.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
-import { RELATION_OPTIONS, relationDefinition, isGameDesignRelation, createRelatedGameDesignCard, duplicateGameDesignCard, exportPackage, exportVersion, normalizeABTests, normalizeAcceptanceCriteria, normalizeAnalyticsEvents, normalizeFollowUpTasks, normalizeGameDesignBrief, normalizeGameDesignDetails, normalizeGameDesignFlow, normalizeGameDesignBalance, normalizeLiveOps, normalizePostLaunchReview, normalizeTechnicalNotes, normalizePlaytestSession, normalizeDecisionLog, normalizeTeamHandoff, normalizeReview, normalizeDelivery, createGameDesignNode, dependencyAnalysis, gameDesignMarkdown } from "../lib/game-design.js";
+import {
+  RELATION_OPTIONS, relationDefinition, isGameDesignRelation, createRelatedGameDesignCard,
+  duplicateGameDesignCard, exportPackage, exportVersion, normalizeGameDesignBrief, normalizeGameDesignFlow, normalizeGameDesignBalance,
+  createGameDesignNode, dependencyAnalysis, gameDesignMarkdown, normalizeGameDesignBoard
+} from "../lib/game-design.js";
 import { paletteCss, applyColorTo, applyColorToMany, removePaletteColor } from "../lib/palette.js";
 import { BOARD_BGS, BOARD_GRIDS, COLOR_PACKS, isBoardBg, isBoardGrid, isColorPack } from "../lib/board-theme.js";
 import FilterPanel from "../components/FilterPanel.jsx";
@@ -29,12 +35,15 @@ import ColorMenu from "../components/ColorMenu.jsx";
 import FrameBox from "../components/FrameBox.jsx";
 import IdeaCard from "../components/IdeaCard.jsx";
 import GameDesignPanel from "../components/GameDesignPanel.jsx";
+import GameDesignToolbar from "../components/GameDesignToolbar.jsx";
 import GameDesignBriefPanel from "../components/GameDesignBriefPanel.jsx";
 import GameDesignFlowPanel from "../components/GameDesignFlowPanel.jsx";
 import DevHandoffPanel from "../components/DevHandoffPanel.jsx";
 import GameDesignBalancePanel from "../components/GameDesignBalancePanel.jsx";
 import DecisionTimelinePanel from "../components/DecisionTimelinePanel.jsx";
 import BoardSnapshotsPanel from "../components/BoardSnapshotsPanel.jsx";
+import BoardOutlinePanel from "../components/BoardOutlinePanel.jsx";
+import { CommentsPopover, EdgeMenu, PaletteEditor } from "../components/BoardPopovers.jsx";
 import GameDesignInsightsPanel from "../components/GameDesignInsightsPanel.jsx";
 import GameDesignReportsPanel from "../components/GameDesignReportsPanel.jsx";
 import GameDesignImpactPanel from "../components/GameDesignImpactPanel.jsx";
@@ -45,57 +54,28 @@ import ToolRail from "../components/ToolRail.jsx";
 import PdfUsage from "../components/PdfUsage.jsx";
 import ToolOptions from "../components/ToolOptions.jsx";
 import { nodesInFrame, edgesMatch } from "../lib/board-geometry.js";
-import { buildEdgeRoutes, routeIntersectsRect } from "../lib/edge-routing.js";
+import { buildEdgeRoutes } from "../lib/edge-routing.js";
 import { computeSnap } from "../lib/snap.js";
 import { createDragClickGuard, createMultiClick, isDragGesture } from "../lib/multi-click.js";
 import { placeLinkedNode, parentNodeId } from "../lib/place-node.js";
-import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
+import { outlineToMarkdown } from "../lib/outline.js";
 import { gridLayout, layerLayout } from "../lib/layout.js";
 import { buildTree, edgeKey } from "../lib/tree-layout.js";
-import { normalizeTreeLock, treeLockOwners, arrangeTree, arrangeLockedTrees, lockedTreeSiblings, swapLockedSiblings } from "../lib/locked-tree.js";
+import { normalizeTreeLock, treeLockOwners, arrangeTree, arrangeLockedTrees, lockedTreeSiblings, swapLockedSiblings, movableSelection } from "../lib/locked-tree.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { usePresence } from "../lib/usePresence.js";
 import { useFollow } from "../lib/useFollow.js";
-import { useLiveSync, applyGeomOverlay, mergeRemoteBoard } from "../lib/useLiveSync.js";
-import { rebaseBoard } from "../lib/rebase.js";
+import { useLiveSync, applyGeomOverlay } from "../lib/useLiveSync.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { rafThrottle } from "../lib/raf-throttle.js";
-import { replaceIdSet, toggleId, unionIdSet } from "../lib/selection.js";
+import { toggleId } from "../lib/selection.js";
+import { computeZoom, MIN_SCALE, MAX_SCALE, useCanvasViewportGestures } from "../lib/useCanvasViewportGestures.js";
 import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 import { readImageFile } from "../lib/image-utils.js";
 import { canAddImage, formatMB } from "../lib/image-budget.js";
-import { usePopoverPosition } from "../lib/usePopoverPosition.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
 import { loadPenPrefs, savePenPrefs, penVar } from "../lib/pen.js";
 
-function normalizeGameDesignBoard(board) {
-  if (!board || board.kind !== "game-design") return board;
-  return {
-    ...board,
-    gameDesignBrief: normalizeGameDesignBrief(board.gameDesignBrief),
-    gameDesignFlow: normalizeGameDesignFlow(board.gameDesignFlow, board.nodes),
-    gameDesignBalance: normalizeGameDesignBalance(board.gameDesignBalance, board.nodes),
-    nodes: (board.nodes || []).map((node) => node?.design ? {
-      ...node,
-      design: {
-        ...node.design,
-        technicalNotes: normalizeTechnicalNotes(node.design.technicalNotes),
-        acceptanceCriteria: normalizeAcceptanceCriteria(node.design.acceptanceCriteria),
-        ...normalizeGameDesignDetails(node.design),
-        playtestSession: normalizePlaytestSession(node.design.playtestSession, board.nodes),
-        decisionLog: normalizeDecisionLog(node.design.decisionLog, board.nodes),
-        teamHandoff: normalizeTeamHandoff(node.design.teamHandoff),
-        review: normalizeReview(node.design.review),
-        delivery: normalizeDelivery(node.design.delivery),
-        analyticsEvents: normalizeAnalyticsEvents(node.design.analyticsEvents),
-        followUpTasks: normalizeFollowUpTasks(node.design.followUpTasks, board.nodes),
-        abTests: normalizeABTests(node.design.abTests),
-        liveOps: normalizeLiveOps(node.design.liveOps),
-        postLaunchReview: normalizePostLaunchReview(node.design.postLaunchReview, board.nodes)
-      }
-    } : node)
-  };
-}
 import { ERASE_PART } from "../lib/erase.js";
 import { CARD_LEVEL_W, cardLevel, levelPatch, loadCardLevel, saveCardLevel } from "../lib/card-levels.js";
 import InkLayer from "../components/InkLayer.jsx";
@@ -133,7 +113,6 @@ const SELECTION_DROP = { kind: "selection", id: null };
 // được, còn bấm chọn mà trượt thì mất cả vùng chọn, phải gom lại từ đầu.
 const PICK_RADIUS = 6;
 const MIN_GROUP_W = 160, MIN_GROUP_H = 120;
-const MIN_SCALE = 0.3, MAX_SCALE = 2.4;
 
 // Ba panel LỌC ở thanh đáy. Giao diện không nằm đây: nó là thiết lập, và nó bung
 // ra ngay dưới nút của mình trên đảo trên trái.
@@ -198,16 +177,6 @@ function TopMenu({ label, title, active, align = "left", wide, closeOnClick = tr
     </div>
   );
 }
-
-function computeZoom(currentBoard, rect, screenX, screenY, factor) {
-  const mx = screenX - rect.left, my = screenY - rect.top;
-  const oldScale = currentBoard.view.scale;
-  const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, oldScale * factor));
-  const cx = (mx - currentBoard.view.panX) / oldScale;
-  const cy = (my - currentBoard.view.panY) / oldScale;
-  return { ...currentBoard, view: { panX: mx - newScale * cx, panY: my - newScale * cy, scale: newScale } };
-}
-
 // Nét bút lượn — cùng ngôn ngữ icon với ToolRail.jsx: inline SVG theo
 // currentColor nên tự đúng ở nền sáng và nền tối.
 function IconSketch() {
@@ -350,8 +319,6 @@ export default function IdeaMap() {
   const [captureOpen, setCaptureOpen] = useState(false);
   const [captureText, setCaptureText] = useState("");
   const [isPanning, setIsPanning] = useState(false);
-  const [past, setPast] = useState([]);
-  const [future, setFuture] = useState([]);
   const [linkDraft, setLinkDraft] = useState(null);
   const [dropTargetId, setDropTargetId] = useState(null);
   const [chipDrag, setChipDrag] = useState(null);
@@ -474,39 +441,33 @@ export default function IdeaMap() {
   const canvasRef = useRef(null);
   const editDockRef = useRef(null);
   const searchInputRef = useRef(null);
-  const saveTimerRef = useRef(null);
   const boardRef = useRef(null);
   // Listener "paste" gắn-một-lần (deps: []) đóng gói `role` lúc mount, khi đó
   // board chưa tải xong nên role vẫn là null — phải đọc qua ref mới đúng.
   const roleRef = useRef(null);
-  const editingIdRef = useRef(null);
   // socket.id gửi kèm mỗi lần lưu để server loại chính mình khỏi broadcast
   // board:update; updatedAt của lần lưu/nhận gần nhất để so sánh gói đến
   // sau có mới hơn không (useLiveSync.js: isStaleUpdate).
   const socketRef = useRef(null);
-  const lastUpdatedAtRef = useRef(null);
-  // Bản board mà ta TIN là server đang giữ. Không phải `board`: board còn chứa
-  // những thay đổi mình vừa làm và chưa chắc đã lưu xong. Khi server từ chối một
-  // lần lưu vì có người chen vào, đây là mốc để tính "từ lần đồng bộ cuối tới
-  // giờ mình đã đổi những gì" rồi đắp đúng chừng ấy lên bản của họ
-  // (lib/rebase.js). Cập nhật ở ba chỗ: lúc tải xong, lúc lưu thành công, và
-  // lúc áp một board:update của người khác.
-  const serverBaseRef = useRef(null);
-  // true khi có một cú PUT đang bay. Không cho cú saveNow() thứ hai bay chồng
-  // lên: nó sẽ chốt `base`/`baseUpdatedAt` TỪ TRƯỚC khi cú thứ nhất về, nên nếu
-  // cú thứ nhất vừa thêm một thẻ (ví dụ dán ảnh) thì `base` của cú thứ hai vẫn
-  // chưa biết thẻ đó tồn tại. Khi đó cú thứ hai đụng conflict, rebaseBoard thấy
-  // thẻ đó có trên server nhưng không có trong base của mình → tưởng lầm là
-  // thẻ CỦA NGƯỜI KHÁC trùng id, tự cấp cho nó một id mới rồi giữ lại CẢ HAI —
-  // đúng hiện tượng "dán ảnh xong kéo rộng ra thì hiện thêm 1 ảnh cỡ gốc ở vị
-  // trí cũ". Xếp hàng ở đây để `base` luôn phản ánh đúng lần lưu gần nhất của
-  // CHÍNH MÌNH trước khi tính delta tiếp.
-  const savingRef = useRef(false);
-  const pendingSaveRef = useRef(null);
+  const historyRemoteRef = useRef(null);
+  const acceptRemoteHistory = useCallback((previous, incoming) => {
+    historyRemoteRef.current?.(previous, incoming);
+  }, []);
+  const {
+    adoptServerVersion, applyRemoteBoard, lastUpdatedAtRef, saveNow, saveDebounced,
+    retryBoardSave, restoreSnapshot: restoreSavedSnapshot, hasPendingSave, saveBlocked
+  } = useBoardPersistence({
+    boardId, boardRef, roleRef, socketRef, treeSizeRef,
+    setBoard, setSaveError, reconcileInk: inkLive.reconcile, acceptRemoteHistory
+  });
   const selectedIdsRef = useRef(selectedIds);
   const suppressContextMenuRef = useRef(false);
   const nudgeTimerRef = useRef(null);
   const nudgeBaseRef = useRef(null);
+  const { past, future, recordHistory, flushNudgeBurst, undo, redo, resetHistory, acceptRemoteHistory: updateHistory } = useBoardHistory({
+    board, setBoard, saveNow, setEditingId, nudgeBaseRef, nudgeTimerRef
+  });
+  historyRemoteRef.current = updateHistory;
   const spacePanRef = useRef(false);
   // Cử chỉ bấm nhiều lần lên một nét vẽ (2 lần đổi nét liền ↔ nét đứt). Phần
   // việc nằm ở handleViewportClickCapture bên dưới; hai cái ref phải khai ở đây
@@ -555,12 +516,11 @@ export default function IdeaMap() {
         const { id, name, role: r, updatedAt, ...boardData } = data;
         setRole(r);
         setBoardName(name);
-        lastUpdatedAtRef.current = updatedAt;
         // Board cũ chưa có palette → mặc định rỗng, để mọi chỗ đọc board.palette
         // không phải ?? [] khắp nơi.
-        const loaded = normalizeGameDesignBoard({ kind: "idea", palette: [], nextPaletteId: 1, drawings: [], nextDrawingId: 1, bg: null, grid: null, pack: null, ...boardData, view: { panX: 0, panY: 0, scale: 1 } });
+        const loaded = normalizeGameDesignBoard({ kind: "idea", palette: [], nextPaletteId: 1, drawings: [], nextDrawingId: 1, bg: null, grid: null, pack: null, ...boardData, updatedAt, view: { panX: 0, panY: 0, scale: 1 } });
         setBoard(loaded);
-        serverBaseRef.current = loaded;
+        adoptServerVersion(updatedAt, loaded);
       })
       .catch((e) => { if (!cancelled) setLoadError(e.code || "UNKNOWN"); });
     return () => { cancelled = true; };
@@ -667,7 +627,6 @@ export default function IdeaMap() {
   boardRef.current = board;
   useEffect(() => { roleRef.current = role; }, [role]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
-  useEffect(() => { editingIdRef.current = editingId; }, [editingId]);
   useEffect(() => { socketRef.current = socket; }, [socket]);
   useEffect(() => { sendSelection(Array.from(selectedIds)); }, [selectedIds, sendSelection]);
   useEffect(() => {
@@ -708,20 +667,9 @@ export default function IdeaMap() {
     });
   }, [board?.view, viewportSize, watcherCount, sendView]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Overlay nào đã được board thật bắt kịp phải bỏ NGAY. Giữ lại nghĩa là tiếp
-  // tục vẽ một bản tạm đè lên dữ liệu thật vừa nhận — nét nhấp nháy.
-  const applyRemoteBoard = useCallback((next) => {
-    const normalized = normalizeGameDesignBoard(next);
-    setBoard(normalized);
-    // Vừa áp bản của người khác → đó là bản mới nhất ta biết server đang giữ.
-    // Thiếu dòng này thì lần va chạm sau sẽ tính delta từ một mốc quá cũ và đắp
-    // lại cả những thay đổi đã được lưu từ lâu.
-    serverBaseRef.current = normalized;
-    inkLive.reconcile(normalized);
-  }, [inkLive.reconcile]);
 
   const { geomOverlay, textOverlay, sendLiveText, publishGeom, finishGeom } =
-    useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, applyRemoteBoard);
+    useLiveSync(socket, boardRef, lastUpdatedAtRef, applyRemoteBoard);
 
   // Toạ độ dùng để VẼ: board thật + vị trí tạm của người khác đang kéo. Mọi thứ
   // hiển thị (thẻ, khung, dây, tay cầm dây) phải đọc từ đây, còn handler tương
@@ -1011,136 +959,18 @@ export default function IdeaMap() {
 
   useEffect(() => { setMatchIdx(-1); }, [search]);
 
-  useEffect(() => {
-    const el = viewportRef.current;
-    if (!el) return;
-    function wheelHandler(e) {
-      // Dock/phần panel có vùng cuộn riêng: nếu canvas bắt wheel ở đây rồi
-      // preventDefault thì scrollbar vẫn hiện nhưng người dùng không thể cuộn
-      // form. Mọi panel nổi đều cùng luật này — di chuột trên panel chỉ cuộn
-      // nội dung của nó, không lia/zoom sa bàn nằm dưới.
-      if (e.target.closest(".outline-panel, .io-drawer, .tree-panel, .edit-dock")) return;
-      e.preventDefault();
-      const current = boardRef.current;
-      if (!current) return;
-      // Cuộn/zoom là người dùng tự lái camera → thôi bám theo người khác.
-      stopFollow();
-      // MỘT chỗ duy nhất quyết định "cú này là lia hay là phóng": lib/pointer-input.js.
-      // Trước đây chỗ này tự xử, và nó xử cùng một kiểu cho nút lăn với touchpad —
-      // nên trên laptop chỉ trượt nhẹ hai ngón là bảng phóng to vọt lên. Xem ghi
-      // chú đầu file đó về từng dấu hiệu nhận thiết bị.
-      const cmd = wheelReaderRef.current.read(e, wheelMode);
-      if (cmd.intent === "pan") {
-        const next = {
-          ...current,
-          view: { ...current.view, panX: current.view.panX - cmd.dx, panY: current.view.panY - cmd.dy }
-        };
-        setBoard(next);
-        return;
-      }
-      setBoard(computeZoom(current, el.getBoundingClientRect(), e.clientX, e.clientY, cmd.factor));
-    }
-    el.addEventListener("wheel", wheelHandler, { passive: false });
-    return () => el.removeEventListener("wheel", wheelHandler);
-    // stopFollow là useCallback ổn định (chỉ phụ thuộc sendFollow, cũng ổn
-    // định), nên thêm vào deps không làm listener gắn lại thêm lần nào.
-    // Re-chạy khi board tải xong: lúc mount đầu board còn null nên viewport
-    // chưa render (return "Đang tải…"), viewportRef.current == null và listener
-    // sẽ không được gắn nếu chỉ phụ thuộc [].
-    // wheelMode chỉ đổi khi người dùng bấm trong panel Giao diện — gắn lại
-    // listener khi đó thì rẻ, và rẻ hơn hẳn một ref nữa phải đồng bộ tay.
-  }, [board != null, stopFollow, wheelMode]);
+  const { handleMarqueeMouseDown, startPan } = useCanvasViewportGestures({
+    boardReady: board != null, boardRef, viewportRef, wheelReaderRef, wheelMode, stopFollow, setBoard,
+    edgeRoutesRef, frameCardSize, clearSelection, setMarquee, setIsPanning, suppressContextMenuRef,
+    selectedIds, selectedEdgeIds, selectedGroupIds, selectedDrawingIds,
+    setSelectedIds, setSelectedEdgeIds, setSelectedGroupIds, setSelectedDrawingIds
+  });
 
   // Đọc roleRef chứ không đọc `role`: saveNow là chốt chặn cuối, nó phải đúng kể
   // cả khi được gọi từ một closure cũ. Handler nào gắn với deps [] (listener
   // paste, .then() của readImageFile…) đóng gói `role` lúc mount — khi đó board
   // chưa tải xong nên role vẫn null và chốt chặn sẽ hở. Ref thì luôn mới.
   // Trần số lần ghép lại. Mỗi vòng đều tiến (mốc mới hơn, delta nhỏ đi), nên
-  // chạm trần nghĩa là có ai đó đang lưu liên tục nhanh hơn mình — lúc đó đi
-  // đường dự phòng còn hơn quay vòng mãi.
-  const MAX_REBASE_TRIES = 3;
-
-  // Cú lưu hiện tại (kể cả các vòng ghép lại của riêng nó) vừa xong — cho nó
-  // chạy tiếp cú đang xếp hàng, nếu có, với `base` giờ đã mới nhất.
-  function settleSave() {
-    savingRef.current = false;
-    if (pendingSaveRef.current == null) return;
-    const queued = pendingSaveRef.current;
-    pendingSaveRef.current = null;
-    saveNow(queued);
-  }
-
-  function saveNow(next, tries = 0) {
-    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-    if (roleRef.current === "viewer") return;
-    const arranged = arrangeLockedTrees(next, treeSizeRef.current);
-    if (arranged !== next) {
-      next = arranged;
-      setBoard(next);
-      boardRef.current = next;
-    }
-    // Đang có một cú PUT bay (kể cả đang ghép lại): không bắn cú mới đè lên nó.
-    // `base` chốt bên dưới sẽ là bản NGAY LÚC NÀY, mà cú đang bay có thể sắp
-    // thêm một thẻ mà `base` chưa biết — bắn chồng lên là hạt giống của đúng
-    // bug "dán ảnh rồi kéo rộng ra thì hiện thêm 1 ảnh cỡ gốc ở vị trí cũ" (xem
-    // ghi chú ở savingRef). Chỉ giữ lại BẢN MỚI NHẤT cần lưu; những state ở giữa
-    // không cần lưu riêng.
-    if (tries === 0) {
-      if (savingRef.current) { pendingSaveRef.current = next; return; }
-      savingRef.current = true;
-    }
-    // Mốc và bản nền được CHỐT ngay đây, trước khi cú PUT rời máy: nếu đọc lại ở
-    // trong .catch thì lúc đó chúng có thể đã bị một gói board:update chen vào
-    // sửa mất, và delta sẽ tính từ nhầm mốc.
-    const base = serverBaseRef.current;
-    const baseUpdatedAt = lastUpdatedAtRef.current;
-    saveBoard(boardId, next, socketRef.current?.id, baseUpdatedAt)
-      .then((res) => {
-        lastUpdatedAtRef.current = res.updatedAt;
-        serverBaseRef.current = next;
-        setSaveError(null);
-        settleSave();
-      })
-      .catch((e) => {
-        if (e.code !== "CONFLICT") { setSaveError(true); settleSave(); return; }
-        // Có người lưu chen vào giữa. Bản của họ đi kèm ngay trong lỗi; đắp
-        // những gì mình đã đổi (base → next) lên đó rồi lưu lại.
-        const server = e.board;
-        const rebased = server ? rebaseBoard(server, base, next) : null;
-        if (!rebased || tries >= MAX_REBASE_TRIES) {
-          // Đường dự phòng = đúng hành vi trước khi có chốt này: ghi đè. Không
-          // đẹp, nhưng nó bảo đảm việc thêm chốt không bao giờ làm mọi thứ TỆ
-          // HƠN trước — trường hợp xấu nhất chỉ là quay về mức cũ.
-          // Tới đây nghĩa là ghép ra một board không lành lặn (id trùng, dây mất
-          // đầu) hoặc đã thử quá số lần.
-          saveBoard(boardId, next, socketRef.current?.id)
-            .then((res) => {
-              lastUpdatedAtRef.current = res.updatedAt;
-              serverBaseRef.current = next;
-              setSaveError(null);
-              settleSave();
-            })
-            .catch(() => { setSaveError(true); settleSave(); });
-          return;
-        }
-        // Giữ nguyên camera của mình và giữ nguyên đúng cái thẻ đang gõ dở —
-        // cùng luật với lúc áp một board:update, nên không có hai cách trộn
-        // khác nhau để lệch nhau.
-        const local = boardRef.current;
-        const merged = normalizeGameDesignBoard(local ? mergeRemoteBoard(local, rebased, editingIdRef.current) : rebased);
-        lastUpdatedAtRef.current = server.updatedAt;
-        serverBaseRef.current = server;
-        setBoard(merged);
-        boardRef.current = merged;
-        inkLive.reconcile(merged);
-        saveNow(merged, tries + 1);
-      });
-  }
-
-  function saveDebounced(next) {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => saveNow(next), 500);
-  }
 
   function openSnapshots() {
     setSnapshotsOpen(true);
@@ -1150,52 +980,21 @@ export default function IdeaMap() {
     try {
       const result = await createBoardSnapshot(boardId, label);
       setSnapshots((current) => [result.snapshot, ...current].slice(0, 30));
-      setSaveError(null);
+      setSaveError((current) => current === true ? null : current);
     } catch (error) {
       setSaveError(true);
       throw error;
     }
   }
 
-  async function restoreSnapshot(snapshotId) {
-    try {
-      const result = await restoreBoardSnapshot(boardId, snapshotId);
-      const restored = normalizeGameDesignBoard({ ...result.board, view: boardRef.current?.view });
-      setBoard(restored);
-      boardRef.current = restored;
-      serverBaseRef.current = restored;
-      lastUpdatedAtRef.current = restored.updatedAt;
-      setPast([]);
-      setFuture([]);
-      inkLive.reconcile(restored);
-      setSaveError(null);
-    } catch (error) {
-      setSaveError(true);
-      throw error;
-    }
+  function restoreSnapshot(snapshotId) {
+    return restoreSavedSnapshot(
+      snapshotId,
+      t`Hãy xử lý thay đổi chưa lưu trước khi khôi phục snapshot.`,
+      resetHistory
+    );
   }
 
-  const MAX_HISTORY = 50;
-  function recordHistoryRaw(prevBoard) {
-    setPast((p) => {
-      const nextPast = [...p, prevBoard];
-      return nextPast.length > MAX_HISTORY ? nextPast.slice(nextPast.length - MAX_HISTORY) : nextPast;
-    });
-    setFuture([]);
-  }
-
-  function flushNudgeBurst() {
-    if (nudgeBaseRef.current == null) return;
-    const base = nudgeBaseRef.current;
-    nudgeBaseRef.current = null;
-    if (nudgeTimerRef.current) { clearTimeout(nudgeTimerRef.current); nudgeTimerRef.current = null; }
-    recordHistoryRaw(base);
-  }
-
-  function recordHistory(prevBoard) {
-    flushNudgeBurst();
-    recordHistoryRaw(prevBoard);
-  }
 
   function commitAndSave(next, opts) {
     if (!opts || opts.historical !== false) recordHistory(board);
@@ -1215,50 +1014,6 @@ export default function IdeaMap() {
     saveNow(next);
   }, [frameCardSize]);
 
-  // Hoàn tác / làm lại chỉ trả lại NỘI DUNG bảng, KHÔNG trả lại chỗ đang xem.
-  //
-  // `view` (pan + zoom) nằm chung trong board vì nó cũng được lưu lên server,
-  // nhưng nó không phải thứ vừa được sửa — nó là chỗ mình đang đứng nhìn. Trả
-  // lại nó cùng với nội dung thì lùi một bước là màn hình nhảy về chỗ đứng lúc
-  // làm việc đó, và người dùng mất phương hướng đúng vào lúc cần nhìn rõ nhất
-  // cái vừa bị lùi. Lùi vài bước liên tiếp thì mỗi bước nhảy một chỗ.
-  //
-  // Áp cho cả `undo` lẫn `redo`, và cả nhánh gộp phím mũi tên — ba đường vào
-  // cùng một chỗ ra, không để đường nào sót lại hành vi cũ.
-  function keepView(snapshot) {
-    return board?.view ? { ...snapshot, view: board.view } : snapshot;
-  }
-
-  function undo() {
-    if (nudgeBaseRef.current != null) {
-      const base = keepView(nudgeBaseRef.current);
-      nudgeBaseRef.current = null;
-      if (nudgeTimerRef.current) { clearTimeout(nudgeTimerRef.current); nudgeTimerRef.current = null; }
-      setFuture((f) => [board, ...f]);
-      setEditingId(null);
-      setBoard(base);
-      saveNow(base);
-      return;
-    }
-    if (past.length === 0) return;
-    const prev = keepView(past[past.length - 1]);
-    setPast((p) => p.slice(0, -1));
-    setFuture((f) => [board, ...f]);
-    setEditingId(null);
-    setBoard(prev);
-    saveNow(prev);
-  }
-
-  function redo() {
-    if (nudgeBaseRef.current != null) { flushNudgeBurst(); return; }
-    if (future.length === 0) return;
-    const nextState = keepView(future[0]);
-    setFuture((f) => f.slice(1));
-    setPast((p) => [...p, board]);
-    setEditingId(null);
-    setBoard(nextState);
-    saveNow(nextState);
-  }
 
   useEffect(() => {
     function onKeyDown(e) {
@@ -1523,7 +1278,7 @@ export default function IdeaMap() {
   function addGameDesignCard(type = "mechanic") {
     if (board.kind !== "game-design" || role === "viewer") return;
     const rect = viewportRef.current.getBoundingClientRect();
-    const p = toCanvasPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+    const p = clientToCanvas(rect.left + rect.width / 2, rect.top + rect.height / 2);
     const node = createGameDesignNode(board.nextNodeId, p.x - CARD_W / 2, p.y - 55, type);
     const next = { ...board, nodes: [...board.nodes, node], nextNodeId: node.id + 1 };
     recordHistory(board); setBoard(next); boardRef.current = next; saveNow(next); setDesignEditId(node.id);
@@ -1565,19 +1320,6 @@ export default function IdeaMap() {
     recordHistory(current); setBoard(next); boardRef.current = next; saveNow(next);
   }
 
-  // Điểm trên bảng (toạ độ canvas) ứng với một điểm trên màn hình. Đọc qua
-  // boardRef chứ không phải `board`: hàm này được gọi từ trong listener của một
-  // cú kéo dài vài giây, mà closure của listener giữ `board` của lượt render lúc
-  // mousedown — camera có thể đã đổi từ lúc đó.
-  function toCanvasPoint(clientX, clientY) {
-    const rect = viewportRef.current.getBoundingClientRect();
-    const view = boardRef.current.view;
-    return {
-      x: (clientX - rect.left - view.panX) / view.scale,
-      y: (clientY - rect.top - view.panY) / view.scale
-    };
-  }
-
   // Cùng kỷ luật refs-only như commitStroke (xem ghi chú dài ở đó): tô một cái
   // khung mất vài giây, board:update của người khác về giữa chừng mà mình dựng
   // `next` từ `board` đóng gói lúc mousedown thì cú PUT sau đó đè mất thay đổi
@@ -1612,7 +1354,7 @@ export default function IdeaMap() {
   // `- 40` là nửa chiều cao ước lượng của thẻ, giữ nguyên con số mà nút "thêm ở
   // giữa màn hình" cũ đang dùng.
   function placeNodeAt(clientX, clientY) {
-    const p = toCanvasPoint(clientX, clientY);
+    const p = clientToCanvas(clientX, clientY);
     createNode(p.x - CARD_LEVEL_W[cardLevelPref] / 2, p.y - 40, levelPatch(cardLevelPref));
     enterMode("select");
   }
@@ -1624,13 +1366,13 @@ export default function IdeaMap() {
   const MIN_DRAWN_GROUP = 60;
   function startPlaceGroup(e) {
     e.preventDefault();
-    const a = toCanvasPoint(e.clientX, e.clientY);
+    const a = clientToCanvas(e.clientX, e.clientY);
     let last = null;
     // Chỉ việc VẼ khung nháp bị bóp theo khung hình; `last` cập nhật ở mọi nhịp
     // chuột nên lúc thả không mất vị trí cuối dù có cancel() lần vẽ còn treo.
     const paint = rafThrottle((rect) => setPlaceDraft(rect));
     function onMove(ev) {
-      const b = toCanvasPoint(ev.clientX, ev.clientY);
+      const b = clientToCanvas(ev.clientX, ev.clientY);
       last = {
         x: Math.min(a.x, b.x), y: Math.min(a.y, b.y),
         w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y)
@@ -2196,10 +1938,6 @@ export default function IdeaMap() {
     e.preventDefault();
   }
 
-  function rectsOverlap(x1, y1, w1, h1, x2, y2, w2, h2) {
-    return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
-  }
-
   // `sourceId` quyết định dây nối, `anchorId` quyết định chỗ đặt. Hai thứ này
   // tách nhau vì Shift+Enter tạo thẻ CÙNG CẤP: dây đi từ thẻ cha, nhưng vị trí
   // phải nằm ngay dưới thẻ đang chọn chứ không phải dưới cha.
@@ -2489,12 +2227,15 @@ export default function IdeaMap() {
 
   function saveNodeEdit(id, fields) {
     setEditingId(null);
-    commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, ...fields } : n)) });
+    if (Object.keys(fields).length === 0) return;
+    const current = boardRef.current;
+    commitAndSave({ ...current, nodes: current.nodes.map((n) => (n.id === id ? { ...n, ...fields } : n)) });
   }
 
   function saveNodeEditAndNext(id, fields) {
     setEditingId(null);
-    const edited = { ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, ...fields } : n)) };
+    const current = boardRef.current;
+    const edited = { ...current, nodes: current.nodes.map((n) => (n.id === id ? { ...n, ...fields } : n)) };
     createLinkedNode(id, "right", edited);
   }
 
@@ -2960,119 +2701,6 @@ export default function IdeaMap() {
       }
       // Bấm-không-kéo: không lưu. Bản cũ vẫn PUT cả board (kèm ảnh base64) rồi
       // bắt server phát board:update cho mọi người, chỉ vì một cú click chọn thẻ.
-    }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }
-
-  function handleMarqueeMouseDown(e) {
-    const rect = viewportRef.current.getBoundingClientRect();
-    const startScreenX = e.clientX, startScreenY = e.clientY;
-    let dragging = false;
-    const THRESHOLD = 4;
-    // Giữ Ctrl/Cmd lúc bắt đầu quét = quét thêm vào lựa chọn đang có. Chốt lại
-    // mốc ngay đây, không đọc `selectedIds` trong onMove: onMove là closure của
-    // lần render này nên `selectedIds` ở đó cũng là bản cũ, nhưng đọc từ biến
-    // này thì rõ ý là "lựa chọn lúc bắt đầu quét" chứ không phải nhìn nhầm.
-    const additive = e.ctrlKey || e.metaKey;
-    const baseNodeIds = additive ? selectedIds : EMPTY_SET;
-    const baseEdgeIds = additive ? selectedEdgeIds : EMPTY_SET;
-    const baseGroupIds = additive ? selectedGroupIds : EMPTY_SET;
-    const baseDrawingIds = additive ? selectedDrawingIds : EMPTY_SET;
-
-    function toCanvas(clientX, clientY) {
-      const view = boardRef.current.view;
-      return { x: (clientX - rect.left - view.panX) / view.scale, y: (clientY - rect.top - view.panY) / view.scale };
-    }
-
-    function hitIdsFor(m) {
-      return boardRef.current.nodes
-        .filter((n) => {
-          const { w, h } = frameCardSize(n.id);
-          return rectsOverlap(m.x, m.y, m.w, m.h, n.x, n.y, w, h);
-        })
-        .map((n) => n.id);
-    }
-
-    // Khung dính khi vùng quét CHẠM nó, cùng luật với thẻ — không đòi quét trùm
-    // kín. Khung thường to hơn cả khung nhìn, đòi trùm kín thì gần như không bao
-    // giờ chọn được bằng chuột.
-    function groupHitIdsFor(m) {
-      return boardRef.current.groups
-        .filter((g) => rectsOverlap(m.x, m.y, m.w, m.h, g.x, g.y, g.w, g.h))
-        .map((g) => g.id);
-    }
-
-    function edgeHitIdsFor(m) {
-      return boardRef.current.edges
-        .filter((edge) => routeIntersectsRect(edgeRoutesRef.current.get(edge.id), m))
-        .map((edge) => edge.id);
-    }
-
-    const onMove = rafThrottle((ev) => {
-      if (!dragging && Math.hypot(ev.clientX - startScreenX, ev.clientY - startScreenY) > THRESHOLD) dragging = true;
-      if (!dragging) return;
-      const a = toCanvas(startScreenX, startScreenY);
-      const b = toCanvas(ev.clientX, ev.clientY);
-      const m = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
-      setMarquee(m);
-      // Giữ nguyên Set cũ khi tập chọn không đổi: một Set mới ở mỗi nhịp chuột
-      // sẽ kích hoạt effect ghi URL và effect phát selection lên socket dù
-      // chẳng có gì thay đổi.
-      setSelectedIds((prev) => unionIdSet(prev, baseNodeIds, hitIdsFor(m)));
-      setSelectedEdgeIds((prev) => unionIdSet(prev, baseEdgeIds, edgeHitIdsFor(m)));
-      setSelectedGroupIds((prev) => unionIdSet(prev, baseGroupIds, groupHitIdsFor(m)));
-      setSelectedDrawingIds((prev) => unionIdSet(prev, baseDrawingIds, drawingsInRect(boardRef.current.drawings || [], m)));
-    });
-    function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.cancel();
-      // Bấm-không-kéo trên nền trống = bỏ chọn hết, NHƯNG có Ctrl thì không:
-      // ở đó Ctrl nghĩa là "đang cộng dồn lựa chọn", trượt tay bấm nhầm nền
-      // trống mà mất cả vùng chọn vừa gom là hỏng việc.
-      if (!dragging) { if (!additive) clearSelection(); return; }
-      setMarquee(null);
-    }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }
-
-  function startPan(e) {
-    e.preventDefault();
-    // Tự lia nền → thôi bám theo người khác. Đặt ở đây (mousedown) chứ không
-    // trong onMove: người dùng vừa chạm vào là dừng ngay, không phải đợi camera
-    // giằng co với vòng bám qua vài khung hình.
-    stopFollow();
-    const startX = e.clientX, startY = e.clientY;
-    const startPanX = board.view.panX, startPanY = board.view.panY;
-    let dragging = false;
-    const THRESHOLD = 4;
-
-    const onMove = rafThrottle((ev) => {
-      if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) {
-        dragging = true;
-        setIsPanning(true);
-      }
-      if (!dragging) return;
-      const nx = startPanX + (ev.clientX - startX);
-      const ny = startPanY + (ev.clientY - startY);
-      setBoard((prev) => ({ ...prev, view: { ...prev.view, panX: nx, panY: ny } }));
-    });
-    function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.flush();
-      if (dragging) {
-        setIsPanning(false);
-        // KHÔNG lưu: lia sa bàn chỉ đổi camera, mà camera là riêng từng người
-        // (api.js đã bỏ `view` khỏi payload). Lần PUT ở đây không ghi được gì,
-        // nhưng vẫn đẩy cả board — kể cả ảnh base64 — lên server rồi bắt server
-        // phát board:update cho MỌI người khác. Mỗi cú lia nền của một người là
-        // một cú giật trên màn hình tất cả những người còn lại.
-        suppressContextMenuRef.current = true;
-        setTimeout(() => { suppressContextMenuRef.current = false; }, 0);
-      }
     }
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
@@ -3787,17 +3415,7 @@ export default function IdeaMap() {
    * mọi phần sau của cú kéo không phải nghĩ tới `locked` nữa.
    */
   function selectionDragSet(base, groupIds, nodeIds) {
-    const owners = treeLockOwners(base, frameCardSize);
-    const groups = base.groups.filter((g) => groupIds.has(g.id) && !g.locked && !owners.has(edgeKey("group", g.id)));
-    const nodeSet = new Set();
-    base.nodes.forEach((n) => { if (nodeIds.has(n.id) && !n.locked && !owners.has(edgeKey("node", n.id))) nodeSet.add(n.id); });
-    const lockedById = new Map(base.nodes.map((n) => [n.id, !!n.locked || owners.has(edgeKey("node", n.id))]));
-    groups.forEach((g) => {
-      nodesInFrame(base.nodes, g, frameCardSize).forEach((id) => {
-        if (!lockedById.get(id)) nodeSet.add(id);
-      });
-    });
-    return { groupIds: groups.map((g) => g.id), nodeIds: Array.from(nodeSet) };
+    return movableSelection(base, groupIds, nodeIds, frameCardSize);
   }
 
   function applyToSelection(patch) {
@@ -4152,6 +3770,10 @@ export default function IdeaMap() {
   }
 
   function handleImportConfirm() {
+    if (hasPendingSave()) {
+      alert(t`Hãy xử lý thay đổi chưa lưu trước khi nhập JSON.`);
+      return;
+    }
     try {
       const payload = JSON.parse(ioText);
       const parsed = payload?.format === "game-design-board-export/v1" && payload.board ? payload.board : payload;
@@ -4725,56 +4347,18 @@ export default function IdeaMap() {
           </TopMenu>
         </div>
 
-        {board.kind === "game-design" && <div className="island-row gd-tools-row">
-          {board.kind === "game-design" && <button
-            type="button"
-            className="btn ghost gd-tools-toggle"
-            aria-expanded={toolsOpen}
-            aria-controls="game-design-toolbar"
-            title={toolsOpen ? t`Thu gọn công cụ thiết kế` : t`Mở công cụ thiết kế`}
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={() => workspace.update({ toolsOpen: !toolsOpen })}
-          ><Trans>Thiết kế</Trans> <span aria-hidden="true">{toolsOpen ? "▾" : "▸"}</span></button>}
-
-          {board.kind === "game-design" && <div id="game-design-toolbar" className="gd-toolbar-actions" hidden={!toolsOpen}>
-
-          {board.kind === "game-design" && <button
-            type="button"
-            className={"btn ghost gd-brief-trigger" + (briefOpen ? " active" : "")}
-            title="Mở Game brief"
-            onClick={() => {
-              setDesignEditId(null);
-              setSelectedEdgeIds(EMPTY_SET);
-              setFlowOpen(false);
-              setHandoffOpen(false);
-              setDecisionTimelineOpen(false);
-              setBriefOpen(true);
+        {board.kind === "game-design" && (
+          <GameDesignToolbar
+            open={toolsOpen}
+            activePanel={inspector?.type}
+            onToggle={() => workspace.update({ toolsOpen: !toolsOpen })}
+            onOpenPanel={(type) => {
+              if (type !== "playtests") setSelectedEdgeIds(EMPTY_SET);
+              if (type === "impact") setImpactCardId(null);
+              workspace.update({ inspector: { type } });
             }}
-          >Game brief</button>}
-
-          {board.kind === "game-design" && <button
-            type="button"
-            className={"btn ghost gd-brief-trigger" + (flowOpen ? " active" : "")}
-            title="Mở Game flow"
-            onClick={() => {
-              setDesignEditId(null);
-              setSelectedEdgeIds(EMPTY_SET);
-              setBriefOpen(false);
-              setHandoffOpen(false);
-              setDecisionTimelineOpen(false);
-              setFlowOpen(true);
-            }}
-          >Game flow</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (balanceOpen ? " active" : "")} title="Mở Balance sheet" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setBalanceOpen(true); }}>Balance</button>}
-
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (handoffOpen ? " active" : "")} title="Mở Team handoff" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setDecisionTimelineOpen(false); setHandoffOpen(true); }}>Handoff</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (decisionTimelineOpen ? " active" : "")} title="Mở Decision timeline" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(true); }}>Decisions</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (insightsOpen ? " active" : "")} title="Mở Game Design insights" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setInsightsOpen(true); }}>Insights</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (impactOpen ? " active" : "")} title="Mở dependency impact map" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setInsightsOpen(false); setReportsOpen(false); setImpactCardId(null); setImpactOpen(true); }}>Impact</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (playtestsOpen ? " active" : "")} onClick={() => { setDesignEditId(null); setPlaytestsOpen(true); }}>Playtests</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (reportsOpen ? " active" : "")} title="Mở Report Center" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setReportsOpen(true); }}>Reports</button>}
-          </div>}
-        </div>}
+          />
+        )}
 
         {activeFilterCount > 0 && (
           <div className="fb-tail">
@@ -4936,14 +4520,18 @@ export default function IdeaMap() {
           cả hai đều là thao tác lên TRẠNG THÁI khung nhìn/bảng chứ không tạo ra
           nội dung, nên chúng thuộc về đáy màn hình, không phải mặt tiền.
           Chỗ này trước đây trống hoàn toàn. */}
-      <div className="island bl">
+      <div className={"island bl" + (saveError ? " has-save-error" : "")}>
         <div className="island-row">
           <button type="button" className="island-btn" data-mutating onClick={undo} disabled={past.length === 0} title={t`Hoàn tác (Ctrl+Z)`}><IconUndo /></button>
           <button type="button" className="island-btn" data-mutating onClick={redo} disabled={future.length === 0} title={t`Làm lại (Ctrl+Shift+Z)`}><IconRedo /></button>
           {saveError && (
-            <span style={{ fontSize: 11, color: "var(--danger)", paddingRight: 4 }}>
-              <Trans>Không lưu được lên server.</Trans>
-            </span>
+            <div className="board-save-feedback" role="status">
+              {saveError === "conflict" ? <Trans id="board.save.conflict">Board có xung đột. Bản nháp chưa được lưu.</Trans> : <Trans>Không lưu được lên server.</Trans>}
+              {saveBlocked && <>
+                <button type="button" onClick={retryBoardSave}><Trans id="board.save.retry">Thử lưu lại</Trans></button>
+                <button type="button" onClick={exportVersionedJson}><Trans id="board.save.download">Tải bản nháp JSON</Trans></button>
+              </>}
+            </div>
           )}
         </div>
       </div>
@@ -5301,50 +4889,17 @@ export default function IdeaMap() {
           ><MiniMapIcon /></button>
         </div>
 
-        {outlineOpen && (() => {
-          const outline = buildOutline(board, frameCardSize);
-          const nodeById = new Map(board.nodes.map((n) => [n.id, n]));
-          const row = (id) => {
-            const n = nodeById.get(id);
-            if (!n) return null;
-            const s = statusById(board, n.statusId);
-            return (
-              <button key={id} className="op-row" onClick={() => jumpToCard(id)}>
-                <span className="dot" style={{ background: s ? colorVar(s.color) : "transparent" }}></span>
-                <span className="op-title">{n.title}</span>
-              </button>
-            );
-          };
-          return (
-            <div className="outline-panel" onMouseDown={(e) => e.stopPropagation()}>
-              <div className="op-head">
-                <span className="op-count mono">{board.nodes.length}</span>
-                <button className="btn ghost small" onClick={exportMarkdown}><Trans>Xuất MD</Trans></button>
-                <button className="btn ghost small" onClick={exportPng}><Trans>Xuất PNG</Trans></button>
-                <button className="op-close" onClick={() => setOutlineOpen(false)}>×</button>
-              </div>
-              <div className="op-body">
-                {outline.frames.map(({ group, nodeIds }) => (
-                  <div key={"g" + group.id} className="op-section">
-                    <button className="op-section-title" onClick={() => jumpToGroup(group)}>
-                      {group.title} <span className="mono op-n">{nodeIds.length}</span>
-                    </button>
-                    {nodeIds.map(row)}
-                  </div>
-                ))}
-                {Array.from(outline.byStatus.entries()).map(([key, ids]) => (
-                  <div key={"s" + key} className="op-section">
-                    <div className="op-section-title static">
-                      {key === "none" ? t`Khác` : (statusById(board, key)?.name ?? t`Khác`)}
-                      {" "}<span className="mono op-n">{ids.length}</span>
-                    </div>
-                    {ids.map(row)}
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
+        {outlineOpen && (
+          <BoardOutlinePanel
+            board={board}
+            frameCardSize={frameCardSize}
+            jumpToCard={jumpToCard}
+            jumpToGroup={jumpToGroup}
+            exportMarkdown={exportMarkdown}
+            exportPng={exportPng}
+            onClose={() => setOutlineOpen(false)}
+          />
+        )}
 
         {/* Bảng Xếp cây — dock bên phải như bảng thuộc tính của Figma. Né sang
             trái khi Mục lục đang mở, hai bảng cùng neo mép phải. */}
@@ -5387,7 +4942,7 @@ export default function IdeaMap() {
             {reportsOpen && board.kind === "game-design" && <GameDesignReportsPanel board={board} boardName={boardName} onClose={() => setReportsOpen(false)} outsideRef={editDockRef} />}
             {designEditId != null && board.kind === "game-design" && (() => {
               const node = board.nodes.find((n) => n.id === designEditId);
-              return node ? <GameDesignPanel node={node} nodes={board.nodes} balance={board.gameDesignBalance} canEdit={role !== "viewer"} onSave={saveDesignNode} onDuplicate={() => duplicateDesignNode(node.id)} onCreateRelated={(type, relation) => createRelatedDesignNode(node.id, type, relation)} onClose={() => setDesignEditId(null)} onOpenBalance={() => { setDesignEditId(null); setBalanceOpen(true); }} onOpenImpact={() => { setDesignEditId(null); setImpactCardId(node.id); setImpactOpen(true); }} outsideRef={editDockRef} /> : null;
+              return node ? <GameDesignPanel key={node.id} node={node} nodes={board.nodes} balance={board.gameDesignBalance} canEdit={role !== "viewer"} onSave={saveDesignNode} onDuplicate={() => duplicateDesignNode(node.id)} onCreateRelated={(type, relation) => createRelatedDesignNode(node.id, type, relation)} onClose={() => setDesignEditId(null)} onOpenBalance={() => { setDesignEditId(null); setBalanceOpen(true); }} onOpenImpact={() => { setDesignEditId(null); setImpactCardId(node.id); setImpactOpen(true); }} outsideRef={editDockRef} /> : null;
             })()}
             {board.kind === "game-design" && selectedEdgeIds.size === 1 && (() => {
               const edge = board.edges.find((item) => item.id === [...selectedEdgeIds][0]);
@@ -5713,193 +5268,6 @@ export default function IdeaMap() {
       {inviteOpen && role === "owner" && (
         <InviteModal boardId={boardId} onClose={() => setInviteOpen(false)} />
       )}
-    </div>
-  );
-}
-
-function LineSolidIcon() {
-  return <svg viewBox="0 0 20 12" width="20" height="12"><line x1="2" y1="6" x2="18" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>;
-}
-function LineDashedIcon() {
-  return <svg viewBox="0 0 20 12" width="20" height="12"><line x1="2" y1="6" x2="18" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="4 3" /></svg>;
-}
-function LineUndirectedIcon() {
-  return (
-    <svg viewBox="0 0 20 12" width="20" height="12">
-      <line x1="3" y1="6" x2="17" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <circle cx="3" cy="6" r="1.8" fill="currentColor" />
-      <circle cx="17" cy="6" r="1.8" fill="currentColor" />
-    </svg>
-  );
-}
-function LineDirectedIcon() {
-  return (
-    <svg viewBox="0 0 20 12" width="20" height="12">
-      <line x1="2" y1="6" x2="14" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M12 2l5 4-5 4" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-function ReverseIcon() {
-  return (
-    <svg viewBox="0 0 20 16" width="20" height="16">
-      <path d="M2 5h13M11 2l3 3-3 3" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M18 11H5M9 8l-3 3 3 3" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function PaletteEditor({ x, y, hex, onPick, onDelete, onClose }) {
-  const { t } = useLingui();
-  const ref = useRef(null);
-  const inputRef = useRef(null);
-  const pos = usePopoverPosition(ref, x, y);
-  useCloseOnOutside(ref, onClose);
-
-  // Listener "change" thật, không dùng onChange của React: React map onChange
-  // của input màu sang sự kiện "input", tức là mỗi bước kéo trong bộ chọn màu
-  // thành một entry undo + một lần lưu. "change" chỉ nổ một lần khi chốt màu.
-  useEffect(() => {
-    const el = inputRef.current;
-    const handler = (e) => onPick(e.target.value);
-    el.addEventListener("change", handler);
-    return () => el.removeEventListener("change", handler);
-  }, [onPick]);
-
-  return (
-    <div className="badge-editor pal-editor" ref={ref} style={pos} onMouseDown={(e) => e.stopPropagation()}>
-      <div className="eyebrow">{onDelete ? t`Sửa màu` : t`Màu mới`}</div>
-      <input className="pal-input" type="color" defaultValue={hex} ref={inputRef} />
-      {onDelete && (
-        <button className="em-delete" onClick={onDelete}>🗑 <Trans>Xoá màu</Trans></button>
-      )}
-    </div>
-  );
-}
-
-function EdgeMenu({ x, y, edge, onStyleToggle, onArrowToggle, onReverse, onLabel, onColorChange, onDelete, onClose }) {
-  const { t } = useLingui();
-  const ref = useRef(null);
-  const pos = usePopoverPosition(ref, x, y);
-  useCloseOnOutside(ref, onClose);
-
-  // Guard against a redundant second commit: Enter commits immediately, and a
-  // later blur (e.g. clicking elsewhere) would otherwise push the same value
-  // again. Comparing against the (by-then-updated) `edge.label` prop makes the
-  // second call a no-op instead of a duplicate history entry.
-  function commitLabel(rawValue) {
-    const next = rawValue.trim();
-    const prev = (edge.label ?? "").trim();
-    if (next === prev) return;
-    onLabel(rawValue);
-  }
-
-  const isDashed = edge.style === "dashed";
-  const isDirected = edge.arrow !== "none";
-
-  return (
-    <div className="badge-editor edge-menu" ref={ref} style={pos} onMouseDown={(e) => e.stopPropagation()}>
-      <input
-        className="be-name"
-        type="text"
-        autoFocus
-        defaultValue={edge.label ?? ""}
-        placeholder={t`Nhãn edge…`}
-        onKeyDown={(e) => { if (e.key === "Enter") commitLabel(e.currentTarget.value); }}
-        onBlur={(e) => commitLabel(e.target.value)}
-      />
-
-      <div className="em-section">
-        <div className="eyebrow"><Trans>Kiểu nét</Trans></div>
-        <div className="em-toggle-group">
-          <button className={"em-icon-btn" + (!isDashed ? " on" : "")} onClick={() => isDashed && onStyleToggle()} title={t`Nét liền`}>
-            <LineSolidIcon />
-          </button>
-          <button className={"em-icon-btn" + (isDashed ? " on" : "")} onClick={() => !isDashed && onStyleToggle()} title={t`Nét đứt`}>
-            <LineDashedIcon />
-          </button>
-        </div>
-      </div>
-
-      <div className="em-section">
-        <div className="eyebrow"><Trans>Hướng</Trans></div>
-        <div className="em-toggle-group">
-          <button className={"em-icon-btn" + (!isDirected ? " on" : "")} onClick={() => isDirected && onArrowToggle()} title={t`Vô hướng`}>
-            <LineUndirectedIcon />
-          </button>
-          <button className={"em-icon-btn" + (isDirected ? " on" : "")} onClick={() => !isDirected && onArrowToggle()} title={t`Có hướng`}>
-            <LineDirectedIcon />
-          </button>
-          {isDirected && (
-            <button className="em-icon-btn" onClick={onReverse} title={t`Đảo chiều`}>
-              <ReverseIcon />
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="em-section">
-        <div className="eyebrow"><Trans>Màu dây</Trans></div>
-        <div className="be-swatches">
-          <button className={"be-swatch dot-empty" + (!edge.color ? " on" : "")} onClick={() => onColorChange(null)} title={t`Mặc định`} />
-          {BADGE_PALETTE.map((token) => (
-            <button key={token} className={"be-swatch" + (edge.color === token ? " on" : "")} style={{ background: colorVar(token) }} onClick={() => onColorChange(token)} title={token} />
-          ))}
-        </div>
-      </div>
-
-      <button className="em-delete" onClick={onDelete}>🗑 <Trans>Xoá cạnh</Trans></button>
-    </div>
-  );
-}
-
-function CommentsPopover({ x, y, comments, onAdd, onDelete, onClose }) {
-  const { t } = useLingui();
-  const ref = useRef(null);
-  const pos = usePopoverPosition(ref, x, y);
-  useCloseOnOutside(ref, onClose);
-  const [text, setText] = useState("");
-
-  function timeAgo(iso) {
-    const diffSec = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-    if (diffSec < 60) return t`vừa xong`;
-    if (diffSec < 3600) { const m = Math.floor(diffSec / 60); return t`${m} phút trước`; }
-    if (diffSec < 86400) { const h = Math.floor(diffSec / 3600); return t`${h} giờ trước`; }
-    const d = Math.floor(diffSec / 86400);
-    return t`${d} ngày trước`;
-  }
-
-  function submit() {
-    if (!text.trim()) return;
-    if (onAdd(text)) setText("");
-  }
-
-  return (
-    <div className="badge-editor comments-pop" ref={ref} style={pos} onMouseDown={(e) => e.stopPropagation()}>
-      {comments.length > 0 && (
-        <div className="cmt-list">
-          {comments.map((c, i) => (
-            <div className="cmt-item" key={i}>
-              <div className="cmt-item-head">
-                <span className="cmt-author">{c.author}</span>
-                <span className="cmt-time">{timeAgo(c.at)}</span>
-                <button className="cmt-delete" onClick={() => onDelete(i)} title={t`Xoá`}>×</button>
-              </div>
-              <div className="cmt-text">{c.text}</div>
-            </div>
-          ))}
-        </div>
-      )}
-      <textarea
-        autoFocus
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder={t`Viết bình luận…`}
-        onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); submit(); } }}
-      />
-      <div className="cmt-actions">
-        <button className="save-btn" onClick={submit}><Trans>Gửi</Trans></button>
-      </div>
     </div>
   );
 }

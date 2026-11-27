@@ -1344,3 +1344,21 @@ msgstr "Incorrect username or password."
 #: src/components/LoginGate.jsx
 msgid "Thử sai quá nhiều lần, đợi vài phút rồi thử lại."
 msgstr "Too many failed attempts. Wait a few minutes and try again."
+
+#. js-lingui-explicit-id
+msgid "board.save.conflict"
+msgstr "Board changes conflict. Your draft has not been saved."
+
+#. js-lingui-explicit-id
+msgid "board.save.retry"
+msgstr "Retry saving"
+
+#. js-lingui-explicit-id
+msgid "board.save.download"
+msgstr "Download draft JSON"
+
+msgid "Hãy xử lý thay đổi chưa lưu trước khi nhập JSON."
+msgstr "Resolve unsaved changes before importing JSON."
+
+msgid "Hãy xử lý thay đổi chưa lưu trước khi khôi phục snapshot."
+msgstr "Resolve unsaved changes before restoring a snapshot."

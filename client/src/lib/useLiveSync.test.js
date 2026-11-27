@@ -29,23 +29,16 @@ test("isStaleUpdate: no local timestamp yet accepts any incoming update", () => 
 test("mergeRemoteBoard: takes incoming content but keeps local view (camera stays private)", () => {
   const local = { nodes: [], edges: [], view: { panX: 10, panY: 20, scale: 1 } };
   const incoming = { nodes: [{ id: 1, title: "a" }], edges: [], view: { panX: 999, panY: 999, scale: 9 } };
-  const merged = mergeRemoteBoard(local, incoming, null);
+  const merged = mergeRemoteBoard(local, incoming);
   assert.deepEqual(merged.nodes, [{ id: 1, title: "a" }]);
   assert.deepEqual(merged.view, { panX: 10, panY: 20, scale: 1 });
 });
 
-test("mergeRemoteBoard: preserves the node currently being edited locally, takes the rest", () => {
-  const local = { nodes: [{ id: 1, title: "typing…" }, { id: 2, title: "old" }], view: {} };
-  const incoming = { nodes: [{ id: 1, title: "SHOULD NOT WIN" }, { id: 2, title: "new from remote" }], view: {} };
-  const merged = mergeRemoteBoard(local, incoming, 1);
-  assert.deepEqual(merged.nodes, [{ id: 1, title: "typing…" }, { id: 2, title: "new from remote" }]);
-});
-
-test("mergeRemoteBoard: editingId with no matching local node just takes incoming as-is", () => {
-  const local = { nodes: [{ id: 2, title: "old" }], view: {} };
-  const incoming = { nodes: [{ id: 2, title: "new" }], view: {} };
-  const merged = mergeRemoteBoard(local, incoming, 999);
-  assert.deepEqual(merged.nodes, [{ id: 2, title: "new" }]);
+test("mergeRemoteBoard: adopts changes to the open card while the form owns the typing draft", () => {
+  const local = { nodes: [{ id: 1, title: "original", x: 10 }], view: {} };
+  const incoming = { nodes: [{ id: 1, title: "peer title", x: 25 }], view: {} };
+  const merged = mergeRemoteBoard(local, incoming);
+  assert.deepEqual(merged.nodes, incoming.nodes);
 });
 
 test("projectGeometry strips content fields, keeps only position/size", () => {

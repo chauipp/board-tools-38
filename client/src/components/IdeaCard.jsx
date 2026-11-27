@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { colorVar, contrastInk } from "../lib/badges.js";
 import { cardLevel } from "../lib/card-levels.js";
@@ -45,6 +45,7 @@ function IdeaCard({
   const [desc, setDesc] = useState(node.desc);
   const [tagId, setTagId] = useState(node.tagId ?? null);
   const [statusId, setStatusId] = useState(node.statusId ?? null);
+  const editBaseRef = useRef(null);
   // Giữ phần tử gốc trong state (không phải ref) để effect đo kích thước chạy
   // lại đúng lúc React thay phần tử — chuyển qua/lại chế độ sửa là một cây DOM
   // khác hẳn, ref.current đổi âm thầm còn effect thì không hay biết.
@@ -52,7 +53,12 @@ function IdeaCard({
 
   useEffect(() => {
     if (editing) {
-      setTitle(node.title); setDesc(node.desc); setTagId(node.tagId ?? null); setStatusId(node.statusId ?? null);
+      const base = { title: node.title, desc: node.desc ?? "", tagId: node.tagId ?? null, statusId: node.statusId ?? null };
+      editBaseRef.current = base;
+      setTitle(base.title);
+      setDesc(base.desc);
+      setTagId(base.tagId);
+      setStatusId(base.statusId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editing]);
@@ -91,15 +97,25 @@ function IdeaCard({
   const balanceCount = gameDesign ? balanceMetricsForCard(balance, node.id).length : 0;
   classNames.push(`lv-${level}`);
 
+  function editPatch() {
+    const base = editBaseRef.current;
+    const fields = {};
+    if (!base || title !== base.title) fields.title = title.trim() || t`Ý tưởng mới`;
+    if (!base || desc !== base.desc) fields.desc = desc.trim();
+    if (!base || tagId !== base.tagId) fields.tagId = tagId;
+    if (!base || statusId !== base.statusId) fields.statusId = statusId;
+    return fields;
+  }
+
   function handleEditKeyDown(e) {
     if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
       e.preventDefault();
-      h.saveAndNext(node.id, { title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId });
+      h.saveAndNext(node.id, editPatch());
     } else if (e.key === "Enter" && e.currentTarget.tagName === "INPUT") {
       // Enter thường chỉ lưu ở ô tiêu đề (input 1 dòng) — textarea mô tả
       // vẫn cần Enter để xuống dòng.
       e.preventDefault();
-      h.save(node.id, { title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId });
+      h.save(node.id, editPatch());
     } else if (e.key === "Escape") {
       e.preventDefault();
       e.stopPropagation();
@@ -131,7 +147,7 @@ function IdeaCard({
             </select>
           </div>
           <div className="edit-actions">
-            <button className="save-btn" onClick={() => h.save(node.id, { title: title.trim() || t`Ý tưởng mới`, desc: desc.trim(), tagId, statusId })}><Trans>Lưu</Trans></button>
+            <button className="save-btn" onClick={() => h.save(node.id, editPatch())}><Trans>Lưu</Trans></button>
             <button className="cancel-btn" onClick={h.cancelEdit}><Trans>Hủy</Trans></button>
             {node.image && <button className="cancel-btn" onClick={() => h.removeImage(node.id)}><Trans>Xoá ảnh</Trans></button>}
           </div>

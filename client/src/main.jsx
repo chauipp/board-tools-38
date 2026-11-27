@@ -13,10 +13,11 @@ import "@fontsource/ibm-plex-mono/600.css";
 import "./index.css";
 import Home from "./pages/Home.jsx";
 import BoardList from "./pages/BoardList.jsx";
-import IdeaMap from "./pages/IdeaMap.jsx";
 import Calculator from "./pages/Calculator.jsx";
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 import LoginGate from "./components/LoginGate.jsx";
+
+const IdeaMap = React.lazy(() => import("./pages/IdeaMap.jsx"));
 
 function IdentityChip() {
   const { user, logout } = useAuth();
@@ -56,7 +57,11 @@ function GlobalIdentityChip() {
 // cũ đè lên board mới. `key` buộc React dựng lại từ đầu ở mỗi board.
 function IdeaMapRoute() {
   const { boardId } = useParams();
-  return <IdeaMap key={boardId} />;
+  return (
+    <React.Suspense fallback={null}>
+      <IdeaMap key={boardId} />
+    </React.Suspense>
+  );
 }
 
 function AuthGate({ children }) {

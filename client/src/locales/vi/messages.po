@@ -1344,3 +1344,21 @@ msgstr "Sai tên đăng nhập hoặc mật khẩu."
 #: src/components/LoginGate.jsx
 msgid "Thử sai quá nhiều lần, đợi vài phút rồi thử lại."
 msgstr "Thử sai quá nhiều lần, đợi vài phút rồi thử lại."
+
+#. js-lingui-explicit-id
+msgid "board.save.conflict"
+msgstr "Board có xung đột. Bản nháp chưa được lưu."
+
+#. js-lingui-explicit-id
+msgid "board.save.retry"
+msgstr "Thử lưu lại"
+
+#. js-lingui-explicit-id
+msgid "board.save.download"
+msgstr "Tải bản nháp JSON"
+
+msgid "Hãy xử lý thay đổi chưa lưu trước khi nhập JSON."
+msgstr "Hãy xử lý thay đổi chưa lưu trước khi nhập JSON."
+
+msgid "Hãy xử lý thay đổi chưa lưu trước khi khôi phục snapshot."
+msgstr "Hãy xử lý thay đổi chưa lưu trước khi khôi phục snapshot."

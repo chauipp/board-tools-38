@@ -48,8 +48,7 @@ export async function getBoard(boardId) {
 
 // `baseUpdatedAt` = mốc của bản mà `state` được dựng lên từ đó. Server so nó với
 // mốc hiện có và trả 409 nếu đã có người lưu chen vào giữa — không có nó thì cú
-// PUT này lặng lẽ xoá sổ thay đổi của người kia. Bỏ trống là tắt chốt (luồng
-// "Nhập JSON" cố ý thay cả bảng).
+// PUT này có thể xoá sổ thay đổi của người kia.
 export async function saveBoard(boardId, state, clientId, baseUpdatedAt) {
   // Camera (pan/zoom) không còn là dữ liệu đồng bộ — xem lib/camera.js.
   const { view, ...rest } = state;
@@ -90,11 +89,24 @@ export async function createBoardSnapshot(boardId, label = "") {
   return res.json();
 }
 
-export async function restoreBoardSnapshot(boardId, snapshotId) {
-  const res = await fetch(`/api/boards/${boardId}/snapshots/${snapshotId}/restore`, { method: "POST" });
+export async function restoreBoardSnapshot(boardId, snapshotId, baseUpdatedAt) {
+  const res = await fetch(`/api/boards/${boardId}/snapshots/${snapshotId}/restore`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ baseUpdatedAt })
+  });
   checkAuthExpired(res);
   if (res.status === 403) throw apiError("READ_ONLY");
   if (res.status === 404) throw apiError("SNAPSHOT_NOT_FOUND");
+  if (res.status === 409) {
+    const body = await res.json().catch(() => null);
+    if (body?.error === "conflict" && body.board) {
+      const error = apiError("CONFLICT");
+      error.board = body.board;
+      throw error;
+    }
+    throw apiError("SNAPSHOT_RESTORE_FAILED");
+  }
   if (!res.ok) throw apiError("SNAPSHOT_RESTORE_FAILED");
   return res.json();
 }
