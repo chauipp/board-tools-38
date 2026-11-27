@@ -1433,7 +1433,7 @@ export default function IdeaMap() {
     let latest = board;
     let moved = false;
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       let dx = (ev.clientX - startX) / scale;
       let dy = (ev.clientY - startY) / scale;
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
@@ -1481,7 +1481,7 @@ export default function IdeaMap() {
       // Chỉ phát khi thật sự có dịch chuyển: bấm-không-kéo không được sinh
       // ra gói nào, để bên người xem không phải dựng overlay rồi lại nhả ra.
       if (moved) publishGeom(movingItems(dx, dy));
-    });
+    };
 
     function movingItems(dx, dy) {
       return {
@@ -1497,9 +1497,6 @@ export default function IdeaMap() {
     }
 
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.flush();
       setSnapGuides(EMPTY_ARRAY);
       // Bấm vào khung mà không kéo thì không có gì để ghi: lần PUT ở đây đẩy cả
       // board (kèm ảnh) lên server rồi phát board:update cho mọi người, chỉ để
@@ -1512,8 +1509,7 @@ export default function IdeaMap() {
       });
       saveNow(latest);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp });
   }
 
   function handleGroupResizeMouseDown(e, groupId) {
