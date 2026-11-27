@@ -3,7 +3,7 @@ import { useWorkspaceState } from "../lib/useWorkspaceState.js";
 import { cameraToCenter, centerToCamera, normalizeWorkspace } from "../lib/workspace-state.js";
 import { Link, useParams } from "react-router-dom";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { createBoardSnapshot, getBoard, listBoardSnapshots, restoreBoardSnapshot, saveBoard } from "../lib/api.js";
+import { listBoardSnapshots } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import { useSkin } from "../lib/useSkin.js";
 import {
@@ -56,10 +56,8 @@ import { normalizeTreeLock, treeLockOwners, arrangeTree, arrangeLockedTrees, loc
 import { useAuth } from "../context/AuthContext.jsx";
 import { usePresence } from "../lib/usePresence.js";
 import { useFollow } from "../lib/useFollow.js";
-import { useLiveSync, applyGeomOverlay, mergeRemoteBoard } from "../lib/useLiveSync.js";
-import { rebaseBoard } from "../lib/rebase.js";
-import { createSaveQueue } from "../lib/save-queue.js";
-import { emptyHistory, record as recordStep, undo as undoStep, redo as redoStep, beginNudge, flushNudge } from "../lib/history.js";
+import { useLiveSync, applyGeomOverlay } from "../lib/useLiveSync.js";
+import { useBoardStore } from "../lib/useBoardStore.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { rafThrottle } from "../lib/raf-throttle.js";
 import { replaceIdSet, toggleId, unionIdSet } from "../lib/selection.js";
@@ -132,9 +130,14 @@ export default function IdeaMap() {
     pastel: t`Pastel`, vivid: t`Rực`, mono: t`Đơn sắc`,
     earth: t`Đất`, neon: t`Neon`
   };
-  const [board, setBoard] = useState(null);
-  const [loadError, setLoadError] = useState(null);
-  const [saveError, setSaveError] = useState(null);
+  // Board, role, hàng đợi lưu, lịch sử hoàn tác: lib/useBoardStore.js.
+  const store = useBoardStore(boardId);
+  const {
+    board, setBoard, boardRef, role, roleRef, boardName, setBoardName,
+    loadError, saveError, setSaveError, past, future, nudgeTimerRef,
+    saveNow, saveDebounced, recordHistory, flushNudgeBurst, undo, redo,
+    applyRemoteBoard, restoreSnapshot, lastUpdatedAtRef
+  } = store;
   const [editingId, setEditingId] = useState(null);
   const [linkMode, setLinkMode] = useState(false);
   const [pendingSource, setPendingSource] = useState(null);
@@ -167,14 +170,6 @@ export default function IdeaMap() {
   const [captureOpen, setCaptureOpen] = useState(false);
   const [captureText, setCaptureText] = useState("");
   const [isPanning, setIsPanning] = useState(false);
-  // Lịch sử hoàn tác (lib/history.js). Giữ trong ref để mọi handler — kể cả
-  // closure cũ — đọc được bản mới nhất ngay lập tức; setHistoryVersion chỉ để
-  // render lại nút Hoàn tác/Làm lại. `past`/`future` là mảng mới mỗi lần đổi,
-  // nên dùng làm deps của effect vẫn đúng như khi chúng còn là state.
-  const historyRef = useRef(null);
-  if (!historyRef.current) historyRef.current = emptyHistory();
-  const [, setHistoryVersion] = useState(0);
-  const { past, future } = historyRef.current;
   const [linkDraft, setLinkDraft] = useState(null);
   const [dropTargetId, setDropTargetId] = useState(null);
   const [chipDrag, setChipDrag] = useState(null);
@@ -272,8 +267,6 @@ export default function IdeaMap() {
   const setPlaytestsOpen = useMemo(() => workspaceSetters.inspector("playtests"), [workspaceSetters]);
   const [initialCardParam] = useState(() => new URLSearchParams(window.location.search).get("card"));
 
-  const [role, setRole] = useState(null);
-  const [boardName, setBoardName] = useState("");
   const [inviteOpen, setInviteOpen] = useState(false);
   const { sendCursor, sendSelection, sendEdgeDraft, sendView, sendFollow, socket } = usePresence(user, boardId);
   const inkLive = useInkLive(socket);
@@ -297,47 +290,13 @@ export default function IdeaMap() {
   const canvasRef = useRef(null);
   const editDockRef = useRef(null);
   const searchInputRef = useRef(null);
-  const boardRef = useRef(null);
-  // Listener "paste" gắn-một-lần (deps: []) đóng gói `role` lúc mount, khi đó
-  // board chưa tải xong nên role vẫn là null — phải đọc qua ref mới đúng.
-  const roleRef = useRef(null);
   const editingIdRef = useRef(null);
   // socket.id gửi kèm mỗi lần lưu để server loại chính mình khỏi broadcast
   // board:update; updatedAt của lần lưu/nhận gần nhất để so sánh gói đến
   // sau có mới hơn không (useLiveSync.js: isStaleUpdate).
   const socketRef = useRef(null);
-  const lastUpdatedAtRef = useRef(null);
-  // Bản board mà ta TIN là server đang giữ. Không phải `board`: board còn chứa
-  // những thay đổi mình vừa làm và chưa chắc đã lưu xong. Khi server từ chối một
-  // lần lưu vì có người chen vào, đây là mốc để tính "từ lần đồng bộ cuối tới
-  // giờ mình đã đổi những gì" rồi đắp đúng chừng ấy lên bản của họ
-  // (lib/rebase.js). Cập nhật ở ba chỗ: lúc tải xong, lúc lưu thành công, và
-  // lúc áp một board:update của người khác.
-  const serverBaseRef = useRef(null);
-  // Hàng đợi lưu (lib/save-queue.js): một cú PUT bay tại một thời điểm, 409 thì
-  // ghép lại. Tạo MỘT lần; các callback đọc saveHooksRef — gán lại mỗi lượt
-  // render ở chỗ saveNow bên dưới — nên luôn thấy closure mới nhất.
-  const saveHooksRef = useRef(null);
-  const saveQueueRef = useRef(null);
-  if (!saveQueueRef.current) {
-    const hook = (name) => (...args) => saveHooksRef.current[name](...args);
-    saveQueueRef.current = createSaveQueue({
-      canSave: hook("canSave"),
-      prepare: hook("prepare"),
-      save: hook("save"),
-      rebase: rebaseBoard,
-      merge: hook("merge"),
-      adopt: hook("adopt"),
-      getBase: () => serverBaseRef.current,
-      setBase: (b) => { serverBaseRef.current = b; },
-      getStamp: () => lastUpdatedAtRef.current,
-      setStamp: (t) => { lastUpdatedAtRef.current = t; },
-      onState: ({ error }) => setSaveError(error)
-    });
-  }
   const selectedIdsRef = useRef(selectedIds);
   const suppressContextMenuRef = useRef(false);
-  const nudgeTimerRef = useRef(null);
   const spacePanRef = useRef(false);
   // Cử chỉ bấm nhiều lần lên một nét vẽ (2 lần đổi nét liền ↔ nét đứt). Phần
   // việc nằm ở handleViewportClickCapture bên dưới; hai cái ref phải khai ở đây
@@ -372,30 +331,6 @@ export default function IdeaMap() {
     live: inkLive
   });
 
-  useEffect(() => {
-    let cancelled = false;
-    // Không reset state ở đây: IdeaMapRoute (main.jsx) truyền key={boardId} nên
-    // đổi board là remount hẳn — board/role/past/future/selectedIds đều mới.
-    // Reset thủ công chỉ xoá được vài ô state và bỏ sót lịch sử undo.
-    getBoard(boardId)
-      .then((data) => {
-        if (cancelled) return;
-        if (initialCardParam && data.nodes.some((n) => n.id === Number(initialCardParam))) {
-          pendingJumpRef.current = Number(initialCardParam);
-        }
-        const { id, name, role: r, updatedAt, ...boardData } = data;
-        setRole(r);
-        setBoardName(name);
-        lastUpdatedAtRef.current = updatedAt;
-        // Board cũ chưa có palette → mặc định rỗng, để mọi chỗ đọc board.palette
-        // không phải ?? [] khắp nơi.
-        const loaded = normalizeGameDesignBoard({ kind: "idea", palette: [], nextPaletteId: 1, drawings: [], nextDrawingId: 1, bg: null, grid: null, pack: null, ...boardData, view: { panX: 0, panY: 0, scale: 1 } });
-        setBoard(loaded);
-        serverBaseRef.current = loaded;
-      })
-      .catch((e) => { if (!cancelled) setLoadError(e.code || "UNKNOWN"); });
-    return () => { cancelled = true; };
-  }, [boardId]);
 
   // Mở ô tìm là để gõ ngay, không phải để rồi bấm thêm một cú vào nó. Đặt ở
   // effect chứ không ở toggleSearch: Ctrl+F lúc ô đang đóng thì ô nhập chưa nằm
@@ -491,12 +426,6 @@ export default function IdeaMap() {
     return () => { cancelled = true; };
   }, [snapshotsOpen, boardId]);
 
-  // Gán ngay trong lúc render, không qua useEffect: các handler kéo đọc
-  // boardRef.current để biết trạng thái MỚI NHẤT, mà effect thì chạy sau khi
-  // render xong — có một khoảng ref còn giữ board của lượt trước, đủ để một
-  // phép tính kéo hoặc một gói realtime lấy nhầm toạ độ cũ.
-  boardRef.current = board;
-  useEffect(() => { roleRef.current = role; }, [role]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
   useEffect(() => { editingIdRef.current = editingId; }, [editingId]);
   useEffect(() => { socketRef.current = socket; }, [socket]);
@@ -539,17 +468,6 @@ export default function IdeaMap() {
     });
   }, [board?.view, viewportSize, watcherCount, sendView]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Overlay nào đã được board thật bắt kịp phải bỏ NGAY. Giữ lại nghĩa là tiếp
-  // tục vẽ một bản tạm đè lên dữ liệu thật vừa nhận — nét nhấp nháy.
-  const applyRemoteBoard = useCallback((next) => {
-    const normalized = normalizeGameDesignBoard(next);
-    setBoard(normalized);
-    // Vừa áp bản của người khác → đó là bản mới nhất ta biết server đang giữ.
-    // Thiếu dòng này thì lần va chạm sau sẽ tính delta từ một mốc quá cũ và đắp
-    // lại cả những thay đổi đã được lưu từ lâu.
-    serverBaseRef.current = normalized;
-    inkLive.reconcile(normalized);
-  }, [inkLive.reconcile]);
 
   const { geomOverlay, textOverlay, sendLiveText, publishGeom, finishGeom } =
     useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, applyRemoteBoard);
@@ -882,103 +800,24 @@ export default function IdeaMap() {
     // listener khi đó thì rẻ, và rẻ hơn hẳn một ref nữa phải đồng bộ tay.
   }, [board != null, stopFollow, wheelMode]);
 
-  // Đọc roleRef chứ không đọc `role`: saveNow là chốt chặn cuối, nó phải đúng kể
-  // cả khi được gọi từ một closure cũ. Handler nào gắn với deps [] (listener
-  // paste, .then() của readImageFile…) đóng gói `role` lúc mount — khi đó board
-  // chưa tải xong nên role vẫn null và chốt chặn sẽ hở. Ref thì luôn mới.
-  saveHooksRef.current = {
-    canSave: () => roleRef.current !== "viewer",
-    prepare: (next) => {
-      const arranged = arrangeLockedTrees(next, treeSizeRef.current);
-      if (arranged !== next) {
-        next = arranged;
-        setBoard(next);
-        boardRef.current = next;
+  // Những thứ store cần mà khai báo sau board (xem lib/useBoardStore.js).
+  store.bind({
+    inkLive, treeSizeRef, socketRef, editingIdRef,
+    onLoaded: (data) => {
+      if (initialCardParam && data.nodes.some((n) => n.id === Number(initialCardParam))) {
+        pendingJumpRef.current = Number(initialCardParam);
       }
-      return next;
     },
-    save: (next, baseUpdatedAt) => saveBoard(boardId, next, socketRef.current?.id, baseUpdatedAt),
-    // Giữ nguyên camera của mình và giữ nguyên đúng cái thẻ đang gõ dở —
-    // cùng luật với lúc áp một board:update, nên không có hai cách trộn
-    // khác nhau để lệch nhau.
-    merge: (rebased) => {
-      const local = boardRef.current;
-      return normalizeGameDesignBoard(local ? mergeRemoteBoard(local, rebased, editingIdRef.current) : rebased);
-    },
-    adopt: (merged) => {
-      setBoard(merged);
-      boardRef.current = merged;
-      inkLive.reconcile(merged);
-    }
-  };
-
-  function saveNow(next) {
-    saveQueueRef.current.saveNow(next);
-  }
-
-  function saveDebounced(next) {
-    saveQueueRef.current.saveDebounced(next, 500);
-  }
+    onHistoryJump: () => setEditingId(null)
+  });
 
   function openSnapshots() {
     setSnapshotsOpen(true);
   }
 
   async function createSnapshot(label) {
-    try {
-      const result = await createBoardSnapshot(boardId, label);
-      setSnapshots((current) => [result.snapshot, ...current].slice(0, 30));
-      setSaveError(null);
-    } catch (error) {
-      setSaveError(true);
-      throw error;
-    }
-  }
-
-  async function restoreSnapshot(snapshotId) {
-    try {
-      const result = await restoreBoardSnapshot(boardId, snapshotId);
-      const restored = normalizeGameDesignBoard({ ...result.board, view: boardRef.current?.view });
-      setBoard(restored);
-      boardRef.current = restored;
-      serverBaseRef.current = restored;
-      lastUpdatedAtRef.current = restored.updatedAt;
-      setHistory({ ...historyRef.current, past: [], future: [] });
-      inkLive.reconcile(restored);
-      setSaveError(null);
-    } catch (error) {
-      setSaveError(true);
-      throw error;
-    }
-  }
-
-  function setHistory(next) {
-    if (next === historyRef.current) return;
-    historyRef.current = next;
-    setHistoryVersion((v) => v + 1);
-  }
-
-  function clearNudgeTimer() {
-    if (nudgeTimerRef.current) { clearTimeout(nudgeTimerRef.current); nudgeTimerRef.current = null; }
-  }
-
-  function flushNudgeBurst() {
-    if (historyRef.current.nudgeBase == null) return;
-    clearNudgeTimer();
-    setHistory(flushNudge(historyRef.current));
-  }
-
-  function recordHistory(prevBoard) {
-    if (historyRef.current.nudgeBase != null) clearNudgeTimer();
-    setHistory(recordStep(historyRef.current, prevBoard));
-  }
-
-  function commitAndSave(next, opts) {
-    if (!opts || opts.historical !== false) recordHistory(board);
-    next = arrangeLockedTrees(next, treeSizeRef.current);
-    setBoard(next);
-    boardRef.current = next;
-    saveNow(next);
+    const snapshot = await store.createSnapshot(label);
+    setSnapshots((current) => [snapshot, ...current].slice(0, 30));
   }
 
   useEffect(() => {
@@ -986,47 +825,9 @@ export default function IdeaMap() {
     if (!current || roleRef.current === "viewer") return;
     const next = arrangeLockedTrees(current, frameCardSize);
     if (next === current) return;
-    setBoard(next);
-    boardRef.current = next;
+    store.preview(next);
     saveNow(next);
   }, [frameCardSize]);
-
-  // Hoàn tác / làm lại chỉ trả lại NỘI DUNG bảng, KHÔNG trả lại chỗ đang xem.
-  //
-  // `view` (pan + zoom) nằm chung trong board vì nó cũng được lưu lên server,
-  // nhưng nó không phải thứ vừa được sửa — nó là chỗ mình đang đứng nhìn. Trả
-  // lại nó cùng với nội dung thì lùi một bước là màn hình nhảy về chỗ đứng lúc
-  // làm việc đó, và người dùng mất phương hướng đúng vào lúc cần nhìn rõ nhất
-  // cái vừa bị lùi. Lùi vài bước liên tiếp thì mỗi bước nhảy một chỗ.
-  //
-  // Áp cho cả `undo` lẫn `redo`, và cả nhánh gộp phím mũi tên — ba đường vào
-  // cùng một chỗ ra, không để đường nào sót lại hành vi cũ.
-  function keepView(snapshot) {
-    return board?.view ? { ...snapshot, view: board.view } : snapshot;
-  }
-
-  function undo() {
-    const hadNudge = historyRef.current.nudgeBase != null;
-    const step = undoStep(historyRef.current, board);
-    if (!step) return;
-    if (hadNudge) clearNudgeTimer();
-    setHistory(step.history);
-    const prev = keepView(step.board);
-    setEditingId(null);
-    setBoard(prev);
-    saveNow(prev);
-  }
-
-  function redo() {
-    if (historyRef.current.nudgeBase != null) { flushNudgeBurst(); return; }
-    const step = redoStep(historyRef.current, board);
-    if (!step) return;
-    setHistory(step.history);
-    const nextState = keepView(step.board);
-    setEditingId(null);
-    setBoard(nextState);
-    saveNow(nextState);
-  }
 
   useEffect(() => {
     function onKeyDown(e) {
@@ -1149,8 +950,8 @@ export default function IdeaMap() {
   // Ảnh dán/thả vào thẻ: applyImageToNode phải đọc boardRef.current (không phải
   // `board`) vì nó được gọi từ readImageFile().then() bên trong listener "paste"
   // gắn-một-lần (deps: []), nơi `board` luôn là giá trị đóng gói lúc mount (stale).
-  // commitAndSave cũng không dùng được ở đây vì nó tự gọi recordHistory(board) —
-  // cùng vấn đề đóng gói cũ; nên trình tự ghi lịch sử/lưu được lặp lại thủ công.
+  // store.commit mà không truyền `from` sẽ ghi lịch sử bằng `board` của lượt
+  // render — cùng vấn đề đóng gói cũ; nên ở đây luôn truyền `from: current`.
   // Một board là một document MongoDB, trần 16MB. Ảnh giữ nguyên chất lượng gốc
   // nên trần đó với tới được — báo ngay tại chỗ dán, đừng để cú lưu chết ở server
   // rồi người dùng chỉ thấy "không lưu được".
@@ -1169,10 +970,7 @@ export default function IdeaMap() {
     if (!current.nodes.some((n) => n.id === nodeId)) return;
     if (!imageFitsBoard(dataUrl, nodeId)) return;
     const next = { ...current, nodes: current.nodes.map((n) => (n.id === nodeId ? { ...n, image: dataUrl } : n)) };
-    recordHistory(current);
-    setBoard(next);
-    boardRef.current = next;
-    saveNow(next);
+    store.commit(next, { from: current });
   }
 
   // Cùng kỷ luật refs-only như applyImageToNode: được gọi từ listener "paste"
@@ -1192,10 +990,7 @@ export default function IdeaMap() {
     const id = current.nextNodeId;
     const node = { id, title: t`Ảnh`, desc: "", tagId: null, statusId: null, x, y, image: dataUrl };
     const next = { ...current, nodes: [...current.nodes, node], nextNodeId: id + 1 };
-    recordHistory(current);
-    setBoard(next);
-    boardRef.current = next;
-    saveNow(next);
+    store.commit(next, { from: current });
     setSelectedIds(new Set([id]));
   }
 
@@ -1285,7 +1080,7 @@ export default function IdeaMap() {
     const node = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: null, x: Math.round(x), y: Math.round(y), ...extra };
     const next = { ...board, nodes: [...board.nodes, node], nextNodeId: id + 1 };
     setEditingId(id);
-    commitAndSave(next);
+    store.commit(next);
   }
 
   function addGameDesignCard(type = "mechanic") {
@@ -1294,7 +1089,7 @@ export default function IdeaMap() {
     const p = toCanvasPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
     const node = createGameDesignNode(board.nextNodeId, p.x - CARD_W / 2, p.y - 55, type);
     const next = { ...board, nodes: [...board.nodes, node], nextNodeId: node.id + 1 };
-    recordHistory(board); setBoard(next); boardRef.current = next; saveNow(next); setDesignEditId(node.id);
+    store.commit(next, { from: board }); setDesignEditId(node.id);
   }
 
   function saveDesignNode(nextNode) {
@@ -1303,34 +1098,34 @@ export default function IdeaMap() {
     // Panel là inspector của thẻ đang chọn, không phải modal dùng một lần. Giữ
     // nó mở sau khi lưu để người thiết kế nhìn ngay phần vừa điền và chuyển qua
     // thẻ khác bằng một cú bấm trên canvas.
-    recordHistory(current); setBoard(next); boardRef.current = next; saveNow(next);
+    store.commit(next, { from: current });
   }
   function createRelatedDesignNode(sourceId, type, relation) {
     const current = boardRef.current; const next = createRelatedGameDesignCard(current, sourceId, type, relation);
-    if (next === current) return; recordHistory(current); setBoard(next); boardRef.current = next; saveNow(next); setDesignEditId(next.nextNodeId - 1);
+    if (next === current) return; store.commit(next, { from: current }); setDesignEditId(next.nextNodeId - 1);
   }
   function duplicateDesignNode(sourceId) {
     const current = boardRef.current; const next = duplicateGameDesignCard(current, sourceId);
-    if (next === current) return; recordHistory(current); setBoard(next); boardRef.current = next; saveNow(next); setDesignEditId(next.nextNodeId - 1);
+    if (next === current) return; store.commit(next, { from: current }); setDesignEditId(next.nextNodeId - 1);
   }
 
   function saveGameDesignBrief(nextBrief) {
     const current = boardRef.current;
     if (!current || current.kind !== "game-design") return;
     const next = { ...current, gameDesignBrief: normalizeGameDesignBrief(nextBrief) };
-    recordHistory(current); setBoard(next); boardRef.current = next; saveNow(next);
+    store.commit(next, { from: current });
   }
 
   function saveGameDesignFlow(nextFlow) {
     const current = boardRef.current;
     if (!current || current.kind !== "game-design") return;
     const next = { ...current, gameDesignFlow: normalizeGameDesignFlow(nextFlow, current.nodes) };
-    recordHistory(current); setBoard(next); boardRef.current = next; saveNow(next);
+    store.commit(next, { from: current });
   }
   function saveGameDesignBalance(nextBalance) {
     const current = boardRef.current; if (!current || current.kind !== "game-design") return;
     const next = { ...current, gameDesignBalance: normalizeGameDesignBalance(nextBalance, current.nodes) };
-    recordHistory(current); setBoard(next); boardRef.current = next; saveNow(next);
+    store.commit(next, { from: current });
   }
 
   // Điểm trên bảng (toạ độ canvas) ứng với một điểm trên màn hình. Đọc qua
@@ -1360,10 +1155,7 @@ export default function IdeaMap() {
       w: Math.max(MIN_GROUP_W, Math.round(w)), h: Math.max(MIN_GROUP_H, Math.round(h))
     };
     const next = { ...current, groups: [...current.groups, group], nextGroupId: id + 1 };
-    recordHistory(current);
-    setBoard(next);
-    boardRef.current = next;
-    saveNow(next);
+    store.commit(next, { from: current });
   }
 
   // Khu 3 lên nòng một việc rồi chờ người dùng chỉ chỗ. Bấm lại đúng nút đang
@@ -1439,8 +1231,8 @@ export default function IdeaMap() {
   // đang vẽ, `board` đóng gói sẽ là bản cũ — build `next` từ nó rồi PUT cả bản
   // cũ sẽ đè mất thay đổi của người kia, cả cục bộ, cả trên server, cả trên
   // màn hình họ khi gói phát lại về tới. Phải đọc boardRef.current, và không
-  // dùng commitAndSave được vì nó tự gọi recordHistory(board) — cùng vấn đề
-  // đóng gói cũ; nên trình tự ghi lịch sử/lưu được lặp lại thủ công.
+  // để store.commit tự lấy `board` làm bản trước — cùng vấn đề đóng gói cũ;
+  // nên luôn truyền `from: current`.
   function commitStroke(stroke) {
     const current = boardRef.current;
     // Không có board thì không có gì để commit — nhưng vẫn phải trả về một id
@@ -1454,10 +1246,7 @@ export default function IdeaMap() {
       drawings: [...current.drawings, { id, ...stroke }],
       nextDrawingId: id + 1
     };
-    recordHistory(current);
-    setBoard(next);
-    boardRef.current = next;
-    saveNow(next);
+    store.commit(next, { from: current });
     return id;
   }
 
@@ -1491,10 +1280,7 @@ export default function IdeaMap() {
       if (parts) drawings.push(...parts);
     }
     const next = { ...current, drawings, nextDrawingId: nextId };
-    recordHistory(current);
-    setBoard(next);
-    boardRef.current = next;
-    saveNow(next);
+    store.commit(next, { from: current });
   }
 
   // Rời mode Chuột thì bỏ lựa chọn và tắt nối dây: để lại một thẻ đang chọn
@@ -1545,7 +1331,7 @@ export default function IdeaMap() {
       w: Math.round(maxX - minX + PAD * 2), h: Math.round(maxY - minY + PAD * 2 + TITLE_ROOM)
     };
     setColorMenu(null);
-    commitAndSave({ ...board, groups: [...board.groups, group], nextGroupId: id + 1 });
+    store.commit({ ...board, groups: [...board.groups, group], nextGroupId: id + 1 });
   }
 
   function duplicateNodes(ids, offset = 24) {
@@ -1771,11 +1557,11 @@ export default function IdeaMap() {
 
   function saveGroupTitle(groupId, title) {
     setEditingGroupTitleId(null);
-    commitAndSave({ ...board, groups: board.groups.map((g) => (g.id === groupId ? { ...g, title: title.trim() || t`Khung` } : g)) });
+    store.commit({ ...board, groups: board.groups.map((g) => (g.id === groupId ? { ...g, title: title.trim() || t`Khung` } : g)) });
   }
 
   function deleteGroup(id) {
-    commitAndSave({
+    store.commit({
       ...board,
       groups: board.groups.filter((g) => g.id !== id),
       edges: board.edges.filter((e) => !(
@@ -1786,7 +1572,7 @@ export default function IdeaMap() {
   }
 
   function applyGroupColor(groupId, color) {
-    commitAndSave({ ...board, groups: board.groups.map((g) => (g.id === groupId ? { ...g, color } : g)) });
+    store.commit({ ...board, groups: board.groups.map((g) => (g.id === groupId ? { ...g, color } : g)) });
     setColorMenu(null);
   }
 
@@ -1857,7 +1643,7 @@ export default function IdeaMap() {
   function setDrawingsDashed(ids, dashed) {
     const list = board.drawings || [];
     if (!ids.size || !list.some((d) => ids.has(d.id) && d.kind !== "text")) return;
-    commitAndSave({
+    store.commit({
       ...board,
       drawings: list.map((d) => (ids.has(d.id) && d.kind !== "text" ? { ...d, dashed } : d))
     });
@@ -2031,7 +1817,7 @@ export default function IdeaMap() {
       };
     }
     setEditingId(id);
-    commitAndSave(next);
+    store.commit(next);
   }
 
   // Thẻ cùng cấp = cùng cha. Không có cha (thẻ gốc) thì không có "cùng cấp"
@@ -2195,7 +1981,7 @@ export default function IdeaMap() {
     // Mọi thẻ đã đúng giá trị thì không ghi gì: một cú thả vô nghĩa không nên
     // sinh ra một bước hoàn tác và một lượt PUT cả bảng.
     if (!board.nodes.some((n) => ids.has(n.id) && (n[field] ?? null) !== nextVal)) return;
-    commitAndSave({
+    store.commit({
       ...board,
       nodes: board.nodes.map((n) => (ids.has(n.id) ? { ...n, [field]: nextVal } : n))
     });
@@ -2239,7 +2025,7 @@ export default function IdeaMap() {
   }
 
   function deleteNode(id) {
-    commitAndSave({
+    store.commit({
       ...board,
       nodes: board.nodes.filter((n) => n.id !== id),
       edges: board.edges.filter((e) => !(
@@ -2257,7 +2043,7 @@ export default function IdeaMap() {
 
   function saveNodeEdit(id, fields) {
     setEditingId(null);
-    commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, ...fields } : n)) });
+    store.commit({ ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, ...fields } : n)) });
   }
 
   function saveNodeEditAndNext(id, fields) {
@@ -2325,10 +2111,7 @@ export default function IdeaMap() {
         pdf: { fileId: pdf.fileId, name: pdf.name, size: pdf.size }
       };
       const next = { ...current, nodes: [...current.nodes, node], nextNodeId: id + 1 };
-      recordHistory(current);
-      setBoard(next);
-      boardRef.current = next;
-      saveNow(next);
+      store.commit(next, { from: current });
       setSelectedIds(new Set([id]));
     } catch {
       window.alert(t`Không thể tải PDF lên.`);
@@ -2423,7 +2206,7 @@ export default function IdeaMap() {
   }
 
   function removeNodeImage(id) {
-    commitAndSave({
+    store.commit({
       ...board,
       nodes: board.nodes.map((n) => {
         if (n.id !== id) return n;
@@ -2436,19 +2219,19 @@ export default function IdeaMap() {
   function toggleEdge(a, aKind, b, bKind) {
     const existing = board.edges.find((e) => edgesMatch(e, a, aKind, b, bKind));
     if (existing) {
-      commitAndSave({ ...board, edges: board.edges.filter((e) => e.id !== existing.id) });
+      store.commit({ ...board, edges: board.edges.filter((e) => e.id !== existing.id) });
     } else {
       const edge = { id: board.nextEdgeId, from: a, fromKind: aKind, to: b, toKind: bKind, ...(board.kind === "game-design" ? { relation: "depends-on" } : {}) };
-      commitAndSave({ ...board, edges: [...board.edges, edge], nextEdgeId: board.nextEdgeId + 1 });
+      store.commit({ ...board, edges: [...board.edges, edge], nextEdgeId: board.nextEdgeId + 1 });
     }
   }
 
   function updateEdge(id, patch) {
-    commitAndSave({ ...board, edges: board.edges.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
+    store.commit({ ...board, edges: board.edges.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
   }
 
   function deleteEdge(id) {
-    commitAndSave({ ...board, edges: board.edges.filter((e) => e.id !== id) });
+    store.commit({ ...board, edges: board.edges.filter((e) => e.id !== id) });
     setEdgeMenu(null);
     setSelectedEdgeIds((prev) => { if (!prev.has(id)) return prev; const next = new Set(prev); next.delete(id); return next; });
   }
@@ -2505,7 +2288,7 @@ export default function IdeaMap() {
       const next = swapLockedSiblings(current, sourceKey, target, treeSizeRef.current);
       if (next !== current) {
         recordHistory(current);
-        commitAndSave(next, { historical: false });
+        store.commit(next, { historical: false });
       }
     }
     treeSwapCancelRef.current = cancel;
@@ -2568,8 +2351,7 @@ export default function IdeaMap() {
         ? Array.from(selectedIds)
         : [node.id];
       const dup = duplicateNodes(cloneSourceIds, 0);
-      setBoard(dup.next);
-      boardRef.current = dup.next;
+      store.preview(dup.next);
       setSelectedIds(new Set(dup.cloneIds));
       dragIds = dup.cloneIds;
       baseBoard = dup.next;
@@ -2722,8 +2504,7 @@ export default function IdeaMap() {
         saveNow(latest);
       } else if (isAlt) {
         // Alt-click without drag: roll back the clone so nothing is silently duplicated.
-        setBoard(boardBeforeDrag);
-        boardRef.current = boardBeforeDrag;
+        store.preview(boardBeforeDrag);
         setSelectedIds(selectedIdsBeforeDrag);
       }
       // Bấm-không-kéo: không lưu. Bản cũ vẫn PUT cả board (kèm ảnh base64) rồi
@@ -3360,10 +3141,7 @@ export default function IdeaMap() {
         ...current,
         drawings: current.drawings.map((d) => (d.id === el.id ? { ...d, pts: [last.x, last.y] } : d))
       };
-      recordHistory(current);
-      setBoard(next);
-      boardRef.current = next;
-      saveNow(next);
+      store.commit(next, { from: current });
     }
 
     window.addEventListener("mousemove", onMove);
@@ -3402,10 +3180,7 @@ export default function IdeaMap() {
       inkLive.cancelText();
       if (edit.id == null) return;
       const next = { ...current, drawings: current.drawings.filter((d) => d.id !== edit.id) };
-      recordHistory(current);
-      setBoard(next);
-      boardRef.current = next;
-      saveNow(next);
+      store.commit(next, { from: current });
       return;
     }
 
@@ -3444,15 +3219,12 @@ export default function IdeaMap() {
     // mang id đó về, không sớm hơn (chữ biến mất rồi hiện lại) cũng không muộn
     // hơn (hai lớp chữ chồng nhau).
     inkLive.endText(savedId);
-    recordHistory(current);
-    setBoard(next);
-    boardRef.current = next;
-    saveNow(next);
+    store.commit(next, { from: current });
   }
 
   // Mọi thao tác CHỈ đổi camera đều đi qua đây. Camera là riêng từng người: nó
   // được lưu vào localStorage bằng effect theo board.view, còn api.js thì đã cắt
-  // `view` khỏi payload PUT từ lâu. Vì vậy gọi saveNow/commitAndSave ở nhóm hàm
+  // `view` khỏi payload PUT từ lâu. Vì vậy gọi saveNow/store.commit ở nhóm hàm
   // này (bản cũ có ở zoom, vừa khung, nhảy tới thẻ/khung, thoát trình chiếu)
   // KHÔNG ghi được gì lên server, nhưng vẫn đẩy cả board kèm ảnh base64 đi và
   // bắt server phát board:update cho mọi người — nghĩa là chỉ cần một người
@@ -3518,7 +3290,7 @@ export default function IdeaMap() {
     // Xoá khung chỉ bỏ CÁI KHUNG, thẻ bên trong ở nguyên — đúng như nút × trên
     // khung vẫn làm. Khung là một cái vòng vẽ quanh, không phải cái hộp sở hữu
     // thẻ; xoá nhầm mà mất luôn cả cụm ý tưởng thì quá đắt.
-    commitAndSave({
+    store.commit({
       ...board,
       nodes: board.nodes.filter((n) => !ids.has(n.id)),
       groups: board.groups.filter((g) => !groupIds.has(g.id)),
@@ -3537,7 +3309,7 @@ export default function IdeaMap() {
   function duplicateSelection() {
     if (selectedIds.size === 0) return;
     const { next, cloneIds } = duplicateNodes(Array.from(selectedIds));
-    commitAndSave(next);
+    store.commit(next);
     setSelectedIds(new Set(cloneIds));
   }
 
@@ -3569,7 +3341,7 @@ export default function IdeaMap() {
   }
 
   function applyToSelection(patch) {
-    commitAndSave({
+    store.commit({
       ...board,
       nodes: board.nodes.map((n) => (selectedIds.has(n.id) ? { ...n, ...patch } : n))
     });
@@ -3578,7 +3350,7 @@ export default function IdeaMap() {
   // Màu là thuộc tính duy nhất mà thẻ và khung dùng chung một bộ token, nên nó
   // là thứ duy nhất áp được cho cả hai trong một cú bấm.
   function applyColorToSelection(color) {
-    commitAndSave({
+    store.commit({
       ...board,
       nodes: board.nodes.map((n) => (selectedIds.has(n.id) ? { ...n, color } : n)),
       groups: board.groups.map((g) => (selectedGroupIds.has(g.id) ? { ...g, color } : g)),
@@ -3606,7 +3378,7 @@ export default function IdeaMap() {
       (e) => (e.fromKind || "node") === "node" && (e.toKind || "node") === "node"
     );
     const pos = layerLayout(items, links, origin);
-    commitAndSave({
+    store.commit({
       ...board,
       nodes: board.nodes.map((n) => (pos.has(n.id) ? { ...n, ...pos.get(n.id) } : n))
     });
@@ -3652,7 +3424,7 @@ export default function IdeaMap() {
       ...TREE_OPTS, directions: [direction], depth: vertical ? 110 : 70
     });
     setColorMenu(null);
-    if (next) commitAndSave(next);
+    if (next) store.commit(next);
   }
 
   // Bảng Xếp cây. Cả phiên chỉnh (mở bảng → kéo thanh trượt chán chê → đóng) chỉ
@@ -3679,11 +3451,8 @@ export default function IdeaMap() {
     const opts = { ...savedOpts, leaf: savedOpts.breadth };
     setTreeOpts(opts);
     const next = treeArranged(base, rootKind, rootId, opts);
-    recordHistory(base);
     treeLastRef.current = next;
-    setBoard(next);
-    boardRef.current = next;
-    saveNow(next);
+    store.commit(next, { from: base });
   }
 
   function previewTree(opts) {
@@ -3695,8 +3464,7 @@ export default function IdeaMap() {
     const next = treeArranged(base, treeUI.kind, treeUI.id, opts);
     if (!next) return;
     treeLastRef.current = next;
-    setBoard(next);                           // chỉ trên máy mình, chưa lưu
-    boardRef.current = next;
+    store.preview(next);                      // chỉ trên máy mình, chưa lưu
   }
 
   function toggleTreeLock(enabled) {
@@ -3720,7 +3488,7 @@ export default function IdeaMap() {
       groups: base.groups.map((item) => update("group", item))
     }, frameCardSize);
     treeLastRef.current = next;
-    commitAndSave(next);
+    store.commit(next);
   }
 
   // Nhả tay khỏi thanh trượt (hoặc bấm một hướng) mới lưu server + phát cho
@@ -3879,8 +3647,7 @@ export default function IdeaMap() {
 
   function nudgeSelection(dx, dy) {
     if (selectedIds.size === 0 && selectedGroupIds.size === 0 && selectedDrawingIds.size === 0) return;
-    if (historyRef.current.nudgeBase == null) {
-      setHistory(beginNudge(historyRef.current, board));   // history recorded once per burst, at burst end
+    if (store.beginNudge(board)) {   // history recorded once per burst, at burst end
       // Mỗi loạt nhích là MỘT lượt live riêng. Thiếu dòng này thì gói dùng lại
       // strokeId của lượt kéo trước và đè lên entry của nó.
       inkLive.beginMove();
@@ -3926,7 +3693,7 @@ export default function IdeaMap() {
       if (!parsed.nodes || !parsed.edges || !parsed.view) throw new Error("bad shape");
       if (!Array.isArray(parsed.groups)) parsed.groups = [];
       if (typeof parsed.nextGroupId !== "number") parsed.nextGroupId = 1;
-      commitAndSave(normalizeGameDesignBoard(parsed));
+      store.commit(normalizeGameDesignBoard(parsed));
       setIoOpen(false);
     } catch (e) {
       alert(t`JSON không hợp lệ — kiểm tra lại nội dung đã dán.`);
@@ -3957,7 +3724,7 @@ export default function IdeaMap() {
       x: pos.get(i).x,
       y: pos.get(i).y
     }));
-    commitAndSave({ ...board, nodes: [...board.nodes, ...newNodes], nextNodeId: nextId + titles.length });
+    store.commit({ ...board, nodes: [...board.nodes, ...newNodes], nextNodeId: nextId + titles.length });
     setCaptureOpen(false);
     setCaptureText("");
   }
@@ -4017,31 +3784,31 @@ export default function IdeaMap() {
   }
 
   function applyNodeColor(nodeId, color) {
-    commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, color } : n)) });
+    store.commit({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, color } : n)) });
     setColorMenu(null);
   }
 
   function toggleNodeLock(id) {
-    commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, locked: !n.locked } : n)) });
+    store.commit({ ...board, nodes: board.nodes.map((n) => (n.id === id ? { ...n, locked: !n.locked } : n)) });
     setColorMenu(null);
   }
 
   function applyNodeShape(nodeId, shape) {
-    commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, shape } : n)) });
+    store.commit({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, shape } : n)) });
   }
   function applyNodeDashed(nodeId, dashed) {
-    commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, dashed } : n)) });
+    store.commit({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, dashed } : n)) });
   }
   function applyNodeLevel(nodeId, level) {
-    commitAndSave({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, ...levelPatch(level) } : n)) });
+    store.commit({ ...board, nodes: board.nodes.map((n) => (n.id === nodeId ? { ...n, ...levelPatch(level) } : n)) });
   }
   function toggleGroupLock(id) {
-    commitAndSave({ ...board, groups: board.groups.map((g) => (g.id === id ? { ...g, locked: !g.locked } : g)) });
+    store.commit({ ...board, groups: board.groups.map((g) => (g.id === id ? { ...g, locked: !g.locked } : g)) });
     setColorMenu(null);
   }
 
   function toggleFavorite(nodeId) {
-    commitAndSave({
+    store.commit({
       ...board,
       nodes: board.nodes.map((n) => {
         if (n.id !== nodeId) return n;
@@ -4053,7 +3820,7 @@ export default function IdeaMap() {
 
   function addComment(nodeId, text) {
     if (!text.trim()) return false;
-    commitAndSave({
+    store.commit({
       ...board,
       nodes: board.nodes.map((n) => (n.id === nodeId
         ? { ...n, comments: [...(n.comments ?? []), { text: text.trim(), author: currentUser, at: new Date().toISOString() }] }
@@ -4063,7 +3830,7 @@ export default function IdeaMap() {
   }
 
   function deleteComment(nodeId, index) {
-    commitAndSave({
+    store.commit({
       ...board,
       nodes: board.nodes.map((n) => (n.id === nodeId
         ? { ...n, comments: (n.comments ?? []).filter((_, i) => i !== index) }
@@ -4081,33 +3848,33 @@ export default function IdeaMap() {
   function createBadge(kind, name, color) {
     if (kind === "status") {
       const id = board.nextStatusId;
-      commitAndSave({ ...board, statuses: [...board.statuses, { id, name, color }], nextStatusId: id + 1 });
+      store.commit({ ...board, statuses: [...board.statuses, { id, name, color }], nextStatusId: id + 1 });
     } else {
       const id = board.nextTagId;
-      commitAndSave({ ...board, tags: [...board.tags, { id, name, color }], nextTagId: id + 1 });
+      store.commit({ ...board, tags: [...board.tags, { id, name, color }], nextTagId: id + 1 });
     }
     setBadgeUI(null);
   }
 
   function updateBadge(kind, id, name, color) {
     if (kind === "status") {
-      commitAndSave({ ...board, statuses: board.statuses.map((s) => (s.id === id ? { ...s, name, color } : s)) });
+      store.commit({ ...board, statuses: board.statuses.map((s) => (s.id === id ? { ...s, name, color } : s)) });
     } else {
-      commitAndSave({ ...board, tags: board.tags.map((tg) => (tg.id === id ? { ...tg, name, color } : tg)) });
+      store.commit({ ...board, tags: board.tags.map((tg) => (tg.id === id ? { ...tg, name, color } : tg)) });
     }
     setBadgeUI(null);
   }
 
   function deleteBadge(kind, id) {
     if (kind === "status") {
-      commitAndSave({
+      store.commit({
         ...board,
         statuses: board.statuses.filter((s) => s.id !== id),
         nodes: board.nodes.map((n) => (n.statusId === id ? { ...n, statusId: null } : n))
       });
       setFilterStatus((prev) => { const next = { ...prev }; delete next[String(id)]; return next; });
     } else {
-      commitAndSave({
+      store.commit({
         ...board,
         tags: board.tags.filter((tg) => tg.id !== id),
         nodes: board.nodes.map((n) => (n.tagId === id ? { ...n, tagId: null } : n))
@@ -4130,32 +3897,32 @@ export default function IdeaMap() {
   // hoàn tác và tự phát realtime — không cần đường riêng.
   function setBoardBg(next) {
     if (board.bg === next) return;
-    commitAndSave({ ...board, bg: next });
+    store.commit({ ...board, bg: next });
   }
 
   function setBoardGrid(next) {
     if ((board.grid ?? null) === next) return;
-    commitAndSave({ ...board, grid: next });
+    store.commit({ ...board, grid: next });
   }
 
   function setBoardPack(next) {
     if (board.pack === next) return;
-    commitAndSave({ ...board, pack: next });
+    store.commit({ ...board, pack: next });
   }
 
   function createPaletteColor(hex) {
     const id = board.nextPaletteId;
-    commitAndSave({ ...board, palette: [...board.palette, { id, hex }], nextPaletteId: id + 1 });
+    store.commit({ ...board, palette: [...board.palette, { id, hex }], nextPaletteId: id + 1 });
     setPaletteUI(null);
   }
 
   // Popover ở lại sau khi đổi màu: sửa xong còn có thể chọn lại hoặc xoá luôn.
   function updatePaletteColor(id, hex) {
-    commitAndSave({ ...board, palette: board.palette.map((c) => (c.id === id ? { ...c, hex } : c)) });
+    store.commit({ ...board, palette: board.palette.map((c) => (c.id === id ? { ...c, hex } : c)) });
   }
 
   function deletePaletteColor(id) {
-    commitAndSave(removePaletteColor(board, id));
+    store.commit(removePaletteColor(board, id));
     setPaletteUI(null);
   }
 
@@ -4220,9 +3987,9 @@ export default function IdeaMap() {
       if (target.kind === "selection") { applyColorToSelection(token); return; }
       // Badge đi đường applyColorTo như cũ — nó không thuộc vùng chọn nào.
       if (target.kind === "node" || target.kind === "edge" || target.kind === "drawing") {
-        commitAndSave(applyColorToMany(board, target.kind, dropIdsFor(target.kind, target.id), token));
+        store.commit(applyColorToMany(board, target.kind, dropIdsFor(target.kind, target.id), token));
       } else {
-        commitAndSave(applyColorTo(board, target, token));
+        store.commit(applyColorTo(board, target, token));
       }
     }
     window.addEventListener("mousemove", onMove);
@@ -5326,7 +5093,7 @@ export default function IdeaMap() {
               setColorMenu(null);
               if (multi) return duplicateSelection();
               const { next, cloneIds } = duplicateNodes([node.id]);
-              commitAndSave(next);
+              store.commit(next);
               setSelectedIds(new Set(cloneIds));
             }}
             onComments={one(() => { setColorMenu(null); setEdgeMenu(null); setCommentsFor({ id: node.id, x: colorMenu.x, y: colorMenu.y }); })}
