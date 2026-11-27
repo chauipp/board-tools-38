@@ -2001,25 +2001,21 @@ export default function IdeaMap() {
       return card ? Number(card.getAttribute("data-id")) : null;
     }
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
       if (!dragging) return;
       setChipDrag({ kind, value, x: ev.clientX, y: ev.clientY });
       const id = targetCardIdAt(ev.clientX, ev.clientY);
       setDropTargetId(id != null ? { id, kind: "node" } : null);
-    });
+    };
     function onUp(ev) {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.cancel();
       if (!dragging) return;
       const targetId = targetCardIdAt(ev.clientX, ev.clientY);
       setChipDrag(null);
       setDropTargetId(null);
       if (targetId !== null) applyChipToNodes(dropIdsFor("node", targetId), kind, value);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp, release: "cancel" });
   }
 
   function deleteNode(id) {
