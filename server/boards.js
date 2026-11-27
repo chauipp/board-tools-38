@@ -453,7 +453,7 @@ router.put("/:id", async (req, res) => {
     // gồm `view`: camera là riêng từng người, không đồng bộ qua kênh này.
     // clientId là socket.id của chính người lưu (nếu socket presence đã
     // kết nối) — .except() loại người gửi khỏi broadcast của chính họ.
-    // Cùng chuẩn hoá như phòng presence trong index.js: lấy id từ document,
+    // Cùng chuẩn hoá như phòng presence trong realtime/handshake.js: lấy id từ document,
     // không từ URL — hex viết hoa/thường khác nhau vẫn phải vào đúng phòng.
     const payload = {
       ...gameDesign, ...content,
