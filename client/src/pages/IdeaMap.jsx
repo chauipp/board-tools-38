@@ -60,6 +60,7 @@ import { useLiveSync, applyGeomOverlay } from "../lib/useLiveSync.js";
 import { useBoardStore } from "../lib/useBoardStore.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { rafThrottle } from "../lib/raf-throttle.js";
+import { startDrag } from "../lib/drag-session.js";
 import { replaceIdSet, toggleId, unionIdSet } from "../lib/selection.js";
 import { readImageFile } from "../lib/image-utils.js";
 import { canAddImage, formatMB } from "../lib/image-budget.js";
@@ -1199,16 +1200,13 @@ export default function IdeaMap() {
       paint(last);
     }
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
       paint.cancel();
       setPlaceDraft(null);
       const drawn = last && last.w >= MIN_DRAWN_GROUP && last.h >= MIN_DRAWN_GROUP;
       createGroupAt(drawn ? last : { x: a.x - 240, y: a.y - 160, w: 480, h: 320 });
       enterMode("select");
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp, throttle: false });
   }
 
   // Nhường đường cho lia bảng TRƯỚC khi nghĩ tới việc đặt — cùng thứ tự mà
@@ -1432,7 +1430,7 @@ export default function IdeaMap() {
     let latest = board;
     let moved = false;
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       let dx = (ev.clientX - startX) / scale;
       let dy = (ev.clientY - startY) / scale;
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
@@ -1480,7 +1478,7 @@ export default function IdeaMap() {
       // Chỉ phát khi thật sự có dịch chuyển: bấm-không-kéo không được sinh
       // ra gói nào, để bên người xem không phải dựng overlay rồi lại nhả ra.
       if (moved) publishGeom(movingItems(dx, dy));
-    });
+    };
 
     function movingItems(dx, dy) {
       return {
@@ -1496,9 +1494,6 @@ export default function IdeaMap() {
     }
 
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.flush();
       setSnapGuides(EMPTY_ARRAY);
       // Bấm vào khung mà không kéo thì không có gì để ghi: lần PUT ở đây đẩy cả
       // board (kèm ảnh) lên server rồi phát board:update cho mọi người, chỉ để
@@ -1511,8 +1506,7 @@ export default function IdeaMap() {
       });
       saveNow(latest);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp });
   }
 
   function handleGroupResizeMouseDown(e, groupId) {
@@ -1527,7 +1521,7 @@ export default function IdeaMap() {
     let latest = board;
     let moved = false;
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       const dx = (ev.clientX - startX) / scale;
       const dy = (ev.clientY - startY) / scale;
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
@@ -1542,18 +1536,14 @@ export default function IdeaMap() {
         return next;
       });
       if (moved) publishGeom({ groups: [{ id: group.id, x: group.x, y: group.y, w, h }] });
-    });
+    };
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.flush();
       if (!moved) return;
       recordHistory(boardBeforeDrag);
       finishGeom({ groups: latest.groups.filter((g) => g.id === group.id) });
       saveNow(latest);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp });
   }
 
   function saveGroupTitle(groupId, title) {
@@ -1851,18 +1841,15 @@ export default function IdeaMap() {
 
     // rAF: mỗi nhịp gọi document.elementFromPoint — một phép hit-test buộc
     // trình duyệt tính lại layout. Ở tần số chuột thô đó là vài trăm lần/giây.
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
       if (!dragging) return;
       const p = toCanvas(ev.clientX, ev.clientY);
       setLinkDraft({ fromId: nodeId, fromKind: "node", x: p.x, y: p.y });
       const t = targetAt(ev.clientX, ev.clientY);
       setDropTargetId(t ? { id: t.id, kind: t.kind } : null);
-    });
+    };
     function onUp(ev) {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.cancel();
       if (dragging) {
         setLinkDraft(null);
         const t = targetAt(ev.clientX, ev.clientY);
@@ -1872,8 +1859,7 @@ export default function IdeaMap() {
         createLinkedNode(nodeId, direction);
       }
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp, release: "cancel" });
   }
 
   function handleGroupConnectorMouseDown(e, groupId) {
@@ -1893,23 +1879,19 @@ export default function IdeaMap() {
       return t;
     }
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       const p = toCanvas(ev.clientX, ev.clientY);
       setLinkDraft({ fromId: groupId, fromKind: "group", x: p.x, y: p.y });
       const t = targetAt(ev.clientX, ev.clientY);
       setDropTargetId(t ? { id: t.id, kind: t.kind } : null);
-    });
+    };
     function onUp(ev) {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.cancel();
       setLinkDraft(null);
       setDropTargetId(null);
       const t = targetAt(ev.clientX, ev.clientY);
       if (t) toggleEdge(groupId, "group", t.id, t.kind);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp, release: "cancel" });
   }
 
   // Cầm một đầu dây có sẵn và kéo sang thẻ/khung khác để đổi hướng nối. Khung
@@ -1934,23 +1916,19 @@ export default function IdeaMap() {
       return t;
     }
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       const p = toCanvas(ev.clientX, ev.clientY);
       setEdgeDrag({ edgeId: edge.id, end, fixedKind, fixedId, x: p.x, y: p.y });
       const t = targetAt(ev.clientX, ev.clientY);
       setDropTargetId(t ? { id: t.id, kind: t.kind } : null);
-    });
+    };
     function onUp(ev) {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.cancel();
       setEdgeDrag(null);
       setDropTargetId(null);
       const t = targetAt(ev.clientX, ev.clientY);
       if (t) updateEdge(edge.id, end === "from" ? { from: t.id, fromKind: t.kind } : { to: t.id, toKind: t.kind });
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp, release: "cancel" });
   }
 
   // Thả badge/màu vào một thẻ ĐANG nằm trong vùng chọn nhiều thì cả vùng chọn
@@ -2004,25 +1982,21 @@ export default function IdeaMap() {
       return card ? Number(card.getAttribute("data-id")) : null;
     }
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
       if (!dragging) return;
       setChipDrag({ kind, value, x: ev.clientX, y: ev.clientY });
       const id = targetCardIdAt(ev.clientX, ev.clientY);
       setDropTargetId(id != null ? { id, kind: "node" } : null);
-    });
+    };
     function onUp(ev) {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.cancel();
       if (!dragging) return;
       const targetId = targetCardIdAt(ev.clientX, ev.clientY);
       setChipDrag(null);
       setDropTargetId(null);
       if (targetId !== null) applyChipToNodes(dropIdsFor("node", targetId), kind, value);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp, release: "cancel" });
   }
 
   function deleteNode(id) {
@@ -2138,7 +2112,7 @@ export default function IdeaMap() {
     let latest = board;
     let moved = false;
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       const dx = (ev.clientX - startX) / scale;
       if (Math.abs(dx) > 0.5) moved = true;
       const w = Math.max(MIN_W, Math.round(startW + dx));
@@ -2148,18 +2122,14 @@ export default function IdeaMap() {
         return next;
       });
       if (moved) publishGeom({ nodes: [{ id: node.id, x: node.x, y: node.y, w }] });
-    });
+    };
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.flush();
       if (!moved) return;
       recordHistory(boardBeforeDrag);
       finishGeom({ nodes: latest.nodes.filter((n) => n.id === node.id) });
       saveNow(latest);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp });
   }
 
   // Khung PDF cần kéo cả hai chiều: chiều rộng quyết định cỡ trang, chiều cao
@@ -2176,7 +2146,7 @@ export default function IdeaMap() {
     const startW = node.w || 420, startH = node.pdfH || 500;
     let latest = board;
     let moved = false;
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       const dx = (ev.clientX - startX) / scale;
       const dy = (ev.clientY - startY) / scale;
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
@@ -2188,11 +2158,8 @@ export default function IdeaMap() {
         return next;
       });
       if (moved) publishGeom({ nodes: [{ id: node.id, x: node.x, y: node.y, w, h: pdfH }] });
-    });
+    };
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.flush();
       if (!moved) return;
       recordHistory(boardBeforeDrag);
       finishGeom({
@@ -2202,8 +2169,7 @@ export default function IdeaMap() {
       });
       saveNow(latest);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp });
   }
 
   function removeNodeImage(id) {
@@ -2269,17 +2235,9 @@ export default function IdeaMap() {
       setTreeSwap({ source: sourceKey, candidates, target: targetAt(ev), x: ev.clientX, y: ev.clientY });
     }
     function cleanup() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      window.removeEventListener("keydown", onKey, true);
-      window.removeEventListener("blur", cancel);
       treeSwapCancelRef.current = null;
       setTreeSwap(null);
       if (moved) treeSwapClickUntilRef.current = Date.now() + 250;
-    }
-    function cancel() { cleanup(); }
-    function onKey(ev) {
-      if (ev.key === "Escape") { ev.preventDefault(); ev.stopImmediatePropagation(); cancel(); }
     }
     function onUp(ev) {
       const target = moved ? targetAt(ev) : null;
@@ -2292,11 +2250,11 @@ export default function IdeaMap() {
         store.commit(next, { historical: false });
       }
     }
-    treeSwapCancelRef.current = cancel;
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    window.addEventListener("keydown", onKey, true);
-    window.addEventListener("blur", cancel);
+    // Esc hoặc mất focus: huỷ, không đổi chỗ gì. treeSwapCancelRef giữ hàm huỷ
+    // để một lượt đổi chỗ mới (hoặc unmount) dọn lượt cũ còn dở.
+    treeSwapCancelRef.current = startDrag(e, {
+      onMove, onEnd: onUp, onCancel: cleanup, throttle: false, blur: "cancel", cancelOnEscape: true
+    });
   }
 
   function treeSwapState(key) {
@@ -2424,7 +2382,7 @@ export default function IdeaMap() {
     let latest = baseBoard;
     let moved = false;
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       let dx = (ev.clientX - startX) / scale;
       let dy = (ev.clientY - startY) / scale;
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
@@ -2488,11 +2446,8 @@ export default function IdeaMap() {
       });
       // Chỉ phát ĐÚNG những thứ đang bị kéo, không phát cả bảng.
       if (moved) publishGeom(movingGroups.length ? { nodes: moving, groups: movingGroups } : { nodes: moving });
-    });
+    };
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.flush();
       setSnapGuides(EMPTY_ARRAY);
       if (moved) {
         recordHistory(boardBeforeDrag);
@@ -2511,8 +2466,7 @@ export default function IdeaMap() {
       // Bấm-không-kéo: không lưu. Bản cũ vẫn PUT cả board (kèm ảnh base64) rồi
       // bắt server phát board:update cho mọi người, chỉ vì một cú click chọn thẻ.
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp });
   }
 
   function handleMarqueeMouseDown(e) {
@@ -2559,7 +2513,7 @@ export default function IdeaMap() {
         .map((edge) => edge.id);
     }
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       if (!dragging && Math.hypot(ev.clientX - startScreenX, ev.clientY - startScreenY) > THRESHOLD) dragging = true;
       if (!dragging) return;
       const a = toCanvas(startScreenX, startScreenY);
@@ -2573,19 +2527,15 @@ export default function IdeaMap() {
       setSelectedEdgeIds((prev) => unionIdSet(prev, baseEdgeIds, edgeHitIdsFor(m)));
       setSelectedGroupIds((prev) => unionIdSet(prev, baseGroupIds, groupHitIdsFor(m)));
       setSelectedDrawingIds((prev) => unionIdSet(prev, baseDrawingIds, drawingsInRect(boardRef.current.drawings || [], m)));
-    });
+    };
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.cancel();
       // Bấm-không-kéo trên nền trống = bỏ chọn hết, NHƯNG có Ctrl thì không:
       // ở đó Ctrl nghĩa là "đang cộng dồn lựa chọn", trượt tay bấm nhầm nền
       // trống mà mất cả vùng chọn vừa gom là hỏng việc.
       if (!dragging) { if (!additive) clearSelection(); return; }
       setMarquee(null);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp, release: "cancel" });
   }
 
   function startPan(e) {
@@ -2599,7 +2549,7 @@ export default function IdeaMap() {
     let dragging = false;
     const THRESHOLD = 4;
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) {
         dragging = true;
         setIsPanning(true);
@@ -2608,11 +2558,8 @@ export default function IdeaMap() {
       const nx = startPanX + (ev.clientX - startX);
       const ny = startPanY + (ev.clientY - startY);
       setView((prev) => ({ ...prev, panX: nx, panY: ny }));
-    });
+    };
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.flush();
       if (dragging) {
         setIsPanning(false);
         // KHÔNG lưu: lia sa bàn chỉ đổi camera, mà camera là riêng từng người
@@ -2624,8 +2571,7 @@ export default function IdeaMap() {
         setTimeout(() => { suppressContextMenuRef.current = false; }, 0);
       }
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp });
   }
 
   // Bấm trúng nét bút / hình khối / chữ ở mode Sửa: chọn nó (Ctrl để cộng dồn),
@@ -2685,7 +2631,7 @@ export default function IdeaMap() {
     let latest = base;
     inkLive.beginMove();
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       const p = eventToCanvas(ev);
       const dx = p.x - start.x, dy = p.y - start.y;
       if (!moved && Math.hypot(dx, dy) < TEXT_DRAG_THRESHOLD) return;
@@ -2719,17 +2665,9 @@ export default function IdeaMap() {
           groups: latest.groups.filter((g) => startGroups.has(g.id))
         });
       }
-    });
-
-    function cleanup() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      window.removeEventListener("blur", onUp);
-      onMove.cancel();
-    }
+    };
 
     function onUp(ev) {
-      cleanup();
       // bấm-không-kéo: chỉ là cú chọn (hoặc cú bỏ chọn), không lưu gì. Chỉ tính
       // là "bấm" khi thật sự có cú NHẢ CHUỘT — hàm này còn là handler của `blur`,
       // mà mất focus giữa lúc đang giữ chuột thì người dùng không hề bấm xong,
@@ -2746,13 +2684,11 @@ export default function IdeaMap() {
       saveNow(latest);
     }
 
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
     // Cửa sổ mất focus giữa lượt kéo thì mouseup không bao giờ tới (cùng cái bẫy
     // đã ghi ở startTextDrag). Ở đây vị trí mới đã nằm sẵn trong board rồi, nên
     // đường thoát đúng là CHỐT nó lại — bỏ ngang thì người dùng thấy nét đã dời
     // mà server không hề biết, và F5 một cái là nó nhảy về chỗ cũ.
-    window.addEventListener("blur", onUp);
+    startDrag(e, { onMove, onEnd: onUp, release: "cancel", blur: "end" });
   }
 
   function handleViewportMouseDown(e) {
@@ -2808,7 +2744,7 @@ export default function IdeaMap() {
     const oneId = new Set([id]);
     inkLive.beginMove();
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       const p = eventToCanvas(ev);
       if (!moved && Math.hypot(p.x - handle.x, p.y - handle.y) < TEXT_DRAG_THRESHOLD / view.scale) return;
       moved = true;
@@ -2824,23 +2760,17 @@ export default function IdeaMap() {
         return next;
       });
       inkLive.pushMove(movingPayload(latest, oneId));
-    });
+    };
 
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      window.removeEventListener("blur", onUp);
-      onMove.flush();
       if (!moved) { inkLive.cancelMove(); return; }
       inkLive.endMove(movingPayload(latest, oneId));
       recordHistory(base);
       saveNow(latest);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
     // Mất focus giữa cú kéo: hình mới đã nằm sẵn trong board, nên đường thoát
     // đúng là CHỐT nó lại — cùng lý do đã ghi ở startDrawingDrag.
-    window.addEventListener("blur", onUp);
+    startDrag(e, { onMove, onEnd: onUp, blur: "end" });
   }
 
   // Kéo một trong bốn góc hộp bao = co giãn CẢ CỤM, đều hai chiều, quanh góc đối
@@ -2863,7 +2793,7 @@ export default function IdeaMap() {
     let moved = false;
     inkLive.beginMove();
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       const k = scaleFactorFor(bounds, corner, eventToCanvas(ev));
       if (!moved && Math.abs(k - 1) < 0.02) return;
       moved = true;
@@ -2912,13 +2842,9 @@ export default function IdeaMap() {
           groups: latest.groups.filter((g) => sel.groupIds.has(g.id))
         });
       }
-    });
+    };
 
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      window.removeEventListener("blur", onUp);
-      onMove.flush();
       if (!moved) { inkLive.cancelMove(); return; }
       inkLive.endMove(movingPayload(latest, sel.drawingIds));
       if (sel.nodeIds.size || sel.groupIds.size) {
@@ -2930,11 +2856,9 @@ export default function IdeaMap() {
       recordHistory(base);
       saveNow(latest);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
     // Mất focus giữa cú kéo: vị trí mới đã nằm sẵn trong board rồi, nên đường
     // thoát đúng là CHỐT nó lại — cùng lý do đã ghi ở startDrawingDrag.
-    window.addEventListener("blur", onUp);
+    startDrag(e, { onMove, onEnd: onUp, blur: "end" });
   }
 
   // Nhường đường cho lia bảng TRƯỚC khi nghĩ tới việc vẽ — đúng thứ tự
@@ -3115,9 +3039,6 @@ export default function IdeaMap() {
     }
 
     function cleanup() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", finish);
-      window.removeEventListener("blur", cancel);
       setTextDrag(null);
     }
 
@@ -3145,9 +3066,9 @@ export default function IdeaMap() {
       store.commit(next, { from: current });
     }
 
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", finish);
-    window.addEventListener("blur", cancel);
+    // Không có sự kiện chuột ở đây (start là toạ độ canvas đã tính sẵn), và
+    // ngưỡng kéo tính theo đơn vị canvas trong onMove — nên không truyền event.
+    startDrag(null, { onMove, onEnd: finish, onCancel: cancel, throttle: false, blur: "cancel" });
   }
 
   // Cùng kỷ luật refs-only như commitStroke (xem ghi chú dài ở đó): gõ một đoạn
@@ -3961,7 +3882,7 @@ export default function IdeaMap() {
       return null;
     }
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
       if (!dragging) return;
       setColorDrag({ token, x: ev.clientX, y: ev.clientY });
@@ -3971,11 +3892,8 @@ export default function IdeaMap() {
       // — đúng cái việc mà đích này sinh ra để khỏi phải làm.
       if (target && target.kind === "selection") setDropTargetId(SELECTION_DROP);
       else setDropTargetId(target && target.kind === "node" ? { id: target.id, kind: "node" } : null);
-    });
+    };
     function onUp(ev) {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.cancel();
       if (!dragging) return;
       const target = colorTargetAt(ev.clientX, ev.clientY);
       setColorDrag(null);
@@ -3992,8 +3910,7 @@ export default function IdeaMap() {
         store.commit(applyColorTo(board, target, token));
       }
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp, release: "cancel" });
   }
 
   // Nối lớp vỏ ổn định ở trên với bản mới nhất của từng hàm xử lý. Gán thường,
