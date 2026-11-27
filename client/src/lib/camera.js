@@ -25,12 +25,13 @@ export function saveCamera(storage, boardId, view) {
 }
 
 // Phóng/thu quanh một điểm màn hình (con trỏ, hoặc tâm khung nhìn): điểm canvas
-// nằm dưới điểm đó đứng yên, scale kẹp trong [MIN_SCALE, MAX_SCALE].
-export function computeZoom(currentBoard, rect, screenX, screenY, factor) {
+// nằm dưới điểm đó đứng yên, scale kẹp trong [MIN_SCALE, MAX_SCALE]. Nhận và
+// trả về camera `{ panX, panY, scale }` — camera không còn nằm trong board.
+export function computeZoom(view, rect, screenX, screenY, factor) {
   const mx = screenX - rect.left, my = screenY - rect.top;
-  const oldScale = currentBoard.view.scale;
+  const oldScale = view.scale;
   const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, oldScale * factor));
-  const cx = (mx - currentBoard.view.panX) / oldScale;
-  const cy = (my - currentBoard.view.panY) / oldScale;
-  return { ...currentBoard, view: { panX: mx - newScale * cx, panY: my - newScale * cy, scale: newScale } };
+  const cx = (mx - view.panX) / oldScale;
+  const cy = (my - view.panY) / oldScale;
+  return { panX: mx - newScale * cx, panY: my - newScale * cy, scale: newScale };
 }

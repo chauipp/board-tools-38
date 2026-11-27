@@ -81,6 +81,7 @@ import {
 } from "../lib/selection-box.js";
 import { CARD_W, TEXT_DRAG_THRESHOLD, SEL_GRAB_PAD, SELECTION_DROP, PICK_RADIUS, MIN_GROUP_W, MIN_SCALE, PANEL_KEYS, TREE_OPTS, EMPTY_ARRAY, EMPTY_MAP, EMPTY_SET, MIN_GROUP_H, MAX_SCALE } from "../lib/board-constants.js";
 import { computeZoom } from "../lib/camera.js";
+import { useCamera } from "../lib/useCamera.js";
 import { normalizeGameDesignBoard } from "../lib/normalize-board.js";
 import { IconSketch, IconMenu, MiniMapIcon, IconSearch, IconStatus, IconTag, IconPalette, IconBoardStyle, IconStar, IconUndo, IconRedo } from "../components/board/icons.jsx";
 import DropCount from "../components/board/DropCount.jsx";
@@ -138,6 +139,9 @@ export default function IdeaMap() {
     saveNow, saveDebounced, recordHistory, flushNudgeBurst, undo, redo,
     applyRemoteBoard, restoreSnapshot, lastUpdatedAtRef
   } = store;
+  // Camera (pan + zoom): state riêng, KHÔNG nằm trong board — lib/useCamera.js.
+  const camera = useCamera();
+  const { view, viewRef, setView } = camera;
   const [editingId, setEditingId] = useState(null);
   const [linkMode, setLinkMode] = useState(false);
   const [pendingSource, setPendingSource] = useState(null);
@@ -323,7 +327,7 @@ export default function IdeaMap() {
   if (!wheelReaderRef.current) wheelReaderRef.current = createWheelReader();
 
   const ink = useInk({
-    tool, penPrefs, boardRef, viewportRef,
+    tool, penPrefs, boardRef, viewRef, viewportRef,
     onStrokeDone: commitStroke,
     onEraseDone: commitErase,
     onPick: pickDrawingWhileDrawing,
@@ -377,22 +381,22 @@ export default function IdeaMap() {
     const previous = workspaceCameraRef.current;
     if (previous?.controller === workspace.controller && previous.hydration === workspace.hydration && previous.w === viewportSize.w && previous.h === viewportSize.h) return;
     const camera = previous?.controller === workspace.controller && previous.hydration === workspace.hydration
-      ? cameraToCenter(boardRef.current.view, previous)
+      ? cameraToCenter(viewRef.current, previous)
       : workspace.state.camera;
     const view = camera ? centerToCamera(camera, viewportSize) : { panX: 0, panY: 0, scale: 1 };
     workspaceCameraRef.current = { controller: workspace.controller, hydration: workspace.hydration, ...viewportSize, applying: view };
-    setBoard((current) => ({ ...current, view }));
+    setView(view);
   }, [workspace.ready, workspace.hydration, workspace.controller, viewportSize, board != null]);
 
   useEffect(() => {
     const applied = workspaceCameraRef.current;
-    if (!workspace.ready || !board?.view || applied?.controller !== workspace.controller) return;
+    if (!workspace.ready || !board || applied?.controller !== workspace.controller) return;
     if (applied.applying) {
-      if (applied.applying === board.view) applied.applying = null;
+      if (applied.applying === view) applied.applying = null;
       return;
     }
-    workspace.update({ camera: cameraToCenter(board.view, viewportSize) });
-  }, [board?.view, workspace.ready, workspace.controller, viewportSize]);
+    workspace.update({ camera: cameraToCenter(view, viewportSize) });
+  }, [view, board != null, workspace.ready, workspace.controller, viewportSize]);
 
   useEffect(() => {
     if (!workspace.ready || !board || !inspector) return;
@@ -444,7 +448,8 @@ export default function IdeaMap() {
   // ghim, mà vòng bám cũng đổi camera — dùng chung một cửa thì vòng bám tự huỷ
   // mình ngay khung hình đầu tiên.
   const applyFollowCamera = useCallback((view) => {
-    setBoard((prev) => (prev ? { ...prev, view: { ...prev.view, ...view } } : prev));
+    if (!boardRef.current) return;
+    setView((prev) => ({ ...prev, ...view }));
   }, []);
 
   const { followingId, pendingId, followError, watcherCount, follow, stopFollow } = useFollow({
@@ -463,10 +468,10 @@ export default function IdeaMap() {
     // con số đó nghĩa khác nhau (lib/follow.js).
     if (viewportSize.w <= 0 || viewportSize.h <= 0) return;
     sendView({
-      panX: board.view.panX, panY: board.view.panY, scale: board.view.scale,
+      panX: view.panX, panY: view.panY, scale: view.scale,
       w: viewportSize.w, h: viewportSize.h
     });
-  }, [board?.view, viewportSize, watcherCount, sendView]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [view, viewportSize, watcherCount, sendView]); // eslint-disable-line react-hooks/exhaustive-deps
 
 
   const { geomOverlay, textOverlay, sendLiveText, publishGeom, finishGeom } =
@@ -780,14 +785,10 @@ export default function IdeaMap() {
       // chú đầu file đó về từng dấu hiệu nhận thiết bị.
       const cmd = wheelReaderRef.current.read(e, wheelMode);
       if (cmd.intent === "pan") {
-        const next = {
-          ...current,
-          view: { ...current.view, panX: current.view.panX - cmd.dx, panY: current.view.panY - cmd.dy }
-        };
-        setBoard(next);
+        camera.panBy(-cmd.dx, -cmd.dy);
         return;
       }
-      setBoard(computeZoom(current, el.getBoundingClientRect(), e.clientX, e.clientY, cmd.factor));
+      camera.zoomAt(el.getBoundingClientRect(), e.clientX, e.clientY, cmd.factor);
     }
     el.addEventListener("wheel", wheelHandler, { passive: false });
     return () => el.removeEventListener("wheel", wheelHandler);
@@ -984,8 +985,8 @@ export default function IdeaMap() {
       ({ x, y } = pos);
     } else {
       const rect = viewportRef.current.getBoundingClientRect();
-      x = Math.round((rect.width / 2 - current.view.panX) / current.view.scale - CARD_W / 2);
-      y = Math.round((rect.height / 2 - current.view.panY) / current.view.scale - 80);
+      x = Math.round((rect.width / 2 - viewRef.current.panX) / viewRef.current.scale - CARD_W / 2);
+      y = Math.round((rect.height / 2 - viewRef.current.panY) / viewRef.current.scale - 80);
     }
     const id = current.nextNodeId;
     const node = { id, title: t`Ảnh`, desc: "", tagId: null, statusId: null, x, y, image: dataUrl };
@@ -1058,7 +1059,7 @@ export default function IdeaMap() {
   function handlePresenceMouseMove(e) {
     sendCursor(() => {
       const rect = viewportRef.current.getBoundingClientRect();
-      const view = boardRef.current.view;
+      const view = viewRef.current;
       return {
         x: (e.clientX - rect.left - view.panX) / view.scale,
         y: (e.clientY - rect.top - view.panY) / view.scale
@@ -1134,7 +1135,7 @@ export default function IdeaMap() {
   // mousedown — camera có thể đã đổi từ lúc đó.
   function toCanvasPoint(clientX, clientY) {
     const rect = viewportRef.current.getBoundingClientRect();
-    const view = boardRef.current.view;
+    const view = viewRef.current;
     return {
       x: (clientX - rect.left - view.panX) / view.scale,
       y: (clientY - rect.top - view.panY) / view.scale
@@ -1402,7 +1403,7 @@ export default function IdeaMap() {
     if (dragGroupIds.length === 0) return;
 
     const startX = e.clientX, startY = e.clientY;
-    const scale = board.view.scale;
+    const scale = view.scale;
     const boardBeforeDrag = board;
     const movingGroupIds = new Set(dragGroupIds);
     const startGroupPositions = new Map(
@@ -1519,7 +1520,7 @@ export default function IdeaMap() {
     if (!group || group.locked) return;
     e.preventDefault();
     const startX = e.clientX, startY = e.clientY;
-    const scale = board.view.scale;
+    const scale = view.scale;
     const boardBeforeDrag = board;
     const startW = group.w, startH = group.h;
     const MIN_W = MIN_GROUP_W, MIN_H = MIN_GROUP_H;
@@ -1600,7 +1601,7 @@ export default function IdeaMap() {
     // Trình duyệt bỏ qua HẲN con trỏ tuỳ biến quá lớn (Chrome: 128px) — không
     // phải thu nhỏ mà là mất luôn cả con trỏ. Kẹp lại: ở mức phóng cao thì vòng
     // tròn nhỏ hơn cục tẩy thật, vẫn hơn là không có con trỏ nào.
-    const d = Math.max(6, Math.min(120, Math.round(penPrefs.ew * board.view.scale)));
+    const d = Math.max(6, Math.min(120, Math.round(penPrefs.ew * view.scale)));
     const box = d + 4;
     const c = box / 2;
     const r = d / 2;
@@ -1768,7 +1769,7 @@ export default function IdeaMap() {
     const MARGIN = 24;
 
     const rect = viewportRef.current.getBoundingClientRect();
-    const view = base.view;
+    const view = viewRef.current;
     const { x, y, panTo } = placeLinkedNode({
       anchor: { x: anchor.x, y: anchor.y, ...frameCardSize(anchor.id) },
       size: NEW_SIZE,
@@ -1784,13 +1785,13 @@ export default function IdeaMap() {
 
     // Chỗ trống rơi ra ngoài màn hình là chuyện thường khi board dày — dời
     // camera theo thẻ mới thay vì đặt thẻ ở chỗ khác cho vừa khung nhìn.
-    const nextView = panTo
+    let nextView = panTo
       ? {
           scale: view.scale,
           panX: rect.width / 2 - panTo.x * view.scale,
           panY: rect.height / 2 - panTo.y * view.scale
         }
-      : base.view;
+      : view;
 
     const id = base.nextNodeId;
     const newNode = { id, title: t`Ý tưởng mới`, desc: "", tagId: null, statusId: null, x, y };
@@ -1799,8 +1800,7 @@ export default function IdeaMap() {
       nodes: [...base.nodes, newNode],
       edges: [...base.edges, { id: base.nextEdgeId, from: sourceId, to: id }],
       nextNodeId: id + 1,
-      nextEdgeId: base.nextEdgeId + 1,
-      view: nextView
+      nextEdgeId: base.nextEdgeId + 1
     };
     if (treeLockOwners(base, frameCardSize).has(edgeKey("node", sourceId))) {
       next = arrangeLockedTrees(next, frameCardSize);
@@ -1810,7 +1810,7 @@ export default function IdeaMap() {
       const visible = sx >= MARGIN && sy >= MARGIN
         && sx + CARD_W * view.scale <= rect.width - MARGIN
         && sy + NEW_SIZE.h * view.scale <= rect.height - MARGIN;
-      next.view = visible ? view : {
+      nextView = visible ? view : {
         scale: view.scale,
         panX: rect.width / 2 - (placed.x + CARD_W / 2) * view.scale,
         panY: rect.height / 2 - (placed.y + NEW_SIZE.h / 2) * view.scale
@@ -1818,6 +1818,7 @@ export default function IdeaMap() {
     }
     setEditingId(id);
     store.commit(next);
+    setView(nextView);
   }
 
   // Thẻ cùng cấp = cùng cha. Không có cha (thẻ gốc) thì không có "cùng cấp"
@@ -1838,7 +1839,7 @@ export default function IdeaMap() {
     const THRESHOLD = 5;
 
     function toCanvas(clientX, clientY) {
-      const view = boardRef.current.view;
+      const view = viewRef.current;
       return { x: (clientX - rect.left - view.panX) / view.scale, y: (clientY - rect.top - view.panY) / view.scale };
     }
     function targetAt(clientX, clientY) {
@@ -1882,7 +1883,7 @@ export default function IdeaMap() {
     const rect = viewportRef.current.getBoundingClientRect();
 
     function toCanvas(clientX, clientY) {
-      const view = boardRef.current.view;
+      const view = viewRef.current;
       return { x: (clientX - rect.left - view.panX) / view.scale, y: (clientY - rect.top - view.panY) / view.scale };
     }
     function targetAt(clientX, clientY) {
@@ -1923,7 +1924,7 @@ export default function IdeaMap() {
     const fixedId = end === "from" ? edge.to : edge.from;
 
     function toCanvas(clientX, clientY) {
-      const view = boardRef.current.view;
+      const view = viewRef.current;
       return { x: (clientX - rect.left - view.panX) / view.scale, y: (clientY - rect.top - view.panY) / view.scale };
     }
     function targetAt(clientX, clientY) {
@@ -2067,8 +2068,8 @@ export default function IdeaMap() {
     if (!f) return;
     e.preventDefault();
     const rect = viewportRef.current.getBoundingClientRect();
-    const x = Math.round((e.clientX - rect.left - board.view.panX) / board.view.scale - CARD_W / 2);
-    const y = Math.round((e.clientY - rect.top - board.view.panY) / board.view.scale - 40);
+    const x = Math.round((e.clientX - rect.left - view.panX) / view.scale - CARD_W / 2);
+    const y = Math.round((e.clientY - rect.top - view.panY) / view.scale - 40);
     if (f.type === "application/pdf") {
       uploadPdfFile(f, { x, y });
     } else {
@@ -2126,7 +2127,7 @@ export default function IdeaMap() {
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX;
-    const scale = board.view.scale;
+    const scale = view.scale;
     const boardBeforeDrag = board;
     const startW = node.w || CARD_W;
     // Không có trần: kéo to tới đâu cũng được. Trần 560px cũ vô nghĩa từ khi ảnh
@@ -2170,7 +2171,7 @@ export default function IdeaMap() {
     e.preventDefault();
     e.stopPropagation();
     const startX = e.clientX, startY = e.clientY;
-    const scale = board.view.scale;
+    const scale = view.scale;
     const boardBeforeDrag = board;
     const startW = node.w || 420, startH = node.pdfH || 500;
     let latest = board;
@@ -2379,7 +2380,7 @@ export default function IdeaMap() {
     }
 
     const startX = e.clientX, startY = e.clientY;
-    const scale = board.view.scale;
+    const scale = view.scale;
     const startPositions = new Map(
       dragIds.map((id) => {
         const n = baseBoard.nodes.find((nn) => nn.id === id);
@@ -2530,7 +2531,7 @@ export default function IdeaMap() {
     const baseDrawingIds = additive ? selectedDrawingIds : EMPTY_SET;
 
     function toCanvas(clientX, clientY) {
-      const view = boardRef.current.view;
+      const view = viewRef.current;
       return { x: (clientX - rect.left - view.panX) / view.scale, y: (clientY - rect.top - view.panY) / view.scale };
     }
 
@@ -2594,7 +2595,7 @@ export default function IdeaMap() {
     // giằng co với vòng bám qua vài khung hình.
     stopFollow();
     const startX = e.clientX, startY = e.clientY;
-    const startPanX = board.view.panX, startPanY = board.view.panY;
+    const startPanX = view.panX, startPanY = view.panY;
     let dragging = false;
     const THRESHOLD = 4;
 
@@ -2606,7 +2607,7 @@ export default function IdeaMap() {
       if (!dragging) return;
       const nx = startPanX + (ev.clientX - startX);
       const ny = startPanY + (ev.clientY - startY);
-      setBoard((prev) => ({ ...prev, view: { ...prev.view, panX: nx, panY: ny } }));
+      setView((prev) => ({ ...prev, panX: nx, panY: ny }));
     });
     function onUp() {
       window.removeEventListener("mousemove", onMove);
@@ -2773,7 +2774,7 @@ export default function IdeaMap() {
     //
     // Ctrl vẫn đi đường quét: ở đó Ctrl nghĩa là "đang cộng dồn lựa chọn", và
     // vùng quét mới hoàn toàn có thể bắt đầu từ bên trong vùng chọn cũ.
-    if (selBounds && !e.ctrlKey && !e.metaKey && pointInBounds(selBounds, p, SEL_GRAB_PAD / board.view.scale)) {
+    if (selBounds && !e.ctrlKey && !e.metaKey && pointInBounds(selBounds, p, SEL_GRAB_PAD / view.scale)) {
       startSelectionDrag(e);
       return;
     }
@@ -2809,7 +2810,7 @@ export default function IdeaMap() {
 
     const onMove = rafThrottle((ev) => {
       const p = eventToCanvas(ev);
-      if (!moved && Math.hypot(p.x - handle.x, p.y - handle.y) < TEXT_DRAG_THRESHOLD / board.view.scale) return;
+      if (!moved && Math.hypot(p.x - handle.x, p.y - handle.y) < TEXT_DRAG_THRESHOLD / view.scale) return;
       moved = true;
       // Ghi đè CẢ kind: kéo góc một chữ nhật thì nó thành tứ giác, kéo góc một
       // tam giác cân thì nó thành tam giác thường (xem ghi chú ở lib/shape.js).
@@ -2956,7 +2957,7 @@ export default function IdeaMap() {
   function shapeHandleAt(e) {
     if (!editShape || role === "viewer") return null;
     const p = clientToCanvas(e.clientX, e.clientY);
-    const limit = SHAPE_HANDLE_GRAB / board.view.scale;
+    const limit = SHAPE_HANDLE_GRAB / view.scale;
     let best = null;
     let bestD = Infinity;
     for (const h of editShape.handles) {
@@ -3021,7 +3022,7 @@ export default function IdeaMap() {
   // sẵn trong tầm tay.
   function clientToCanvas(clientX, clientY) {
     const rect = viewportRef.current.getBoundingClientRect();
-    const view = boardRef.current.view;
+    const view = viewRef.current;
     return {
       x: (clientX - rect.left - view.panX) / view.scale,
       y: (clientY - rect.top - view.panY) / view.scale
@@ -3223,7 +3224,7 @@ export default function IdeaMap() {
   }
 
   // Mọi thao tác CHỈ đổi camera đều đi qua đây. Camera là riêng từng người: nó
-  // được lưu vào localStorage bằng effect theo board.view, còn api.js thì đã cắt
+  // được lưu vào localStorage bằng effect theo view, còn api.js thì đã cắt
   // `view` khỏi payload PUT từ lâu. Vì vậy gọi saveNow/store.commit ở nhóm hàm
   // này (bản cũ có ở zoom, vừa khung, nhảy tới thẻ/khung, thoát trình chiếu)
   // KHÔNG ghi được gì lên server, nhưng vẫn đẩy cả board kèm ảnh base64 đi và
@@ -3234,15 +3235,14 @@ export default function IdeaMap() {
   // theo người khác. Không có chốt này thì họ zoom xong màn hình bị kéo ngược
   // lại ngay lập tức — trông y như app treo. Vòng bám đi cửa riêng
   // (applyFollowCamera) nên không tự huỷ mình ở đây.
-  function setCamera(view) {
+  function setCamera(nextView) {
     stopFollow();
-    setBoard((prev) => ({ ...prev, view }));
+    setView(nextView);
   }
 
   function zoomButton(factor) {
     const rect = viewportRef.current.getBoundingClientRect();
-    const next = computeZoom(board, rect, rect.left + rect.width / 2, rect.top + rect.height / 2, factor);
-    setCamera(next.view);
+    setCamera(computeZoom(view, rect, rect.left + rect.width / 2, rect.top + rect.height / 2, factor));
   }
 
   // Bấm/kéo trên minimap: chỉ dời camera, giữ nguyên mức phóng. Camera là của
@@ -3254,11 +3254,8 @@ export default function IdeaMap() {
     // Bấm/kéo trên minimap cũng là tự lái camera → thôi bám theo người khác.
     stopFollow();
     const rect = el.getBoundingClientRect();
-    const view = boardRef.current.view;
-    setBoard((prev) => ({
-      ...prev,
-      view: { ...prev.view, ...panForCenter(pt, view, { w: rect.width, h: rect.height }) }
-    }));
+    const view = viewRef.current;
+    setView((prev) => ({ ...prev, ...panForCenter(pt, view, { w: rect.width, h: rect.height }) }));
   }
 
   function fitToView() {
@@ -3548,7 +3545,7 @@ export default function IdeaMap() {
   // sau, và cú bấm trông như không có tác dụng gì.
   function jumpToPeer(peer) {
     const rect = viewportRef.current.getBoundingClientRect();
-    const { scale } = board.view;
+    const { scale } = view;
     setCamera({ scale, panX: rect.width / 2 - peer.x * scale, panY: rect.height / 2 - peer.y * scale });
     // Con trỏ peer nhỏ và có thể đang đứng yên giữa một rừng thẻ — nháy sáng
     // một nhịp để mắt bắt được sau khi màn hình vừa nhảy.
@@ -3580,7 +3577,7 @@ export default function IdeaMap() {
     setEditingId(null);
     setIoOpen(false);
     setCaptureOpen(false);
-    prePresentViewRef.current = board.view;
+    prePresentViewRef.current = view;
     setPresentIndex(0);
     jumpToGroup(board.groups[0]);
   }
@@ -3622,7 +3619,7 @@ export default function IdeaMap() {
   }
 
   function exportVersionedJson() {
-    const payload = board.kind === "game-design" ? exportPackage({ ...board, name: boardName }) : board;
+    const payload = board.kind === "game-design" ? exportPackage({ ...board, view, name: boardName }) : { ...board, view };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
     const url = URL.createObjectURL(blob); const a = document.createElement("a");
     a.href = url; a.download = `${board.kind === "game-design" ? "game-design" : "idea-map"}-${exportVersion(board).replace(/[^a-zA-Z0-9]/g, "-")}.json`; a.click(); URL.revokeObjectURL(url);
@@ -3693,7 +3690,10 @@ export default function IdeaMap() {
       if (!parsed.nodes || !parsed.edges || !parsed.view) throw new Error("bad shape");
       if (!Array.isArray(parsed.groups)) parsed.groups = [];
       if (typeof parsed.nextGroupId !== "number") parsed.nextGroupId = 1;
-      store.commit(normalizeGameDesignBoard(parsed));
+      // `view` của bản nhập là camera, không phải nội dung: tách ra đặt riêng.
+      const { view: importedView, ...content } = parsed;
+      store.commit(normalizeGameDesignBoard(content));
+      setView(importedView);
       setIoOpen(false);
     } catch (e) {
       alert(t`JSON không hợp lệ — kiểm tra lại nội dung đã dán.`);
@@ -3705,8 +3705,8 @@ export default function IdeaMap() {
     if (titles.length === 0) { setCaptureOpen(false); return; }
     setFocusId(null);
     const rect = viewportRef.current.getBoundingClientRect();
-    const cx = (rect.width / 2 - board.view.panX) / board.view.scale;
-    const cy = (rect.height / 2 - board.view.panY) / board.view.scale;
+    const cx = (rect.width / 2 - view.panX) / view.scale;
+    const cy = (rect.height / 2 - view.panY) / view.scale;
     const estH = 90;
     const cols = Math.ceil(Math.sqrt(titles.length));
     const items = titles.map((_, i) => ({ id: i, w: CARD_W, h: estH }));
@@ -4048,7 +4048,7 @@ export default function IdeaMap() {
           <TopMenu label={<IconMenu />} title={t`Menu`}>
             <Link to="/idea-map" className="btn ghost"><Trans>← Danh sách board</Trans></Link>
             <div className="menubar-sep" />
-            <button className="btn ghost" onClick={() => { setIoMode("export"); setIoText(JSON.stringify(board.kind === "game-design" ? exportPackage({ ...board, name: boardName }) : board, null, 2)); setIoOpen(true); }}><Trans>Xuất JSON</Trans></button>
+            <button className="btn ghost" onClick={() => { setIoMode("export"); setIoText(JSON.stringify(board.kind === "game-design" ? exportPackage({ ...board, view, name: boardName }) : { ...board, view }, null, 2)); setIoOpen(true); }}><Trans>Xuất JSON</Trans></button>
             <button className="btn ghost" onClick={exportVersionedJson}><Trans>Tải JSON</Trans></button>
             <button className="btn ghost" data-mutating onClick={() => { setIoMode("import"); setIoText(""); setIoOpen(true); }}><Trans>Nhập JSON</Trans></button>
             <button className="btn ghost" onClick={openSnapshots}>Snapshots</button>
@@ -4119,7 +4119,7 @@ export default function IdeaMap() {
                 workspace.update({ ...defaults, camera: { x: viewportSize.w / 2, y: viewportSize.h / 2, scale: 1 } });
                 const view = { panX: 0, panY: 0, scale: 1 };
                 workspaceCameraRef.current = { controller: workspace.controller, hydration: workspace.hydration, ...viewportSize, applying: view };
-                setBoard((current) => ({ ...current, view }));
+                setView(view);
                 void workspace.flush();
               }}><Trans>Đặt lại giao diện</Trans></button>
             </div>
@@ -4572,15 +4572,15 @@ export default function IdeaMap() {
             ref={(el) => { if (el && document.activeElement !== el) el.focus(); }}
             value={textEdit.value}
             style={{
-              left: board.view.panX + textEdit.x * board.view.scale,
-              top: board.view.panY + textEdit.y * board.view.scale,
-              fontSize: textEdit.size * board.view.scale,
+              left: view.panX + textEdit.x * view.scale,
+              top: view.panY + textEdit.y * view.scale,
+              fontSize: textEdit.size * view.scale,
               lineHeight: TEXT_LINE_H,
               color: penVar(textEdit.color),
               // Tự nới theo nội dung. Cộng thêm một khoảng cho con trỏ nháy ở
               // cuối dòng dài nhất, không thì gõ tới đâu chữ trượt sang trái tới đó.
-              width: (textBox(textLines(textEdit.value), textEdit.size, measureTextWidth).w + 12) * board.view.scale,
-              height: textLines(textEdit.value).length * textEdit.size * TEXT_LINE_H * board.view.scale
+              width: (textBox(textLines(textEdit.value), textEdit.size, measureTextWidth).w + 12) * view.scale,
+              height: textLines(textEdit.value).length * textEdit.size * TEXT_LINE_H * view.scale
             }}
             onChange={(e) => {
               setTextEdit((prev) => ({ ...prev, value: e.target.value }));
@@ -4610,7 +4610,7 @@ export default function IdeaMap() {
         <div
           className="canvas"
           ref={canvasRef}
-          style={{ transform: `translate(${board.view.panX}px, ${board.view.panY}px) scale(${board.view.scale})` }}
+          style={{ transform: `translate(${view.panX}px, ${view.panY}px) scale(${view.scale})` }}
         >
           {marquee && (
             <div className="marquee-box" style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h }} />
@@ -4637,7 +4637,7 @@ export default function IdeaMap() {
               // định thì ở zoom 40% không bấm nổi, ở 240% thì to hơn cả cái hình.
               style={{
                 left: h.x, top: h.y,
-                transform: `translate(-50%, -50%) scale(${1 / board.view.scale})`
+                transform: `translate(-50%, -50%) scale(${1 / view.scale})`
               }}
               title={h.t === HANDLE_EDGE ? t`Kéo để dời cả cạnh này` : t`Kéo để đặt góc này vào chỗ khác`}
               onMouseDown={(e) => handleShapeHandleMouseDown(e, h)}
@@ -4669,7 +4669,7 @@ export default function IdeaMap() {
                     style={{
                       left: p.x - selBounds.x,
                       top: p.y - selBounds.y,
-                      transform: `translate(-50%, -50%) scale(${1 / board.view.scale})`
+                      transform: `translate(-50%, -50%) scale(${1 / view.scale})`
                     }}
                     title={t`Kéo để phóng to / thu nhỏ cả cụm`}
                     onMouseDown={(e) => handleSelectionResizeMouseDown(e, corner)}
@@ -4762,7 +4762,7 @@ export default function IdeaMap() {
           {/* Nằm trong .canvas nên vệt bám theo bảng khi lia/phóng — chỉ vào
               một cái thẻ thì vệt ở lại đúng cái thẻ đó, không trôi ra chỗ khác
               khi người xem lia bảng. */}
-          <LaserLayer socket={socket} store={laser.store} scale={board.view.scale} />
+          <LaserLayer socket={socket} store={laser.store} scale={view.scale} />
 
           {/* Tay cầm nổi trên cùng, tách khỏi .edge-layer: đầu dây thường trùng
               đúng chỗ connector-zone của thẻ (cả hai đều ở tâm cạnh), và thẻ
@@ -4814,7 +4814,7 @@ export default function IdeaMap() {
         {miniOpen && miniShapes && viewportSize.w > 0 && (
           <MiniMap
             shapes={miniShapes}
-            view={board.view}
+            view={view}
             viewportSize={viewportSize}
             onGoTo={goToPoint}
             onClose={() => setMiniOpen(false)}
@@ -4823,7 +4823,7 @@ export default function IdeaMap() {
 
         <div className="zoom-ctrl">
           <button onClick={() => zoomButton(1 / 1.2)} title={t`Thu nhỏ`}>−</button>
-          <span className="pct mono">{Math.round(board.view.scale * 100)}%</span>
+          <span className="pct mono">{Math.round(view.scale * 100)}%</span>
           <button onClick={() => zoomButton(1.2)} title={t`Phóng to`}>+</button>
           <div className="sep" />
           <button onClick={fitToView} style={{ width: "auto", padding: "0 8px", fontSize: 11 }}><Trans>Vừa khung</Trans></button>

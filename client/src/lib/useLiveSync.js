@@ -34,9 +34,11 @@ export function isStaleUpdate(localUpdatedAt, incomingUpdatedAt) {
 // Trộn board:update từ người khác vào board hiện tại:
 // - Giữ nguyên đúng 1 thẻ đang được sửa tại chỗ (editingId) — tránh xoá mất chữ
 //   đang gõ dở của chính người xem.
-// - Giữ nguyên view (camera) — camera là riêng từng người, không đồng bộ.
+// - Không nhận view (camera) của gói đến — camera là riêng từng người, không
+//   đồng bộ, và nằm ngoài board (lib/useCamera.js).
 export function mergeRemoteBoard(local, incoming, editingId) {
-  const merged = { ...local, ...incoming, view: local.view };
+  const { view: _remoteView, ...content } = incoming;
+  const merged = { ...local, ...content };
   if (editingId != null) {
     const localNode = local.nodes.find((n) => n.id === editingId);
     if (localNode) {

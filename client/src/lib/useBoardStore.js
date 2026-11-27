@@ -64,13 +64,15 @@ export function useBoardStore(boardId) {
       .then((data) => {
         if (cancelled) return;
         deps().onLoaded?.(data);
-        const { id, name, role: r, updatedAt, ...boardData } = data;
+        // `view` (nếu server còn giữ) bị bỏ: camera nằm ngoài board, ở
+        // lib/useCamera.js, và là riêng từng người.
+        const { id, name, role: r, updatedAt, view: _savedView, ...boardData } = data;
         setRole(r);
         setBoardName(name);
         lastUpdatedAtRef.current = updatedAt;
         // Board cũ chưa có palette → mặc định rỗng, để mọi chỗ đọc board.palette
         // không phải ?? [] khắp nơi.
-        const loaded = normalizeGameDesignBoard({ kind: "idea", palette: [], nextPaletteId: 1, drawings: [], nextDrawingId: 1, bg: null, grid: null, pack: null, ...boardData, view: { panX: 0, panY: 0, scale: 1 } });
+        const loaded = normalizeGameDesignBoard({ kind: "idea", palette: [], nextPaletteId: 1, drawings: [], nextDrawingId: 1, bg: null, grid: null, pack: null, ...boardData });
         setBoard(loaded);
         serverBaseRef.current = loaded;
       })
@@ -192,19 +194,11 @@ export function useBoardStore(boardId) {
     saveNow(next);
   }
 
-  // Hoàn tác / làm lại chỉ trả lại NỘI DUNG bảng, KHÔNG trả lại chỗ đang xem.
-  //
-  // `view` (pan + zoom) nằm chung trong board vì nó cũng được lưu lên server,
-  // nhưng nó không phải thứ vừa được sửa — nó là chỗ mình đang đứng nhìn. Trả
-  // lại nó cùng với nội dung thì lùi một bước là màn hình nhảy về chỗ đứng lúc
-  // làm việc đó, và người dùng mất phương hướng đúng vào lúc cần nhìn rõ nhất
-  // cái vừa bị lùi. Lùi vài bước liên tiếp thì mỗi bước nhảy một chỗ.
-  //
-  // Áp cho cả `undo` lẫn `redo`, và cả nhánh gộp phím mũi tên — ba đường vào
-  // cùng một chỗ ra, không để đường nào sót lại hành vi cũ.
-  function keepView(snapshot) {
-    return board?.view ? { ...snapshot, view: board.view } : snapshot;
-  }
+  // Hoàn tác / làm lại chỉ trả lại NỘI DUNG bảng, KHÔNG trả lại chỗ đang xem:
+  // camera không nằm trong board (lib/useCamera.js), nên các bản trong lịch sử
+  // vốn không mang nó. Trả lại chỗ đứng nhìn cùng với nội dung thì lùi một bước
+  // là màn hình nhảy về chỗ đứng lúc làm việc đó, và người dùng mất phương
+  // hướng đúng vào lúc cần nhìn rõ nhất cái vừa bị lùi.
 
   function undo() {
     const hadNudge = historyRef.current.nudgeBase != null;
@@ -212,7 +206,7 @@ export function useBoardStore(boardId) {
     if (!step) return;
     if (hadNudge) clearNudgeTimer();
     setHistory(step.history);
-    const prev = keepView(step.board);
+    const prev = step.board;
     deps().onHistoryJump?.();
     setBoard(prev);
     saveNow(prev);
@@ -223,7 +217,7 @@ export function useBoardStore(boardId) {
     const step = redoStep(historyRef.current, board);
     if (!step) return;
     setHistory(step.history);
-    const nextState = keepView(step.board);
+    const nextState = step.board;
     deps().onHistoryJump?.();
     setBoard(nextState);
     saveNow(nextState);
@@ -256,7 +250,8 @@ export function useBoardStore(boardId) {
   async function restoreSnapshot(snapshotId) {
     try {
       const result = await restoreBoardSnapshot(boardId, snapshotId);
-      const restored = normalizeGameDesignBoard({ ...result.board, view: boardRef.current?.view });
+      const { view: _savedView, ...content } = result.board;
+      const restored = normalizeGameDesignBoard(content);
       setBoard(restored);
       boardRef.current = restored;
       serverBaseRef.current = restored;

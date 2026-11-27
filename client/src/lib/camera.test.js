@@ -43,7 +43,6 @@ test("loadCamera returns null for a value missing required numeric fields", () =
 
 
 const rect = { left: 100, top: 50 };
-const board = (view) => ({ nodes: [{ id: 1 }], view });
 
 // Điểm canvas nằm dưới con trỏ trước và sau khi phóng phải trùng nhau: đó là
 // toàn bộ ý nghĩa của "zoom quanh con trỏ".
@@ -52,22 +51,23 @@ function canvasPointUnder(view, screenX, screenY) {
 }
 
 test("phóng quanh con trỏ: điểm dưới con trỏ đứng yên", () => {
-  const before = board({ panX: 30, panY: -20, scale: 1 });
+  const before = { panX: 30, panY: -20, scale: 1 };
   const after = computeZoom(before, rect, 400, 300, 1.5);
-  assert.equal(after.view.scale, 1.5);
-  const p0 = canvasPointUnder(before.view, 400, 300);
-  const p1 = canvasPointUnder(after.view, 400, 300);
+  assert.equal(after.scale, 1.5);
+  const p0 = canvasPointUnder(before, 400, 300);
+  const p1 = canvasPointUnder(after, 400, 300);
   assert.ok(Math.abs(p0.x - p1.x) < 1e-9 && Math.abs(p0.y - p1.y) < 1e-9);
 });
 
 test("kẹp scale trong [MIN_SCALE, MAX_SCALE]", () => {
-  assert.equal(computeZoom(board({ panX: 0, panY: 0, scale: 2 }), rect, 0, 0, 10).view.scale, MAX_SCALE);
-  assert.equal(computeZoom(board({ panX: 0, panY: 0, scale: 0.5 }), rect, 0, 0, 0.01).view.scale, MIN_SCALE);
+  assert.equal(computeZoom({ panX: 0, panY: 0, scale: 2 }, rect, 0, 0, 10).scale, MAX_SCALE);
+  assert.equal(computeZoom({ panX: 0, panY: 0, scale: 0.5 }, rect, 0, 0, 0.01).scale, MIN_SCALE);
 });
 
-test("chỉ đổi view, giữ nguyên phần còn lại của board", () => {
-  const before = board({ panX: 0, panY: 0, scale: 1 });
+test("trả về camera mới, không sửa camera cũ", () => {
+  const before = { panX: 0, panY: 0, scale: 1 };
   const after = computeZoom(before, rect, 200, 200, 1.2);
   assert.notEqual(after, before);
-  assert.equal(after.nodes, before.nodes);
+  assert.deepEqual(Object.keys(after).sort(), ["panX", "panY", "scale"]);
+  assert.deepEqual(before, { panX: 0, panY: 0, scale: 1 });
 });
