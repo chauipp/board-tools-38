@@ -11,21 +11,16 @@ import { Server } from "socket.io";
 import {
   requireAuth,
   canLogin,
-  verifyPasswordLogin,
-  signSession,
-  verifyGoogleIdToken,
   parseSessionFromCookieHeader,
-  getBoardRole,
-  SESSION_COOKIE_NAME,
-  SESSION_COOKIE_MAX_AGE_MS
+  getBoardRole
 } from "./auth.js";
-import { Board, upsertUser } from "./models.js";
+import { Board } from "./models.js";
 import boardsRouter from "./boards.js";
 import workspaceRouter from "./workspace.js";
 import { sanitizeView, resolveFollow, countWatchers, releaseFollowersOf } from "./follow.js";
 import { sanitizeLiveText, sanitizeLiveMoves } from "./live-text.js";
 import { runQuotaCheck, usageReport, usageReportFor, describeUsage } from "./pdf-quota.js";
-import { rateLimit } from "./rate-limit.js";
+import authRouter from "./routes/auth.js";
 import calculatorRouter from "./routes/calculator.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -50,99 +45,8 @@ app.use(cookieParser());
 app.use("/api/boards", requireAuth, workspaceRouter);
 app.use("/api/boards", requireAuth, boardsRouter);
 
-// Đăng nhập: chặn theo IP. Mỗi lần gọi là một lượt xác minh token với Google,
-// nên đây vừa là cửa chống dò tài khoản vừa là cửa giữ cho quota Google không
-// bị đốt bởi một vòng lặp nào đó.
-const loginLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 20,
-  keyOf: (req) => req.ip
-});
-
-// Dùng chung cho mọi cách đăng nhập: ghi user, ký JWT, đặt cookie.
-async function startSession(res, user) {
-  try {
-    await upsertUser(user);
-  } catch (e) {
-    console.error("Không lưu được thông tin user:", e);
-  }
-  let token;
-  try {
-    token = signSession(user);
-  } catch (e) {
-    console.error("signSession thất bại:", e);
-    return res.status(500).json({ error: "session_error" });
-  }
-  res.cookie(SESSION_COOKIE_NAME, token, {
-    httpOnly: true,
-    secure: process.env.COOKIE_SECURE === "true",
-    sameSite: "lax",
-    maxAge: SESSION_COOKIE_MAX_AGE_MS
-  });
-  res.json({ user });
-}
-
-app.post("/api/auth/google", loginLimiter, async (req, res) => {
-  let googleUser;
-  try {
-    googleUser = await verifyGoogleIdToken(req.body.idToken);
-  } catch (e) {
-    return res.status(401).json({ error: "invalid_token" });
-  }
-  let allowed;
-  try {
-    allowed = await canLogin(googleUser.email);
-  } catch (e) {
-    console.error("Kiểm tra quyền đăng nhập thất bại:", e);
-    return res.status(500).json({ error: "login_error" });
-  }
-  if (!allowed) {
-    return res.status(403).json({ error: "not_allowed" });
-  }
-  return startSession(res, googleUser);
-});
-
-// Chặt hơn cửa Google: ở đây mỗi lượt là một lần đoán mật khẩu, không có Google
-// đứng giữa lọc hộ. 10 lần / 10 phút / IP là dư cho người gõ nhầm.
-const passwordLoginLimiter = rateLimit({
-  windowMs: 10 * 60 * 1000,
-  max: 10,
-  keyOf: (req) => req.ip
-});
-
-app.post("/api/auth/password", passwordLoginLimiter, async (req, res) => {
-  const { username, password } = req.body || {};
-  if (
-    typeof username !== "string" ||
-    typeof password !== "string" ||
-    !username.trim() ||
-    !password ||
-    username.length > 64 ||
-    password.length > 256
-  ) {
-    return res.status(400).json({ error: "invalid_request" });
-  }
-  let user;
-  try {
-    user = await verifyPasswordLogin(username, password);
-  } catch (e) {
-    console.error("Kiểm tra mật khẩu thất bại:", e);
-    return res.status(500).json({ error: "login_error" });
-  }
-  if (!user) return res.status(401).json({ error: "invalid_credentials" });
-  return startSession(res, user);
-});
-
-app.get("/api/auth/me", requireAuth, (req, res) => {
-  res.json({ user: req.user });
-});
-
-app.post("/api/auth/logout", (req, res) => {
-  res.clearCookie(SESSION_COOKIE_NAME);
-  res.json({ ok: true });
-});
-
-app.use("/api/calculator", requireAuth, calculatorRouter);
+app.use("/api/auth", authRouter);
+app.use("/api/calculator", calculatorRouter);
 
 // Xem dung lượng kho PDF từ trình duyệt, không phải đi mò log Render. Ai đăng
 // nhập được cũng xem được: đây là con số của cả hệ thống, và người dùng cần biết

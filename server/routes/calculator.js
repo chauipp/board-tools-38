@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { requireAuth } from "../auth.js";
 import { Calculator } from "../models.js";
 import { sanitizeCalculator, isStaleWrite } from "../calculator.js";
 
@@ -42,7 +43,7 @@ function calculatorPayload(doc) {
   };
 }
 
-router.get("/", async (req, res) => {
+router.get("/", requireAuth, async (req, res) => {
   try {
     const doc = await ensureCalculatorFor(req.user.email.toLowerCase());
     res.json(calculatorPayload(doc));
@@ -51,7 +52,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-router.put("/", async (req, res) => {
+router.put("/", requireAuth, async (req, res) => {
   try {
     const clean = sanitizeCalculator(req.body);
     if (!clean) return res.status(400).json({ error: "invalid_payload" });
