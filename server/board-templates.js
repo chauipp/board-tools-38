@@ -42,6 +42,14 @@ export const GAME_DESIGN_TEMPLATES = {
   }
 };
 
+// id cho status người dùng tạo tiếp theo: lớn hơn MỌI id có sẵn. Trước đây số
+// này được viết tay (9 cho game-design, trong khi bộ status mặc định đã có tới
+// id 9 "Archived"), nên status đầu tiên người dùng tạo trùng id với "Archived".
+// Tính từ chính danh sách thì thêm/bớt status mặc định không làm lệch nữa.
+export function nextStatusIdFor(statuses) {
+  return Math.max(0, ...statuses.map((s) => s.id)) + 1;
+}
+
 export function gameDesignTemplate(templateId) {
   const template = GAME_DESIGN_TEMPLATES[templateId];
   if (!template) return {};

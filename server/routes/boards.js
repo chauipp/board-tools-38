@@ -4,7 +4,7 @@ import { getBoardRole, hasAllBoardsAccess } from "../auth.js";
 import { rateLimit } from "../rate-limit.js";
 import { asyncRoute } from "../http.js";
 import { AUTH_FIELDS, AUTH_FIELDS_VERSIONED, loadBoardWithRole } from "../board-access.js";
-import { DEFAULT_STATUSES, GAME_DESIGN_STATUSES, gameDesignTemplate } from "../board-templates.js";
+import { DEFAULT_STATUSES, GAME_DESIGN_STATUSES, gameDesignTemplate, nextStatusIdFor } from "../board-templates.js";
 import { normalizeGameDesignFlow, resolveGameDesignFields, validateBoardPayload } from "../board-payload.js";
 import { boardPayload, pickBoardContent } from "../board-fields.js";
 import { broadcastBoardUpdate } from "../realtime/broadcast.js";
@@ -63,13 +63,14 @@ router.post("/", createBoardLimiter, async (req, res) => {
     const name = (req.body.name || "").trim() || "Untitled board";
     const kind = req.body.kind === "game-design" ? "game-design" : "idea";
     const template = kind === "game-design" && typeof req.body.template === "string" ? req.body.template : "";
+    const statuses = (kind === "game-design" ? GAME_DESIGN_STATUSES : DEFAULT_STATUSES).map((s) => ({ ...s }));
     const board = await Board.create({
       name,
       kind,
       ownerEmail: email,
       members: [],
-      statuses: (kind === "game-design" ? GAME_DESIGN_STATUSES : DEFAULT_STATUSES).map((s) => ({ ...s })),
-      nextStatusId: kind === "game-design" ? 9 : 7,
+      statuses,
+      nextStatusId: nextStatusIdFor(statuses),
       ...gameDesignTemplate(template)
     });
     res.status(201).json({ id: String(board._id) });

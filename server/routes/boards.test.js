@@ -7,6 +7,7 @@ import boardFilesRouter from "./board-files.js";
 import boardsRouter from "./boards.js";
 import boardSnapshotsRouter from "./board-snapshots.js";
 import boardMembersRouter from "./board-members.js";
+import { DEFAULT_STATUSES, GAME_DESIGN_STATUSES, nextStatusIdFor } from "../board-templates.js";
 
 const OWNER = "owner@example.test";
 const ID = "abcdefabcdefabcdefabcdef";
@@ -36,6 +37,34 @@ async function fixture(t) {
   };
   return { request, created };
 }
+
+test("nextStatusIdFor: max(id) + 1, danh sách rỗng thì 1", () => {
+  assert.equal(nextStatusIdFor([{ id: 1 }, { id: 9 }, { id: 4 }]), 10);
+  assert.equal(nextStatusIdFor([]), 1);
+});
+
+// B1: board game-design có 9 status (id 1–9) nhưng nextStatusId từng là 9, nên
+// status đầu tiên người dùng tạo trùng id với "Archived".
+for (const [kind, statuses] of [["game-design", GAME_DESIGN_STATUSES], ["idea", DEFAULT_STATUSES]]) {
+  test(`B1: board ${kind} mới có nextStatusId lớn hơn mọi id status mặc định`, async (t) => {
+    const { request, created } = await fixture(t);
+    const res = await request("POST", "/api/boards", { name: "x", kind });
+    assert.equal(res.status, 201);
+    const doc = created[0];
+    assert.equal(doc.kind, kind);
+    assert.deepEqual(doc.statuses, statuses);
+    const maxId = Math.max(...doc.statuses.map((s) => s.id));
+    assert.equal(doc.nextStatusId, maxId + 1);
+    assert.ok(!doc.statuses.some((s) => s.id === doc.nextStatusId), "status mới không được trùng id có sẵn");
+  });
+}
+
+test("B1: board game-design từ template vẫn giữ nextStatusId đúng", async (t) => {
+  const { request, created } = await fixture(t);
+  await request("POST", "/api/boards", { name: "x", kind: "game-design", template: "combat" });
+  assert.equal(created[0].nextStatusId, Math.max(...GAME_DESIGN_STATUSES.map((s) => s.id)) + 1);
+  assert.equal(created[0].nextNodeId, 4);
+});
 
 test("routes: id không phải ObjectId thì 404 not_found (CastError), ở cả bốn router", async (t) => {
   const { request } = await fixture(t);
