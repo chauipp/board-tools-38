@@ -60,6 +60,7 @@ import { useLiveSync, applyGeomOverlay } from "../lib/useLiveSync.js";
 import { useBoardStore } from "../lib/useBoardStore.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { rafThrottle } from "../lib/raf-throttle.js";
+import { startDrag } from "../lib/drag-session.js";
 import { replaceIdSet, toggleId, unionIdSet } from "../lib/selection.js";
 import { readImageFile } from "../lib/image-utils.js";
 import { canAddImage, formatMB } from "../lib/image-budget.js";
@@ -2138,7 +2139,7 @@ export default function IdeaMap() {
     let latest = board;
     let moved = false;
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       const dx = (ev.clientX - startX) / scale;
       if (Math.abs(dx) > 0.5) moved = true;
       const w = Math.max(MIN_W, Math.round(startW + dx));
@@ -2148,18 +2149,14 @@ export default function IdeaMap() {
         return next;
       });
       if (moved) publishGeom({ nodes: [{ id: node.id, x: node.x, y: node.y, w }] });
-    });
+    };
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.flush();
       if (!moved) return;
       recordHistory(boardBeforeDrag);
       finishGeom({ nodes: latest.nodes.filter((n) => n.id === node.id) });
       saveNow(latest);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp });
   }
 
   // Khung PDF cần kéo cả hai chiều: chiều rộng quyết định cỡ trang, chiều cao
