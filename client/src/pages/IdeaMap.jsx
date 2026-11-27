@@ -2173,7 +2173,7 @@ export default function IdeaMap() {
     const startW = node.w || 420, startH = node.pdfH || 500;
     let latest = board;
     let moved = false;
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       const dx = (ev.clientX - startX) / scale;
       const dy = (ev.clientY - startY) / scale;
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
@@ -2185,11 +2185,8 @@ export default function IdeaMap() {
         return next;
       });
       if (moved) publishGeom({ nodes: [{ id: node.id, x: node.x, y: node.y, w, h: pdfH }] });
-    });
+    };
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.flush();
       if (!moved) return;
       recordHistory(boardBeforeDrag);
       finishGeom({
@@ -2199,8 +2196,7 @@ export default function IdeaMap() {
       });
       saveNow(latest);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp });
   }
 
   function removeNodeImage(id) {
