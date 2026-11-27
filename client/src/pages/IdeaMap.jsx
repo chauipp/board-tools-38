@@ -59,6 +59,7 @@ import { useFollow } from "../lib/useFollow.js";
 import { useLiveSync, applyGeomOverlay, mergeRemoteBoard } from "../lib/useLiveSync.js";
 import { rebaseBoard } from "../lib/rebase.js";
 import { createSaveQueue } from "../lib/save-queue.js";
+import { emptyHistory, record as recordStep, undo as undoStep, redo as redoStep, beginNudge, flushNudge } from "../lib/history.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { rafThrottle } from "../lib/raf-throttle.js";
 import { replaceIdSet, toggleId, unionIdSet } from "../lib/selection.js";
@@ -166,8 +167,14 @@ export default function IdeaMap() {
   const [captureOpen, setCaptureOpen] = useState(false);
   const [captureText, setCaptureText] = useState("");
   const [isPanning, setIsPanning] = useState(false);
-  const [past, setPast] = useState([]);
-  const [future, setFuture] = useState([]);
+  // Lịch sử hoàn tác (lib/history.js). Giữ trong ref để mọi handler — kể cả
+  // closure cũ — đọc được bản mới nhất ngay lập tức; setHistoryVersion chỉ để
+  // render lại nút Hoàn tác/Làm lại. `past`/`future` là mảng mới mỗi lần đổi,
+  // nên dùng làm deps của effect vẫn đúng như khi chúng còn là state.
+  const historyRef = useRef(null);
+  if (!historyRef.current) historyRef.current = emptyHistory();
+  const [, setHistoryVersion] = useState(0);
+  const { past, future } = historyRef.current;
   const [linkDraft, setLinkDraft] = useState(null);
   const [dropTargetId, setDropTargetId] = useState(null);
   const [chipDrag, setChipDrag] = useState(null);
@@ -331,7 +338,6 @@ export default function IdeaMap() {
   const selectedIdsRef = useRef(selectedIds);
   const suppressContextMenuRef = useRef(false);
   const nudgeTimerRef = useRef(null);
-  const nudgeBaseRef = useRef(null);
   const spacePanRef = useRef(false);
   // Cử chỉ bấm nhiều lần lên một nét vẽ (2 lần đổi nét liền ↔ nét đứt). Phần
   // việc nằm ở handleViewportClickCapture bên dưới; hai cái ref phải khai ở đây
@@ -937,8 +943,7 @@ export default function IdeaMap() {
       boardRef.current = restored;
       serverBaseRef.current = restored;
       lastUpdatedAtRef.current = restored.updatedAt;
-      setPast([]);
-      setFuture([]);
+      setHistory({ ...historyRef.current, past: [], future: [] });
       inkLive.reconcile(restored);
       setSaveError(null);
     } catch (error) {
@@ -947,26 +952,25 @@ export default function IdeaMap() {
     }
   }
 
-  const MAX_HISTORY = 50;
-  function recordHistoryRaw(prevBoard) {
-    setPast((p) => {
-      const nextPast = [...p, prevBoard];
-      return nextPast.length > MAX_HISTORY ? nextPast.slice(nextPast.length - MAX_HISTORY) : nextPast;
-    });
-    setFuture([]);
+  function setHistory(next) {
+    if (next === historyRef.current) return;
+    historyRef.current = next;
+    setHistoryVersion((v) => v + 1);
+  }
+
+  function clearNudgeTimer() {
+    if (nudgeTimerRef.current) { clearTimeout(nudgeTimerRef.current); nudgeTimerRef.current = null; }
   }
 
   function flushNudgeBurst() {
-    if (nudgeBaseRef.current == null) return;
-    const base = nudgeBaseRef.current;
-    nudgeBaseRef.current = null;
-    if (nudgeTimerRef.current) { clearTimeout(nudgeTimerRef.current); nudgeTimerRef.current = null; }
-    recordHistoryRaw(base);
+    if (historyRef.current.nudgeBase == null) return;
+    clearNudgeTimer();
+    setHistory(flushNudge(historyRef.current));
   }
 
   function recordHistory(prevBoard) {
-    flushNudgeBurst();
-    recordHistoryRaw(prevBoard);
+    if (historyRef.current.nudgeBase != null) clearNudgeTimer();
+    setHistory(recordStep(historyRef.current, prevBoard));
   }
 
   function commitAndSave(next, opts) {
@@ -1002,31 +1006,23 @@ export default function IdeaMap() {
   }
 
   function undo() {
-    if (nudgeBaseRef.current != null) {
-      const base = keepView(nudgeBaseRef.current);
-      nudgeBaseRef.current = null;
-      if (nudgeTimerRef.current) { clearTimeout(nudgeTimerRef.current); nudgeTimerRef.current = null; }
-      setFuture((f) => [board, ...f]);
-      setEditingId(null);
-      setBoard(base);
-      saveNow(base);
-      return;
-    }
-    if (past.length === 0) return;
-    const prev = keepView(past[past.length - 1]);
-    setPast((p) => p.slice(0, -1));
-    setFuture((f) => [board, ...f]);
+    const hadNudge = historyRef.current.nudgeBase != null;
+    const step = undoStep(historyRef.current, board);
+    if (!step) return;
+    if (hadNudge) clearNudgeTimer();
+    setHistory(step.history);
+    const prev = keepView(step.board);
     setEditingId(null);
     setBoard(prev);
     saveNow(prev);
   }
 
   function redo() {
-    if (nudgeBaseRef.current != null) { flushNudgeBurst(); return; }
-    if (future.length === 0) return;
-    const nextState = keepView(future[0]);
-    setFuture((f) => f.slice(1));
-    setPast((p) => [...p, board]);
+    if (historyRef.current.nudgeBase != null) { flushNudgeBurst(); return; }
+    const step = redoStep(historyRef.current, board);
+    if (!step) return;
+    setHistory(step.history);
+    const nextState = keepView(step.board);
     setEditingId(null);
     setBoard(nextState);
     saveNow(nextState);
@@ -3883,8 +3879,8 @@ export default function IdeaMap() {
 
   function nudgeSelection(dx, dy) {
     if (selectedIds.size === 0 && selectedGroupIds.size === 0 && selectedDrawingIds.size === 0) return;
-    if (nudgeBaseRef.current == null) {
-      nudgeBaseRef.current = board;   // history recorded once per burst, at burst end
+    if (historyRef.current.nudgeBase == null) {
+      setHistory(beginNudge(historyRef.current, board));   // history recorded once per burst, at burst end
       // Mỗi loạt nhích là MỘT lượt live riêng. Thiếu dòng này thì gói dùng lại
       // strokeId của lượt kéo trước và đè lên entry của nó.
       inkLive.beginMove();
