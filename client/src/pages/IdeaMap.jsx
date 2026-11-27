@@ -2532,7 +2532,7 @@ export default function IdeaMap() {
         .map((edge) => edge.id);
     }
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       if (!dragging && Math.hypot(ev.clientX - startScreenX, ev.clientY - startScreenY) > THRESHOLD) dragging = true;
       if (!dragging) return;
       const a = toCanvas(startScreenX, startScreenY);
@@ -2546,19 +2546,15 @@ export default function IdeaMap() {
       setSelectedEdgeIds((prev) => unionIdSet(prev, baseEdgeIds, edgeHitIdsFor(m)));
       setSelectedGroupIds((prev) => unionIdSet(prev, baseGroupIds, groupHitIdsFor(m)));
       setSelectedDrawingIds((prev) => unionIdSet(prev, baseDrawingIds, drawingsInRect(boardRef.current.drawings || [], m)));
-    });
+    };
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.cancel();
       // Bấm-không-kéo trên nền trống = bỏ chọn hết, NHƯNG có Ctrl thì không:
       // ở đó Ctrl nghĩa là "đang cộng dồn lựa chọn", trượt tay bấm nhầm nền
       // trống mà mất cả vùng chọn vừa gom là hỏng việc.
       if (!dragging) { if (!additive) clearSelection(); return; }
       setMarquee(null);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp, release: "cancel" });
   }
 
   function startPan(e) {
