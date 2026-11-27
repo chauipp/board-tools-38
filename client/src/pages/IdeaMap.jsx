@@ -58,6 +58,7 @@ import { usePresence } from "../lib/usePresence.js";
 import { useFollow } from "../lib/useFollow.js";
 import { useLiveSync, applyGeomOverlay, mergeRemoteBoard } from "../lib/useLiveSync.js";
 import { rebaseBoard } from "../lib/rebase.js";
+import { createSaveQueue } from "../lib/save-queue.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { rafThrottle } from "../lib/raf-throttle.js";
 import { replaceIdSet, toggleId, unionIdSet } from "../lib/selection.js";
@@ -289,7 +290,6 @@ export default function IdeaMap() {
   const canvasRef = useRef(null);
   const editDockRef = useRef(null);
   const searchInputRef = useRef(null);
-  const saveTimerRef = useRef(null);
   const boardRef = useRef(null);
   // Listener "paste" gắn-một-lần (deps: []) đóng gói `role` lúc mount, khi đó
   // board chưa tải xong nên role vẫn là null — phải đọc qua ref mới đúng.
@@ -307,17 +307,27 @@ export default function IdeaMap() {
   // (lib/rebase.js). Cập nhật ở ba chỗ: lúc tải xong, lúc lưu thành công, và
   // lúc áp một board:update của người khác.
   const serverBaseRef = useRef(null);
-  // true khi có một cú PUT đang bay. Không cho cú saveNow() thứ hai bay chồng
-  // lên: nó sẽ chốt `base`/`baseUpdatedAt` TỪ TRƯỚC khi cú thứ nhất về, nên nếu
-  // cú thứ nhất vừa thêm một thẻ (ví dụ dán ảnh) thì `base` của cú thứ hai vẫn
-  // chưa biết thẻ đó tồn tại. Khi đó cú thứ hai đụng conflict, rebaseBoard thấy
-  // thẻ đó có trên server nhưng không có trong base của mình → tưởng lầm là
-  // thẻ CỦA NGƯỜI KHÁC trùng id, tự cấp cho nó một id mới rồi giữ lại CẢ HAI —
-  // đúng hiện tượng "dán ảnh xong kéo rộng ra thì hiện thêm 1 ảnh cỡ gốc ở vị
-  // trí cũ". Xếp hàng ở đây để `base` luôn phản ánh đúng lần lưu gần nhất của
-  // CHÍNH MÌNH trước khi tính delta tiếp.
-  const savingRef = useRef(false);
-  const pendingSaveRef = useRef(null);
+  // Hàng đợi lưu (lib/save-queue.js): một cú PUT bay tại một thời điểm, 409 thì
+  // ghép lại. Tạo MỘT lần; các callback đọc saveHooksRef — gán lại mỗi lượt
+  // render ở chỗ saveNow bên dưới — nên luôn thấy closure mới nhất.
+  const saveHooksRef = useRef(null);
+  const saveQueueRef = useRef(null);
+  if (!saveQueueRef.current) {
+    const hook = (name) => (...args) => saveHooksRef.current[name](...args);
+    saveQueueRef.current = createSaveQueue({
+      canSave: hook("canSave"),
+      prepare: hook("prepare"),
+      save: hook("save"),
+      rebase: rebaseBoard,
+      merge: hook("merge"),
+      adopt: hook("adopt"),
+      getBase: () => serverBaseRef.current,
+      setBase: (b) => { serverBaseRef.current = b; },
+      getStamp: () => lastUpdatedAtRef.current,
+      setStamp: (t) => { lastUpdatedAtRef.current = t; },
+      onState: ({ error }) => setSaveError(error)
+    });
+  }
   const selectedIdsRef = useRef(selectedIds);
   const suppressContextMenuRef = useRef(false);
   const nudgeTimerRef = useRef(null);
@@ -870,91 +880,38 @@ export default function IdeaMap() {
   // cả khi được gọi từ một closure cũ. Handler nào gắn với deps [] (listener
   // paste, .then() của readImageFile…) đóng gói `role` lúc mount — khi đó board
   // chưa tải xong nên role vẫn null và chốt chặn sẽ hở. Ref thì luôn mới.
-  // Trần số lần ghép lại. Mỗi vòng đều tiến (mốc mới hơn, delta nhỏ đi), nên
-  // chạm trần nghĩa là có ai đó đang lưu liên tục nhanh hơn mình — lúc đó đi
-  // đường dự phòng còn hơn quay vòng mãi.
-  const MAX_REBASE_TRIES = 3;
-
-  // Cú lưu hiện tại (kể cả các vòng ghép lại của riêng nó) vừa xong — cho nó
-  // chạy tiếp cú đang xếp hàng, nếu có, với `base` giờ đã mới nhất.
-  function settleSave() {
-    savingRef.current = false;
-    if (pendingSaveRef.current == null) return;
-    const queued = pendingSaveRef.current;
-    pendingSaveRef.current = null;
-    saveNow(queued);
-  }
-
-  function saveNow(next, tries = 0) {
-    if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-    if (roleRef.current === "viewer") return;
-    const arranged = arrangeLockedTrees(next, treeSizeRef.current);
-    if (arranged !== next) {
-      next = arranged;
-      setBoard(next);
-      boardRef.current = next;
+  saveHooksRef.current = {
+    canSave: () => roleRef.current !== "viewer",
+    prepare: (next) => {
+      const arranged = arrangeLockedTrees(next, treeSizeRef.current);
+      if (arranged !== next) {
+        next = arranged;
+        setBoard(next);
+        boardRef.current = next;
+      }
+      return next;
+    },
+    save: (next, baseUpdatedAt) => saveBoard(boardId, next, socketRef.current?.id, baseUpdatedAt),
+    // Giữ nguyên camera của mình và giữ nguyên đúng cái thẻ đang gõ dở —
+    // cùng luật với lúc áp một board:update, nên không có hai cách trộn
+    // khác nhau để lệch nhau.
+    merge: (rebased) => {
+      const local = boardRef.current;
+      return normalizeGameDesignBoard(local ? mergeRemoteBoard(local, rebased, editingIdRef.current) : rebased);
+    },
+    adopt: (merged) => {
+      setBoard(merged);
+      boardRef.current = merged;
+      inkLive.reconcile(merged);
     }
-    // Đang có một cú PUT bay (kể cả đang ghép lại): không bắn cú mới đè lên nó.
-    // `base` chốt bên dưới sẽ là bản NGAY LÚC NÀY, mà cú đang bay có thể sắp
-    // thêm một thẻ mà `base` chưa biết — bắn chồng lên là hạt giống của đúng
-    // bug "dán ảnh rồi kéo rộng ra thì hiện thêm 1 ảnh cỡ gốc ở vị trí cũ" (xem
-    // ghi chú ở savingRef). Chỉ giữ lại BẢN MỚI NHẤT cần lưu; những state ở giữa
-    // không cần lưu riêng.
-    if (tries === 0) {
-      if (savingRef.current) { pendingSaveRef.current = next; return; }
-      savingRef.current = true;
-    }
-    // Mốc và bản nền được CHỐT ngay đây, trước khi cú PUT rời máy: nếu đọc lại ở
-    // trong .catch thì lúc đó chúng có thể đã bị một gói board:update chen vào
-    // sửa mất, và delta sẽ tính từ nhầm mốc.
-    const base = serverBaseRef.current;
-    const baseUpdatedAt = lastUpdatedAtRef.current;
-    saveBoard(boardId, next, socketRef.current?.id, baseUpdatedAt)
-      .then((res) => {
-        lastUpdatedAtRef.current = res.updatedAt;
-        serverBaseRef.current = next;
-        setSaveError(null);
-        settleSave();
-      })
-      .catch((e) => {
-        if (e.code !== "CONFLICT") { setSaveError(true); settleSave(); return; }
-        // Có người lưu chen vào giữa. Bản của họ đi kèm ngay trong lỗi; đắp
-        // những gì mình đã đổi (base → next) lên đó rồi lưu lại.
-        const server = e.board;
-        const rebased = server ? rebaseBoard(server, base, next) : null;
-        if (!rebased || tries >= MAX_REBASE_TRIES) {
-          // Đường dự phòng = đúng hành vi trước khi có chốt này: ghi đè. Không
-          // đẹp, nhưng nó bảo đảm việc thêm chốt không bao giờ làm mọi thứ TỆ
-          // HƠN trước — trường hợp xấu nhất chỉ là quay về mức cũ.
-          // Tới đây nghĩa là ghép ra một board không lành lặn (id trùng, dây mất
-          // đầu) hoặc đã thử quá số lần.
-          saveBoard(boardId, next, socketRef.current?.id)
-            .then((res) => {
-              lastUpdatedAtRef.current = res.updatedAt;
-              serverBaseRef.current = next;
-              setSaveError(null);
-              settleSave();
-            })
-            .catch(() => { setSaveError(true); settleSave(); });
-          return;
-        }
-        // Giữ nguyên camera của mình và giữ nguyên đúng cái thẻ đang gõ dở —
-        // cùng luật với lúc áp một board:update, nên không có hai cách trộn
-        // khác nhau để lệch nhau.
-        const local = boardRef.current;
-        const merged = normalizeGameDesignBoard(local ? mergeRemoteBoard(local, rebased, editingIdRef.current) : rebased);
-        lastUpdatedAtRef.current = server.updatedAt;
-        serverBaseRef.current = server;
-        setBoard(merged);
-        boardRef.current = merged;
-        inkLive.reconcile(merged);
-        saveNow(merged, tries + 1);
-      });
+  };
+
+  function saveNow(next) {
+    saveQueueRef.current.saveNow(next);
   }
 
   function saveDebounced(next) {
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => saveNow(next), 500);
+    saveQueueRef.current.saveDebounced(next, 500);
   }
 
   function openSnapshots() {
