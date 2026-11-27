@@ -1,6 +1,9 @@
+// boards.js được import trước thân index.js trong ESM, nên nạp .env (qua
+// config.js) ngay tại đây để local R2 nhận được cấu hình; trên Render các biến
+// đã có sẵn sớm hơn.
+import "./config.js";
 import fs from "node:fs";
 import path from "node:path";
-import dotenv from "dotenv";
 import {
   S3Client,
   PutObjectCommand,
@@ -8,10 +11,6 @@ import {
   DeleteObjectCommand,
   ListObjectsV2Command
 } from "@aws-sdk/client-s3";
-
-// boards.js được import trước thân index.js trong ESM, nên nạp .env ngay tại
-// đây để local R2 nhận được cấu hình; trên Render các biến đã có sẵn sớm hơn.
-dotenv.config();
 
 const localDir = path.join(process.cwd(), "uploads", "pdf");
 const r2Vars = ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"];

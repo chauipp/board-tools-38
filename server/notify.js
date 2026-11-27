@@ -1,6 +1,5 @@
-import dotenv from "dotenv";
-
-dotenv.config();
+// Đọc DISCORD_WEBHOOK_URL lúc nạp module, nên phải nạp .env (qua config.js) trước.
+import "./config.js";
 
 // Discord webhook: dán URL vào DISCORD_WEBHOOK_URL là xong, không cần thêm thư
 // viện nào — chỉ là một POST JSON. URL của Slack cũng nhận đúng field "content"
