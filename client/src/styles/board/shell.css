@@ -1,0 +1,18 @@
+/* Toàn bộ chrome NỔI trên canvas chứ không xếp hàng với nó, nên .shell chỉ còn
+   là hệ quy chiếu định vị. Trước đây nó là flex column và .topbar/.filterbar là
+   hai hàng của nó — hai hàng đó ĐẨY canvas xuống ~140px vĩnh viễn, kể cả bảng
+   trống không bật lọc nào (21% chiều cao trên laptop 1366×768).
+   Xem docs/superpowers/specs/2026-07-28-idea-map-hud-islands-design.md */
+.shell { position: relative; height: 100vh; overflow: hidden; }
+
+/* KHÔNG bôi đen được, trừ ô nhập liệu. Đây là lớp thứ hai của cùng một luật đã
+   khai bằng JS (xem blockNativeDefault trong IdeaMap.jsx) — giữ cả hai vì chúng
+   chặn hai đường khác nhau: JS bắt cú BẮT ĐẦU bôi đen bằng chuột, còn CSS bắt
+   cả những đường không đi qua chuột, Ctrl+A là cái rõ nhất. Thiếu dòng CSS thì
+   Ctrl+A bôi đen sạch mọi chữ trên bảng và trình duyệt bật thanh công cụ
+   chọn-chữ của nó đè lên. */
+.shell { user-select: none; -webkit-user-select: none; }
+.shell input, .shell textarea, .shell [contenteditable="true"] {
+  user-select: text; -webkit-user-select: text;
+}
+

@@ -90,7 +90,7 @@ import TopMenu from "../components/board/TopMenu.jsx";
 import PaletteEditor from "../components/board/PaletteEditor.jsx";
 import EdgeMenu from "../components/board/EdgeMenu.jsx";
 import CommentsPopover from "../components/board/CommentsPopover.jsx";
-import "../styles/idea-map.css";
+import "../styles/board/index.css";
 
 export default function IdeaMap() {
   const { user, logout } = useAuth();

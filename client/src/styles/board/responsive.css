@@ -1,0 +1,5 @@
+@media (max-width: 560px) {
+  .edit-dock { top: 58px; right: 8px; bottom: 54px; width: min(275px, calc(100vw - 16px)); }
+  .gd-panel { padding: 12px; }
+  .gd-brief-panel { padding: 12px; }
+}

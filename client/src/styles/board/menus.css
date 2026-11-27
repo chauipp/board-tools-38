@@ -1,0 +1,168 @@
+/* Đảo to và đảo người là hai khối tuyệt đối ở hai góc trên: màn hẹp thì ô tìm
+   bung ra có thể đẩy đảo to chạm đảo người. Thu ô tìm lại trước khi tới mức đó. */
+@media (max-width: 900px) {
+  .search-box input { width: 120px; }
+  .island-name { max-width: 110px; }
+}
+
+.fb-add {
+  border: 1px dashed var(--line); border-radius: 999px; background: none;
+  color: var(--ink-dim); width: 22px; height: 22px; line-height: 1; cursor: pointer;
+  font-size: 14px; display: inline-flex; align-items: center; justify-content: center;
+}
+.fb-add:hover { color: var(--ink); border-color: var(--ink-dim); }
+.dot-empty { border: 1px dashed var(--ink-dim); background: transparent !important; }
+
+/* left/top do usePopoverPosition tính (đã ghim vào trong màn hình), không lấy
+   thẳng toạ độ con trỏ nữa.
+   max-height là chốt chặn cuối cho trường hợp menu còn cao hơn cả màn hình:
+   ghim kiểu gì cũng phải thò ra một đầu, nên cho chính menu cuộn. 16px = hai lần
+   POPOVER_MARGIN trong lib/popover.js — hai chỗ phải khớp nhau. */
+.badge-editor {
+  position: fixed; z-index: 90; width: 220px;
+  max-height: calc(100vh - 16px); overflow-y: auto;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: var(--shadow); padding: 10px; display: flex; flex-direction: column; gap: 8px;
+}
+.badge-editor .be-name {
+  width: 100%; background: var(--bg); border: 1px solid var(--line);
+  border-radius: 4px; padding: 5px 7px; font-size: 12px;
+}
+.badge-editor .be-swatches { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.badge-editor .be-swatch {
+  width: 100%; aspect-ratio: 1; border-radius: 50%; border: 2px solid transparent; cursor: pointer; padding: 0;
+}
+.badge-editor .be-swatch.on { border-color: var(--ink); }
+.badge-editor .be-actions { display: flex; gap: 6px; }
+.badge-editor .be-actions button { flex: 1; font-size: 11px; padding: 5px; border-radius: 4px; cursor: pointer; }
+.badge-editor .save-btn { background: var(--accent); color: var(--accent-ink); border: none; }
+.badge-editor .cancel-btn { background: transparent; color: var(--ink-dim); border: 1px solid var(--line); }
+.badge-editor .be-actions .be-delete {
+  background: transparent; border: 1px solid var(--line); color: var(--danger);
+  border-radius: 4px; padding: 5px 8px; font-size: 12px; cursor: pointer; flex: 0 0 auto;
+}
+.badge-editor .be-actions .be-delete:hover { border-color: var(--danger); }
+
+/* Menu chuột phải: danh sách dọc, một hành động một dòng, việc phá huỷ tách riêng
+   dưới vạch. Hàng nút ngang cũ vỡ chữ và đẩy khung rộng quá 220px của chính nó. */
+.ctx-menu .cm-head { font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-dim); }
+.ctx-menu .cm-items { display: flex; flex-direction: column; }
+.ctx-menu .cm-item {
+  display: block; width: 100%; text-align: left; background: none; border: none;
+  border-radius: 4px; padding: 6px 7px; font-size: 11.5px; color: var(--ink); cursor: pointer;
+}
+.ctx-menu .cm-item:hover { background: var(--bg); }
+.ctx-menu .cm-item.danger { color: var(--danger); }
+.ctx-menu .cm-sep { height: 1px; background: var(--line); margin: 4px 0; }
+
+.badge-editor .em-section { display: flex; flex-direction: column; gap: 5px; }
+.badge-editor .em-section + .em-section,
+.badge-editor .em-section + .em-delete { border-top: 1px solid var(--line); padding-top: 8px; }
+.badge-editor .em-toggle-group { display: flex; gap: 6px; }
+.badge-editor .em-icon-btn {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: 6px; border-radius: 4px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--ink-dim); cursor: pointer;
+}
+.badge-editor .em-icon-btn:hover { color: var(--ink); border-color: var(--ink-dim); }
+.badge-editor .em-icon-btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+/* Năm nút bậc thẻ trên MỘT hàng trong khung rộng 220px: mỗi nút chỉ được ~35px.
+   Padding ngang phải bóp còn 2px, và icon co theo bề rộng nút thay vì giữ 30px
+   cố định — giữ nguyên là hình thẻ bị cắt mất hai mép và bậc nào cũng như nhau. */
+.badge-editor .lv-btn { padding: 5px 2px; }
+.badge-editor .lv-btn svg { width: 100%; height: auto; }
+.badge-editor .em-delete {
+  width: 100%; display: flex; align-items: center; justify-content: center; gap: 6px;
+  background: transparent; border: 1px solid var(--line); color: var(--danger);
+  border-radius: 4px; padding: 6px 8px; font-size: 11px; cursor: pointer;
+}
+.badge-editor .em-delete:hover { border-color: var(--danger); }
+
+.pal-swatch {
+  width: 22px; height: 22px; border-radius: 50%; padding: 0;
+  border: 1px solid var(--line); cursor: grab; flex-shrink: 0;
+}
+.pal-swatch:active { cursor: grabbing; }
+.pal-swatch:hover { border-color: var(--ink); }
+/* Panel Giao diện: hai hàng "nhãn — dãy nút", mỗi hàng một việc. */
+.theme-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* Nhãn năm hàng của bảng Giao diện phải thẳng cột thì mới đọc được thành bảng.
+   72px vừa đủ cho nhãn dài nhất ("Ngôn ngữ" / "Nền bảng" ở 10.5px). */
+.theme-row .fb-count { min-width: 72px; }
+/* Nút "Vẽ tay" mang cả icon lẫn chữ — .btn không phải flex nên icon sẽ nằm lệch
+   đường chân chữ nếu không nói rõ. */
+.theme-row .btn { display: inline-flex; align-items: center; gap: 5px; }
+
+/* Nút swatch tự tô bằng CHÍNH preset nó đại diện, qua data-bg — không lặp lại
+   mã màu trong JS, nên sửa hex ở khối preset là nút đổi theo. */
+.bg-swatch {
+  width: 22px; height: 22px; border-radius: 5px; padding: 0; flex-shrink: 0;
+  border: 1px solid var(--line); cursor: pointer;
+  background: var(--board-bg);
+}
+.bg-swatch[data-bg="paper"] { background: #E6E0CC; }
+.bg-swatch[data-bg="white"] { background: #FBFAF7; }
+.bg-swatch[data-bg="slate"] { background: #E4E6E4; }
+.bg-swatch[data-bg="mint"]  { background: #E2EDE6; }
+.bg-swatch[data-bg="blush"] { background: #F1E6E4; }
+.bg-swatch[data-bg="sky"]   { background: #E0E9F5; }
+.bg-swatch[data-bg="sand"]  { background: #F2E6C9; }
+.bg-swatch[data-bg="lavender"] { background: #EAE5F4; }
+.bg-swatch[data-bg="blueprint"] { background: #DBE6F3; }
+/* Nền tối: nút phải cho thấy màu nó sẽ RA, không phải màu của bản sáng. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="paper"] { background: #241F16; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="white"] { background: #141414; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="slate"] { background: #1B1E1F; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="mint"]  { background: #141F19; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="blush"] { background: #221715; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="sky"]   { background: #151C27; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="sand"]  { background: #241E12; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="lavender"] { background: #1D1826; }
+  :root:not([data-theme="light"]) .bg-swatch[data-bg="blueprint"] { background: #0E1F35; }
+}
+:root[data-theme="dark"] .bg-swatch[data-bg="paper"] { background: #241F16; }
+:root[data-theme="dark"] .bg-swatch[data-bg="white"] { background: #141414; }
+:root[data-theme="dark"] .bg-swatch[data-bg="slate"] { background: #1B1E1F; }
+:root[data-theme="dark"] .bg-swatch[data-bg="mint"]  { background: #141F19; }
+:root[data-theme="dark"] .bg-swatch[data-bg="blush"] { background: #221715; }
+:root[data-theme="dark"] .bg-swatch[data-bg="sky"]   { background: #151C27; }
+:root[data-theme="dark"] .bg-swatch[data-bg="sand"]  { background: #241E12; }
+:root[data-theme="dark"] .bg-swatch[data-bg="lavender"] { background: #1D1826; }
+:root[data-theme="dark"] .bg-swatch[data-bg="blueprint"] { background: #0E1F35; }
+/* "Theo giao diện": nửa sáng nửa tối, đọc ra ngay là "không chọn màu nào". */
+.bg-swatch.bg-none { background: linear-gradient(135deg, var(--surface) 50%, var(--ink) 50%); }
+.bg-swatch:hover { border-color: var(--ink); }
+.bg-swatch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+.bg-swatch:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Nút kiểu lưới mang chính cái lưới nó đại diện, thu nhỏ lại — nhãn chữ
+   ("chấm" / "ô" / "trơn") mất nhiều chỗ hơn mà vẫn phải đoán. Bước lưới ở đây
+   là 6px cố định, không dùng --grid-size: nút chỉ 22px, kẻ theo bước thật của
+   sa bàn thì cả nút chỉ còn đúng một vạch. */
+.grid-swatch {
+  width: 22px; height: 22px; border-radius: 5px; padding: 0; flex-shrink: 0;
+  border: 1px solid var(--line); cursor: pointer;
+  background-color: var(--surface);
+  background-position: 1px 1px;
+  background-size: 6px 6px;
+}
+.grid-swatch[data-grid="dots"] {
+  background-image: radial-gradient(color-mix(in srgb, var(--ink) 45%, transparent) 1px, transparent 1px);
+}
+.grid-swatch[data-grid="lines"] {
+  background-image:
+    linear-gradient(color-mix(in srgb, var(--ink) 45%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--ink) 45%, transparent) 1px, transparent 1px);
+}
+.grid-swatch[data-grid="plain"] { background-image: none; }
+.grid-swatch:hover { border-color: var(--ink); }
+.grid-swatch.on { outline: 2px solid var(--accent); outline-offset: 1px; }
+.grid-swatch:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.badge-editor.pal-editor { width: 150px; }
+.badge-editor .pal-input {
+  width: 100%; height: 34px; padding: 0; cursor: pointer;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
+}
+

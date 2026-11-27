@@ -1,0 +1,36 @@
+.peer-cursor {
+  position: absolute; pointer-events: none; z-index: 6;
+  transform: translate(0, 0);
+}
+/* Sau khi bấm avatar và màn hình vừa nhảy: nháy một vòng tròn quanh con trỏ
+   người đó, nếu không thì mắt phải tự dò trong đám thẻ xem nó nằm đâu. */
+.peer-cursor.spotlight::before {
+  content: ""; position: absolute; left: -14px; top: -14px;
+  width: 44px; height: 44px; border-radius: 50%;
+  border: 2px solid var(--peer-color);
+  animation: peer-spotlight 1.6s ease-out;
+}
+@keyframes peer-spotlight {
+  0%   { transform: scale(0.4); opacity: 1; }
+  70%  { transform: scale(1.5); opacity: 0.5; }
+  100% { transform: scale(2.1); opacity: 0; }
+}
+.peer-cursor-label {
+  display: inline-block; margin-left: 14px; margin-top: -4px;
+  padding: 1px 6px; border-radius: 4px;
+  font-size: 10px; font-weight: 600; color: var(--accent-ink);
+  white-space: nowrap;
+}
+
+/* Vùng người khác đang chọn: viền nét đứt bao quanh thẻ, màu theo người đó —
+   cùng ngôn ngữ hình ảnh với .idea-card.selected (viền liền, màu accent) của
+   chính mình, nét đứt để phân biệt "người khác chọn" với "mình chọn". */
+.peer-select-outline {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px dashed;
+  border-radius: 10px;
+  pointer-events: none;
+  z-index: 5;
+}
+

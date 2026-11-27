@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { Trans } from "@lingui/react/macro";
+import { getPdfUsage } from "../lib/api.js";
 
 // Dung lượng kho PDF chung, hiện trong menu.
 //
@@ -15,8 +16,7 @@ export default function PdfUsage() {
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/pdf-usage", { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
+    getPdfUsage()
       .then((data) => { if (alive && data && !data.error) setUsage(data); })
       .catch(() => {});
     return () => { alive = false; };

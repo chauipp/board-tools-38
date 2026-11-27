@@ -66,7 +66,11 @@ test("mọi id đều là chuỗi kebab thường, để dùng thẳng trong sel
 // một id mà quên khối CSS thì nút vẫn hiện, bấm vẫn lưu, mà bảng không đổi gì —
 // một lỗi im lặng. Đọc thẳng file CSS là cách duy nhất bắt được nó ở tầng
 // node:test (không có trình duyệt nào ở đây để hỏi).
-const CSS = readFileSync(new URL("../styles/idea-map.css", import.meta.url), "utf8");
+// CSS board đã tách thành styles/board/*.css: ghép lại theo thứ tự @import.
+const CSS_INDEX = new URL("../styles/board/index.css", import.meta.url);
+const CSS = [...readFileSync(CSS_INDEX, "utf8").matchAll(/^@import\s+["']([^"']+)["'];/gm)]
+  .map((m) => readFileSync(new URL(m[1], CSS_INDEX), "utf8"))
+  .join("");
 
 test("mỗi preset nền có cả khối màu lẫn màu cho nút swatch", () => {
   for (const id of BOARD_BGS) {
