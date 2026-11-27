@@ -1528,7 +1528,7 @@ export default function IdeaMap() {
     let latest = board;
     let moved = false;
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       const dx = (ev.clientX - startX) / scale;
       const dy = (ev.clientY - startY) / scale;
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) moved = true;
@@ -1543,18 +1543,14 @@ export default function IdeaMap() {
         return next;
       });
       if (moved) publishGeom({ groups: [{ id: group.id, x: group.x, y: group.y, w, h }] });
-    });
+    };
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.flush();
       if (!moved) return;
       recordHistory(boardBeforeDrag);
       finishGeom({ groups: latest.groups.filter((g) => g.id === group.id) });
       saveNow(latest);
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp });
   }
 
   function saveGroupTitle(groupId, title) {
