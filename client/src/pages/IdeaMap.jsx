@@ -3946,7 +3946,7 @@ export default function IdeaMap() {
       return null;
     }
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
       if (!dragging) return;
       setColorDrag({ token, x: ev.clientX, y: ev.clientY });
@@ -3956,11 +3956,8 @@ export default function IdeaMap() {
       // — đúng cái việc mà đích này sinh ra để khỏi phải làm.
       if (target && target.kind === "selection") setDropTargetId(SELECTION_DROP);
       else setDropTargetId(target && target.kind === "node" ? { id: target.id, kind: "node" } : null);
-    });
+    };
     function onUp(ev) {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.cancel();
       if (!dragging) return;
       const target = colorTargetAt(ev.clientX, ev.clientY);
       setColorDrag(null);
@@ -3977,8 +3974,7 @@ export default function IdeaMap() {
         store.commit(applyColorTo(board, target, token));
       }
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp, release: "cancel" });
   }
 
   // Nối lớp vỏ ổn định ở trên với bản mới nhất của từng hàm xử lý. Gán thường,
