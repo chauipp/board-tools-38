@@ -1,8 +1,48 @@
-const AB_TEST_FIELDS = [["hypothesis", "Giả thuyết", "textarea"], ["control", "Control", "input"], ["variant", "Variant", "input"], ["primaryMetric", "Primary metric", "input"], ["successCriteria", "Tiêu chí thành công", "textarea"], ["segment", "Phân khúc người chơi", "input"]];
-function newABTest() { return { id: globalThis.crypto?.randomUUID?.() || `ab-test-${Date.now()}`, hypothesis: "", control: "", variant: "", primaryMetric: "", successCriteria: "", segment: "", status: "draft" }; }
+import { ItemFields, ListEditor } from "./ListEditor.jsx";
+
+const AB_TEST_FIELDS = [
+  ["hypothesis", "Giả thuyết", "textarea"],
+  ["control", "Control", "input"],
+  ["variant", "Variant", "input"],
+  ["primaryMetric", "Primary metric", "input"],
+  ["successCriteria", "Tiêu chí thành công", "textarea"],
+  ["segment", "Phân khúc người chơi", "input"]
+];
+
+function newABTest() {
+  return {
+    id: globalThis.crypto?.randomUUID?.() || `ab-test-${Date.now()}`,
+    hypothesis: "", control: "", variant: "", primaryMetric: "", successCriteria: "", segment: "", status: "draft"
+  };
+}
+
 export function ABTestsSection({ tests, canEdit, collapsed, onToggle, onChange }) {
-  const replace = (id, patch) => onChange(tests.map((item) => item.id === id ? { ...item, ...patch } : item));
-  return <section className="gd-detail-section gd-ab-tests-section"><div className="gd-detail-section-head"><button className="gd-detail-collapse" type="button" onClick={onToggle} aria-expanded={!collapsed}>{collapsed ? "▸" : "▾"} A/B test hypotheses <span>{tests.length}</span></button>{canEdit && <button className="btn ghost gd-detail-add" type="button" disabled={tests.length >= 20} onClick={() => onChange([...tests, newABTest()])}>+ Thêm hypothesis</button>}</div>
-    {!collapsed && <div className="gd-detail-list">{tests.length === 0 && <p className="gd-detail-empty">Chưa có giả thuyết A/B test.</p>}{tests.map((item, index) => <article className="gd-detail-item" key={item.id}><div className="gd-detail-item-head"><strong>A/B test {index + 1}</strong>{canEdit && <button className="gd-detail-remove danger" type="button" onClick={() => onChange(tests.filter((entry) => entry.id !== item.id))}>Xóa</button>}</div>{AB_TEST_FIELDS.map(([field, label, control]) => <label key={field}>{label}{control === "textarea" ? <textarea rows={2} maxLength={4000} value={item[field]} disabled={!canEdit} onChange={(event) => replace(item.id, { [field]: event.target.value })} /> : <input maxLength={4000} value={item[field]} disabled={!canEdit} onChange={(event) => replace(item.id, { [field]: event.target.value })} />}</label>)}<label>Trạng thái<select value={item.status} disabled={!canEdit} onChange={(event) => replace(item.id, { status: event.target.value })}><option value="draft">Draft</option><option value="running">Running</option><option value="concluded">Concluded</option><option value="rejected">Rejected</option></select></label></article>)}</div>}
-  </section>;
+  return (
+    <ListEditor
+      className="gd-ab-tests-section"
+      title="A/B test hypotheses"
+      items={tests}
+      itemLabel="A/B test"
+      emptyText="Chưa có giả thuyết A/B test."
+      addLabel="Thêm hypothesis"
+      limit={20}
+      newItem={newABTest}
+      canEdit={canEdit}
+      collapsed={collapsed}
+      onToggle={onToggle}
+      onChange={onChange}
+      renderItem={(item, patch) => <>
+        <ItemFields fields={AB_TEST_FIELDS} item={item} canEdit={canEdit} onPatch={patch} />
+        <label>
+          Trạng thái
+          <select value={item.status} disabled={!canEdit} onChange={(event) => patch({ status: event.target.value })}>
+            <option value="draft">Draft</option>
+            <option value="running">Running</option>
+            <option value="concluded">Concluded</option>
+            <option value="rejected">Rejected</option>
+          </select>
+        </label>
+      </>}
+    />
+  );
 }

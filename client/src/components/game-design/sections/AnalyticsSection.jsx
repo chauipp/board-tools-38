@@ -1,8 +1,33 @@
-const ANALYTICS_FIELDS = [["eventName", "Event name"], ["trigger", "Trigger"], ["properties", "Properties"], ["kpi", "KPI liên quan"], ["owner", "Owner"]];
-function newAnalyticsEvent() { return { id: globalThis.crypto?.randomUUID?.() || `analytics-${Date.now()}`, eventName: "", trigger: "", properties: "", kpi: "", owner: "" }; }
+import { ItemFields, ListEditor } from "./ListEditor.jsx";
+
+const ANALYTICS_FIELDS = [
+  ["eventName", "Event name", "input"],
+  ["trigger", "Trigger", "input"],
+  ["properties", "Properties", "textarea"],
+  ["kpi", "KPI liên quan", "input"],
+  ["owner", "Owner", "input"]
+];
+
+function newAnalyticsEvent() {
+  return { id: globalThis.crypto?.randomUUID?.() || `analytics-${Date.now()}`, eventName: "", trigger: "", properties: "", kpi: "", owner: "" };
+}
+
 export function AnalyticsSection({ events, canEdit, collapsed, onToggle, onChange }) {
-  const replace = (id, patch) => onChange(events.map((item) => item.id === id ? { ...item, ...patch } : item));
-  return <section className="gd-detail-section gd-analytics-section"><div className="gd-detail-section-head"><button className="gd-detail-collapse" type="button" onClick={onToggle} aria-expanded={!collapsed}>{collapsed ? "▸" : "▾"} Analytics events <span>{events.length}</span></button>{canEdit && <button className="btn ghost gd-detail-add" type="button" disabled={events.length >= 20} onClick={() => onChange([...events, newAnalyticsEvent()])}>+ Thêm event</button>}</div>
-    {!collapsed && <div className="gd-detail-list">{events.length === 0 && <p className="gd-detail-empty">Chưa có event cần tracking.</p>}{events.map((item, index) => <article className="gd-detail-item" key={item.id}><div className="gd-detail-item-head"><strong>Event {index + 1}</strong>{canEdit && <button className="gd-detail-remove danger" type="button" onClick={() => onChange(events.filter((entry) => entry.id !== item.id))}>Xóa</button>}</div>{ANALYTICS_FIELDS.map(([field, label]) => <label key={field}>{label}{field === "properties" ? <textarea rows={2} maxLength={4000} value={item[field]} disabled={!canEdit} onChange={(event) => replace(item.id, { [field]: event.target.value })} /> : <input maxLength={4000} value={item[field]} disabled={!canEdit} onChange={(event) => replace(item.id, { [field]: event.target.value })} />}</label>)}</article>)}</div>}
-  </section>;
+  return (
+    <ListEditor
+      className="gd-analytics-section"
+      title="Analytics events"
+      items={events}
+      itemLabel="Event"
+      emptyText="Chưa có event cần tracking."
+      addLabel="Thêm event"
+      limit={20}
+      newItem={newAnalyticsEvent}
+      canEdit={canEdit}
+      collapsed={collapsed}
+      onToggle={onToggle}
+      onChange={onChange}
+      renderItem={(item, patch) => <ItemFields fields={ANALYTICS_FIELDS} item={item} canEdit={canEdit} onPatch={patch} />}
+    />
+  );
 }

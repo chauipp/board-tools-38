@@ -1,8 +1,48 @@
+import { CollapsibleSection } from "./ListEditor.jsx";
 import { RelatedCards } from "./RelatedCards.jsx";
+
+const REVIEW_TEXT_FIELDS = [
+  ["outcome", "Outcome", "Kết quả tổng quan sau phát hành…"],
+  ["actualMetrics", "Actual metrics", "Kết quả metric thực tế, guardrail, lỗi…"],
+  ["learnings", "Learnings", "Điều team học được…"],
+  ["nextDecision", "Next decision", "Giữ, tune tiếp, rollback hay sunset…"]
+];
 
 export function PostLaunchReviewSection({ review, nodes, canEdit, collapsed, onToggle, onChange }) {
   const change = (patch) => onChange({ ...review, ...patch });
-  return <section className="gd-detail-section gd-post-launch-section"><div className="gd-detail-section-head"><button className="gd-detail-collapse" type="button" onClick={onToggle} aria-expanded={!collapsed}>{collapsed ? "▸" : "▾"} Post-launch review</button></div>
-    {!collapsed && <div className="gd-detail-list"><label>Outcome<textarea rows={2} maxLength={4000} value={review.outcome} disabled={!canEdit} placeholder="Kết quả tổng quan sau phát hành…" onChange={(event) => change({ outcome: event.target.value })} /></label><label>Actual metrics<textarea rows={2} maxLength={4000} value={review.actualMetrics} disabled={!canEdit} placeholder="Kết quả metric thực tế, guardrail, lỗi…" onChange={(event) => change({ actualMetrics: event.target.value })} /></label><label>Learnings<textarea rows={2} maxLength={4000} value={review.learnings} disabled={!canEdit} placeholder="Điều team học được…" onChange={(event) => change({ learnings: event.target.value })} /></label><label>Next decision<textarea rows={2} maxLength={4000} value={review.nextDecision} disabled={!canEdit} placeholder="Giữ, tune tiếp, rollback hay sunset…" onChange={(event) => change({ nextDecision: event.target.value })} /></label><label>Owner<input maxLength={4000} value={review.owner} disabled={!canEdit} onChange={(event) => change({ owner: event.target.value })} /></label><label>Ngày review<input type="date" value={review.reviewDate} disabled={!canEdit} onChange={(event) => change({ reviewDate: event.target.value })} /></label><label>Trạng thái<select value={review.status} disabled={!canEdit} onChange={(event) => change({ status: event.target.value })}><option value="pending">Pending</option><option value="healthy">Healthy</option><option value="needs-iteration">Needs iteration</option><option value="sunset">Sunset</option></select></label><RelatedCards value={review.cardIds} nodes={nodes} canEdit={canEdit} onChange={(cardIds) => change({ cardIds })} label="Thẻ liên quan" /></div>}
-  </section>;
+  return (
+    <CollapsibleSection className="gd-post-launch-section" title="Post-launch review" collapsed={collapsed} onToggle={onToggle}>
+      {REVIEW_TEXT_FIELDS.map(([field, label, placeholder]) => (
+        <label key={field}>
+          {label}
+          <textarea
+            rows={2}
+            maxLength={4000}
+            value={review[field]}
+            disabled={!canEdit}
+            placeholder={placeholder}
+            onChange={(event) => change({ [field]: event.target.value })}
+          />
+        </label>
+      ))}
+      <label>
+        Owner
+        <input maxLength={4000} value={review.owner} disabled={!canEdit} onChange={(event) => change({ owner: event.target.value })} />
+      </label>
+      <label>
+        Ngày review
+        <input type="date" value={review.reviewDate} disabled={!canEdit} onChange={(event) => change({ reviewDate: event.target.value })} />
+      </label>
+      <label>
+        Trạng thái
+        <select value={review.status} disabled={!canEdit} onChange={(event) => change({ status: event.target.value })}>
+          <option value="pending">Pending</option>
+          <option value="healthy">Healthy</option>
+          <option value="needs-iteration">Needs iteration</option>
+          <option value="sunset">Sunset</option>
+        </select>
+      </label>
+      <RelatedCards value={review.cardIds} nodes={nodes} canEdit={canEdit} onChange={(cardIds) => change({ cardIds })} label="Thẻ liên quan" />
+    </CollapsibleSection>
+  );
 }

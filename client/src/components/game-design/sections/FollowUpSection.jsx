@@ -1,9 +1,43 @@
+import { ListEditor } from "./ListEditor.jsx";
 import { RelatedCards } from "./RelatedCards.jsx";
 
-function newFollowUpTask() { return { id: globalThis.crypto?.randomUUID?.() || `follow-up-${Date.now()}`, text: "", owner: "", deadline: "", done: false, cardIds: [] }; }
+function newFollowUpTask() {
+  return { id: globalThis.crypto?.randomUUID?.() || `follow-up-${Date.now()}`, text: "", owner: "", deadline: "", done: false, cardIds: [] };
+}
+
 export function FollowUpSection({ tasks, nodes, canEdit, collapsed, onToggle, onChange }) {
-  const replace = (id, patch) => onChange(tasks.map((item) => item.id === id ? { ...item, ...patch } : item));
-  return <section className="gd-detail-section"><div className="gd-detail-section-head"><button className="gd-detail-collapse" type="button" onClick={onToggle} aria-expanded={!collapsed}>{collapsed ? "▸" : "▾"} Follow-up tasks <span>{tasks.filter((task) => !task.done).length}</span></button>{canEdit && <button className="btn ghost gd-detail-add" type="button" disabled={tasks.length >= 20} onClick={() => onChange([...tasks, newFollowUpTask()])}>+ Thêm việc</button>}</div>
-    {!collapsed && <div className="gd-detail-list">{tasks.length === 0 && <p className="gd-detail-empty">Chưa có việc follow-up.</p>}{tasks.map((task, index) => <article className="gd-detail-item" key={task.id}><div className="gd-detail-item-head"><strong>Việc {index + 1}</strong>{canEdit && <button className="gd-detail-remove danger" type="button" onClick={() => onChange(tasks.filter((item) => item.id !== task.id))}>Xóa</button>}</div><label className="gd-review-resolved"><input type="checkbox" checked={task.done} disabled={!canEdit} onChange={(event) => replace(task.id, { done: event.target.checked })} /> Hoàn thành</label><label>Công việc<input maxLength={4000} value={task.text} disabled={!canEdit} onChange={(event) => replace(task.id, { text: event.target.value })} /></label><label>Owner<input maxLength={4000} value={task.owner} disabled={!canEdit} onChange={(event) => replace(task.id, { owner: event.target.value })} /></label><label>Deadline<input type="date" value={task.deadline} disabled={!canEdit} onChange={(event) => replace(task.id, { deadline: event.target.value })} /></label><RelatedCards value={task.cardIds} nodes={nodes} canEdit={canEdit} onChange={(cardIds) => replace(task.id, { cardIds })} label="Thẻ liên quan" /></article>)}</div>}
-  </section>;
+  return (
+    <ListEditor
+      title="Follow-up tasks"
+      count={tasks.filter((task) => !task.done).length}
+      items={tasks}
+      itemLabel="Việc"
+      emptyText="Chưa có việc follow-up."
+      addLabel="Thêm việc"
+      limit={20}
+      newItem={newFollowUpTask}
+      canEdit={canEdit}
+      collapsed={collapsed}
+      onToggle={onToggle}
+      onChange={onChange}
+      renderItem={(task, patch) => <>
+        <label className="gd-review-resolved">
+          <input type="checkbox" checked={task.done} disabled={!canEdit} onChange={(event) => patch({ done: event.target.checked })} /> Hoàn thành
+        </label>
+        <label>
+          Công việc
+          <input maxLength={4000} value={task.text} disabled={!canEdit} onChange={(event) => patch({ text: event.target.value })} />
+        </label>
+        <label>
+          Owner
+          <input maxLength={4000} value={task.owner} disabled={!canEdit} onChange={(event) => patch({ owner: event.target.value })} />
+        </label>
+        <label>
+          Deadline
+          <input type="date" value={task.deadline} disabled={!canEdit} onChange={(event) => patch({ deadline: event.target.value })} />
+        </label>
+        <RelatedCards value={task.cardIds} nodes={nodes} canEdit={canEdit} onChange={(cardIds) => patch({ cardIds })} label="Thẻ liên quan" />
+      </>}
+    />
+  );
 }
