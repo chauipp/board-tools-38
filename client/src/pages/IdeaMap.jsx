@@ -2393,7 +2393,7 @@ export default function IdeaMap() {
     let latest = baseBoard;
     let moved = false;
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       let dx = (ev.clientX - startX) / scale;
       let dy = (ev.clientY - startY) / scale;
       if (Math.abs(dx) > 0.5 || Math.abs(dy) > 0.5) {
@@ -2457,11 +2457,8 @@ export default function IdeaMap() {
       });
       // Chỉ phát ĐÚNG những thứ đang bị kéo, không phát cả bảng.
       if (moved) publishGeom(movingGroups.length ? { nodes: moving, groups: movingGroups } : { nodes: moving });
-    });
+    };
     function onUp() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.flush();
       setSnapGuides(EMPTY_ARRAY);
       if (moved) {
         recordHistory(boardBeforeDrag);
@@ -2480,8 +2477,7 @@ export default function IdeaMap() {
       // Bấm-không-kéo: không lưu. Bản cũ vẫn PUT cả board (kèm ảnh base64) rồi
       // bắt server phát board:update cho mọi người, chỉ vì một cú click chọn thẻ.
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp });
   }
 
   function handleMarqueeMouseDown(e) {
