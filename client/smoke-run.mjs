@@ -193,8 +193,16 @@ setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process
 // Mấy bài này là kịch bản "source-checks": chỉ cần chạy một lần cho cả bộ.
 if (SCENARIO === "source-checks") {
   const fs = await import("node:fs");
-  const cssPath = new URL("./src/styles/idea-map.css", import.meta.url);
-  const css = fs.readFileSync(cssPath, "utf8");
+  // idea-map.css đã tách thành styles/board/*.css. Ghép lại theo ĐÚNG thứ tự
+  // @import trong board/index.css (cũng là thứ tự Vite gộp khi build) — các bài
+  // kiểm thứ tự nguồn bên dưới cần đọc đúng một chuỗi CSS liền mạch như trước.
+  const cssIndex = new URL("./src/styles/board/index.css", import.meta.url);
+  const cssParts = [...fs.readFileSync(cssIndex, "utf8").matchAll(/^@import\s+["']([^"']+)["'];/gm)].map((m) => m[1]);
+  if (cssParts.length === 0) {
+    console.log("\n❌ SMOKE FAIL: không đọc được dòng `@import` nào trong styles/board/index.css — không ghép được CSS thì mọi bài kiểm CSS dưới đây vô nghĩa");
+    process.exit(1);
+  }
+  const css = cssParts.map((p) => fs.readFileSync(new URL(p, cssIndex), "utf8")).join("");
   // Tìm rule chọn ĐÚNG ".ink-layer path" — không phải ".ink-layer path.erasing".
   // Chỉ lấy DÒNG CUỐI trước "{": rule này có một ghi chú nhiều dòng đứng ngay
   // trên nó, và split("}") gộp cả ghi chú vào cùng một khối với selector.
@@ -207,11 +215,11 @@ if (SCENARIO === "source-checks") {
     if (selectors.includes(".ink-layer path")) { body = block.slice(open + 1); break; }
   }
   if (body === null) {
-    console.log("\n❌ SMOKE FAIL: không tìm thấy rule `.ink-layer path` trong idea-map.css — rule bị đổi tên hay xoá thì bài kiểm fill-vs-CSS này vô nghĩa mà vẫn xanh");
+    console.log("\n❌ SMOKE FAIL: không tìm thấy rule `.ink-layer path` trong styles/board/*.css — rule bị đổi tên hay xoá thì bài kiểm fill-vs-CSS này vô nghĩa mà vẫn xanh");
     process.exit(1);
   }
   if (/fill\s*:/.test(body)) {
-    console.log("\n❌ SMOKE FAIL: rule `.ink-layer path` trong idea-map.css khai `fill` — trong SVG, CSS thắng presentation attribute, nên dòng này sẽ làm mọi hình khối tô đặc biến thành chỉ-viền; bài kiểm getAttribute(\"fill\") trong entry.jsx chạy trong jsdom (không nạp CSS) không bắt được lỗi này");
+    console.log("\n❌ SMOKE FAIL: rule `.ink-layer path` trong styles/board/*.css khai `fill` — trong SVG, CSS thắng presentation attribute, nên dòng này sẽ làm mọi hình khối tô đặc biến thành chỉ-viền; bài kiểm getAttribute(\"fill\") trong entry.jsx chạy trong jsdom (không nạp CSS) không bắt được lỗi này");
     process.exit(1);
   }
   console.log("  ·", "CSS: rule `.ink-layer path` không khai `fill` (đúng — fill do InkLayer gán tường minh trên từng <path>)");
@@ -226,11 +234,11 @@ if (SCENARIO === "source-checks") {
   const iBtn = css.indexOf(".tool-btn {");
   const iPick = css.search(/^\.shape-pick,\s*\.fill-pick,\s*\.dash-pick,\s*\.erase-pick\s*\{/m);
   if (iBtn < 0 || iPick < 0) {
-    console.log("\n❌ SMOKE FAIL: không tìm thấy rule `.tool-btn` hoặc `.shape-pick, .fill-pick, .dash-pick, .erase-pick` trong idea-map.css — rule bị đổi tên, hoặc có nút MỚI trong .tool-grid chưa được thêm vào rule thu 22px; cả hai đều làm bài kiểm thứ tự nguồn này vô nghĩa mà vẫn xanh");
+    console.log("\n❌ SMOKE FAIL: không tìm thấy rule `.tool-btn` hoặc `.shape-pick, .fill-pick, .dash-pick, .erase-pick` trong styles/board/*.css — rule bị đổi tên, hoặc có nút MỚI trong .tool-grid chưa được thêm vào rule thu 22px; cả hai đều làm bài kiểm thứ tự nguồn này vô nghĩa mà vẫn xanh");
     process.exit(1);
   }
   if (iPick < iBtn) {
-    console.log("\n❌ SMOKE FAIL: `.shape-pick, .fill-pick, .dash-pick, .erase-pick` đứng TRƯỚC `.tool-btn` trong idea-map.css — cùng độ đặc hiệu một class nên `.tool-btn { width: 34px }` sẽ đè mất bề rộng 22px, và cột phải của bảng chọn hình ở khu 4 bị cắt khỏi panel");
+    console.log("\n❌ SMOKE FAIL: `.shape-pick, .fill-pick, .dash-pick, .erase-pick` đứng TRƯỚC `.tool-btn` trong styles/board/*.css — cùng độ đặc hiệu một class nên `.tool-btn { width: 34px }` sẽ đè mất bề rộng 22px, và cột phải của bảng chọn hình ở khu 4 bị cắt khỏi panel");
     process.exit(1);
   }
   console.log("  ·", "CSS: `.shape-pick/.fill-pick/.dash-pick/.erase-pick` đứng sau `.tool-btn` (đúng — cùng độ đặc hiệu thì thứ tự nguồn quyết định)");
@@ -246,7 +254,7 @@ if (SCENARIO === "source-checks") {
   const groupRule = css.match(/^\.tool-group\s*\{([^}]*)\}/m);
   const chromeRule = css.match(/^\.tool-group,\s*\.tool-options\s*\{([^}]*)\}/m);
   if (!railRule || !groupRule || !chromeRule) {
-    console.log("\n❌ SMOKE FAIL: không tìm thấy đủ ba rule `.tool-rail`, `.tool-group`, `.tool-group, .tool-options` trong idea-map.css — rule bị đổi tên thì các bài kiểm dưới đây vô nghĩa mà vẫn xanh");
+    console.log("\n❌ SMOKE FAIL: không tìm thấy đủ ba rule `.tool-rail`, `.tool-group`, `.tool-group, .tool-options` trong styles/board/*.css — rule bị đổi tên thì các bài kiểm dưới đây vô nghĩa mà vẫn xanh");
     process.exit(1);
   }
   if (/pointer-events\s*:\s*none/.test(railRule[1]) && !/pointer-events\s*:\s*auto/.test(groupRule[1])) {

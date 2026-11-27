@@ -1,0 +1,54 @@
+.frame-box {
+  position: absolute; border: var(--frame-border-w) dashed var(--line); border-radius: var(--frame-radius);
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  font-family: var(--canvas-font);
+  cursor: grab;
+}
+.frame-box:active { cursor: grabbing; }
+.frame-box.drop-target { outline: 2px dashed var(--accent); outline-offset: 3px; }
+/* Khung đang chọn: cùng ngôn ngữ với .idea-card.selected (viền accent + quầng
+   sáng) để "đang chọn" chỉ có một cách nhìn duy nhất trên cả bảng. Nhuộm luôn
+   viền nét đứt của khung thay vì chỉ vẽ outline bên ngoài — khung thường rất to,
+   một vòng outline mảnh ở rìa màn hình dễ lọt khỏi mắt.
+   Cố ý KHÔNG dùng `outline` ở đây: .drop-target đang dùng outline, để hai trạng
+   thái này chồng nhau được (khung vừa đang chọn vừa là đích thả) mà không cái
+   nào đè mất cái nào. */
+.frame-box.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--accent) 7%, color-mix(in srgb, var(--surface) 55%, transparent));
+}
+/* z-index 6 cho cả dải chrome nổi trên viền khung: dấu + giờ chỉ cách viền 3px
+   nên ô bắt chuột của nó (.connector-zone, z-index 5) trùm lên dải này trên
+   những khung hẹp. 6 > 5 nên tiêu đề / × / ổ khoá / tay cầm kéo giãn vẫn là thứ
+   nhận được cú bấm — đúng cái đã hỏng ở bản trước. */
+.frame-title {
+  position: absolute; top: -13px; left: 10px; max-width: calc(100% - 44px); z-index: 6;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 4px;
+  padding: 1px 8px; font-size: 11px; color: var(--ink-dim); cursor: text;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.frame-title-input {
+  position: absolute; top: -13px; left: 10px; width: 160px; z-index: 6;
+  background: var(--bg); border: 1px solid var(--accent); border-radius: 4px;
+  padding: 1px 8px; font-size: 11px; color: var(--ink);
+}
+.frame-delete {
+  position: absolute; top: -13px; right: 6px; z-index: 6; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 50%; width: 20px; height: 20px;
+  color: var(--ink-dim); cursor: pointer; font-size: 12px; line-height: 1; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.frame-delete:hover { color: var(--ink); border-color: var(--ink-dim); }
+/* Ổ khoá của khung vẫn nổi trên viền; chỉ ổ khoá của thẻ mới vào hàng với tiêu đề. */
+.frame-box .frame-lock {
+  position: absolute; top: -13px; left: auto; right: 30px; z-index: 6; background: var(--bg);
+  border: 1px solid var(--line); border-radius: 50%; width: 20px; height: 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.frame-resize-handle {
+  position: absolute; right: -6px; bottom: -6px; width: 16px; height: 16px; z-index: 6;
+  border-radius: 3px; background: var(--surface); border: 1.5px solid var(--ink-dim);
+  cursor: nwse-resize;
+}
+

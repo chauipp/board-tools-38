@@ -1,0 +1,66 @@
+/* Vùng bắt chuột của dấu + nằm TRỌN bên ngoài thẻ/khung, không thò một pixel nào
+   vào trong.
+   Bản cũ là ô 46px ĐÈ LÊN cạnh (top: -8px + translate(-50%,-50%)), tức nửa dưới
+   của nó nằm trong thẻ, và nó có z-index 5 nên nổi trên mọi thứ ở đó. Hậu quả:
+   trên khung nhỏ, ô này phủ kín nút × và chỗ sửa tiêu đề — bấm vào × thì trúng
+   "nối dây", nút × thành nút chết, không xoá được khung.
+   Khoảng hở là 4px — dấu + gần như dán vào viền. Giữ được khoảng hở nhỏ đến thế
+   mà ô vẫn nằm trọn bên ngoài là nhờ dồn chấm về mép TRONG của ô (align/justify
+   flex-start|flex-end) thay vì để nó giữa ô: phần còn lại của ô 32px nở ra phía
+   ngoài, nơi không có gì để mà che.
+   Dải chrome nổi trên viền khung (tiêu đề, ×, ổ khoá — đều ở top: -13px, cao
+   20px) vẫn lọt vào ô này; chúng được nâng z-index lên 6 ở dưới để thắng ô này
+   trong phép thử va chạm, nên nút × không thể thành nút chết lần nữa.
+   `pointer-events: none`: ô này CHỈ để canh chỗ cho chấm, không bao giờ được bắt
+   chuột. Trước đây nó bắt, mà nó là con của thẻ/khung nên mọi thứ nổi bọt lên:
+   rê vào khoảng trống cách thẻ 30px cũng ra con trỏ bàn tay và bấm xuống là kéo
+   được cả thẻ — hoàn toàn không có gì ở đó để mà kéo. Giờ chỗ trống trong ô
+   trong suốt với chuột đúng nghĩa: quét chọn, bấm nền, mọi thứ đi thẳng xuống
+   bảng như thể ô không tồn tại. */
+.connector-zone {
+  position: absolute; width: 32px; height: 32px;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 5; pointer-events: none;
+}
+.connector-zone.top    { bottom: calc(100% + 4px); left: 50%; transform: translateX(-50%); align-items: flex-end; }
+.connector-zone.bottom { top:    calc(100% + 4px); left: 50%; transform: translateX(-50%); align-items: flex-start; }
+.connector-zone.left   { right:  calc(100% + 4px); top: 50%;  transform: translateY(-50%); justify-content: flex-end; }
+.connector-zone.right  { left:   calc(100% + 4px); top: 50%;  transform: translateY(-50%); justify-content: flex-start; }
+.connector-dot {
+  width: 16px; height: 16px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface); border: 1.5px solid var(--accent); color: var(--accent);
+  font-size: 12px; font-weight: 700; line-height: 1; cursor: crosshair;
+  opacity: 0; transform: scale(0.8); transition: opacity 0.12s ease, transform 0.12s ease;
+  /* Chấm là thứ DUY NHẤT trong cụm này bắt chuột, và bắt lúc nào cũng vậy —
+     không gài theo :hover của thẻ. Gài theo hover sẽ khoá chết chính nó: đi từ
+     thân thẻ ra chấm phải băng qua 4px khe hở, ở đó thẻ hết :hover nên chấm tắt
+     pointer-events, mà đã tắt thì rê vào chấm cũng không tính là hover — chấm
+     thành thứ không bao giờ với tới được. */
+  pointer-events: auto;
+}
+/* Rê vào thẻ/khung là bốn dấu + hiện ra (rê thẳng vào chấm cũng vậy, cho lối
+   vào từ phía ngoài). Chỉ HIỆN thôi — vùng trống quanh chấm không bắt chuột,
+   xem ghi chú ở .connector-zone. */
+.idea-card:hover .connector-dot,
+.frame-box:hover .connector-dot,
+.connector-dot:hover { opacity: 1; transform: scale(1); }
+/* Đã vào hẳn trong chấm: tô đặc + nở ra, để phân biệt rõ "đang ở trên nó" với
+   "mới ở gần nó" — hai trạng thái này trước đây trông y hệt nhau.
+   Hai selector đầu trông thừa nhưng KHÔNG được bỏ: rê vào chấm thì thẻ/khung
+   cũng đang :hover, mà `.idea-card:hover .connector-dot` ở trên có ba class,
+   đặc hiệu hơn `.connector-dot:hover` hai class — scale(1) của nó sẽ đè mất
+   scale(1.15) ở đây và cái nở ra không bao giờ xảy ra. */
+.idea-card:hover .connector-dot:hover,
+.frame-box:hover .connector-dot:hover,
+.connector-dot:hover { background: var(--accent); color: var(--accent-ink); transform: scale(1.15); }
+.idea-card.dim .connector-zone { display: none; }
+.idea-card .card-top { display: flex; gap: 6px; align-items: flex-start; }
+.idea-card .title { font-size: 13px; line-height: 1.2; flex: 1; min-width: 0; overflow-wrap: break-word; }
+.idea-card .card-actions { display: flex; gap: 3px; flex-shrink: 0; }
+.idea-card .icon-btn { background: none; border: none; cursor: pointer; font-size: 12px; color: var(--ink-dim); padding: 1px 3px; line-height: 1; }
+.idea-card .icon-btn:hover { color: var(--ink); }
+.fav-btn.on { color: #D9A514; }
+.lock-badge { font-size: 10px; opacity: 0.7; flex-shrink: 0; line-height: 1.4; }
+.idea-card .card-img-wrap { position: relative; margin-top: 6px; }
+.idea-card .card-img { width: 100%; height: auto; border-radius: 4px; display: block; }

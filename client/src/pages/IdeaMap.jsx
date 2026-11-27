@@ -110,7 +110,7 @@ import {
   selectionBounds, pointInBounds, cornerPoint, anchorFor, scaleFactorFor, scaleSelection,
   SELECTION_CORNERS
 } from "../lib/selection-box.js";
-import "../styles/idea-map.css";
+import "../styles/board/index.css";
 
 const CARD_W = 210;
 // Cỡ nhỏ nhất của một cái khung. Dùng chung cho cả tay cầm kéo giãn LẪN cú tô ra

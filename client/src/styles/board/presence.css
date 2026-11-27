@@ -1,0 +1,46 @@
+/* Ai đang mở board này — giờ là đảo riêng ở góc trên phải, nên bỏ margin-left:auto
+   và vạch ngăn trái: nó không còn nằm cuối một hàng chung với thứ gì khác. */
+.presence-bar { display: flex; align-items: center; gap: 8px; }
+.presence-bar .btn.small { padding: 4px 10px; font-size: 10.5px; white-space: nowrap; }
+.presence-peers { display: flex; align-items: center; }
+/* Chồng mép nhau như xếp bài — 5-6 người vẫn gọn trong một hàng filter đã chật. */
+.presence-peers .presence-avatar { margin-right: -7px; }
+/* Bám vào .presence-peer chứ không .presence-avatar:last-child: mỗi avatar giờ
+   nằm trong một bọc riêng (chỗ neo cho menu ghim), nên nó LUÔN là con cuối của
+   bọc đó và quy tắc cũ sẽ khớp với mọi người thay vì đúng người cuối hàng. */
+.presence-peers .presence-peer:last-child .presence-avatar { margin-right: 0; }
+.presence-peers .presence-avatar:hover { z-index: 2; transform: translateY(-1px); }
+.presence-peer { position: relative; display: flex; }
+
+.presence-avatar {
+  position: relative; flex-shrink: 0;
+  width: 26px; height: 26px; padding: 0; border-radius: 50%;
+  background: var(--peer-color, var(--line));
+  border: 2px solid var(--peer-color, var(--line));
+  box-shadow: 0 0 0 2px var(--surface);
+  overflow: hidden; line-height: 0;
+  transition: transform 0.12s ease;
+}
+.presence-avatar.clickable { cursor: pointer; }
+.presence-avatar img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.presence-avatar-initial {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 100%;
+  font-size: 11px; font-weight: 700; line-height: 1; color: var(--accent-ink);
+}
+
+.presence-me { position: relative; }
+.presence-menu {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 90; min-width: 190px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 6px;
+  box-shadow: var(--shadow); padding: 10px; display: flex; flex-direction: column; gap: 4px;
+}
+.presence-menu-name { font-size: 12px; font-weight: 600; }
+.presence-menu-email { font-size: 10.5px; color: var(--ink-dim); word-break: break-all; }
+.presence-menu-note { font-size: 10.5px; color: var(--accent); }
+.presence-menu .btn { margin-top: 6px; width: 100%; text-align: center; }
+/* Avatar đầu hàng nằm sát mép trái của đảo; menu neo phải sẽ chui ra ngoài màn
+   hình khi đảo bị dồn sang trái, nên menu của peer neo TRÁI. */
+.peer-menu { right: auto; left: 0; min-width: 168px; }
+.peer-menu .btn { margin-top: 4px; }
+

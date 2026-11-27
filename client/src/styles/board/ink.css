@@ -1,0 +1,173 @@
+/* .canvas có width/height = 0 nên lớp con phải tự khai kích thước và
+   overflow: visible — cùng khuôn với .edge-handle-layer ở trên.
+   z-index 7 là cao nhất trong .canvas: trên .marquee-box (4),
+   .edge-handle-layer (5), .connector-zone (5) và .peer-cursor (6).
+   .idea-card không đặt z-index nên vẽ theo thứ tự DOM, cũng nằm dưới. */
+.ink-layer {
+  position: absolute; left: 0; top: 0; width: 4200px; height: 3200px;
+  overflow: visible; pointer-events: none; z-index: 7;
+}
+/* KHÔNG khai `fill` ở đây: trong SVG, CSS thắng presentation attribute, nên một
+   dòng `fill: none` sẽ làm mọi hình khối tô đặc biến thành hình chỉ có viền.
+   `fill` do InkLayer truyền tường minh trên từng <path>. */
+.ink-layer path { stroke-linecap: round; stroke-linejoin: round; }
+.ink-layer path.erasing { opacity: 0.25; }
+
+/* `white-space: pre` giữ khoảng trắng người dùng gõ — SVG mặc định gộp chúng. */
+.ink-layer text { font-family: var(--canvas-font); white-space: pre; }
+.ink-layer text.erasing { opacity: 0.25; }
+
+/* Viền "đang chọn" của nét bút / hình khối / chữ. Nét đứt + màu nhấn, cùng ngôn
+   ngữ với viền chọn của thẻ; `vector-effect` để viền giữ đúng 1px ở mọi mức
+   zoom — nó là chỉ báo giao diện, không phải mực trên bảng (nét vẽ thì ngược
+   lại, cố ý dày ra khi phóng to). */
+.ink-layer .ink-selected {
+  fill: none; stroke: var(--accent); stroke-width: 1.5;
+  stroke-dasharray: 5 4; vector-effect: non-scaling-stroke;
+}
+
+/* Ô nhập text: dựng để TRÙNG KHÍT với chữ sẽ vẽ ra. Gõ xong mà chữ nhảy chỗ
+   hoặc đổi cỡ là mất hẳn cảm giác "gõ thẳng lên bảng", nên mọi thứ trình duyệt
+   tự thêm vào một <textarea> đều phải gỡ: padding, viền, nền, thanh cuộn, và
+   cả ô kéo đổi cỡ ở góc. z-index 9 để nổi trên .ink-capture (8). */
+.text-input {
+  position: absolute; z-index: 9;
+  padding: 0; margin: 0; border: 0; outline: none;
+  background: transparent; resize: none; overflow: hidden;
+  font-family: var(--canvas-font);
+  white-space: pre; word-break: normal;
+  caret-color: currentColor;
+}
+
+/* Lớp bắt chuột phủ toàn khung nhìn, CHỈ tồn tại ở mode Sửa. Đây là lý do kéo
+   ngang qua trên một thẻ vẫn ra nét chứ không bị thẻ ăn mất chuột. z-index 8
+   nằm dưới .tool-rail (30) nên thanh công cụ vẫn bấm được. */
+.ink-capture { position: absolute; inset: 0; z-index: 8; cursor: crosshair; }
+
+/* HỘP BAO VÙNG CHỌN — nằm trong .canvas nên bám theo bảng khi lia/phóng.
+   pointer-events: none là điều kiện sống của cả thiết kế này: hộp trùm lên cả
+   cụm, mà cụm thì đầy thẻ bấm được, chip bấm được, ô sửa tiêu đề. Bắt chuột ở
+   đây là chôn hết chúng. Cú kéo trong lòng hộp do handleViewportMouseDown bắt
+   (nó chỉ chạy khi cú bấm rơi xuống nền canvas, tức đúng chỗ TRỐNG).
+   z-index 12 và đó là con số PHẢI có: bốn tay cầm là con của khối này, mà khối
+   có z-index thì nó thành một stacking context — con không leo ra ngoài được
+   nữa. Thẻ khi rê chuột lên nhảy lên z-index 10 (.idea-card:hover), nên nếu để
+   khối ở 6 thì đúng cái thẻ nằm ở góc sẽ che mất tay cầm ngay lúc tay đưa tới
+   đó, và tay cầm không bao giờ bấm được.
+   Cái giá: nền tô của khối phủ lên mặt thẻ. Nên nó chỉ 6% — đủ đọc ra một vùng,
+   không đủ làm mờ chữ trên thẻ. */
+.selection-box {
+  position: absolute; z-index: 12; pointer-events: none;
+  border: 1px dashed var(--accent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+/* Sắp thả màu vào cả cụm: tô rõ hơn hẳn, cùng ngôn ngữ với viền "sắp thả vào
+   đây" của thẻ. */
+.selection-box.drop {
+  border-style: solid;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+/* Bốn tay cầm co giãn. Bật lại pointer-events — chúng là thứ DUY NHẤT trong hộp
+   cướp chuột, và chỉ ở đúng bốn ô nhỏ ngoài rìa.
+   Cỡ và vị trí do JS bù trừ zoom (transform: scale(1/view.scale)), nên ở đây chỉ
+   khai cỡ danh nghĩa. */
+.selection-handle {
+  position: absolute; pointer-events: auto;
+  width: 12px; height: 12px; margin: 0;
+  background: var(--surface); border: 2px solid var(--accent); border-radius: 3px;
+  box-shadow: var(--shadow);
+}
+.selection-handle.nw, .selection-handle.se { cursor: nwse-resize; }
+.selection-handle.ne, .selection-handle.sw { cursor: nesw-resize; }
+
+/* TAY CẦM SỬA HÌNH — hiện khi chọn đúng một hình khối. Khác tay cầm của hộp bao
+   vùng chọn ở chỗ nó KHÔNG nằm trong một khối bao nào, nên phải tự khai z-index:
+   13 để nổi trên cả hộp bao (12) và trên thẻ khi rê chuột (10) — hình vẽ hoàn
+   toàn có thể nằm đè lên một cái thẻ.
+   VUÔNG = góc (kéo đặt lại một đỉnh), TRÒN = cạnh (kéo dời trọn một cạnh). Hai
+   việc khác nhau thì phải khác hình, không thể chỉ khác chỗ đứng — người dùng
+   không đếm được đâu là góc đâu là trung điểm trên một tam giác nghiêng. */
+.shape-handle {
+  position: absolute; z-index: 13; pointer-events: auto; cursor: grab;
+  width: 11px; height: 11px;
+  background: var(--surface); border: 2px solid var(--accent); border-radius: 2px;
+  box-shadow: var(--shadow);
+}
+.shape-handle.edge {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent); border-color: var(--surface);
+}
+.shape-handle:active { cursor: grabbing; }
+
+/* Vòng báo "đang giữ tay, sắp bắt hình" (lib/recognize.js). position: fixed nên
+   toạ độ là toạ độ MÀN HÌNH: nó bám ngón tay, không bám bảng — bảng có bị lia
+   giữa lúc đó thì vòng vẫn đứng đúng dưới con trỏ.
+   pointer-events: none là bắt buộc: nó nằm ĐÚNG dưới con trỏ trong lúc đang vẽ,
+   ăn mất chuột là nét vẽ đứt ngay giữa.
+   Thời gian chạy do JS truyền vào qua --snap-hold, lấy từ cùng hằng số mà useInk
+   đang đếm — xem ghi chú ở chỗ render trong IdeaMap.jsx. */
+.snap-hint {
+  position: fixed; z-index: 60; pointer-events: none;
+  width: 26px; height: 26px; margin: -13px 0 0 -13px;
+  border: 2px solid var(--accent); border-radius: 50%;
+  animation: snap-hint-fill var(--snap-hold, 1000ms) linear forwards;
+}
+/* Vòng nhỏ mờ nở dần ra thành vòng rõ: đọc ra được "đang đếm, sắp xong" mà không
+   cần đến conic-gradient hay hai lớp SVG. */
+@keyframes snap-hint-fill {
+  from { opacity: 0.2; transform: scale(0.45); }
+  to { opacity: 0.95; transform: scale(1); }
+}
+/* Cùng vòng đó nhưng là cử chỉ TẨY (giữ tay trên một nét có sẵn). Màu nguy hiểm
+   chứ không phải màu accent: hai việc kết thúc rất khác nhau — một cái tạo ra
+   hình, một cái xoá mất một nét — nên chúng không được trông giống nhau. Nét
+   sắp mất đồng thời mờ đi (.ink-layer .erasing), nên có hai tín hiệu cùng lúc. */
+.snap-hint.erase { border-color: var(--danger); }
+
+/* Cùng vòng đó nhưng là cử chỉ ĐỔI BÚT ↔ CỤC GÔM (giữ tay ở chỗ trống). Nét đứt
+   chứ không phải màu thứ ba: hai màu kia đã mang nghĩa rõ ("sắp tạo ra" và "sắp
+   xoá mất"), còn việc này không tạo cũng không xoá gì cả — nó chỉ đổi thứ đang
+   cầm trên tay, nên nó phải khác Ở DẠNG chứ không chỉ khác ở sắc độ. */
+.snap-hint.swap { border-color: var(--ink-dim); border-style: dashed; }
+
+/* Cùng vòng đó nhưng là cử chỉ KHÉP HÌNH: đầu nét gấp khúc đã dính về điểm xuất
+   phát, giữ thêm một nhịp là cả vòng thành hình. Vẫn màu accent vì việc sắp xảy
+   ra vẫn là "sắp tạo ra một hình" — khác ở chỗ nó ĐẶC RUỘT, đọc ra được ngay là
+   "chỗ này khép lại" chứ không phải "cái nét này nắn lại". Vòng này cũng là thứ
+   duy nhất báo cho người dùng biết đầu nét đã dính, nên nó không được lẫn với
+   ba vòng kia. */
+.snap-hint.close { background: color-mix(in srgb, var(--accent) 35%, transparent); }
+
+/* Mode Đặt: cùng vai trò và cùng z-index với .ink-capture — bấm trúng một thẻ
+   có sẵn vẫn phải ra thẻ mới ở đúng chỗ đó, chứ không phải chọn thẻ cũ.
+   `copy` cho việc đặt thẻ (con trỏ có dấu +, nghĩa là "thả xuống đây một cái
+   mới"), `crosshair` cho việc tô khung. */
+.place-capture { position: absolute; inset: 0; z-index: 8; cursor: copy; }
+.place-capture.draw-frame { cursor: crosshair; }
+
+/* Mode Laser: cùng vai trò và cùng z-index với .ink-capture. Con trỏ vẫn là
+   crosshair chứ KHÔNG ẩn đi: vệt laser tan hết sau chưa tới một giây, nên
+   người dừng tay một nhịp mà không có con trỏ sẽ mất dấu chuột hoàn toàn. */
+.laser-capture { position: absolute; inset: 0; z-index: 8; cursor: crosshair; }
+
+/* Cùng khuôn với .ink-layer: .canvas rộng 0 nên lớp con phải tự khai kích
+   thước. z-index 8 để vệt nằm trên cả nét vẽ (.ink-layer, 7) — laser là thứ
+   đang được chỉ vào, nó không bao giờ được nằm dưới thứ nó chỉ. */
+.laser-layer {
+  position: absolute; left: 0; top: 0; width: 4200px; height: 3200px;
+  overflow: visible; pointer-events: none; z-index: 8;
+}
+/* Màu do LaserLayer đặt một lần trên <g> (đỏ cho mình, màu con trỏ cho người
+   khác); ba lớp dưới đây đều lấy qua currentColor nên không có chỗ nào lệch. */
+.laser-halo { fill: currentColor; stroke: currentColor; stroke-linejoin: round; opacity: 0.2; }
+.laser-core { fill: currentColor; opacity: 0.92; }
+.laser-head { fill: currentColor; opacity: 0.92; }
+
+/* Khung nháp trong lúc tô — nét đứt như .marquee-box nhưng KHÔNG tô nền: nền mờ
+   phủ lên thẻ bên dưới làm khó ướm khung vào đúng cụm thẻ muốn gom. */
+.place-draft {
+  position: absolute; border: 1.5px dashed var(--accent); border-radius: 10px;
+  pointer-events: none; z-index: 4;
+}
+

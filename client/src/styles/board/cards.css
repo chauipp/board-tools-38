@@ -1,0 +1,107 @@
+.idea-card {
+  position: absolute; width: 210px;
+  /* Đổ bóng đi qua BIẾN chứ không khai thẳng: bậc thẻ đổi độ nổi bằng cách đổi
+     --card-shadow, còn :hover và .selected thì cộng thêm lớp bóng của mình vào
+     sau nó. Khai thẳng `box-shadow` ở .lv-N sẽ đè mất vòng sáng của .selected
+     (cùng độ đặc hiệu hai class, mà .lv-N đứng sau) — thẻ bậc phụ đang được
+     chọn sẽ mất hẳn quầng accent. */
+  --card-shadow: var(--shadow);
+  background: var(--surface-2); border: var(--card-border-w) solid var(--line); border-radius: var(--card-radius);
+  font-family: var(--canvas-font);
+  box-shadow: var(--card-shadow); padding: 10px 10px 9px; cursor: grab; user-select: none;
+  transition: box-shadow 0.12s ease, transform 0.12s ease, border-color 0.12s ease;
+  /* Cách ly layout: đổi left/top của MỘT thẻ đang kéo không bắt trình duyệt
+     tính lại vùng layout của những thẻ còn lại. Chỉ `layout style` — KHÔNG có
+     `paint`, vì connector-zone và các badge cố tình thò ra ngoài viền thẻ. */
+  contain: layout style;
+}
+/* Thẻ đang được rê nổi lên trên các thẻ khác. Cần cho bốn dấu +: chúng nằm ngoài
+   viền thẻ 4–20px, nên hai thẻ kề sát nhau là dấu + của thẻ này rơi đúng vào
+   thân thẻ kia — bấm vào dấu + thì hoá ra tóm phải thẻ bên cạnh. Nâng thẻ đang
+   rê lên là dấu + của chính nó thắng, và vì :hover còn đúng khi con trỏ đã sang
+   tới dấu + (dấu + là con của thẻ) nên nó không tuột giữa chừng.
+   `contain: layout` khai ở .idea-card đã biến mỗi thẻ thành một stacking context,
+   nên z-index PHẢI đặt ở đây; đặt ở .connector-dot thì bị nhốt trong thẻ, không
+   so được với thẻ bên cạnh. 10 vẫn dưới .tool-rail (30) và popover (90). */
+/* Màu thẻ tô NỀN, thay cho vạch viền trái 4px của bản trước. Trộn với
+   --surface-2 bằng color-mix nên MỘT token màu tự cho ra hai kết quả đúng ở hai
+   theme — không phải nuôi bảng màu riêng cho nền tối. 14% đủ nhận ra màu mà chữ
+   --ink vẫn thừa tương phản, nên chỗ này không cần tính độ sáng như
+   contrastInk() phải làm cho badge (badge tô ĐẶC nên mới cần). */
+.idea-card.tinted {
+  background: color-mix(in srgb, var(--tint) 14%, var(--surface-2));
+  border-color: color-mix(in srgb, var(--tint) 55%, var(--line));
+}
+/* Khung nhạt hơn hẳn: nó to và nằm dưới thẻ, 14% thì cả vùng lớn bị nhuộm nặng
+   và thẻ bên trong chìm mất. */
+.frame-box.tinted {
+  background: color-mix(in srgb, var(--tint) 10%, color-mix(in srgb, var(--surface) 55%, transparent));
+  border-color: color-mix(in srgb, var(--tint) 60%, var(--line));
+}
+.idea-card:hover { border-color: var(--ink-dim); box-shadow: var(--card-shadow), 0 4px 12px rgba(0,0,0,0.16); transform: translateY(-2px); z-index: 10; }
+.idea-card.link-pending { outline: 2px solid var(--accent); outline-offset: 2px; }
+.idea-card.drop-target { outline: 2px dashed var(--accent); outline-offset: 3px; }
+.idea-card.selected { outline: 2px solid var(--accent); outline-offset: 2px; box-shadow: var(--card-shadow), 0 0 0 4px color-mix(in srgb, var(--accent) 20%, transparent); }
+.idea-card.dim { opacity: 0.22; pointer-events: none; }
+.idea-card.flash { animation: card-flash 1.5s ease; }
+.idea-card.shape-ellipse { border-radius: 50%; padding-left: 30px; padding-right: 30px; text-align: center; }
+/* Bậc thẻ — năm cỡ, nhỏ và nhạt dần từ bậc 1 tới bậc 5 (xem lib/card-levels.js).
+   Bậc 1 giữ NGUYÊN dáng "thẻ gốc" cũ và bậc 3 giữ nguyên dáng thẻ thường cũ:
+   board đã có từ trước không được đổi hình khi lên bản này.
+   Bề rộng ở đây phải khớp CARD_LEVEL_W trong lib/card-levels.js — số đó dùng để
+   canh giữa thẻ vào con trỏ lúc đặt, lệch là thẻ nhảy khỏi chỗ vừa bấm. */
+.idea-card.lv-1 {
+  width: 260px;
+  border-width: 2px; border-color: var(--accent);
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 16%, var(--surface-2)), var(--surface-2) 65%);
+  --card-shadow: var(--shadow), 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent), 0 8px 22px color-mix(in srgb, var(--accent) 28%, transparent);
+}
+.idea-card.lv-1:hover { --card-shadow: var(--shadow), 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent), 0 10px 26px color-mix(in srgb, var(--accent) 34%, transparent); }
+.idea-card.lv-1 .title { font-size: 17px; font-weight: 700; line-height: 1.25; }
+.idea-card.lv-1 .desc { font-size: 12.5px; -webkit-line-clamp: 6; }
+
+.idea-card.lv-2 {
+  width: 235px;
+  border-width: 2px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--accent) 6%, var(--surface-2)), var(--surface-2) 70%);
+}
+.idea-card.lv-2 .title { font-size: 15px; font-weight: 700; line-height: 1.22; }
+.idea-card.lv-2 .desc { font-size: 12px; -webkit-line-clamp: 5; }
+
+/* Bậc 3 = dáng gốc của .idea-card, không khai lại gì cả. */
+
+.idea-card.lv-4 {
+  width: 180px; padding: 8px 9px 7px;
+  border-color: color-mix(in srgb, var(--line) 65%, transparent);
+  /* `0 0 #0000` chứ không phải `none`: giá trị này còn được nối tiếp trong danh
+     sách box-shadow của :hover và .selected, mà `none` nằm giữa một danh sách
+     là cú pháp sai — cả khai báo sẽ bị vứt, kéo theo mất luôn vòng sáng. */
+  --card-shadow: 0 0 #0000;
+}
+/* KHÔNG khai font-weight ở bậc 4 và 5: .idea-card .title không khai weight nên
+   bậc 3 thừa hưởng 400. Đặt 500 ở đây (như bản nháp đầu) làm thang bậc ĐẢO
+   chiều — bậc phụ đậm hơn bậc thường. Đo trên trình duyệt thật mới thấy; jsdom
+   không tính cascade nên smoke test vẫn xanh. */
+.idea-card.lv-4 .title { font-size: 12px; }
+.idea-card.lv-4 .desc { font-size: 11px; -webkit-line-clamp: 3; }
+
+.idea-card.lv-5 {
+  width: 150px; padding: 7px 8px 6px;
+  border-style: dashed; border-color: color-mix(in srgb, var(--line) 55%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+  --card-shadow: 0 0 #0000;
+}
+.idea-card.lv-5 .title { font-size: 11px; }
+.idea-card.lv-5 .desc { font-size: 10.5px; -webkit-line-clamp: 2; }
+
+/* PHẢI đứng SAU .lv-5: cùng độ đặc hiệu (hai class) nên thứ tự nguồn quyết định.
+   Đặt trước thì `border-style: dashed` của bậc 5 đè mất, và mục "viền liền" ở
+   menu chuột phải thành nút chết trên đúng cái bậc hay dùng nó nhất. */
+.idea-card.border-solid { border-style: solid; }
+.idea-card.border-dashed { border-style: dashed; }
+
+.root-badge { font-size: 15px; flex-shrink: 0; line-height: 1.2; }
+@keyframes card-flash {
+  0%, 60% { outline: 3px solid var(--accent); outline-offset: 4px; }
+  100% { outline: 0 solid transparent; }
+}
