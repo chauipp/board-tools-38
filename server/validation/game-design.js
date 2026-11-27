@@ -143,17 +143,38 @@ export function validateDecisionLog(value, nodeIds) {
 
 export function validateGameDesignBalance(value, nodes) {
   if (value === undefined || value === null) return null;
-  if (!value || typeof value !== "object" || Array.isArray(value) || !Array.isArray(value.metrics) || value.metrics.length > GAME_DESIGN_BALANCE_LIMITS.metrics || (value.curves !== undefined && (!Array.isArray(value.curves) || value.curves.length > GAME_DESIGN_BALANCE_LIMITS.curves))) return "gameDesignBalance không hợp lệ";
+  if (
+    !value || typeof value !== "object" || Array.isArray(value) ||
+    !Array.isArray(value.metrics) || value.metrics.length > GAME_DESIGN_BALANCE_LIMITS.metrics ||
+    (value.curves !== undefined && (!Array.isArray(value.curves) || value.curves.length > GAME_DESIGN_BALANCE_LIMITS.curves))
+  ) return "gameDesignBalance không hợp lệ";
   const keys = new Set(), ids = new Set(), nodeIds = new Set((nodes || []).map((node) => String(node?.id)));
   for (const item of value.metrics) {
-    if (!item || typeof item !== "object" || Array.isArray(item) || typeof item.id !== "string" || !item.id.trim() || ids.has(item.id) || typeof item.key !== "string" || !/^[a-z][a-z0-9_]*$/.test(item.key) || keys.has(item.key)) return "gameDesignBalance.metric không hợp lệ";
+    if (
+      !item || typeof item !== "object" || Array.isArray(item) ||
+      typeof item.id !== "string" || !item.id.trim() || ids.has(item.id) ||
+      typeof item.key !== "string" || !/^[a-z][a-z0-9_]*$/.test(item.key) || keys.has(item.key)
+    ) return "gameDesignBalance.metric không hợp lệ";
     ids.add(item.id); keys.add(item.key);
-    for (const field of ["name", "value", "min", "max", "unit", "formula"]) if (typeof item[field] !== "string" || item[field].length > GAME_DESIGN_BALANCE_LIMITS.text || (field === "name" && !item[field].trim())) return `gameDesignBalance.${field} không hợp lệ`;
+    for (const field of ["name", "value", "min", "max", "unit", "formula"]) {
+      if (typeof item[field] !== "string" || item[field].length > GAME_DESIGN_BALANCE_LIMITS.text || (field === "name" && !item[field].trim())) {
+        return `gameDesignBalance.${field} không hợp lệ`;
+      }
+    }
     const invalid = validateCardReferences(item.cardIds, "gameDesignBalance", nodeIds, GAME_DESIGN_BALANCE_LIMITS.references); if (invalid) return invalid;
   }
   const curveIds = new Set();
   for (const curve of value.curves || []) {
-    if (!curve || typeof curve !== "object" || Array.isArray(curve) || typeof curve.id !== "string" || !curve.id.trim() || curveIds.has(curve.id) || typeof curve.name !== "string" || !curve.name.trim() || typeof curve.metricKey !== "string" || !keys.has(curve.metricKey) || typeof curve.start !== "string" || typeof curve.end !== "string" || curve.start.length > GAME_DESIGN_BALANCE_LIMITS.text || curve.end.length > GAME_DESIGN_BALANCE_LIMITS.text || !Number.isInteger(curve.steps) || curve.steps < 2 || curve.steps > GAME_DESIGN_BALANCE_LIMITS.curveSteps || !["linear", "exponential"].includes(curve.mode)) return "gameDesignBalance.curve không hợp lệ";
+    if (
+      !curve || typeof curve !== "object" || Array.isArray(curve) ||
+      typeof curve.id !== "string" || !curve.id.trim() || curveIds.has(curve.id) ||
+      typeof curve.name !== "string" || !curve.name.trim() ||
+      typeof curve.metricKey !== "string" || !keys.has(curve.metricKey) ||
+      typeof curve.start !== "string" || typeof curve.end !== "string" ||
+      curve.start.length > GAME_DESIGN_BALANCE_LIMITS.text || curve.end.length > GAME_DESIGN_BALANCE_LIMITS.text ||
+      !Number.isInteger(curve.steps) || curve.steps < 2 || curve.steps > GAME_DESIGN_BALANCE_LIMITS.curveSteps ||
+      !["linear", "exponential"].includes(curve.mode)
+    ) return "gameDesignBalance.curve không hợp lệ";
     curveIds.add(curve.id);
   }
   return null;
@@ -178,11 +199,21 @@ export function validateTeamHandoff(value) {
 export function validateReview(value) {
   if (value === undefined) return null;
   if (!value || typeof value !== "object" || Array.isArray(value)) return "review không hợp lệ";
-  if (typeof value.reviewer !== "string" || value.reviewer.length > 4000 || typeof value.date !== "string" || value.date.length > 4000 || !["pending", "approved", "changes-requested", "rejected"].includes(value.outcome)) return "review metadata không hợp lệ";
+  if (
+    typeof value.reviewer !== "string" || value.reviewer.length > 4000 ||
+    typeof value.date !== "string" || value.date.length > 4000 ||
+    !["pending", "approved", "changes-requested", "rejected"].includes(value.outcome)
+  ) return "review metadata không hợp lệ";
   if (!Array.isArray(value.comments) || value.comments.length > GAME_DESIGN_REVIEW_LIMITS.comments) return "review.comments không hợp lệ";
   const ids = new Set();
   for (const item of value.comments) {
-    if (!item || typeof item !== "object" || typeof item.id !== "string" || !item.id.trim() || ids.has(item.id) || typeof item.text !== "string" || !item.text.trim() || item.text.length > GAME_DESIGN_REVIEW_LIMITS.text || typeof item.author !== "string" || item.author.length > GAME_DESIGN_REVIEW_LIMITS.text || typeof item.resolved !== "boolean") return "review.comment không hợp lệ";
+    if (
+      !item || typeof item !== "object" ||
+      typeof item.id !== "string" || !item.id.trim() || ids.has(item.id) ||
+      typeof item.text !== "string" || !item.text.trim() || item.text.length > GAME_DESIGN_REVIEW_LIMITS.text ||
+      typeof item.author !== "string" || item.author.length > GAME_DESIGN_REVIEW_LIMITS.text ||
+      typeof item.resolved !== "boolean"
+    ) return "review.comment không hợp lệ";
     ids.add(item.id);
   }
   return null;
@@ -190,7 +221,9 @@ export function validateReview(value) {
 export function validateDelivery(value) {
   if (value === undefined) return null;
   if (!value || typeof value !== "object" || Array.isArray(value)) return "delivery không hợp lệ";
-  for (const field of ["milestone", "assignee", "deadline", "blocker"]) if (typeof value[field] !== "string" || value[field].length > GAME_DESIGN_DELIVERY_LIMITS.text) return `delivery.${field} không hợp lệ`;
+  for (const field of ["milestone", "assignee", "deadline", "blocker"]) {
+    if (typeof value[field] !== "string" || value[field].length > GAME_DESIGN_DELIVERY_LIMITS.text) return `delivery.${field} không hợp lệ`;
+  }
   if (value.deadline && !/^\d{4}-\d{2}-\d{2}$/.test(value.deadline)) return "delivery.deadline không hợp lệ";
   if (!["none", "risk", "blocked"].includes(value.blockerLevel)) return "delivery.blockerLevel không hợp lệ";
   return null;
@@ -202,7 +235,11 @@ export function validateAnalyticsEvents(value) {
   for (const event of value) {
     if (!event || typeof event !== "object" || Array.isArray(event) || typeof event.id !== "string" || !event.id.trim() || ids.has(event.id)) return "analyticsEvents.id không hợp lệ";
     ids.add(event.id);
-    for (const field of ["eventName", "trigger", "properties", "kpi", "owner"]) if (typeof event[field] !== "string" || event[field].length > GAME_DESIGN_ANALYTICS_LIMITS.text || (field === "eventName" && !event[field].trim())) return `analyticsEvents.${field} không hợp lệ`;
+    for (const field of ["eventName", "trigger", "properties", "kpi", "owner"]) {
+      if (typeof event[field] !== "string" || event[field].length > GAME_DESIGN_ANALYTICS_LIMITS.text || (field === "eventName" && !event[field].trim())) {
+        return `analyticsEvents.${field} không hợp lệ`;
+      }
+    }
   }
   return null;
 }
@@ -211,9 +248,16 @@ export function validateABTests(value) {
   if (!Array.isArray(value) || value.length > GAME_DESIGN_AB_TEST_LIMITS.tests) return "abTests không hợp lệ";
   const ids = new Set();
   for (const item of value) {
-    if (!item || typeof item !== "object" || Array.isArray(item) || typeof item.id !== "string" || !item.id.trim() || item.id.length > GAME_DESIGN_AB_TEST_LIMITS.id || ids.has(item.id)) return "abTests.id không hợp lệ";
+    if (
+      !item || typeof item !== "object" || Array.isArray(item) ||
+      typeof item.id !== "string" || !item.id.trim() || item.id.length > GAME_DESIGN_AB_TEST_LIMITS.id || ids.has(item.id)
+    ) return "abTests.id không hợp lệ";
     ids.add(item.id);
-    for (const field of ["hypothesis", "control", "variant", "primaryMetric", "successCriteria", "segment"]) if (typeof item[field] !== "string" || item[field].length > GAME_DESIGN_AB_TEST_LIMITS.text || (field === "hypothesis" && !item[field].trim())) return `abTests.${field} không hợp lệ`;
+    for (const field of ["hypothesis", "control", "variant", "primaryMetric", "successCriteria", "segment"]) {
+      if (typeof item[field] !== "string" || item[field].length > GAME_DESIGN_AB_TEST_LIMITS.text || (field === "hypothesis" && !item[field].trim())) {
+        return `abTests.${field} không hợp lệ`;
+      }
+    }
     if (!["draft", "running", "concluded", "rejected"].includes(item.status)) return "abTests.status không hợp lệ";
   }
   return null;
@@ -221,7 +265,9 @@ export function validateABTests(value) {
 export function validateLiveOps(value) {
   if (value === undefined) return null;
   if (!value || typeof value !== "object" || Array.isArray(value)) return "liveOps không hợp lệ";
-  for (const field of ["tuningNotes", "version", "featureFlag", "rolloutPercent", "audience", "rollbackPlan"]) if (typeof value[field] !== "string" || value[field].length > GAME_DESIGN_LIVE_OPS_LIMITS.text) return `liveOps.${field} không hợp lệ`;
+  for (const field of ["tuningNotes", "version", "featureFlag", "rolloutPercent", "audience", "rollbackPlan"]) {
+    if (typeof value[field] !== "string" || value[field].length > GAME_DESIGN_LIVE_OPS_LIMITS.text) return `liveOps.${field} không hợp lệ`;
+  }
   if (value.rolloutPercent && !/^(0|[1-9]\d?|100)$/.test(value.rolloutPercent)) return "liveOps.rolloutPercent không hợp lệ";
   if (!["planned", "running", "paused", "full", "rolled-back"].includes(value.status)) return "liveOps.status không hợp lệ";
   return null;
@@ -229,7 +275,9 @@ export function validateLiveOps(value) {
 export function validatePostLaunchReview(value, nodeIds) {
   if (value === undefined) return null;
   if (!value || typeof value !== "object" || Array.isArray(value)) return "postLaunchReview không hợp lệ";
-  for (const field of ["outcome", "actualMetrics", "learnings", "nextDecision", "owner", "reviewDate"]) if (typeof value[field] !== "string" || value[field].length > GAME_DESIGN_POST_LAUNCH_LIMITS.text) return `postLaunchReview.${field} không hợp lệ`;
+  for (const field of ["outcome", "actualMetrics", "learnings", "nextDecision", "owner", "reviewDate"]) {
+    if (typeof value[field] !== "string" || value[field].length > GAME_DESIGN_POST_LAUNCH_LIMITS.text) return `postLaunchReview.${field} không hợp lệ`;
+  }
   if (value.reviewDate && !/^\d{4}-\d{2}-\d{2}$/.test(value.reviewDate)) return "postLaunchReview.reviewDate không hợp lệ";
   if (!["pending", "healthy", "needs-iteration", "sunset"].includes(value.status)) return "postLaunchReview.status không hợp lệ";
   return validateCardReferences(value.cardIds, "postLaunchReview", nodeIds, GAME_DESIGN_POST_LAUNCH_LIMITS.references);
@@ -241,7 +289,9 @@ export function validateFollowUpTasks(value, nodeIds) {
   for (const task of value) {
     if (!task || typeof task !== "object" || Array.isArray(task) || typeof task.id !== "string" || !task.id.trim() || ids.has(task.id)) return "followUpTasks.id không hợp lệ";
     ids.add(task.id);
-    for (const field of ["text", "owner", "deadline"]) if (typeof task[field] !== "string" || task[field].length > 4000 || (field === "text" && !task[field].trim())) return `followUpTasks.${field} không hợp lệ`;
+    for (const field of ["text", "owner", "deadline"]) {
+      if (typeof task[field] !== "string" || task[field].length > 4000 || (field === "text" && !task[field].trim())) return `followUpTasks.${field} không hợp lệ`;
+    }
     if (task.deadline && !/^\d{4}-\d{2}-\d{2}$/.test(task.deadline)) return "followUpTasks.deadline không hợp lệ";
     if (typeof task.done !== "boolean") return "followUpTasks.done không hợp lệ";
     const invalidRefs = validateCardReferences(task.cardIds, "followUpTasks", nodeIds, 100); if (invalidRefs) return invalidRefs;

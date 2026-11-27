@@ -116,7 +116,10 @@ export function validateBoardPayload(body) {
     if (node.design?.technicalNotes !== undefined && (typeof node.design.technicalNotes !== "string" || node.design.technicalNotes.length > GAME_DESIGN_TECHNICAL_NOTES_LIMIT)) {
       return "technicalNotes không hợp lệ";
     }
-    if (node.design?.playerExperience !== undefined && (typeof node.design.playerExperience !== "string" || node.design.playerExperience.length > GAME_DESIGN_TECHNICAL_NOTES_LIMIT)) return "playerExperience không hợp lệ";
+    if (node.design?.playerExperience !== undefined && (
+      typeof node.design.playerExperience !== "string" ||
+      node.design.playerExperience.length > GAME_DESIGN_TECHNICAL_NOTES_LIMIT
+    )) return "playerExperience không hợp lệ";
     const invalidTeamHandoff = validateTeamHandoff(node.design?.teamHandoff);
     if (invalidTeamHandoff) return invalidTeamHandoff;
     const invalidReview = validateReview(node.design?.review);
