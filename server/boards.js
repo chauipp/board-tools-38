@@ -6,6 +6,7 @@ import multer from "multer";
 import { Board, BoardSnapshot, User } from "./models.js";
 import { getBoardRole, hasAllBoardsAccess, isEmailAllowed, isGmailAddress } from "./auth.js";
 import { rateLimit } from "./rate-limit.js";
+import { asyncRoute } from "./http.js";
 import { normalizeGameDesignFlow, resolveGameDesignFields, validateBoardPayload } from "./board-payload.js";
 import { BOARD_GAME_DESIGN_FIELDS, pickBoardContent } from "./board-fields.js";
 import { PDF_DIR, isR2Enabled, sendPdf, storePdf } from "./pdf-storage.js";
@@ -238,352 +239,296 @@ const uploadLimiter = rateLimit({
   error: "too_many_uploads"
 });
 
+// Lỗi bất kỳ giữa chừng: xoá file tạm Multer vừa ghi, rồi mới trả lỗi.
+function cleanupUpload(req) {
+  if (req.file) fs.unlink(req.file.path, () => {});
+}
+
 router.post("/:id/files", uploadLimiter, (req, res, next) => {
   pdfUpload(req, res, (err) => {
     if (!err) return next();
     const tooLarge = err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE";
     return res.status(tooLarge ? 413 : 400).json({ error: tooLarge ? "file_too_large" : "pdf_only" });
   });
-}, async (req, res) => {
-  try {
-    const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS);
-    if (!found) {
-      if (req.file) fs.unlink(req.file.path, () => {});
-      return;
-    }
-    if (!req.file) return res.status(400).json({ error: "missing_file" });
-
-    // Trần dung lượng, đặt trước cú PutObject: đây là chỗ duy nhất giữ cho kho
-    // không bò tới mốc 10 GB mà Cloudflare bắt đầu tính tiền, và giữ cho một
-    // người không chiếm hết chỗ của những người còn lại.
-    const room = await checkRoom(req.file.size, req.user.email);
-    if (!room.ok) {
-      fs.unlink(req.file.path, () => {});
-      const full = room.reason === "storage_full";
-      return res.status(507).json({
-        error: room.reason,
-        used: formatBytes(full ? room.report.usedBytes : room.userUsed),
-        limit: formatBytes(full ? room.report.limitBytes : room.userLimit)
-      });
-    }
-
-    const name = path.basename(req.file.originalname || "Tài liệu.pdf").slice(0, 180) || "Tài liệu.pdf";
-    // Ghi sổ TRƯỚC khi đẩy bytes lên. Làm ngược lại thì một lỗi Mongo sẽ để lại
-    // bytes trên R2 mà không dòng sổ nào đếm — dung lượng bị chiếm âm thầm. Theo
-    // thứ tự này, lỗi tệ nhất là một dòng sổ không có bytes, và reconcile dọn được.
-    await recordUpload({
-      fileId: req.file.filename,
-      boardId: String(found.board._id),
-      email: req.user.email,
-      name,
-      size: req.file.size
-    });
-    try {
-      await storePdf(req.file.filename, req.file.path);
-    } catch (e) {
-      await forgetUpload(req.file.filename).catch(() => {});
-      throw e;
-    }
-    if (isR2Enabled) fs.unlink(req.file.path, () => {});
-    // Không chờ: cảnh báo vượt ngưỡng không được làm người ta đợi lâu hơn khi tải
-    // PDF, và cron vẫn là cái chốt nếu cú này lỗi.
-    noteUsageAfterUpload().catch(() => {});
-    res.status(201).json({
-      fileId: req.file.filename,
-      name,
-      size: req.file.size,
-      url: `/api/boards/${encodeURIComponent(req.params.id)}/files/${encodeURIComponent(req.file.filename)}`
-    });
-  } catch (e) {
+}, asyncRoute(async (req, res) => {
+  const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS);
+  if (!found) {
     if (req.file) fs.unlink(req.file.path, () => {});
-    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
-    res.status(500).json({ error: "Không tải được PDF." });
+    return;
   }
-});
+  if (!req.file) return res.status(400).json({ error: "missing_file" });
 
-router.get("/:id/files/:fileId", async (req, res) => {
-  try {
-    const found = await loadBoardWithRole(req, res, "viewer", AUTH_FIELDS);
-    if (!found) return;
-    // fileId do server sinh ra; chặn path traversal trước cả khi ghép đường dẫn.
-    if (!/^[0-9a-f-]{36}\.pdf$/i.test(req.params.fileId)) return res.status(404).json({ error: "not_found" });
-    if (!await sendPdf(req.params.fileId, res)) return res.status(404).json({ error: "not_found" });
-  } catch (e) {
-    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
-    res.status(500).json({ error: "Không đọc được PDF." });
-  }
-});
-
-router.get("/:id", async (req, res) => {
-  try {
-    const found = await loadBoardWithRole(req, res, "viewer");
-    if (!found) return;
-    const { board, role } = found;
-    const obj = board.toObject();
-    res.json({
-      id: String(obj._id),
-      name: obj.name,
-      role,
-      ...boardPayload(obj),
-      view: obj.view
+  // Trần dung lượng, đặt trước cú PutObject: đây là chỗ duy nhất giữ cho kho
+  // không bò tới mốc 10 GB mà Cloudflare bắt đầu tính tiền, và giữ cho một
+  // người không chiếm hết chỗ của những người còn lại.
+  const room = await checkRoom(req.file.size, req.user.email);
+  if (!room.ok) {
+    fs.unlink(req.file.path, () => {});
+    const full = room.reason === "storage_full";
+    return res.status(507).json({
+      error: room.reason,
+      used: formatBytes(full ? room.report.usedBytes : room.userUsed),
+      limit: formatBytes(full ? room.report.limitBytes : room.userLimit)
     });
-  } catch (e) {
-    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
-    res.status(500).json({ error: "Không đọc được dữ liệu board." });
   }
-});
 
-router.get("/:id/snapshots", async (req, res) => {
+  const name = path.basename(req.file.originalname || "Tài liệu.pdf").slice(0, 180) || "Tài liệu.pdf";
+  // Ghi sổ TRƯỚC khi đẩy bytes lên. Làm ngược lại thì một lỗi Mongo sẽ để lại
+  // bytes trên R2 mà không dòng sổ nào đếm — dung lượng bị chiếm âm thầm. Theo
+  // thứ tự này, lỗi tệ nhất là một dòng sổ không có bytes, và reconcile dọn được.
+  await recordUpload({
+    fileId: req.file.filename,
+    boardId: String(found.board._id),
+    email: req.user.email,
+    name,
+    size: req.file.size
+  });
   try {
-    const found = await loadBoardWithRole(req, res, "viewer", AUTH_FIELDS);
-    if (!found) return;
-    const snapshots = await BoardSnapshot.find({ boardId: found.board._id })
-      .sort({ createdAt: -1 })
-      .limit(MAX_SNAPSHOTS_PER_BOARD)
-      .lean();
-    res.json({ snapshots: snapshots.map(snapshotSummary) });
+    await storePdf(req.file.filename, req.file.path);
   } catch (e) {
-    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
-    res.status(500).json({ error: "Không đọc được snapshot." });
+    await forgetUpload(req.file.filename).catch(() => {});
+    throw e;
   }
-});
+  if (isR2Enabled) fs.unlink(req.file.path, () => {});
+  // Không chờ: cảnh báo vượt ngưỡng không được làm người ta đợi lâu hơn khi tải
+  // PDF, và cron vẫn là cái chốt nếu cú này lỗi.
+  noteUsageAfterUpload().catch(() => {});
+  res.status(201).json({
+    fileId: req.file.filename,
+    name,
+    size: req.file.size,
+    url: `/api/boards/${encodeURIComponent(req.params.id)}/files/${encodeURIComponent(req.file.filename)}`
+  });
+}, "Không tải được PDF.", { onError: cleanupUpload }));
 
-router.post("/:id/snapshots", async (req, res) => {
-  try {
-    const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS);
-    if (!found) return;
-    const label = typeof req.body?.label === "string" ? req.body.label.trim().slice(0, 160) : "";
-    const current = await Board.findById(found.board._id);
-    if (!current) return res.status(404).json({ error: "not_found" });
-    const snapshot = await BoardSnapshot.create({
-      boardId: current._id,
-      label,
-      createdBy: req.user.email,
-      board: snapshotPayload(current.toObject())
-    });
-    const overflow = await BoardSnapshot.find({ boardId: current._id })
-      .sort({ createdAt: -1 })
-      .skip(MAX_SNAPSHOTS_PER_BOARD)
-      .select("_id")
-      .lean();
-    if (overflow.length) await BoardSnapshot.deleteMany({ _id: { $in: overflow.map((item) => item._id) } });
-    res.status(201).json({ snapshot: snapshotSummary(snapshot) });
-  } catch (e) {
-    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
-    res.status(500).json({ error: "Không tạo được snapshot." });
-  }
-});
+router.get("/:id/files/:fileId", asyncRoute(async (req, res) => {
+  const found = await loadBoardWithRole(req, res, "viewer", AUTH_FIELDS);
+  if (!found) return;
+  // fileId do server sinh ra; chặn path traversal trước cả khi ghép đường dẫn.
+  if (!/^[0-9a-f-]{36}\.pdf$/i.test(req.params.fileId)) return res.status(404).json({ error: "not_found" });
+  if (!await sendPdf(req.params.fileId, res)) return res.status(404).json({ error: "not_found" });
+}, "Không đọc được PDF."));
 
-router.post("/:id/snapshots/:snapshotId/restore", async (req, res) => {
-  try {
-    const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS_VERSIONED);
-    if (!found) return;
-    const snapshot = await BoardSnapshot.findOne({ _id: req.params.snapshotId, boardId: found.board._id }).lean();
-    if (!snapshot) return res.status(404).json({ error: "snapshot_not_found" });
+router.get("/:id", asyncRoute(async (req, res) => {
+  const found = await loadBoardWithRole(req, res, "viewer");
+  if (!found) return;
+  const { board, role } = found;
+  const obj = board.toObject();
+  res.json({
+    id: String(obj._id),
+    name: obj.name,
+    role,
+    ...boardPayload(obj),
+    view: obj.view
+  });
+}, "Không đọc được dữ liệu board."));
 
-    const source = snapshot.board;
-    const normalized = Object.prototype.hasOwnProperty.call(source, "gameDesignFlow")
-      ? { ...source, gameDesignFlow: normalizeGameDesignFlow(source.gameDesignFlow) }
-      : source;
-    const invalid = validateBoardPayload(normalized);
-    if (invalid) return res.status(409).json({ error: "invalid_snapshot", detail: invalid });
-    const gameDesign = resolveGameDesignFields(normalized, found.board);
-    const updatedAt = new Date();
-    const restored = {
-      ...gameDesign,
-      ...pickBoardContent(normalized),
-      updatedAt
-    };
-    await Board.findByIdAndUpdate(found.board._id, restored);
-    const payload = { ...restored, updatedAt: updatedAt.toISOString() };
-    await broadcastBoardUpdate(req, found.board._id, payload);
-    res.json({ ok: true, board: payload });
-    syncBoardRefs(found.board._id, normalized.nodes).catch(() => {});
-  } catch (e) {
-    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
-    res.status(500).json({ error: "Không khôi phục được snapshot." });
-  }
-});
+router.get("/:id/snapshots", asyncRoute(async (req, res) => {
+  const found = await loadBoardWithRole(req, res, "viewer", AUTH_FIELDS);
+  if (!found) return;
+  const snapshots = await BoardSnapshot.find({ boardId: found.board._id })
+    .sort({ createdAt: -1 })
+    .limit(MAX_SNAPSHOTS_PER_BOARD)
+    .lean();
+  res.json({ snapshots: snapshots.map(snapshotSummary) });
+}, "Không đọc được snapshot."));
 
-router.put("/:id", async (req, res) => {
-  try {
-    const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS_VERSIONED);
-    if (!found) return;
+router.post("/:id/snapshots", asyncRoute(async (req, res) => {
+  const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS);
+  if (!found) return;
+  const label = typeof req.body?.label === "string" ? req.body.label.trim().slice(0, 160) : "";
+  const current = await Board.findById(found.board._id);
+  if (!current) return res.status(404).json({ error: "not_found" });
+  const snapshot = await BoardSnapshot.create({
+    boardId: current._id,
+    label,
+    createdBy: req.user.email,
+    board: snapshotPayload(current.toObject())
+  });
+  const overflow = await BoardSnapshot.find({ boardId: current._id })
+    .sort({ createdAt: -1 })
+    .skip(MAX_SNAPSHOTS_PER_BOARD)
+    .select("_id")
+    .lean();
+  if (overflow.length) await BoardSnapshot.deleteMany({ _id: { $in: overflow.map((item) => item._id) } });
+  res.status(201).json({ snapshot: snapshotSummary(snapshot) });
+}, "Không tạo được snapshot."));
 
-    // Kiểm TRƯỚC khi ghi. Client đã kiểm khá nhiều, nhưng client là thứ ai cũng
-    // thay được — còn cái ghi vào Mongo thì cả phòng phải đọc lên và vẽ lại.
-    const body = Object.prototype.hasOwnProperty.call(req.body, "gameDesignFlow")
-      ? { ...req.body, gameDesignFlow: normalizeGameDesignFlow(req.body.gameDesignFlow) }
-      : req.body;
-    const invalid = validateBoardPayload(body);
-    if (invalid) return res.status(400).json({ error: "invalid_board", detail: invalid });
+router.post("/:id/snapshots/:snapshotId/restore", asyncRoute(async (req, res) => {
+  const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS_VERSIONED);
+  if (!found) return;
+  const snapshot = await BoardSnapshot.findOne({ _id: req.params.snapshotId, boardId: found.board._id }).lean();
+  if (!snapshot) return res.status(404).json({ error: "snapshot_not_found" });
 
-    const { view, clientId, baseUpdatedAt } = body;
-    const content = pickBoardContent(body);
-    const gameDesign = resolveGameDesignFields(body, found.board);
+  const source = snapshot.board;
+  const normalized = Object.prototype.hasOwnProperty.call(source, "gameDesignFlow")
+    ? { ...source, gameDesignFlow: normalizeGameDesignFlow(source.gameDesignFlow) }
+    : source;
+  const invalid = validateBoardPayload(normalized);
+  if (invalid) return res.status(409).json({ error: "invalid_snapshot", detail: invalid });
+  const gameDesign = resolveGameDesignFields(normalized, found.board);
+  const updatedAt = new Date();
+  const restored = {
+    ...gameDesign,
+    ...pickBoardContent(normalized),
+    updatedAt
+  };
+  await Board.findByIdAndUpdate(found.board._id, restored);
+  const payload = { ...restored, updatedAt: updatedAt.toISOString() };
+  await broadcastBoardUpdate(req, found.board._id, payload);
+  res.json({ ok: true, board: payload });
+  syncBoardRefs(found.board._id, normalized.nodes).catch(() => {});
+}, "Không khôi phục được snapshot."));
 
-    // Kiểm phiên bản. Client khai "bản tôi đang dựa trên có mốc này"; nếu mốc
-    // trên server đã khác thì trong lúc client dựng payload đã có người khác lưu
-    // xong, và cú PUT này mang một board KHÔNG chứa thay đổi của họ — ghi thẳng
-    // là xoá sổ nó, âm thầm, cả trên server lẫn trên màn hình họ khi gói
-    // board:update phát lại về.
-    //
-    // Trả kèm luôn nội dung mới nhất để client ghép thay đổi của mình lên đó rồi
-    // lưu lại (client/src/lib/rebase.js) — đỡ một vòng mạng nữa đúng vào lúc hai
-    // người đang thao tác nhanh. Đây là chỗ DUY NHẤT ở PUT đọc nội dung board,
-    // và nó chỉ chạy khi thật sự va chạm.
-    //
-    // Không khai `baseUpdatedAt` thì bỏ qua chốt này: client cũ, và luồng "Nhập
-    // JSON" (cố ý thay cả bảng) vẫn ghi đè được như trước.
-    if (baseUpdatedAt) {
-      const current = found.board.updatedAt;
-      if (current && new Date(baseUpdatedAt).getTime() !== new Date(current).getTime()) {
-        const fresh = await Board.findById(req.params.id);
-        if (!fresh) return res.status(404).json({ error: "not_found" });
-        return res.status(409).json({ error: "conflict", board: boardPayload(fresh.toObject()) });
-      }
+router.put("/:id", asyncRoute(async (req, res) => {
+  const found = await loadBoardWithRole(req, res, "editor", AUTH_FIELDS_VERSIONED);
+  if (!found) return;
+
+  // Kiểm TRƯỚC khi ghi. Client đã kiểm khá nhiều, nhưng client là thứ ai cũng
+  // thay được — còn cái ghi vào Mongo thì cả phòng phải đọc lên và vẽ lại.
+  const body = Object.prototype.hasOwnProperty.call(req.body, "gameDesignFlow")
+    ? { ...req.body, gameDesignFlow: normalizeGameDesignFlow(req.body.gameDesignFlow) }
+    : req.body;
+  const invalid = validateBoardPayload(body);
+  if (invalid) return res.status(400).json({ error: "invalid_board", detail: invalid });
+
+  const { view, clientId, baseUpdatedAt } = body;
+  const content = pickBoardContent(body);
+  const gameDesign = resolveGameDesignFields(body, found.board);
+
+  // Kiểm phiên bản. Client khai "bản tôi đang dựa trên có mốc này"; nếu mốc
+  // trên server đã khác thì trong lúc client dựng payload đã có người khác lưu
+  // xong, và cú PUT này mang một board KHÔNG chứa thay đổi của họ — ghi thẳng
+  // là xoá sổ nó, âm thầm, cả trên server lẫn trên màn hình họ khi gói
+  // board:update phát lại về.
+  //
+  // Trả kèm luôn nội dung mới nhất để client ghép thay đổi của mình lên đó rồi
+  // lưu lại (client/src/lib/rebase.js) — đỡ một vòng mạng nữa đúng vào lúc hai
+  // người đang thao tác nhanh. Đây là chỗ DUY NHẤT ở PUT đọc nội dung board,
+  // và nó chỉ chạy khi thật sự va chạm.
+  //
+  // Không khai `baseUpdatedAt` thì bỏ qua chốt này: client cũ, và luồng "Nhập
+  // JSON" (cố ý thay cả bảng) vẫn ghi đè được như trước.
+  if (baseUpdatedAt) {
+    const current = found.board.updatedAt;
+    if (current && new Date(baseUpdatedAt).getTime() !== new Date(current).getTime()) {
+      const fresh = await Board.findById(req.params.id);
+      if (!fresh) return res.status(404).json({ error: "not_found" });
+      return res.status(409).json({ error: "conflict", board: boardPayload(fresh.toObject()) });
     }
-
-    const updatedAt = new Date();
-    await Board.findByIdAndUpdate(req.params.id, {
-      ...gameDesign, ...content,
-      view, updatedAt
-    });
-    // Phát cho người khác trong board ngay sau khi lưu thành công — không
-    // gồm `view`: camera là riêng từng người, không đồng bộ qua kênh này.
-    // clientId là socket.id của chính người lưu (nếu socket presence đã
-    // kết nối) — .except() loại người gửi khỏi broadcast của chính họ.
-    // Cùng chuẩn hoá như phòng presence trong realtime/handshake.js: lấy id từ document,
-    // không từ URL — hex viết hoa/thường khác nhau vẫn phải vào đúng phòng.
-    const payload = {
-      ...gameDesign, ...content,
-      updatedAt: updatedAt.toISOString()
-    };
-    await broadcastBoardUpdate(req, found.board._id, payload, clientId);
-    res.json({ ok: true, updatedAt: updatedAt.toISOString() });
-
-    // Thẻ PDF nào vừa mất khỏi nodes[] thì ghi nhận là mồ côi, để bộ dọn rác trả
-    // lại dung lượng sau thời gian chờ. Chạy SAU khi đã trả lời và không await:
-    // đây là sổ sách nội bộ, không bao giờ được làm chậm hay làm chết một cú lưu
-    // của người dùng — hỏng thì vòng reconcile của cron sửa lại.
-    syncBoardRefs(found.board._id, content.nodes).catch((e) => {
-      console.warn(`[pdf-quota] không đồng bộ được sổ PDF của board ${found.board._id}: ${e.message}`);
-    });
-  } catch (e) {
-    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
-    res.status(500).json({ error: "Không lưu được dữ liệu board." });
   }
-});
 
-router.delete("/:id", async (req, res) => {
-  try {
-    const found = await loadBoardWithRole(req, res, "owner", AUTH_FIELDS);
-    if (!found) return;
-    await Board.findByIdAndDelete(req.params.id);
-    // Xoá board là xoá mọi thẻ trong đó, nên PDF của nó cũng thành mồ côi. Vẫn
-    // qua thời gian chờ như xoá thẻ lẻ, không xoá thẳng: xoá board nhầm là chuyện
-    // xảy ra được, và trong thời gian chờ thì bytes vẫn còn để cứu.
-    await orphanBoardFiles(found.board._id).catch((e) => {
-      console.warn(`[pdf-quota] không đánh dấu được PDF của board vừa xoá: ${e.message}`);
-    });
-    res.json({ ok: true });
-  } catch (e) {
-    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
-    res.status(500).json({ error: "Không xoá được board." });
-  }
-});
+  const updatedAt = new Date();
+  await Board.findByIdAndUpdate(req.params.id, {
+    ...gameDesign, ...content,
+    view, updatedAt
+  });
+  // Phát cho người khác trong board ngay sau khi lưu thành công — không
+  // gồm `view`: camera là riêng từng người, không đồng bộ qua kênh này.
+  // clientId là socket.id của chính người lưu (nếu socket presence đã
+  // kết nối) — .except() loại người gửi khỏi broadcast của chính họ.
+  // Cùng chuẩn hoá như phòng presence trong realtime/handshake.js: lấy id từ document,
+  // không từ URL — hex viết hoa/thường khác nhau vẫn phải vào đúng phòng.
+  const payload = {
+    ...gameDesign, ...content,
+    updatedAt: updatedAt.toISOString()
+  };
+  await broadcastBoardUpdate(req, found.board._id, payload, clientId);
+  res.json({ ok: true, updatedAt: updatedAt.toISOString() });
 
-router.get("/:id/members", async (req, res) => {
-  try {
-    const found = await loadBoardWithRole(req, res, "owner", AUTH_FIELDS);
-    if (!found) return;
-    const { board } = found;
-    const emails = board.members.map((m) => m.email);
-    const users = await User.find({ email: { $in: emails } }).select("email name picture").lean();
-    const byEmail = new Map(users.map((u) => [u.email, u]));
-    res.json(
-      board.members.map((m) => ({
-        email: m.email,
-        role: m.role,
-        name: byEmail.get(m.email)?.name || null,
-        picture: byEmail.get(m.email)?.picture || null
-      }))
-    );
-  } catch (e) {
-    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
-    res.status(500).json({ error: "Không đọc được danh sách thành viên." });
-  }
-});
+  // Thẻ PDF nào vừa mất khỏi nodes[] thì ghi nhận là mồ côi, để bộ dọn rác trả
+  // lại dung lượng sau thời gian chờ. Chạy SAU khi đã trả lời và không await:
+  // đây là sổ sách nội bộ, không bao giờ được làm chậm hay làm chết một cú lưu
+  // của người dùng — hỏng thì vòng reconcile của cron sửa lại.
+  syncBoardRefs(found.board._id, content.nodes).catch((e) => {
+    console.warn(`[pdf-quota] không đồng bộ được sổ PDF của board ${found.board._id}: ${e.message}`);
+  });
+}, "Không lưu được dữ liệu board."));
 
-router.post("/:id/members", async (req, res) => {
-  try {
-    const found = await loadBoardWithRole(req, res, "owner", AUTH_FIELDS);
-    if (!found) return;
-    const { board } = found;
-    const email = String(req.body.email || "").trim().toLowerCase();
-    const role = req.body.role;
-    if (!email || !["editor", "viewer"].includes(role)) {
-      return res.status(400).json({ error: "invalid_input" });
-    }
-    // Mời được người trong ALLOWED_EMAILS, hoặc bất kỳ địa chỉ Gmail nào. Gmail
-    // ngoài danh sách được cấp quyền đăng nhập qua chính lời mời này (grantsLogin).
-    const allowlisted = isEmailAllowed(email);
-    if (!allowlisted && !isGmailAddress(email)) {
-      return res.status(400).json({ error: "not_allowed" });
-    }
-    if (email === board.ownerEmail) {
-      return res.status(400).json({ error: "already_owner" });
-    }
-    const grantsLogin = !allowlisted;
-    const existing = board.members.find((m) => m.email === email);
-    if (existing) {
-      existing.role = role;
-      if (grantsLogin) existing.grantsLogin = true;
-    } else {
-      board.members.push({ email, role, addedAt: new Date(), grantsLogin });
-    }
-    await board.save();
-    res.status(201).json({ ok: true });
-  } catch (e) {
-    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
-    res.status(500).json({ error: "Không mời được thành viên." });
-  }
-});
+router.delete("/:id", asyncRoute(async (req, res) => {
+  const found = await loadBoardWithRole(req, res, "owner", AUTH_FIELDS);
+  if (!found) return;
+  await Board.findByIdAndDelete(req.params.id);
+  // Xoá board là xoá mọi thẻ trong đó, nên PDF của nó cũng thành mồ côi. Vẫn
+  // qua thời gian chờ như xoá thẻ lẻ, không xoá thẳng: xoá board nhầm là chuyện
+  // xảy ra được, và trong thời gian chờ thì bytes vẫn còn để cứu.
+  await orphanBoardFiles(found.board._id).catch((e) => {
+    console.warn(`[pdf-quota] không đánh dấu được PDF của board vừa xoá: ${e.message}`);
+  });
+  res.json({ ok: true });
+}, "Không xoá được board."));
 
-router.patch("/:id/members/:email", async (req, res) => {
-  try {
-    const found = await loadBoardWithRole(req, res, "owner", AUTH_FIELDS);
-    if (!found) return;
-    const { board } = found;
-    const email = req.params.email.toLowerCase();
-    const role = req.body.role;
-    if (!["editor", "viewer"].includes(role)) {
-      return res.status(400).json({ error: "invalid_input" });
-    }
-    const member = board.members.find((m) => m.email === email);
-    if (!member) return res.status(404).json({ error: "not_found" });
-    member.role = role;
-    await board.save();
-    res.json({ ok: true });
-  } catch (e) {
-    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
-    res.status(500).json({ error: "Không đổi được vai trò." });
-  }
-});
+router.get("/:id/members", asyncRoute(async (req, res) => {
+  const found = await loadBoardWithRole(req, res, "owner", AUTH_FIELDS);
+  if (!found) return;
+  const { board } = found;
+  const emails = board.members.map((m) => m.email);
+  const users = await User.find({ email: { $in: emails } }).select("email name picture").lean();
+  const byEmail = new Map(users.map((u) => [u.email, u]));
+  res.json(
+    board.members.map((m) => ({
+      email: m.email,
+      role: m.role,
+      name: byEmail.get(m.email)?.name || null,
+      picture: byEmail.get(m.email)?.picture || null
+    }))
+  );
+}, "Không đọc được danh sách thành viên."));
 
-router.delete("/:id/members/:email", async (req, res) => {
-  try {
-    const found = await loadBoardWithRole(req, res, "owner", AUTH_FIELDS);
-    if (!found) return;
-    const { board } = found;
-    const email = req.params.email.toLowerCase();
-    board.members = board.members.filter((m) => m.email !== email);
-    await board.save();
-    res.json({ ok: true });
-  } catch (e) {
-    if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
-    res.status(500).json({ error: "Không xoá được thành viên." });
+router.post("/:id/members", asyncRoute(async (req, res) => {
+  const found = await loadBoardWithRole(req, res, "owner", AUTH_FIELDS);
+  if (!found) return;
+  const { board } = found;
+  const email = String(req.body.email || "").trim().toLowerCase();
+  const role = req.body.role;
+  if (!email || !["editor", "viewer"].includes(role)) {
+    return res.status(400).json({ error: "invalid_input" });
   }
-});
+  // Mời được người trong ALLOWED_EMAILS, hoặc bất kỳ địa chỉ Gmail nào. Gmail
+  // ngoài danh sách được cấp quyền đăng nhập qua chính lời mời này (grantsLogin).
+  const allowlisted = isEmailAllowed(email);
+  if (!allowlisted && !isGmailAddress(email)) {
+    return res.status(400).json({ error: "not_allowed" });
+  }
+  if (email === board.ownerEmail) {
+    return res.status(400).json({ error: "already_owner" });
+  }
+  const grantsLogin = !allowlisted;
+  const existing = board.members.find((m) => m.email === email);
+  if (existing) {
+    existing.role = role;
+    if (grantsLogin) existing.grantsLogin = true;
+  } else {
+    board.members.push({ email, role, addedAt: new Date(), grantsLogin });
+  }
+  await board.save();
+  res.status(201).json({ ok: true });
+}, "Không mời được thành viên."));
+
+router.patch("/:id/members/:email", asyncRoute(async (req, res) => {
+  const found = await loadBoardWithRole(req, res, "owner", AUTH_FIELDS);
+  if (!found) return;
+  const { board } = found;
+  const email = req.params.email.toLowerCase();
+  const role = req.body.role;
+  if (!["editor", "viewer"].includes(role)) {
+    return res.status(400).json({ error: "invalid_input" });
+  }
+  const member = board.members.find((m) => m.email === email);
+  if (!member) return res.status(404).json({ error: "not_found" });
+  member.role = role;
+  await board.save();
+  res.json({ ok: true });
+}, "Không đổi được vai trò."));
+
+router.delete("/:id/members/:email", asyncRoute(async (req, res) => {
+  const found = await loadBoardWithRole(req, res, "owner", AUTH_FIELDS);
+  if (!found) return;
+  const { board } = found;
+  const email = req.params.email.toLowerCase();
+  board.members = board.members.filter((m) => m.email !== email);
+  await board.save();
+  res.json({ ok: true });
+}, "Không xoá được thành viên."));
 
 export default router;
