@@ -12,7 +12,7 @@ import {
 } from "../lib/shape.js";
 import { textLines, textBox, TEXT_LINE_H } from "../lib/text-el.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
-import { RELATION_OPTIONS, relationDefinition, isGameDesignRelation, createRelatedGameDesignCard, duplicateGameDesignCard, exportPackage, exportVersion, normalizeABTests, normalizeAcceptanceCriteria, normalizeAnalyticsEvents, normalizeFollowUpTasks, normalizeGameDesignBrief, normalizeGameDesignDetails, normalizeGameDesignFlow, normalizeGameDesignBalance, normalizeLiveOps, normalizePostLaunchReview, normalizeTechnicalNotes, normalizePlaytestSession, normalizeDecisionLog, normalizeTeamHandoff, normalizeReview, normalizeDelivery, createGameDesignNode, dependencyAnalysis, gameDesignMarkdown } from "../lib/game-design.js";
+import { RELATION_OPTIONS, relationDefinition, isGameDesignRelation, createRelatedGameDesignCard, duplicateGameDesignCard, exportPackage, exportVersion, normalizeGameDesignBrief, normalizeGameDesignFlow, normalizeGameDesignBalance, createGameDesignNode, dependencyAnalysis, gameDesignMarkdown } from "../lib/game-design.js";
 import { paletteCss, applyColorTo, applyColorToMany, removePaletteColor } from "../lib/palette.js";
 import { BOARD_BGS, BOARD_GRIDS, COLOR_PACKS, isBoardBg, isBoardGrid, isColorPack } from "../lib/board-theme.js";
 import FilterPanel from "../components/FilterPanel.jsx";
@@ -61,41 +61,10 @@ import { rebaseBoard } from "../lib/rebase.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { rafThrottle } from "../lib/raf-throttle.js";
 import { replaceIdSet, toggleId, unionIdSet } from "../lib/selection.js";
-import { useCloseOnOutside } from "../lib/useCloseOnOutside.js";
 import { readImageFile } from "../lib/image-utils.js";
 import { canAddImage, formatMB } from "../lib/image-budget.js";
-import { usePopoverPosition } from "../lib/usePopoverPosition.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
 import { loadPenPrefs, savePenPrefs, penVar } from "../lib/pen.js";
-
-function normalizeGameDesignBoard(board) {
-  if (!board || board.kind !== "game-design") return board;
-  return {
-    ...board,
-    gameDesignBrief: normalizeGameDesignBrief(board.gameDesignBrief),
-    gameDesignFlow: normalizeGameDesignFlow(board.gameDesignFlow, board.nodes),
-    gameDesignBalance: normalizeGameDesignBalance(board.gameDesignBalance, board.nodes),
-    nodes: (board.nodes || []).map((node) => node?.design ? {
-      ...node,
-      design: {
-        ...node.design,
-        technicalNotes: normalizeTechnicalNotes(node.design.technicalNotes),
-        acceptanceCriteria: normalizeAcceptanceCriteria(node.design.acceptanceCriteria),
-        ...normalizeGameDesignDetails(node.design),
-        playtestSession: normalizePlaytestSession(node.design.playtestSession, board.nodes),
-        decisionLog: normalizeDecisionLog(node.design.decisionLog, board.nodes),
-        teamHandoff: normalizeTeamHandoff(node.design.teamHandoff),
-        review: normalizeReview(node.design.review),
-        delivery: normalizeDelivery(node.design.delivery),
-        analyticsEvents: normalizeAnalyticsEvents(node.design.analyticsEvents),
-        followUpTasks: normalizeFollowUpTasks(node.design.followUpTasks, board.nodes),
-        abTests: normalizeABTests(node.design.abTests),
-        liveOps: normalizeLiveOps(node.design.liveOps),
-        postLaunchReview: normalizePostLaunchReview(node.design.postLaunchReview, board.nodes)
-      }
-    } : node)
-  };
-}
 import { ERASE_PART } from "../lib/erase.js";
 import { CARD_LEVEL_W, cardLevel, levelPatch, loadCardLevel, saveCardLevel } from "../lib/card-levels.js";
 import InkLayer from "../components/InkLayer.jsx";
@@ -110,170 +79,16 @@ import {
   selectionBounds, pointInBounds, cornerPoint, anchorFor, scaleFactorFor, scaleSelection,
   SELECTION_CORNERS
 } from "../lib/selection-box.js";
+import { CARD_W, TEXT_DRAG_THRESHOLD, SEL_GRAB_PAD, SELECTION_DROP, PICK_RADIUS, MIN_GROUP_W, MIN_SCALE, PANEL_KEYS, TREE_OPTS, EMPTY_ARRAY, EMPTY_MAP, EMPTY_SET, MIN_GROUP_H, MAX_SCALE } from "../lib/board-constants.js";
+import { computeZoom } from "../lib/camera.js";
+import { normalizeGameDesignBoard } from "../lib/normalize-board.js";
+import { IconSketch, IconMenu, MiniMapIcon, IconSearch, IconStatus, IconTag, IconPalette, IconBoardStyle, IconStar, IconUndo, IconRedo } from "../components/board/icons.jsx";
+import DropCount from "../components/board/DropCount.jsx";
+import TopMenu from "../components/board/TopMenu.jsx";
+import PaletteEditor from "../components/board/PaletteEditor.jsx";
+import EdgeMenu from "../components/board/EdgeMenu.jsx";
+import CommentsPopover from "../components/board/CommentsPopover.jsx";
 import "../styles/idea-map.css";
-
-const CARD_W = 210;
-// Cỡ nhỏ nhất của một cái khung. Dùng chung cho cả tay cầm kéo giãn LẪN cú tô ra
-// khung mới — tô được một cái khung 70x60 rồi kéo giãn không thu lại được nữa là
-// hai luật đá nhau; và khung bé hơn thế thì nút ×, tiêu đề, bốn dấu + chồng chất
-// lên nhau, không bấm trúng cái nào.
-// Di dưới ngưỡng này (đơn vị toạ độ canvas) thì cú bấm lên text được hiểu là
-// "mở ra sửa" chứ không phải "kéo đi". Đủ rộng để tay run không thành cú kéo,
-// đủ hẹp để một cú kéo thật không bị nuốt thành cú bấm.
-const TEXT_DRAG_THRESHOLD = 3;
-// Nới vùng cầm của hộp bao vùng chọn ra ngoài mép, tính bằng pixel MÀN HÌNH
-// (chia cho scale trước khi so). Nhắm cho trúng một đường viền 1px là việc không
-// ai làm nổi, và mép chính là chỗ tay hay đặt vào nhất.
-const SEL_GRAB_PAD = 6;
-// Đích thả màu "cả vùng chọn". Object hằng dùng chung: dựng mới ở mỗi nhịp chuột
-// thì mọi thẻ trên bảng render lại theo (dropTargetId là prop của IdeaCard).
-const SELECTION_DROP = { kind: "selection", id: null };
-// Ngưỡng chạm khi bấm chọn nét vẽ / hình / chữ, tính bằng đơn vị canvas. Rộng
-// hơn cục gôm một chút: gôm là việc quét cả một vùng nên bắt hụt còn quét lại
-// được, còn bấm chọn mà trượt thì mất cả vùng chọn, phải gom lại từ đầu.
-const PICK_RADIUS = 6;
-const MIN_GROUP_W = 160, MIN_GROUP_H = 120;
-const MIN_SCALE = 0.3, MAX_SCALE = 2.4;
-
-// Ba panel LỌC ở thanh đáy. Giao diện không nằm đây: nó là thiết lập, và nó bung
-// ra ngay dưới nút của mình trên đảo trên trái.
-// Liệt kê ra một chỗ để "có panel nào đang bật không" không phải viết tay ba
-// phép hoặc là một Object.keys trên state.
-const PANEL_KEYS = ["status", "tag", "palette"];
-
-// Tuỳ chọn khởi điểm của bảng Xếp cây. depth 110 (chứ không 70 như hướng ngang)
-// vì hướng dọc lấy CHIỀU CAO thẻ làm khoảng cách tầng — xem ghi chú trong
-// arrangeAsTree. breadth và leaf dùng chung khoảng cách card cùng cấp.
-const TREE_OPTS = { directions: ["down"], depth: 110, breadth: 56, leaf: 56 };
-const EMPTY_ARRAY = [];
-const EMPTY_MAP = new Map();
-const EMPTY_SET = new Set();
-
-// Nhãn "cú thả này ăn vào mấy đối tượng", bay theo chuột cùng badge/màu đang
-// kéo. Chỉ hiện khi từ hai trở lên: thả vào đúng một thẻ là việc thường ngày,
-// đếm ở đó chỉ thêm nhiễu. Không dịch — chỉ có dấu × và một con số.
-function DropCount({ targetId, idsFor }) {
-  if (!targetId || (targetId.kind !== "node" && targetId.kind !== "edge")) return null;
-  const n = idsFor(targetId.kind, targetId.id).length;
-  if (n < 2) return null;
-  return <span className="ghost-n mono">×{n}</span>;
-}
-
-// Một nhãn (chữ hoặc icon), bấm mở khối nội dung ngay dưới nó. Đảo trên trái
-// dùng hai cái: ☰ (việc thỉnh thoảng mới làm — về danh sách board, xuất/nhập
-// JSON, trình chiếu, mục lục) và nút Giao diện (ngôn ngữ, sáng/tối, kiểu vẽ,
-// nền bảng, bộ màu).
-//
-// `closeOnClick` phải tắt được: menu hành động thì bấm một mục là xong việc, nên
-// đóng lại là đúng; còn bảng thiết lập thì người ta bấm "Tối" rồi bấm tiếp
-// "Pastel" — đóng sau mỗi cú bấm là bắt mở lại năm lần.
-// `wide` cho khối nội dung rộng hơn 190px của menu hành động: hàng swatch nền
-// bảng và bốn nút bộ màu không vừa bề ngang đó.
-function TopMenu({ label, title, active, align = "left", wide, closeOnClick = true, children }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-  useCloseOnOutside(ref, () => setOpen(false));
-  return (
-    <div className="menubar-item" ref={ref}>
-      <button
-        type="button"
-        className={"menubar-trigger" + (active ? " active" : "") + (open ? " open" : "")}
-        title={title}
-        onClick={() => setOpen((v) => !v)}
-      >
-        {label}
-      </button>
-      {open && (
-        // onClick (bubble), không phải onClickCapture: bubble chạy sau khi nút con
-        // đã xử lý xong click của chính nó — capture đóng menu (unmount) trước khi
-        // click kịp bubble tới nút, khiến hành động không chạy (vd bấm "+ Ý tưởng"
-        // không tạo thẻ nào).
-        <div
-          className={"menubar-dropdown" + (align === "right" ? " align-right" : "") + (wide ? " wide" : "")}
-          onClick={closeOnClick ? () => setOpen(false) : undefined}
-        >
-          {children}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function computeZoom(currentBoard, rect, screenX, screenY, factor) {
-  const mx = screenX - rect.left, my = screenY - rect.top;
-  const oldScale = currentBoard.view.scale;
-  const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, oldScale * factor));
-  const cx = (mx - currentBoard.view.panX) / oldScale;
-  const cy = (my - currentBoard.view.panY) / oldScale;
-  return { ...currentBoard, view: { panX: mx - newScale * cx, panY: my - newScale * cy, scale: newScale } };
-}
-
-// Nét bút lượn — cùng ngôn ngữ icon với ToolRail.jsx: inline SVG theo
-// currentColor nên tự đúng ở nền sáng và nền tối.
-function IconSketch() {
-  return (
-    <svg viewBox="0 0 20 20" width="14" height="14" style={{ display: "block" }}>
-      <path d="M3 13.5 C6 13.5 5 7 8.5 7 C12 7 10.5 13.5 14 13.5 C15.8 13.5 16.6 12.3 17 11"
-            fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-// Icon của HUD đảo nổi. Cùng luật với ToolRail.jsx: vẽ path theo currentColor,
-// không dùng emoji hay ký tự — emoji không đổi màu theo nền sáng/tối, còn ký tự
-// thì đổi hình theo font nên skin vẽ tay sẽ bóp méo cả nút bấm.
-function IconMenu() {
-  return <svg viewBox="0 0 20 20" width="16" height="16"><path d="M3.5 6 L16.5 6 M3.5 10 L16.5 10 M3.5 14 L16.5 14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>;
-}
-// Khung to là cả bảng, khung nhỏ đặc là chỗ đang nhìn — vẽ đúng cái mà minimap
-// hiển thị, nên nút không cần nhãn chữ.
-function MiniMapIcon() {
-  return (
-    <svg viewBox="0 0 20 20" width="16" height="16">
-      <rect x="2.5" y="4" width="15" height="12" rx="1.6" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <rect x="5" y="6.5" width="6.5" height="5" rx="1" fill="currentColor" opacity="0.55" />
-    </svg>
-  );
-}
-function IconSearch() {
-  return <svg viewBox="0 0 20 20" width="16" height="16"><circle cx="8.5" cy="8.5" r="5" fill="none" stroke="currentColor" strokeWidth="1.7" /><path d="M12.3 12.3 L16.5 16.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" /></svg>;
-}
-function IconStatus() {
-  return <svg viewBox="0 0 20 20" width="16" height="16"><circle cx="10" cy="10" r="6.2" fill="none" stroke="currentColor" strokeWidth="1.6" /><circle cx="10" cy="10" r="2.8" fill="currentColor" /></svg>;
-}
-function IconTag() {
-  return <svg viewBox="0 0 20 20" width="16" height="16"><path d="M10.6 2.5 L17.5 2.5 L17.5 9.4 L9.4 17.5 L2.5 10.6 Z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" /><circle cx="14" cy="6" r="1.5" fill="currentColor" /></svg>;
-}
-function IconPalette() {
-  return (
-    <svg viewBox="0 0 20 20" width="16" height="16">
-      <rect x="2.5" y="2.5" width="6.6" height="6.6" rx="1.4" fill="currentColor" opacity="0.85" />
-      <rect x="10.9" y="2.5" width="6.6" height="6.6" rx="1.4" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <rect x="2.5" y="10.9" width="6.6" height="6.6" rx="1.4" fill="none" stroke="currentColor" strokeWidth="1.5" />
-      <rect x="10.9" y="10.9" width="6.6" height="6.6" rx="1.4" fill="currentColor" opacity="0.85" />
-    </svg>
-  );
-}
-// Panel "Giao diện" chỉnh nền bảng + bộ màu, nên icon là mặt bàn vẽ có lưới chấm
-// — cố ý KHÁC ◐ của nút sáng/tối, hai thứ đó không được đọc nhầm thành một.
-function IconBoardStyle() {
-  return (
-    <svg viewBox="0 0 20 20" width="16" height="16">
-      <rect x="2.5" y="3.5" width="15" height="13" rx="2" fill="none" stroke="currentColor" strokeWidth="1.6" />
-      <circle cx="7" cy="8" r="1.05" fill="currentColor" /><circle cx="13" cy="8" r="1.05" fill="currentColor" />
-      <circle cx="7" cy="12.5" r="1.05" fill="currentColor" /><circle cx="13" cy="12.5" r="1.05" fill="currentColor" />
-    </svg>
-  );
-}
-function IconStar() {
-  return <svg viewBox="0 0 20 20" width="16" height="16"><path d="M10 2.6 L12.3 7.5 L17.6 8.2 L13.7 11.9 L14.7 17.2 L10 14.6 L5.3 17.2 L6.3 11.9 L2.4 8.2 L7.7 7.5 Z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" /></svg>;
-}
-function IconUndo() {
-  return <svg viewBox="0 0 20 20" width="16" height="16"><path d="M6.5 5 L3 8.5 L6.5 12 M3 8.5 L12 8.5 A4.5 4.5 0 0 1 12 17.5 L8 17.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-function IconRedo() {
-  return <svg viewBox="0 0 20 20" width="16" height="16"><path d="M13.5 5 L17 8.5 L13.5 12 M17 8.5 L8 8.5 A4.5 4.5 0 0 0 8 17.5 L12 17.5" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
 
 export default function IdeaMap() {
   const { user, logout } = useAuth();
@@ -4532,7 +4347,6 @@ export default function IdeaMap() {
 
           <span className="island-name" title={boardName}>{boardName}</span>
 
-
           <button
             type="button"
             className={"island-btn" + (searchOpen ? " on" : "")}
@@ -5717,189 +5531,3 @@ export default function IdeaMap() {
   );
 }
 
-function LineSolidIcon() {
-  return <svg viewBox="0 0 20 12" width="20" height="12"><line x1="2" y1="6" x2="18" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" /></svg>;
-}
-function LineDashedIcon() {
-  return <svg viewBox="0 0 20 12" width="20" height="12"><line x1="2" y1="6" x2="18" y2="6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeDasharray="4 3" /></svg>;
-}
-function LineUndirectedIcon() {
-  return (
-    <svg viewBox="0 0 20 12" width="20" height="12">
-      <line x1="3" y1="6" x2="17" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <circle cx="3" cy="6" r="1.8" fill="currentColor" />
-      <circle cx="17" cy="6" r="1.8" fill="currentColor" />
-    </svg>
-  );
-}
-function LineDirectedIcon() {
-  return (
-    <svg viewBox="0 0 20 12" width="20" height="12">
-      <line x1="2" y1="6" x2="14" y2="6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
-      <path d="M12 2l5 4-5 4" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-function ReverseIcon() {
-  return (
-    <svg viewBox="0 0 20 16" width="20" height="16">
-      <path d="M2 5h13M11 2l3 3-3 3" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M18 11H5M9 8l-3 3 3 3" stroke="currentColor" strokeWidth="1.6" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function PaletteEditor({ x, y, hex, onPick, onDelete, onClose }) {
-  const { t } = useLingui();
-  const ref = useRef(null);
-  const inputRef = useRef(null);
-  const pos = usePopoverPosition(ref, x, y);
-  useCloseOnOutside(ref, onClose);
-
-  // Listener "change" thật, không dùng onChange của React: React map onChange
-  // của input màu sang sự kiện "input", tức là mỗi bước kéo trong bộ chọn màu
-  // thành một entry undo + một lần lưu. "change" chỉ nổ một lần khi chốt màu.
-  useEffect(() => {
-    const el = inputRef.current;
-    const handler = (e) => onPick(e.target.value);
-    el.addEventListener("change", handler);
-    return () => el.removeEventListener("change", handler);
-  }, [onPick]);
-
-  return (
-    <div className="badge-editor pal-editor" ref={ref} style={pos} onMouseDown={(e) => e.stopPropagation()}>
-      <div className="eyebrow">{onDelete ? t`Sửa màu` : t`Màu mới`}</div>
-      <input className="pal-input" type="color" defaultValue={hex} ref={inputRef} />
-      {onDelete && (
-        <button className="em-delete" onClick={onDelete}>🗑 <Trans>Xoá màu</Trans></button>
-      )}
-    </div>
-  );
-}
-
-function EdgeMenu({ x, y, edge, onStyleToggle, onArrowToggle, onReverse, onLabel, onColorChange, onDelete, onClose }) {
-  const { t } = useLingui();
-  const ref = useRef(null);
-  const pos = usePopoverPosition(ref, x, y);
-  useCloseOnOutside(ref, onClose);
-
-  // Guard against a redundant second commit: Enter commits immediately, and a
-  // later blur (e.g. clicking elsewhere) would otherwise push the same value
-  // again. Comparing against the (by-then-updated) `edge.label` prop makes the
-  // second call a no-op instead of a duplicate history entry.
-  function commitLabel(rawValue) {
-    const next = rawValue.trim();
-    const prev = (edge.label ?? "").trim();
-    if (next === prev) return;
-    onLabel(rawValue);
-  }
-
-  const isDashed = edge.style === "dashed";
-  const isDirected = edge.arrow !== "none";
-
-  return (
-    <div className="badge-editor edge-menu" ref={ref} style={pos} onMouseDown={(e) => e.stopPropagation()}>
-      <input
-        className="be-name"
-        type="text"
-        autoFocus
-        defaultValue={edge.label ?? ""}
-        placeholder={t`Nhãn edge…`}
-        onKeyDown={(e) => { if (e.key === "Enter") commitLabel(e.currentTarget.value); }}
-        onBlur={(e) => commitLabel(e.target.value)}
-      />
-
-      <div className="em-section">
-        <div className="eyebrow"><Trans>Kiểu nét</Trans></div>
-        <div className="em-toggle-group">
-          <button className={"em-icon-btn" + (!isDashed ? " on" : "")} onClick={() => isDashed && onStyleToggle()} title={t`Nét liền`}>
-            <LineSolidIcon />
-          </button>
-          <button className={"em-icon-btn" + (isDashed ? " on" : "")} onClick={() => !isDashed && onStyleToggle()} title={t`Nét đứt`}>
-            <LineDashedIcon />
-          </button>
-        </div>
-      </div>
-
-      <div className="em-section">
-        <div className="eyebrow"><Trans>Hướng</Trans></div>
-        <div className="em-toggle-group">
-          <button className={"em-icon-btn" + (!isDirected ? " on" : "")} onClick={() => isDirected && onArrowToggle()} title={t`Vô hướng`}>
-            <LineUndirectedIcon />
-          </button>
-          <button className={"em-icon-btn" + (isDirected ? " on" : "")} onClick={() => !isDirected && onArrowToggle()} title={t`Có hướng`}>
-            <LineDirectedIcon />
-          </button>
-          {isDirected && (
-            <button className="em-icon-btn" onClick={onReverse} title={t`Đảo chiều`}>
-              <ReverseIcon />
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="em-section">
-        <div className="eyebrow"><Trans>Màu dây</Trans></div>
-        <div className="be-swatches">
-          <button className={"be-swatch dot-empty" + (!edge.color ? " on" : "")} onClick={() => onColorChange(null)} title={t`Mặc định`} />
-          {BADGE_PALETTE.map((token) => (
-            <button key={token} className={"be-swatch" + (edge.color === token ? " on" : "")} style={{ background: colorVar(token) }} onClick={() => onColorChange(token)} title={token} />
-          ))}
-        </div>
-      </div>
-
-      <button className="em-delete" onClick={onDelete}>🗑 <Trans>Xoá cạnh</Trans></button>
-    </div>
-  );
-}
-
-function CommentsPopover({ x, y, comments, onAdd, onDelete, onClose }) {
-  const { t } = useLingui();
-  const ref = useRef(null);
-  const pos = usePopoverPosition(ref, x, y);
-  useCloseOnOutside(ref, onClose);
-  const [text, setText] = useState("");
-
-  function timeAgo(iso) {
-    const diffSec = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
-    if (diffSec < 60) return t`vừa xong`;
-    if (diffSec < 3600) { const m = Math.floor(diffSec / 60); return t`${m} phút trước`; }
-    if (diffSec < 86400) { const h = Math.floor(diffSec / 3600); return t`${h} giờ trước`; }
-    const d = Math.floor(diffSec / 86400);
-    return t`${d} ngày trước`;
-  }
-
-  function submit() {
-    if (!text.trim()) return;
-    if (onAdd(text)) setText("");
-  }
-
-  return (
-    <div className="badge-editor comments-pop" ref={ref} style={pos} onMouseDown={(e) => e.stopPropagation()}>
-      {comments.length > 0 && (
-        <div className="cmt-list">
-          {comments.map((c, i) => (
-            <div className="cmt-item" key={i}>
-              <div className="cmt-item-head">
-                <span className="cmt-author">{c.author}</span>
-                <span className="cmt-time">{timeAgo(c.at)}</span>
-                <button className="cmt-delete" onClick={() => onDelete(i)} title={t`Xoá`}>×</button>
-              </div>
-              <div className="cmt-text">{c.text}</div>
-            </div>
-          ))}
-        </div>
-      )}
-      <textarea
-        autoFocus
-        value={text}
-        onChange={(e) => setText(e.target.value)}
-        placeholder={t`Viết bình luận…`}
-        onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); submit(); } }}
-      />
-      <div className="cmt-actions">
-        <button className="save-btn" onClick={submit}><Trans>Gửi</Trans></button>
-      </div>
-    </div>
-  );
-}
