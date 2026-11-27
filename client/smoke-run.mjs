@@ -8,8 +8,49 @@
 // component lên mới thấy. Kiểm tra cuối cùng trong entry.jsx chốt đúng bất biến
 // ấy: nhận board:update thì số gói live:geom phát ra phải bằng 0.
 //
-// Chạy: npm run test:smoke
+// Chạy: npm run test:smoke                       (mọi kịch bản, lần lượt)
+//       SMOKE_ONLY=<tên> node smoke-run.mjs       (một kịch bản, có in tên)
+//       SMOKE_SCENARIO=<tên> node smoke-run.mjs   (một kịch bản, ngay trong process này)
+//
+// Không có SMOKE_SCENARIO thì file này là bộ điều phối: chạy lại CHÍNH NÓ cho
+// từng kịch bản trong một process con riêng. Mỗi kịch bản vì thế có một JSDOM,
+// một bản fixture, một socket giả và một bộ đếm PUT mới tinh — không kịch bản
+// nào thừa hưởng rác (listener trên window, React root, timer) của cái trước.
 import { JSDOM } from "jsdom";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
+
+// Thứ tự chạy. Tên phải khớp khoá trong `scenarios` của src/__smoke__/entry.jsx;
+// riêng "source-checks" chạy ngay trong file này (đọc file CSS/JSX nguồn).
+const SCENARIOS = ["source-checks", "board", "game-design-panels", "tree-panel", "workspace"];
+const SCENARIO = process.env.SMOKE_SCENARIO;
+
+if (!SCENARIO) {
+  const only = process.env.SMOKE_ONLY;
+  if (only && !SCENARIOS.includes(only)) {
+    console.log(`❌ SMOKE FAIL: không có kịch bản "${only}". Có: ${SCENARIOS.join(", ")}`);
+    process.exit(1);
+  }
+  const failed = [];
+  for (const name of only ? [only] : SCENARIOS) {
+    console.log(`\n▶ ${name}`);
+    const r = spawnSync(process.execPath, [fileURLToPath(import.meta.url)], {
+      stdio: "inherit",
+      env: { ...process.env, SMOKE_SCENARIO: name }
+    });
+    if (r.status !== 0) failed.push(name);
+  }
+  if (failed.length) {
+    console.log(`\n❌ SMOKE FAIL: ${failed.length} kịch bản hỏng: ${failed.join(", ")}`);
+    process.exit(1);
+  }
+  console.log("\n✅ SMOKE PASS (tất cả kịch bản)");
+  process.exit(0);
+}
+if (!SCENARIOS.includes(SCENARIO)) {
+  console.log(`❌ SMOKE FAIL: không có kịch bản "${SCENARIO}". Có: ${SCENARIOS.join(", ")}`);
+  process.exit(1);
+}
 
 const board = {
   id: "b1", name: "Bảng thử", role: "owner", updatedAt: new Date().toISOString(),
@@ -28,7 +69,7 @@ const board = {
   view: { panX: 0, panY: 0, scale: 1 }
 };
 
-if (["tree-panel", "workspace"].includes(process.env.SMOKE_SCENARIO)) board.kind = "game-design";
+if (["tree-panel", "workspace"].includes(SCENARIO)) board.kind = "game-design";
 
 const dom = new JSDOM('<!doctype html><html><body><div id="root"></div></body></html>', {
   url: "http://localhost/",
@@ -89,7 +130,7 @@ globalThis.__hitAt = (el) => { hitTarget = el; };
 globalThis.__board = board;
 globalThis.__puts = [];
 globalThis.__workspaceWrites = [];
-let workspaceState = process.env.SMOKE_SCENARIO === "workspace" ? { miniOpen: false, outlineOpen: true, inspector: { type: "tree", kind: "node", id: 1 }, camera: { x: 300, y: 200, scale: 1.2 } } : {};
+let workspaceState = SCENARIO === "workspace" ? { miniOpen: false, outlineOpen: true, inspector: { type: "tree", kind: "node", id: 1 }, camera: { x: 300, y: 200, scale: 1.2 } } : {};
 
 // Bản mà "server" đang giữ — chính là thân của lần PUT được nhận gần nhất. Cần
 // nó để dựng được một cú 409 THẬT: bản server trả về lúc va chạm phải là bản
@@ -148,7 +189,9 @@ setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process
 // vào jsdom nên cascade thật cũng không có ở đó để soi. Cách duy nhất là đọc
 // trực tiếp FILE CSS thật, và việc đó chỉ làm được ở đây (chạy trong node),
 // không làm được trong entry.jsx (chạy trong bundle jsdom).
-{
+//
+// Mấy bài này là kịch bản "source-checks": chỉ cần chạy một lần cho cả bộ.
+if (SCENARIO === "source-checks") {
   const fs = await import("node:fs");
   const cssPath = new URL("./src/styles/idea-map.css", import.meta.url);
   const css = fs.readFileSync(cssPath, "utf8");
@@ -235,10 +278,12 @@ setTimeout(() => { console.log("⏱  QUÁ HẠN — có gì đó treo"); process
     }
   }
   console.log("  ·", "InkLayer: Stroke và TextEl đều bọc memo (nét đã lưu không dựng lại path ở mỗi khung hình lúc đang vẽ)");
+  console.log("\n✅ SMOKE PASS");
+  process.exit(0);
 }
 
-const scenarios = await import("./smoke-dist/smoke.js");
-const run = process.env.SMOKE_SCENARIO === "workspace" ? scenarios.runWorkspaceRestore : process.env.SMOKE_SCENARIO === "tree-panel" ? scenarios.runTreePanelExclusive : scenarios.run;
+const { scenarios } = await import("./smoke-dist/smoke.js");
+const run = scenarios[SCENARIO];
 try {
   await run((m) => console.log("  ·", m));
   console.log("\n✅ SMOKE PASS");
