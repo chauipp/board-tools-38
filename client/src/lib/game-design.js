@@ -3,7 +3,10 @@
 export { GAME_DESIGN_TYPES, DESIGN_FIELD_LABELS, RELATION_OPTIONS, relationDefinition, isGameDesignRelation, gameDesignType } from "./game-design/types.js";
 export { emptyGameDesignBrief, normalizeGameDesignBrief, hasGameDesignBrief } from "./game-design/brief.js";
 export { emptyGameDesignFlow, normalizeGameDesignFlow, hasGameDesignFlow } from "./game-design/flow.js";
-export { emptyGameDesignBalance, BALANCE_TEMPLATES, appendBalanceTemplate, normalizeGameDesignBalance, balanceCurveTable, balanceMetricsForCard, evaluateBalanceFormula, balanceWarnings, balanceHealth } from "./game-design/balance.js";
+export {
+  emptyGameDesignBalance, BALANCE_TEMPLATES, appendBalanceTemplate, normalizeGameDesignBalance,
+  balanceCurveTable, balanceMetricsForCard, evaluateBalanceFormula, balanceWarnings, balanceHealth
+} from "./game-design/balance.js";
 export { emptyGameDesignDetails, normalizeTechnicalNotes, normalizeGameDesignDetails, normalizeAcceptanceCriteria, acceptanceProgress } from "./game-design/details.js";
 export { emptyPlaytestSession, normalizePlaytestSession, hasPlaytestSession, playtestComparison } from "./game-design/playtest.js";
 export { emptyDecisionLog, normalizeDecisionLog, decisionTimeline } from "./game-design/decisions.js";

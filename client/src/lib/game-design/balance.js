@@ -41,7 +41,18 @@ export function normalizeGameDesignBalance(value, nodes) {
   const used = new Set();
   const metrics = (Array.isArray(balance.metrics) ? balance.metrics : []).filter((item) => item && typeof item === "object" && !Array.isArray(item)).map((item, index) => {
     const key = typeof item.key === "string" ? item.key.trim().toLowerCase().replace(/[^a-z0-9_]/g, "") : "";
-    return { id: typeof item.id === "string" && item.id.trim() ? item.id.trim() : `metric-${index + 1}`, key, name: typeof item.name === "string" ? item.name.trim() : "", value: typeof item.value === "string" ? item.value.trim() : "", min: typeof item.min === "string" ? item.min.trim() : "", max: typeof item.max === "string" ? item.max.trim() : "", unit: typeof item.unit === "string" ? item.unit.trim() : "", formula: typeof item.formula === "string" ? item.formula.trim() : "", cardIds: Array.isArray(item.cardIds) ? item.cardIds.map((id) => String(id).trim()).filter((id, i, ids) => id && ids.indexOf(id) === i && (!nodeIds || nodeIds.has(id))) : [] };
+    return {
+      id: typeof item.id === "string" && item.id.trim() ? item.id.trim() : `metric-${index + 1}`,
+      key,
+      name: typeof item.name === "string" ? item.name.trim() : "",
+      value: typeof item.value === "string" ? item.value.trim() : "",
+      min: typeof item.min === "string" ? item.min.trim() : "",
+      max: typeof item.max === "string" ? item.max.trim() : "",
+      unit: typeof item.unit === "string" ? item.unit.trim() : "",
+      formula: typeof item.formula === "string" ? item.formula.trim() : "",
+      cardIds: Array.isArray(item.cardIds) ? item.cardIds.map((id) => String(id).trim())
+        .filter((id, i, ids) => id && ids.indexOf(id) === i && (!nodeIds || nodeIds.has(id))) : []
+    };
   }).filter((item) => item.key && item.name && !used.has(item.key) && (used.add(item.key) || true)).slice(0, 100);
   const metricKeys = new Set(metrics.map((item) => item.key));
   const curveIds = new Set();
@@ -51,7 +62,15 @@ export function normalizeGameDesignBalance(value, nodes) {
       const id = typeof item.id === "string" && item.id.trim() ? item.id.trim() : `curve-${index + 1}`;
       const metricKey = typeof item.metricKey === "string" ? item.metricKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, "") : "";
       const steps = Math.max(2, Math.min(200, Number.parseInt(item.steps, 10) || 2));
-      return { id, name: typeof item.name === "string" ? item.name.trim() : "", metricKey, start: typeof item.start === "string" ? item.start.trim() : "", end: typeof item.end === "string" ? item.end.trim() : "", steps, mode: item.mode === "exponential" ? "exponential" : "linear" };
+      return {
+        id,
+        name: typeof item.name === "string" ? item.name.trim() : "",
+        metricKey,
+        start: typeof item.start === "string" ? item.start.trim() : "",
+        end: typeof item.end === "string" ? item.end.trim() : "",
+        steps,
+        mode: item.mode === "exponential" ? "exponential" : "linear"
+      };
     }).filter((item) => item.name && metricKeys.has(item.metricKey) && !curveIds.has(item.id) && (curveIds.add(item.id) || true)).slice(0, 30)
   };
 }
@@ -88,7 +107,13 @@ export function evaluateBalanceFormula(formula, variables = {}) {
   while (ops.length) { const op = ops.pop(); if (op === "(") return { value: null, error: "Ngoặc không khớp." }; output.push(op); }
   const stack = [];
   for (const token of output) {
-    if (token in priority) { const b = stack.pop(), a = stack.pop(); if (!Number.isFinite(a) || !Number.isFinite(b)) return { value: null, error: "Thiếu giá trị trong công thức." }; const value = token === "+" ? a + b : token === "-" ? a - b : token === "*" ? a * b : a / b; if (!Number.isFinite(value)) return { value: null, error: "Kết quả không hợp lệ." }; stack.push(value); }
+    if (token in priority) {
+      const b = stack.pop(), a = stack.pop();
+      if (!Number.isFinite(a) || !Number.isFinite(b)) return { value: null, error: "Thiếu giá trị trong công thức." };
+      const value = token === "+" ? a + b : token === "-" ? a - b : token === "*" ? a * b : a / b;
+      if (!Number.isFinite(value)) return { value: null, error: "Kết quả không hợp lệ." };
+      stack.push(value);
+    }
     else if (/^\d/.test(token)) stack.push(Number(token));
     else { const value = Number(variables[token]); if (!Number.isFinite(value)) return { value: null, error: `Chưa có giá trị cho ${token}.` }; stack.push(value); }
   }
@@ -116,9 +141,14 @@ export function balanceHealth(balance, nodes) {
   const valueOf = (item) => Number(item.formula ? evaluateBalanceFormula(item.formula, vars).value : item.value);
   const rates = metrics.filter((item) => item.unit === "%" || /_rate$/.test(item.key)).map(valueOf).filter(Number.isFinite);
   const warnings = [];
-  if (rates.length >= 2) { const total = rates.reduce((sum, value) => sum + value, 0); if (Math.abs(total - 100) > 0.01) warnings.push(`Tổng ${rates.length} drop/rate là ${total}%, không phải 100%.`); }
+  if (rates.length >= 2) {
+    const total = rates.reduce((sum, value) => sum + value, 0);
+    if (Math.abs(total - 100) > 0.01) warnings.push(`Tổng ${rates.length} drop/rate là ${total}%, không phải 100%.`);
+  }
   const earned = metrics.filter((item) => /(earned|income|reward|source)/.test(item.key)).map(valueOf).filter(Number.isFinite).reduce((a, b) => a + b, 0);
   const spent = metrics.filter((item) => /(spent|cost|sink)/.test(item.key)).map(valueOf).filter(Number.isFinite).reduce((a, b) => a + b, 0);
-  if (earned || spent) warnings.push(`Economy flow ước tính: ${earned - spent >= 0 ? "+" : ""}${earned - spent} mỗi lượt (${earned} vào / ${spent} ra).`);
+  if (earned || spent) {
+    warnings.push(`Economy flow ước tính: ${earned - spent >= 0 ? "+" : ""}${earned - spent} mỗi lượt (${earned} vào / ${spent} ra).`);
+  }
   return warnings;
 }

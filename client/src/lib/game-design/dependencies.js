@@ -5,7 +5,9 @@ export function dependencyAnalysis(board) {
   const ids = new Set(nodes.map((node) => String(node.id)));
   const prerequisites = new Map(nodes.map((node) => [String(node.id), []]));
   const dependents = new Map(nodes.map((node) => [String(node.id), []]));
-  const edges = (board?.edges || []).filter((edge) => edge?.relation === "depends-on" && (edge.fromKind || "node") === "node" && (edge.toKind || "node") === "node" && ids.has(String(edge.from)) && ids.has(String(edge.to)));
+  const edges = (board?.edges || []).filter((edge) => edge?.relation === "depends-on"
+    && (edge.fromKind || "node") === "node" && (edge.toKind || "node") === "node"
+    && ids.has(String(edge.from)) && ids.has(String(edge.to)));
   for (const edge of edges) { prerequisites.get(String(edge.from)).push(String(edge.to)); dependents.get(String(edge.to)).push(String(edge.from)); }
   const cycleNodeIds = new Set(), cycleEdgeIds = new Set();
   function reachable(start, target, seen = new Set()) {
@@ -14,7 +16,9 @@ export function dependencyAnalysis(board) {
     return (prerequisites.get(start) || []).some((next) => reachable(next, target, seen));
   }
   for (const edge of edges) if (reachable(String(edge.to), String(edge.from))) { cycleEdgeIds.add(edge.id); cycleNodeIds.add(String(edge.from)); cycleNodeIds.add(String(edge.to)); }
-  const done = new Set(nodes.filter((node) => String((board?.statuses || []).find((status) => status.id === node.statusId)?.name || "").trim().toLowerCase() === "done").map((node) => String(node.id)));
+  const done = new Set(nodes
+    .filter((node) => String((board?.statuses || []).find((status) => status.id === node.statusId)?.name || "").trim().toLowerCase() === "done")
+    .map((node) => String(node.id)));
   const blockedNodeIds = new Set(nodes.filter((node) => (prerequisites.get(String(node.id)) || []).some((id) => !done.has(id))).map((node) => String(node.id)));
   function chainFrom(id) {
     const chain = [], seen = new Set(); let current = String(id);
