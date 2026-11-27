@@ -1931,23 +1931,19 @@ export default function IdeaMap() {
       return t;
     }
 
-    const onMove = rafThrottle((ev) => {
+    const onMove = (ev) => {
       const p = toCanvas(ev.clientX, ev.clientY);
       setEdgeDrag({ edgeId: edge.id, end, fixedKind, fixedId, x: p.x, y: p.y });
       const t = targetAt(ev.clientX, ev.clientY);
       setDropTargetId(t ? { id: t.id, kind: t.kind } : null);
-    });
+    };
     function onUp(ev) {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      onMove.cancel();
       setEdgeDrag(null);
       setDropTargetId(null);
       const t = targetAt(ev.clientX, ev.clientY);
       if (t) updateEdge(edge.id, end === "from" ? { from: t.id, fromKind: t.kind } : { to: t.id, toKind: t.kind });
     }
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
+    startDrag(e, { onMove, onEnd: onUp, release: "cancel" });
   }
 
   // Thả badge/màu vào một thẻ ĐANG nằm trong vùng chọn nhiều thì cả vùng chọn
