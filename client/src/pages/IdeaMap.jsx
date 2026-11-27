@@ -3047,9 +3047,6 @@ export default function IdeaMap() {
     }
 
     function cleanup() {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", finish);
-      window.removeEventListener("blur", cancel);
       setTextDrag(null);
     }
 
@@ -3077,9 +3074,9 @@ export default function IdeaMap() {
       store.commit(next, { from: current });
     }
 
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", finish);
-    window.addEventListener("blur", cancel);
+    // Không có sự kiện chuột ở đây (start là toạ độ canvas đã tính sẵn), và
+    // ngưỡng kéo tính theo đơn vị canvas trong onMove — nên không truyền event.
+    startDrag(null, { onMove, onEnd: finish, onCancel: cancel, throttle: false, blur: "cancel" });
   }
 
   // Cùng kỷ luật refs-only như commitStroke (xem ghi chú dài ở đó): gõ một đoạn
