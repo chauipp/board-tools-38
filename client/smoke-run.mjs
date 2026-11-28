@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 
 // Thứ tự chạy. Tên phải khớp khoá trong `scenarios` của src/__smoke__/entry.jsx;
 // riêng "source-checks" chạy ngay trong file này (đọc file CSS/JSX nguồn).
-const SCENARIOS = ["source-checks", "board", "game-design-panels", "tree-panel", "workspace"];
+const SCENARIOS = ["source-checks", "board", "concurrent-nudge", "game-design-panels", "tree-panel", "workspace"];
 const SCENARIO = process.env.SMOKE_SCENARIO;
 
 if (!SCENARIO) {

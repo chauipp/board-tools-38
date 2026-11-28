@@ -32,6 +32,7 @@ import { usePresence } from "../lib/usePresence.js";
 import { useFollow } from "../lib/useFollow.js";
 import { useLiveSync, applyGeomOverlay } from "../lib/useLiveSync.js";
 import { useBoardStore } from "../lib/useBoardStore.js";
+import { remapId, remapIdSet } from "../lib/rebase.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { startDrag } from "../lib/drag-session.js";
 import { toggleId } from "../lib/selection.js";
@@ -798,7 +799,16 @@ export default function IdeaMap() {
         pendingJumpRef.current = Number(initialCardParam);
       }
     },
-    onHistoryJump: () => setEditingId(null)
+    onHistoryJump: () => setEditingId(null),
+    // Ghép sau 409 đã đổi id của thứ mình vừa tạo (trùng id với người kia):
+    // dời thẻ đang sửa và vùng chọn theo id mới.
+    onIdsRemapped: (plan) => {
+      setEditingId((id) => (id == null ? id : remapId(plan, "nodes", id)));
+      setSelectedIds((prev) => remapIdSet(prev, plan, "nodes"));
+      setSelectedGroupIds((prev) => remapIdSet(prev, plan, "groups"));
+      setSelectedEdgeIds((prev) => remapIdSet(prev, plan, "edges"));
+      setSelectedDrawingIds((prev) => remapIdSet(prev, plan, "drawings"));
+    }
   });
 
   function openSnapshots() {

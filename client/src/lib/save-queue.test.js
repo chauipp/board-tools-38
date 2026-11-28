@@ -254,3 +254,118 @@ test("với rebaseBoard thật: thẻ từ xa và cú nhích đang chờ đều 
   assert.equal(n1.x, 40);
   assert.equal(n1.title, "A đổi tên");
 });
+
+// ── Review vòng 2 ───────────────────────────────────────────────────────────
+// Server giả có phiên bản: PUT kèm mốc cũ → 409 kèm bản đang giữ; PUT đúng mốc
+// (hoặc không mốc) → ghi đè và cấp mốc mới. Timer do test điều khiển.
+// Mốc dạng thời gian ISO như server thật (updatedAt), tăng dần theo phiên bản.
+const iso = (v) => new Date(Date.UTC(2026, 0, 1, 0, 0, v)).toISOString();
+async function realRebaseHarness(initial) {
+  const { rebaseBoardDetailed } = await import("./rebase.js");
+  let serverBoard = { ...initial, updatedAt: iso(0) };
+  let version = 0;
+  let base = initial, stamp = iso(0);
+  const puts = [], adopted = [], timers = [];
+  let hold = null; // giữ PUT kế tiếp lại cho tới khi test thả
+  const q = createSaveQueue({
+    save: async (next, s) => {
+      puts.push({ next, stamp: s });
+      if (hold) await hold;
+      await flush();
+      if (s !== undefined && s !== serverBoard.updatedAt) {
+        const e = new Error("conflict"); e.code = "CONFLICT"; e.board = serverBoard; throw e;
+      }
+      version += 1;
+      serverBoard = { ...next, updatedAt: iso(version) };
+      return { updatedAt: serverBoard.updatedAt };
+    },
+    rebaseDetailed: rebaseBoardDetailed,
+    adopt: (m) => adopted.push(m),
+    getBase: () => base, setBase: (b) => { base = b; },
+    getStamp: () => stamp, setStamp: (s) => { stamp = s; },
+    setTimer: (fn) => { timers.push(fn); return timers.length; },
+    clearTimer: (id) => { timers[id - 1] = null; }
+  });
+  return {
+    q, puts, adopted, timers,
+    server: () => serverBoard,
+    // Người khác lưu thẳng lên server (không qua hàng đợi này).
+    remoteSave: (mutate) => { version += 1; serverBoard = { ...mutate(serverBoard), updatedAt: iso(version) }; return serverBoard; },
+    // Gói board:update về tới máy mình: store gọi rebaseQueued rồi dời nền + mốc.
+    deliver: (board) => { const shown = q.rebaseQueued(board); base = board; stamp = board.updatedAt; return shown; },
+    holdNext: () => { let release; hold = new Promise((r) => { release = r; }); return () => { hold = null; release(); }; },
+    fireTimers: () => { const f = timers.filter(Boolean); timers.fill(null); f.forEach((fn) => fn()); }
+  };
+}
+const boardOf = (nodes, extra = {}) => ({
+  nodes, edges: [], groups: [], drawings: [], statuses: [], tags: [], palette: [],
+  nextNodeId: 1, nextEdgeId: 1, nextGroupId: 1, nextStatusId: 1, nextTagId: 1, nextPaletteId: 1, nextDrawingId: 1, ...extra
+});
+
+test("hai người cùng tạo thẻ số 1: bản chờ sửa thẻ local phải đi theo id MỚI, thẻ remote nguyên vẹn", async () => {
+  const h = await realRebaseHarness(boardOf([]));
+  h.remoteSave((b) => ({ ...b, nodes: [{ id: 1, title: "Remote", x: 500, y: 0 }], nextNodeId: 2 }));
+  // A: mình tạo thẻ 1 tên "A" (kèm một dây tự nối để kiểm cả tham chiếu).
+  h.q.saveNow(boardOf([{ id: 1, title: "A", x: 0, y: 0 }], { nextNodeId: 2 }));
+  // B (xếp hàng): đổi tên thẻ local thành "B", vẫn dùng id 1.
+  h.q.saveNow(boardOf([{ id: 1, title: "B", x: 0, y: 0 }], { nextNodeId: 2 }));
+  await settle(30);
+  const nodes = h.server().nodes;
+  const remote = nodes.find((n) => n.title === "Remote");
+  assert.ok(remote && remote.id === 1 && remote.x === 500, "thẻ remote phải còn nguyên: " + JSON.stringify(nodes));
+  const mine = nodes.filter((n) => n.title !== "Remote");
+  assert.equal(mine.length, 1, "thẻ local không được nhân đôi: " + JSON.stringify(nodes));
+  assert.equal(mine[0].title, "B");
+  assert.notEqual(mine[0].id, 1);
+});
+
+test("A đang gửi, B đang chờ, C đang debounce: rút B khỏi hàng đợi không được huỷ timer của C", async () => {
+  for (const conflict of [false, true]) {
+    const h = await realRebaseHarness(boardOf([{ id: 1, title: "n", x: 0, y: 0 }], { nextNodeId: 2 }));
+    if (conflict) h.remoteSave((b) => ({ ...b, nodes: [...b.nodes, { id: 7, title: "Remote", x: 9, y: 9 }], nextNodeId: 8 }));
+    const at = (x) => boardOf([{ id: 1, title: "n", x, y: 0 }], { nextNodeId: 2 });
+    h.q.saveNow(at(1));            // A
+    h.q.saveNow(at(2));            // B chờ
+    h.q.saveDebounced(at(3), 500); // C hẹn giờ, mới nhất
+    await settle(30);
+    assert.equal(h.timers.filter(Boolean).length, 1, `timer của C phải còn (conflict=${conflict})`);
+    h.fireTimers();
+    await settle(30);
+    assert.equal(h.server().nodes.find((n) => n.id === 1).x, 3, `C phải được lưu (conflict=${conflict})`);
+    if (conflict) assert.ok(h.server().nodes.some((n) => n.id === 7), "và thẻ remote vẫn còn");
+  }
+});
+
+test("board:update về trong lúc một cú nhích đang debounce: timer không được gửi bản cũ kèm mốc mới", async () => {
+  // Đúng ca end-to-end của review: mình nhích B (hẹn giờ), người kia lưu A = 10
+  // và gói board:update về TRƯỚC khi timer nổ.
+  const start = boardOf([{ id: 1, title: "A", x: 0, y: 0 }, { id: 2, title: "B", x: 0, y: 0 }], { nextNodeId: 3 });
+  const h = await realRebaseHarness(start);
+  h.q.saveDebounced(boardOf([{ id: 1, title: "A", x: 0, y: 0 }, { id: 2, title: "B", x: 0, y: 10 }], { nextNodeId: 3 }), 500);
+  const remote = h.remoteSave((b) => ({ ...b, nodes: b.nodes.map((n) => (n.id === 1 ? { ...n, x: 10 } : n)) }));
+  const shown = h.deliver(remote);
+  // Màn hình phải giữ cú nhích chưa lưu CỘNG thay đổi của người kia.
+  assert.equal(shown.nodes.find((n) => n.id === 1).x, 10);
+  assert.equal(shown.nodes.find((n) => n.id === 2).y, 10);
+  h.fireTimers();
+  await settle(30);
+  const saved = h.server().nodes;
+  assert.equal(saved.find((n) => n.id === 1).x, 10, "thay đổi của người kia không được lùi về 0");
+  assert.equal(saved.find((n) => n.id === 2).y, 10, "cú nhích của mình phải được lưu");
+});
+
+test("phản hồi của một PUT cũ về SAU board:update mới hơn: không được lùi mốc và bản nền", async () => {
+  const h = await realRebaseHarness(boardOf([{ id: 1, title: "n", x: 0, y: 0 }], { nextNodeId: 2 }));
+  const release = h.holdNext();
+  h.q.saveNow(boardOf([{ id: 1, title: "n", x: 1, y: 0 }], { nextNodeId: 2 })); // A, bị giữ
+  await flush();
+  // Coi như A đã vào server rồi người kia lưu tiếp; gói của họ về trước phản hồi của A.
+  const newer = { ...boardOf([{ id: 1, title: "n", x: 1, y: 0 }, { id: 5, title: "R", x: 0, y: 0 }], { nextNodeId: 6 }), updatedAt: iso(9) };
+  h.deliver(newer);
+  release();
+  await settle(30);
+  // Lần lưu kế tiếp phải dùng mốc của gói mới hơn chứ không phải mốc cũ của A.
+  h.q.saveNow(boardOf([{ id: 1, title: "n", x: 2, y: 0 }, { id: 5, title: "R", x: 0, y: 0 }], { nextNodeId: 6 }));
+  // Đọc ngay lúc gửi (save() ghi nhận đồng bộ), trước khi có vòng thử lại nào.
+  assert.equal(h.puts[h.puts.length - 1].stamp, iso(9));
+});
