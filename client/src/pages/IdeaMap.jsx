@@ -80,6 +80,7 @@ import BoardPopovers from "../components/board/BoardPopovers.jsx";
 import CaptureOverlay from "../components/board/CaptureOverlay.jsx";
 import TreeDock from "../components/board/TreeDock.jsx";
 import OutlinePanel from "../components/board/OutlinePanel.jsx";
+import MiniMapIsland from "../components/board/MiniMapIsland.jsx";
 import "../styles/idea-map.css";
 
 export default function IdeaMap() {
@@ -1162,18 +1163,7 @@ export default function IdeaMap() {
           </div>
         )}
 
-        {/* Minimap là một đảo riêng NGAY TRÊN nút zoom, không nhét vào trong nó:
-            hai thứ cùng là "chuyện camera" nên đứng cạnh nhau, nhưng một cái là
-            hàng nút cao 30px còn cái kia là một mảng 120px. */}
-        {miniOpen && miniShapes && viewportSize.w > 0 && (
-          <MiniMap
-            shapes={miniShapes}
-            view={view}
-            viewportSize={viewportSize}
-            onGoTo={goToPoint}
-            onClose={() => setMiniOpen(false)}
-          />
-        )}
+        <MiniMapIsland {...{ camera, goToPoint, miniOpen, miniShapes, setMiniOpen, view, viewportSize }} />
 
         <ZoomControl {...{ fitToView, miniOpen, setMiniOpen, view, zoomButton }} />
 
