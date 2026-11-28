@@ -55,9 +55,13 @@ export function createSaveQueue({
   let saving = false;
   let pending = null;
   let timer = null;
+  // Bản mà cú lưu hẹn giờ (saveDebounced) sẽ gửi. Giữ ở đây chứ không chỉ trong
+  // closure của timer: một cú 409 xảy ra trong lúc chờ phải ghép được cả nó.
+  let timerNext = null;
 
   function cancelTimer() {
     if (timer) { clearTimer(timer); timer = null; }
+    timerNext = null;
   }
 
   // Cú lưu hiện tại (kể cả các vòng ghép lại của riêng nó) vừa xong — cho nó
@@ -71,7 +75,10 @@ export function createSaveQueue({
   }
 
   function saveNow(next, tries = 0) {
-    cancelTimer();
+    // Chỉ một cú lưu MỚI mới thay cho cú hẹn giờ. Vòng ghép lại (tries > 0) là
+    // việc nội bộ của cú đang bay: huỷ timer ở đó là đánh rơi thay đổi mà người
+    // dùng vừa làm trong lúc chờ (review PR #7 — nhích phím rồi 409).
+    if (tries === 0) cancelTimer();
     if (!canSave()) return;
     next = prepare(next);
     // Đang có một cú PUT bay (kể cả đang ghép lại): không bắn cú mới đè lên nó.
@@ -122,16 +129,38 @@ export function createSaveQueue({
         // cùng luật với lúc áp một board:update, nên không có hai cách trộn
         // khác nhau để lệch nhau.
         const merged = merge(rebased);
+        // Cú đang xếp hàng và cú hẹn giờ được dựng TRƯỚC khi ghép, tức là chưa
+        // có thay đổi của người kia. Gửi nguyên chúng sau cú này (với mốc mới) là
+        // server chấp nhận và xoá mất phần vừa ghép (review PR #7). Đắp riêng
+        // phần chúng đổi so với cú đang bay (next → bản chờ) lên bản vừa ghép.
+        // Ghép hỏng thì giữ nguyên — đúng hành vi cũ, không tệ hơn.
+        let shown = merged;
+        if (pending != null) {
+          const p = rebase(merged, next, pending);
+          if (p) { pending = p; shown = p; }
+        }
+        if (timerNext != null) {
+          const d = rebase(merged, next, timerNext);
+          if (d) { timerNext = d; shown = d; }
+        }
         setStamp(server.updatedAt);
         setBase(server);
-        adopt(merged);
+        // Màn hình hiện bản MỚI NHẤT: bản ghép cộng những gì người dùng làm
+        // trong lúc chờ, chứ không lùi về bản ghép của riêng cú đang bay.
+        adopt(shown);
         saveNow(merged, tries + 1);
       });
   }
 
   function saveDebounced(next, ms = 500) {
     if (timer) clearTimer(timer);
-    timer = setTimer(() => saveNow(next), ms);
+    timerNext = next;
+    timer = setTimer(() => {
+      const queued = timerNext;
+      timer = null;
+      timerNext = null;
+      saveNow(queued);
+    }, ms);
   }
 
   return { saveNow: (next) => saveNow(next), saveDebounced, cancelTimer };
