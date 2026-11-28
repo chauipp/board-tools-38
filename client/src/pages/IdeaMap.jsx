@@ -22,7 +22,6 @@ import IdeaCard from "../components/IdeaCard.jsx";
 import ToolRail from "../components/ToolRail.jsx";
 import ToolOptions from "../components/ToolOptions.jsx";
 import { buildEdgeRoutes } from "../lib/edge-routing.js";
-import { createDragClickGuard, createMultiClick } from "../lib/multi-click.js";
 import { buildOutline } from "../lib/outline.js";
 import { gridLayout } from "../lib/layout.js";
 import { buildTree, edgeKey } from "../lib/tree-layout.js";
@@ -32,6 +31,9 @@ import { usePresence } from "../lib/usePresence.js";
 import { useFollow } from "../lib/useFollow.js";
 import { useLiveSync, applyGeomOverlay } from "../lib/useLiveSync.js";
 import { useBoardStore } from "../lib/useBoardStore.js";
+import { useWorkspaceInspectors } from "../lib/useWorkspaceInspectors.js";
+import { useBoardUiState } from "../lib/useBoardUiState.js";
+import { useBoardRefs } from "../lib/useBoardRefs.js";
 import { remapId, remapIdSet } from "../lib/rebase.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { startDrag } from "../lib/drag-session.js";
@@ -55,16 +57,12 @@ import { useSelectionActions } from "../lib/useSelectionActions.js";
 import { useViewportInput } from "../lib/useViewportInput.js";
 import { useCameraControls } from "../lib/useCameraControls.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
-import { loadPenPrefs, savePenPrefs, penVar } from "../lib/pen.js";
 import { ERASE_PART } from "../lib/erase.js";
-import { loadCardLevel, saveCardLevel } from "../lib/card-levels.js";
 import InkLayer from "../components/InkLayer.jsx";
 import { useInk } from "../lib/useInk.js";
 import { useInkLive } from "../lib/useInkLive.js";
 import { applyInkMoves } from "../lib/ink-live.js";
 import { useLaser } from "../lib/useLaser.js";
-import { loadLaserPrefs, saveLaserPrefs } from "../lib/laser.js";
-import { createWheelReader, loadWheelMode, saveWheelMode } from "../lib/pointer-input.js";
 import { CARD_W, SEL_GRAB_PAD, PICK_RADIUS, MIN_SCALE, PANEL_KEYS, TREE_OPTS, EMPTY_ARRAY, EMPTY_MAP, EMPTY_SET, MAX_SCALE } from "../lib/board-constants.js";
 import { useCamera } from "../lib/useCamera.js";
 import { normalizeGameDesignBoard } from "../lib/normalize-board.js";
@@ -91,24 +89,20 @@ export default function IdeaMap() {
   const { boardId } = useParams();
   const workspace = useWorkspaceState(user?.email, boardId);
   const workspaceState = workspace.state;
-  const workspaceSetters = useMemo(() => {
-    const controller = workspace.controller;
-    const flag = (key) => (value) => {
-      const current = controller.getSnapshot().state[key];
-      controller.update({ [key]: typeof value === "function" ? value(current) : value });
-    };
-    const inspector = (type) => (value) => {
-      const current = controller.getSnapshot().state.inspector;
-      if (value == null || value === false) {
-        if (current?.type === type) controller.update({ inspector: null });
-      } else if (current?.type !== type || type === "tree" || type === "design") controller.update({ inspector: { type, ...(type === "tree" ? value : type === "design" ? { id: value } : {}) } });
-    };
-    return { flag, inspector, panels: (value) => {
-      const current = controller.getSnapshot().state;
-      const next = typeof value === "function" ? value({ status: current.statusOpen, tag: current.tagOpen, palette: current.paletteOpen }) : value;
-      controller.update({ statusOpen: next.status, tagOpen: next.tag, paletteOpen: next.palette });
-    } };
-  }, [workspace.controller]);
+  // Panel/inspector đang mở, lưu theo trạng thái làm việc riêng từng người — lib/useWorkspaceInspectors.js.
+  const inspectors = useWorkspaceInspectors({
+    workspace, workspaceState
+  });
+  const {
+    balanceOpen, briefOpen, decisionTimelineOpen, designEditId, flowOpen, handoffOpen, impactCardId, impactOpen, insightsOpen, inspector, miniOpen, outlineOpen, panels, playtestsOpen, reportsOpen, setBalanceOpen, setBriefOpen, setDecisionTimelineOpen, setDesignEditId, setFlowOpen, setHandoffOpen, setImpactCardId, setImpactOpen, setInsightsOpen, setMiniOpen, setOutlineOpen, setPanels, setPlaytestsOpen, setReportsOpen, setSnapshotsOpen, setTreeUI, snapshotsOpen, toolsOpen, treeUI, workspaceSetters
+  } = inspectors;
+  // State giao diện của board (mode, tool, menu, popover, tuỳ chọn bút/laser/cuộn) — lib/useBoardUiState.js.
+  const ui = useBoardUiState({
+    
+  });
+  const {
+    editingId, setEditingId, ioOpen, setIoOpen, ioMode, setIoMode, ioText, setIoText, captureOpen, setCaptureOpen, captureText, setCaptureText, isPanning, setIsPanning, dropTargetId, setDropTargetId, mode, setMode, tool, setTool, placeTool, setPlaceTool, penPrefs, setPenPrefs, laserPrefs, setLaserPrefs, wheelMode, setWheelMode, cardLevelPref, setCardLevelPref, snapGuides, setSnapGuides, colorMenu, setColorMenu, hoveredEdgeId, setHoveredEdgeId, commentsFor, setCommentsFor, flashId, setFlashId, spotlightPeerId, setSpotlightPeerId, snapshots, setSnapshots, snapshotsLoading, setSnapshotsLoading, inviteOpen, setInviteOpen, initialCardParam, viewportSize, setViewportSize
+  } = ui;
   const { theme, setTheme } = useTheme();
   const { skin, toggle: toggleSkin } = useSkin();
   const { t } = useLingui();
@@ -137,7 +131,6 @@ export default function IdeaMap() {
   // Camera (pan + zoom): state riêng, KHÔNG nằm trong board — lib/useCamera.js.
   const camera = useCamera();
   const { view, viewRef, setView } = camera;
-  const [editingId, setEditingId] = useState(null);
   // Bộ lọc, tìm kiếm, chế độ tập trung: lib/useBoardFilters.js.
   const filters = useBoardFilters({ board });
   const {
@@ -146,83 +139,7 @@ export default function IdeaMap() {
     passesFilter, focusSet, matches, activeFilterCount, matchCount, goToMatch, clearFilters
   } = filters;
   filters.bind({ jumpToCard: (id) => jumpToCard(id) });
-  const outlineOpen = workspaceState.outlineOpen;
-  const setOutlineOpen = useMemo(() => workspaceSetters.flag("outlineOpen"), [workspaceSetters]);
-  // Bản đồ thu nhỏ ở góc dưới phải. Mặc định BẬT: nó chỉ có nghĩa khi luôn ở
-  // đó — thứ phải bật lên mới xem được thì lúc lạc đường đã không nhớ là có.
-  const miniOpen = workspaceState.miniOpen;
-  const toolsOpen = workspaceState.toolsOpen;
-  const setMiniOpen = useMemo(() => workspaceSetters.flag("miniOpen"), [workspaceSetters]);
-  // Bảng Xếp cây bên phải: { kind, id } của thẻ/khung đang làm gốc. Tuỳ chọn
-  // sống riêng để đóng bảng rồi mở lại cây khác vẫn giữ nguyên cách xếp vừa dò
-  // được. treeBaseRef giữ board TRƯỚC khi mở bảng: mọi lần kéo thanh trượt đều
-  // tính lại từ đó chứ không chồng lên kết quả lần trước, nên kéo qua kéo lại
-  // không làm cây trôi dần đi.
-  const treeUI = workspaceState.inspector?.type === "tree" ? workspaceState.inspector : null;
-  const setTreeUI = useMemo(() => workspaceSetters.inspector("tree"), [workspaceSetters]);
-  const [ioOpen, setIoOpen] = useState(false);
-  const [ioMode, setIoMode] = useState("export");
-  const [ioText, setIoText] = useState("");
-  const [captureOpen, setCaptureOpen] = useState(false);
-  const [captureText, setCaptureText] = useState("");
-  const [isPanning, setIsPanning] = useState(false);
-  const [dropTargetId, setDropTargetId] = useState(null);
-  // Mặc định mở Trạng thái + Nhãn để giữ đúng hành vi cũ khi mới vào; Bảng màu
-  // đóng. Trạng thái riêng của tài khoản, board và nhóm màn hình.
-  const panels = useMemo(() => ({ status: workspaceState.statusOpen, tag: workspaceState.tagOpen, palette: workspaceState.paletteOpen }), [workspaceState.statusOpen, workspaceState.tagOpen, workspaceState.paletteOpen]);
-  const setPanels = workspaceSetters.panels;
-  // mode: "select" (thao tác thẻ như cũ) | "draw" (vẽ lên bảng) | "place" (đã
-  // lên nòng một việc ở khu 3, đang chờ người dùng chỉ chỗ trên bảng) | "laser"
-  // (bút laser — vệt sáng chạy theo con trỏ rồi tan, không ghi gì vào board).
-  //
-  // Laser là MODE chứ không phải một tool nữa của mode Sửa, dù bề ngoài nó
-  // giống vẽ: tool của mode Sửa đều ghi vào board nên đều bị khoá với người chỉ
-  // xem và đều đi kèm bảng tuỳ chọn ở khu 4, còn laser thì không cái nào cả.
-  // KHÔNG nhớ qua lần mở sau: mở board ra mà con trỏ đang là cây bút là điều
-  // gây bất ngờ vô cớ. Riêng màu bút, độ dày và bậc thẻ thì nhớ.
-  const [mode, setMode] = useState("select");
-  const [tool, setTool] = useState("pen");
-  // Việc đang lên nòng ở mode "place": "node" (bấm để đặt thẻ) | "group" (tô
-  // để vẽ khung). Khác tool vẽ ở một điểm: làm xong MỘT lần là tự về mode Chuột.
-  const [placeTool, setPlaceTool] = useState(null);
-  const [penPrefs, setPenPrefs] = useState(() => loadPenPrefs(window.localStorage));
-  // Khoá localStorage riêng, không nhét chung với penPrefs: `w` của laser là
-  // pixel MÀN HÌNH còn `w` của bút là đơn vị canvas — dùng chung một ô là đổi
-  // độ đậm laser sẽ đổi luôn độ dày nét bút.
-  const [laserPrefs, setLaserPrefs] = useState(() => loadLaserPrefs(window.localStorage));
-  // Cuộn hai ngón / lăn chuột nghĩa là gì: "auto" | "pan" | "zoom". Riêng từng
-  // máy (localStorage) chứ không theo board — nó là chuyện thiết bị đang cầm,
-  // không phải chuyện bảng đang mở.
-  const [wheelMode, setWheelMode] = useState(() => loadWheelMode(window.localStorage));
-  const [cardLevelPref, setCardLevelPref] = useState(() => loadCardLevel(window.localStorage));
-  const [snapGuides, setSnapGuides] = useState([]);
-  const [colorMenu, setColorMenu] = useState(null); // { kind: "card"|"group", id, x, y }
-  const [hoveredEdgeId, setHoveredEdgeId] = useState(null);
-  const [commentsFor, setCommentsFor] = useState(null); // { id, x, y } | null
-  const [flashId, setFlashId] = useState(null);
-  const [spotlightPeerId, setSpotlightPeerId] = useState(null);
-  const inspector = workspaceState.inspector;
-  const designEditId = inspector?.type === "design" ? inspector.id : null;
-  const setDesignEditId = useMemo(() => workspaceSetters.inspector("design"), [workspaceSetters]);
-  const briefOpen = inspector?.type === "brief", flowOpen = inspector?.type === "flow", handoffOpen = inspector?.type === "handoff", balanceOpen = inspector?.type === "balance", decisionTimelineOpen = inspector?.type === "decisions", snapshotsOpen = inspector?.type === "snapshots";
-  const setBriefOpen = useMemo(() => workspaceSetters.inspector("brief"), [workspaceSetters]);
-  const setFlowOpen = useMemo(() => workspaceSetters.inspector("flow"), [workspaceSetters]);
-  const setHandoffOpen = useMemo(() => workspaceSetters.inspector("handoff"), [workspaceSetters]);
-  const setBalanceOpen = useMemo(() => workspaceSetters.inspector("balance"), [workspaceSetters]);
-  const setDecisionTimelineOpen = useMemo(() => workspaceSetters.inspector("decisions"), [workspaceSetters]);
-  const setSnapshotsOpen = useMemo(() => workspaceSetters.inspector("snapshots"), [workspaceSetters]);
-  const [snapshots, setSnapshots] = useState([]);
-  const [snapshotsLoading, setSnapshotsLoading] = useState(false);
-  const insightsOpen = inspector?.type === "insights", reportsOpen = inspector?.type === "reports", impactOpen = inspector?.type === "impact", playtestsOpen = inspector?.type === "playtests";
-  const setInsightsOpen = useMemo(() => workspaceSetters.inspector("insights"), [workspaceSetters]);
-  const setReportsOpen = useMemo(() => workspaceSetters.inspector("reports"), [workspaceSetters]);
-  const setImpactOpen = useMemo(() => workspaceSetters.inspector("impact"), [workspaceSetters]);
-  const impactCardId = inspector?.type === "impact" ? inspector.id ?? null : null;
-  const setImpactCardId = useCallback((id) => workspace.update({ inspector: { type: "impact", ...(id != null ? { id } : {}) } }), [workspace.controller]);
-  const setPlaytestsOpen = useMemo(() => workspaceSetters.inspector("playtests"), [workspaceSetters]);
-  const [initialCardParam] = useState(() => new URLSearchParams(window.location.search).get("card"));
 
-  const [inviteOpen, setInviteOpen] = useState(false);
   const { sendCursor, sendSelection, sendEdgeDraft, sendView, sendFollow, socket } = usePresence(user, boardId);
   const inkLive = useInkLive(socket);
   const laser = useLaser(socket);
@@ -254,17 +171,18 @@ export default function IdeaMap() {
     clientToCanvas: (...a) => clientToCanvas(...a),
     applyColorToSelection: (...a) => applyColorToSelection(...a)
   });
-  const treeSizeRef = useRef(frameCardSize);
-  treeSizeRef.current = frameCardSize;
+  // Ref dùng chung giữa các hook và component của board — lib/useBoardRefs.js.
+  const refs = useBoardRefs({
+    frameCardSize, selectedIds, editingId, socket
+  });
+  const {
+    treeSizeRef, viewportRef, canvasRef, editDockRef, searchInputRef, editingIdRef, socketRef, selectedIdsRef, suppressContextMenuRef, spacePanRef, multiClickRef, cardDragClickGuardRef, clickAnchorRef, laserDownRef, pendingJumpRef, measureCtxRef, wheelReaderRef, workspaceCameraRef
+  } = refs;
   const layoutOwners = useMemo(
     () => board ? treeLockOwners(board, frameCardSize) : new Map(),
     [board?.nodes, board?.groups, board?.edges, frameCardSize]
   );
 
-  const viewportRef = useRef(null);
-  const canvasRef = useRef(null);
-  const editDockRef = useRef(null);
-  const searchInputRef = useRef(null);
   // Dây nối: chế độ nối, kéo từ connector/đầu dây, menu dây — lib/useEdgeInteractions.js.
   const edgeUI = useEdgeInteractions({
     store, board, setSelectedEdgeIds, setDropTargetId, viewRef, viewportRef
@@ -277,14 +195,6 @@ export default function IdeaMap() {
     enterMode: (...a) => enterMode(...a),
     entityAtPoint: (...a) => entityAtPoint(...a)
   });
-  const editingIdRef = useRef(null);
-  // socket.id gửi kèm mỗi lần lưu để server loại chính mình khỏi broadcast
-  // board:update; updatedAt của lần lưu/nhận gần nhất để so sánh gói đến
-  // sau có mới hơn không (useLiveSync.js: isStaleUpdate).
-  const socketRef = useRef(null);
-  const selectedIdsRef = useRef(selectedIds);
-  const suppressContextMenuRef = useRef(false);
-  const spacePanRef = useRef(false);
   // Khung (nhóm): tạo, kéo, co giãn, tiêu đề, màu, khoá — lib/useGroupInteractions.js.
   const groupUI = useGroupInteractions({
     store, board, boardRef, view, frameCardSize, layoutOwners, selectedIds, selectedGroupIds, selectionDragSet, setBoard, recordHistory, saveNow, setSelectedIds, setSelectedEdgeIds, setSelectedGroupIds, setSnapGuides, setColorMenu, spacePanRef
@@ -302,13 +212,6 @@ export default function IdeaMap() {
     startPan: (...a) => startPan(...a),
     toCanvasPoint: (...a) => toCanvasPoint(...a)
   });
-  // Cử chỉ bấm nhiều lần lên một nét vẽ (2 lần đổi nét liền ↔ nét đứt). Phần
-  // việc nằm ở handleViewportClickCapture bên dưới; hai cái ref phải khai ở đây
-  // vì component có nhánh `if (!board) return` ở giữa.
-  const multiClickRef = useRef(null);
-  if (!multiClickRef.current) multiClickRef.current = createMultiClick();
-  const cardDragClickGuardRef = useRef(null);
-  if (!cardDragClickGuardRef.current) cardDragClickGuardRef.current = createDragClickGuard();
   // Bảng Xếp cây, khoá cây, đổi chỗ nhánh trong cây khoá — lib/useTreeLayout.js.
   const treeLayout = useTreeLayout({
     store, board, boardRef, role, roleRef, workspace, treeUI, setTreeUI, frameCardSize, treeSizeRef, layoutOwners, cardDragClickGuardRef, recordHistory, saveNow, setColorMenu
@@ -342,11 +245,6 @@ export default function IdeaMap() {
     finishGeom: (...a) => finishGeom(...a),
     publishGeom: (...a) => publishGeom(...a)
   });
-  const clickAnchorRef = useRef(null);
-  // Đang giữ chuột trái ở mode Laser. Ref chứ không state: nó đổi ở mỗi lần bấm
-  // và chỉ được đọc trong handler chuột, không có gì trên màn hình phụ thuộc nó.
-  const laserDownRef = useRef(false);
-  const pendingJumpRef = useRef(null);
   // Trình chiếu theo khung — lib/usePresentation.js.
   const presentation = usePresentation({
     board, view, viewportRef, setBadgeUI, setCaptureOpen, setColorMenu, setCommentsFor, setEdgeMenu, setEditingId, setIoOpen
@@ -357,9 +255,6 @@ export default function IdeaMap() {
   presentation.bind({
     setCamera: (...a) => setCamera(...a)
   });
-  // Ngữ cảnh 2d dùng để đo bề rộng chữ, dựng một lần rồi dùng lại.
-  // undefined = chưa dò; null = đã dò và môi trường không có canvas 2d.
-  const measureCtxRef = useRef(undefined);
   // Tool chữ: ô nhập, kéo chữ, chốt chữ — lib/useTextTool.js.
   const textUI = useTextTool({
     store, board, boardRef, inkLive, penPrefs, skin, tool, measureCtxRef
@@ -372,13 +267,6 @@ export default function IdeaMap() {
     eventToCanvas: (...a) => eventToCanvas(...a),
     movingPayload: (...a) => movingPayload(...a)
   });
-  // Bộ đọc sự kiện wheel có NHỚ: điểm tin cậy "đây là touchpad hay nút lăn"
-  // sống qua các sự kiện, nên nó không lật qua lật lại giữa một dòng cuộn. Phải
-  // là ref, không phải biến trong effect: effect gắn lại khi board tải xong và
-  // khi stopFollow đổi, mà mất trí nhớ giữa dòng cuộn là bảng nhảy giữa lia và
-  // phóng ngay dưới ngón tay.
-  const wheelReaderRef = useRef(null);
-  if (!wheelReaderRef.current) wheelReaderRef.current = createWheelReader();
 
   const ink = useInk({
     tool, penPrefs, boardRef, viewRef, viewportRef,
@@ -399,17 +287,6 @@ export default function IdeaMap() {
     if (el) { el.focus(); el.select(); }
   }, [searchOpen]);
 
-  useEffect(() => { savePenPrefs(window.localStorage, penPrefs); }, [penPrefs]);
-  useEffect(() => { saveLaserPrefs(window.localStorage, laserPrefs); }, [laserPrefs]);
-  useEffect(() => { saveWheelMode(window.localStorage, wheelMode); }, [wheelMode]);
-  useEffect(() => { saveCardLevel(window.localStorage, cardLevelPref); }, [cardLevelPref]);
-
-  // Kích thước khung nhìn, để minimap biết vẽ ô "đang xem ở đây" to bằng nào.
-  // Giữ trong state chứ không đo lúc render: đo DOM giữa lượt render là ép trình
-  // duyệt tính lại layout, mà minimap render lại ở MỌI nhịp lia bảng.
-  // ResizeObserver có thể vắng mặt (jsdom trong smoke test) — đo một lần rồi
-  // thôi, vẫn đúng vì ở đó cửa sổ không đổi kích thước.
-  const [viewportSize, setViewportSize] = useState({ w: 0, h: 0 });
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
@@ -429,7 +306,6 @@ export default function IdeaMap() {
     return () => ro.disconnect();
   }, [board != null]);
 
-  const workspaceCameraRef = useRef(null);
   useLayoutEffect(() => {
     if (!workspace.ready || !board || !viewportSize.w || !viewportSize.h) return;
     const previous = workspaceCameraRef.current;
@@ -470,9 +346,6 @@ export default function IdeaMap() {
     return () => { cancelled = true; };
   }, [snapshotsOpen, boardId]);
 
-  useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
-  useEffect(() => { editingIdRef.current = editingId; }, [editingId]);
-  useEffect(() => { socketRef.current = socket; }, [socket]);
   useEffect(() => { sendSelection(Array.from(selectedIds)); }, [selectedIds, sendSelection]);
   useEffect(() => {
     const draft = linkDraft
