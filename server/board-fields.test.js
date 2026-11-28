@@ -75,21 +75,25 @@ function fakeQuery(value) {
 const originals = {
   findById: Board.findById,
   findByIdAndUpdate: Board.findByIdAndUpdate,
+  findOneAndUpdate: Board.findOneAndUpdate,
   snapshotFindOne: BoardSnapshot.findOne,
   pdfFind: PdfFile.find
 };
 after(() => {
   Board.findById = originals.findById;
   Board.findByIdAndUpdate = originals.findByIdAndUpdate;
+  Board.findOneAndUpdate = originals.findOneAndUpdate;
   BoardSnapshot.findOne = originals.snapshotFindOne;
   PdfFile.find = originals.pdfFind;
 });
 
 async function fixture(t) {
   const doc = fullBoard();
-  const calls = { updates: [], emits: [] };
+  const calls = { updates: [], emits: [], filters: [] };
   Board.findById = () => fakeQuery({ ...doc, toObject: () => ({ ...doc }) });
   Board.findByIdAndUpdate = async (id, update) => { calls.updates.push(update); return null; };
+  // PUT ghi qua findOneAndUpdate (có điều kiện mốc); trả về bản ghi = đã khớp.
+  Board.findOneAndUpdate = async (filter, update) => { calls.filters.push(filter); calls.updates.push(update); return { _id: ID }; };
   BoardSnapshot.findOne = () => fakeQuery({ _id: "s1", boardId: ID, board: (({ _id, name, ownerEmail, members, view, updatedAt, ...rest }) => rest)(fullBoard()) });
   // syncBoardRefs chạy sau khi trả lời; không có PDF thì nó dừng ngay.
   PdfFile.find = () => fakeQuery([]);
@@ -210,4 +214,93 @@ test("boardPayload: board cũ đọc → thêm trạng thái → id mới không
   // Luồng của client (createBadge): cấp id = nextStatusId rồi tăng.
   const id = payload.nextStatusId;
   assert.ok(!payload.statuses.some((s) => s.id === id));
+});
+
+// ── Review PR #5, vòng 2 ─────────────────────────────────────────────────────
+// Server giả có trạng thái: findById trả bản đang lưu SAU một nhịp chờ (để cả
+// hai request cùng đọc thấy một phiên bản trước khi cú nào kịp ghi), còn
+// findOneAndUpdate chỉ ghi khi bộ lọc mốc còn khớp — đúng ngữ nghĩa của MongoDB.
+async function statefulFixture(t, { email = OWNER } = {}) {
+  let doc = fullBoard();
+  const calls = { emits: [], writes: 0 };
+  Board.findById = () => {
+    const seen = { ...doc, toObject: () => ({ ...seen }) };
+    return {
+      select() { return this; }, lean() { return this; },
+      then(resolve, reject) { return new Promise((r) => setTimeout(() => r(seen), 15)).then(resolve, reject); }
+    };
+  };
+  Board.findOneAndUpdate = async (filter, update) => {
+    if (filter.updatedAt && new Date(filter.updatedAt).getTime() !== new Date(doc.updatedAt).getTime()) return null;
+    const before = doc;
+    const patch = Object.fromEntries(Object.entries(update).filter(([, v]) => v !== undefined));
+    doc = { ...doc, ...patch };
+    calls.writes++;
+    return { _id: before._id };
+  };
+  PdfFile.find = () => fakeQuery([]);
+  const io = { in() { const target = { except() { return target; }, emit(event, payload) { calls.emits.push({ event, payload }); } }; return target; } };
+  const app = express();
+  app.set("io", io);
+  app.use(express.json({ limit: "10mb" }));
+  app.use((req, _res, next) => { req.user = { email }; next(); });
+  app.use("/api/boards", boardFilesRouter, boardsRouter, boardSnapshotsRouter, boardMembersRouter);
+  const server = app.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  t.after(() => new Promise((resolve) => server.close(resolve)));
+  const request = async (method, url, body) => {
+    const response = await fetch(`http://127.0.0.1:${server.address().port}${url}`, {
+      method, headers: { "content-type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    return { status: response.status, body: await response.json() };
+  };
+  return { request, calls, stored: () => doc, setStored: (next) => { doc = next; } };
+}
+
+test("PUT: hai cú đồng thời cùng mốc → đúng MỘT cú thành công, cú kia 409 kèm bản của cú thắng", async (t) => {
+  const { request, calls, stored } = await statefulFixture(t);
+  const base = fullBoard().updatedAt.toISOString();
+  const put = (title) => request("PUT", `/api/boards/${ID}`, { nodes: [{ id: 1, x: 0, y: 0, title }], baseUpdatedAt: base });
+  const [a, b] = await Promise.all([put("của A"), put("của B")]);
+  assert.deepEqual([a.status, b.status].sort(), [200, 409]);
+  assert.equal(calls.writes, 1);
+  const winner = a.status === 200 ? "của A" : "của B";
+  const loser = a.status === 409 ? a : b;
+  assert.equal(stored().nodes[0].title, winner);
+  assert.equal(loser.body.error, "conflict");
+  assert.equal(loser.body.board.nodes[0].title, winner, "409 phải trả bản mới nhất để client ghép");
+  assert.equal(calls.emits.length, 1, "chỉ cú thắng mới được phát cho cả phòng");
+});
+
+test("PUT: mốc mới luôn lớn hơn mốc cũ, kể cả khi đồng hồ chưa nhích", async (t) => {
+  const { request, stored, setStored } = await statefulFixture(t);
+  // Mốc đang lưu nằm ở TƯƠNG LAI so với đồng hồ: new Date() trơn sẽ lùi mốc.
+  const future = new Date(Date.now() + 60_000);
+  setStored({ ...stored(), updatedAt: future });
+  const res = await request("PUT", `/api/boards/${ID}`, { nodes: [], baseUpdatedAt: future.toISOString() });
+  assert.equal(res.status, 200);
+  assert.ok(new Date(res.body.updatedAt).getTime() > future.getTime());
+  assert.equal(new Date(stored().updatedAt).getTime(), new Date(res.body.updatedAt).getTime());
+});
+
+test("PUT không khai mốc (nhập JSON, đường dự phòng) vẫn ghi đè được như trước", async (t) => {
+  const { request, calls } = await statefulFixture(t);
+  const res = await request("PUT", `/api/boards/${ID}`, { nodes: [] });
+  assert.equal(res.status, 200);
+  assert.equal(calls.writes, 1);
+});
+
+test("restore snapshot cũ (9 trạng thái, bộ đếm 9): bản lưu, broadcast và phản hồi đều trả 10", async (t) => {
+  const { request, calls } = await fixture(t);
+  const statuses = Array.from({ length: 9 }, (_, i) => ({ id: i + 1, name: "s" + (i + 1) }));
+  const old = (({ _id, name, ownerEmail, members, view, updatedAt, ...rest }) => rest)(fullBoard());
+  BoardSnapshot.findOne = () => fakeQuery({ _id: "s1", boardId: ID, board: { ...old, kind: "game-design", statuses, nextStatusId: 9, nodes: [{ id: 1, x: 0, y: 0, title: "A", statusId: 9 }] } });
+  const res = await request("POST", `/api/boards/${ID}/snapshots/s1/restore`);
+  assert.equal(res.status, 200);
+  assert.equal(res.body.board.nextStatusId, 10);
+  assert.equal(calls.updates[0].nextStatusId, 10);
+  assert.equal(calls.emits[0].payload.nextStatusId, 10);
+  // Không đụng id trạng thái hay tham chiếu trên thẻ.
+  assert.deepEqual(res.body.board.statuses.map((s) => s.id), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.equal(res.body.board.nodes[0].statusId, 9);
 });
