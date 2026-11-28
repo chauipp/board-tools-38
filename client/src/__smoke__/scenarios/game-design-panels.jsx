@@ -47,6 +47,25 @@ export async function run(log) {
   await act(async () => { viewerRoot.unmount(); });
   viewerHost.remove();
 
+  // Trần của nút thêm (review PR #8/#9): đủ 20 bước loop / 30 mốc progression
+  // thì nút "+ Thêm …" phải tắt — bấm được mục thứ 21 là người dùng nhập xong
+  // rồi mất nó lúc lưu, vì normalizer cắt về đúng trần.
+  const capHost = document.createElement("div");
+  document.body.append(capHost);
+  const capRoot = createRoot(capHost);
+  const fullFlow = (loops, steps) => ({
+    playerLoop: Array.from({ length: loops }, (_, i) => ({ id: "l" + i, title: "Bước " + (i + 1), action: "", outcome: "", note: "", cardIds: [] })),
+    progressionMap: Array.from({ length: steps }, (_, i) => ({ id: "p" + i, title: "Mốc " + (i + 1), objective: "", unlocks: "", description: "", emotion: "", cardIds: [] }))
+  });
+  const capAdds = () => Array.from(capHost.querySelectorAll(".gd-flow-add"));
+  await act(async () => { capRoot.render(<GameDesignFlowPanel flow={fullFlow(19, 29)} nodes={[]} canEdit onSave={() => {}} onClose={() => {}} />); });
+  if (capAdds().length !== 2 || capAdds().some((b) => b.disabled)) throw new Error("dưới trần mà nút thêm Game Flow đã bị tắt");
+  await act(async () => { capRoot.render(<GameDesignFlowPanel flow={fullFlow(20, 30)} nodes={[]} canEdit onSave={() => {}} onClose={() => {}} />); });
+  if (!capAdds().every((b) => b.disabled)) throw new Error("đủ 20 bước / 30 mốc mà nút thêm Game Flow vẫn bấm được");
+  log("Game flow: nút thêm tắt đúng ở trần 20 bước / 30 mốc");
+  await act(async () => { capRoot.unmount(); });
+  capHost.remove();
+
   // Chi tiết spec nằm trong từng thẻ GD: ba section phải thêm/sửa/xóa, thu gọn
   // được và khi lưu phải trả về shape có cấu trúc. Kiểm riêng panel để không
   // phụ thuộc vào màn đăng nhập hay thao tác canvas.

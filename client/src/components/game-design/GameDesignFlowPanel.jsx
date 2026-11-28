@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { normalizeGameDesignFlow } from "../../lib/game-design.js";
 import { useCloseOnOutside } from "../../lib/useCloseOnOutside.js";
+import { GAME_DESIGN_FLOW_LIMITS } from "../../../../shared/game-design-limits.js";
 
 const LOOP_FIELDS = [["title", "Tên bước"], ["action", "Hành động người chơi"], ["outcome", "Kết quả / reward"], ["note", "Ghi chú"]];
 const PROGRESSION_FIELDS = [["title", "Tên mốc"], ["objective", "Mục tiêu"], ["unlocks", "Mở khóa"], ["description", "Mô tả"], ["emotion", "Cảm xúc mong muốn"]];
@@ -23,10 +24,14 @@ function ReferenceCards({ item, nodes, canEdit, onChange }) {
 
 function FlowSection({ title, kind, items, fields, nodes, canEdit, collapsed, onToggle, onChange }) {
   const replaceItem = (id, patch) => onChange(items.map((item) => item.id === id ? { ...item, ...patch } : item));
+  // Cùng trần với normalizer và server (shared/game-design-limits.js). Thiếu
+  // chốt này thì người dùng nhập được mục thứ 21/31 rồi mất nó lúc lưu
+  // (review PR #8/#9) — chặn ngay từ nút thêm, trước khi kịp nhập gì.
+  const limit = kind === "loop" ? GAME_DESIGN_FLOW_LIMITS.playerLoop : GAME_DESIGN_FLOW_LIMITS.progressionMap;
   return <section className="gd-flow-section">
     <div className="gd-flow-section-head">
       <button type="button" className="gd-flow-collapse" onClick={onToggle} aria-expanded={!collapsed}>{collapsed ? "▸" : "▾"} {title} <span>{items.length}</span></button>
-      {canEdit && <button className="btn ghost gd-flow-add" type="button" onClick={() => onChange([...items, newItem(kind)])}>+ {kind === "loop" ? "Thêm bước" : "Thêm mốc"}</button>}
+      {canEdit && <button className="btn ghost gd-flow-add" type="button" disabled={items.length >= limit} onClick={() => onChange([...items, newItem(kind)])}>+ {kind === "loop" ? "Thêm bước" : "Thêm mốc"}</button>}
     </div>
     {!collapsed && <div className="gd-flow-list">
       {items.length === 0 && <p className="gd-flow-empty">Chưa có {kind === "loop" ? "bước loop" : "mốc progression"}.</p>}
