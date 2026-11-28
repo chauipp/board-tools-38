@@ -2,11 +2,14 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { colorVar } from "../../lib/badges.js";
 import FilterPanel from "../FilterPanel.jsx";
 import { IconStatus, IconTag, IconPalette, IconStar } from "./icons.jsx";
+import { useBoard } from "../../lib/board-context.js";
 
 // Thanh đáy: đảo nút bật panel lọc (trạng thái, nhãn, bảng màu, yêu thích) và
 // đảo nội dung của panel đang mở. Trước là một khối JSX trong IdeaMap.jsx; cây
 // DOM và class giữ nguyên.
-export default function BoardHudBottom({ anyPanelOn, board, filterFav, filterStatus, filterTags, handleChipMouseDown, handleColorMouseDown, hasNoStatus, hasNoTag, openBadgeCreate, openBadgeMenu, openPaletteEditor, panels, setFilterFav, setFilterStatus, setFilterTags, togglePanel }) {
+export default function BoardHudBottom({ anyPanelOn, filterFav, filterStatus, filterTags, handleChipMouseDown, handleColorMouseDown, hasNoStatus, hasNoTag, openBadgeCreate, openBadgeMenu, openPaletteEditor, panels, setFilterFav, setFilterStatus, setFilterTags, togglePanel }) {
+  const { store, selection, camera } = useBoard();
+  const { board } = store;
   const { t } = useLingui();
   return (
     <>

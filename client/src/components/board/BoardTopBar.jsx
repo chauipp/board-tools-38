@@ -9,11 +9,16 @@ import PdfUsage from "../PdfUsage.jsx";
 import { EMPTY_SET } from "../../lib/board-constants.js";
 import { IconSketch, IconMenu, IconSearch, IconBoardStyle } from "./icons.jsx";
 import TopMenu from "./TopMenu.jsx";
+import { useBoard } from "../../lib/board-context.js";
 
 // Đảo to góc trên trái: menu ☰, tên board, tìm kiếm, menu Giao diện, các nút
 // panel, hàng công cụ game-design và số bộ lọc đang bật. Trước là một khối JSX
 // trong IdeaMap.jsx; cây DOM và class giữ nguyên.
-export default function BoardTopBar({ BG_LABEL, GRID_LABEL, PACK_LABEL, activeFilterCount, balanceOpen, board, boardName, briefOpen, camera, clearFilters, decisionTimelineOpen, dependency, exportVersionedJson, flowOpen, goToMatch, handoffOpen, impactOpen, insightsOpen, matchCount, matchIdx, matches, openSnapshots, outlineOpen, playtestsOpen, reportsOpen, role, search, searchInputRef, searchOpen, setBalanceOpen, setBoardBg, setBoardGrid, setBoardPack, setBriefOpen, setDecisionTimelineOpen, setDesignEditId, setFlowOpen, setHandoffOpen, setImpactCardId, setImpactOpen, setInsightsOpen, setIoMode, setIoOpen, setIoText, setOutlineOpen, setPlaytestsOpen, setReportsOpen, setSearch, setSelectedEdgeIds, setTheme, setView, setWheelMode, skin, startPresentation, theme, toggleSearch, toggleSkin, toolsOpen, view, viewportSize, wheelMode, workspace, workspaceCameraRef }) {
+export default function BoardTopBar({ BG_LABEL, GRID_LABEL, PACK_LABEL, activeFilterCount, balanceOpen, briefOpen, clearFilters, decisionTimelineOpen, dependency, exportVersionedJson, flowOpen, goToMatch, handoffOpen, impactOpen, insightsOpen, matchCount, matchIdx, matches, openSnapshots, outlineOpen, playtestsOpen, reportsOpen, search, searchInputRef, searchOpen, setBalanceOpen, setBoardBg, setBoardGrid, setBoardPack, setBriefOpen, setDecisionTimelineOpen, setDesignEditId, setFlowOpen, setHandoffOpen, setImpactCardId, setImpactOpen, setInsightsOpen, setIoMode, setIoOpen, setIoText, setOutlineOpen, setPlaytestsOpen, setReportsOpen, setSearch, setTheme, setWheelMode, skin, startPresentation, theme, toggleSearch, toggleSkin, toolsOpen, viewportSize, wheelMode, workspace, workspaceCameraRef }) {
+  const { store, selection, camera } = useBoard();
+  const { board, boardName, role } = store;
+  const { setSelectedEdgeIds } = selection;
+  const { setView, view } = camera;
   const { t } = useLingui();
   return (
     <>

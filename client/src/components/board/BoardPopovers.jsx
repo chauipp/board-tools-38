@@ -7,11 +7,15 @@ import DropCount from "./DropCount.jsx";
 import PaletteEditor from "./PaletteEditor.jsx";
 import EdgeMenu from "./EdgeMenu.jsx";
 import CommentsPopover from "./CommentsPopover.jsx";
+import { useBoard } from "../../lib/board-context.js";
 
 // Mọi popover nổi trên bảng: bóng chip/màu đang kéo, menu màu của thẻ và khung,
 // trình sửa badge, trình sửa màu, menu dây, bình luận. Trước là một khối JSX
 // trong IdeaMap.jsx; cây DOM và class giữ nguyên.
-export default function BoardPopovers({ addComment, applyColorToSelection, applyGroupColor, applyNodeColor, applyNodeDashed, applyNodeLevel, applyNodeShape, applyToSelection, arrangeAsTree, badgeUI, board, chipDrag, colorDrag, colorMenu, commentsFor, createBadge, createPaletteColor, deleteBadge, deleteComment, deleteEdge, deleteGroup, deleteNode, deletePaletteColor, deleteSelection, dropIdsFor, dropTargetId, duplicateNodes, duplicateSelection, edgeMenu, groupSelectedCards, openTreePanel, paletteUI, selectedGroupIds, selectedIds, setBadgeUI, setColorMenu, setCommentsFor, setEdgeMenu, setEditingId, setFocusId, setPaletteUI, setSelectedIds, store, tidySelection, toggleGroupLock, toggleNodeLock, updateBadge, updateEdge, updatePaletteColor }) {
+export default function BoardPopovers({ addComment, applyColorToSelection, applyGroupColor, applyNodeColor, applyNodeDashed, applyNodeLevel, applyNodeShape, applyToSelection, arrangeAsTree, badgeUI, chipDrag, colorDrag, colorMenu, commentsFor, createBadge, createPaletteColor, deleteBadge, deleteComment, deleteEdge, deleteGroup, deleteNode, deletePaletteColor, deleteSelection, dropIdsFor, dropTargetId, duplicateNodes, duplicateSelection, edgeMenu, groupSelectedCards, openTreePanel, paletteUI, setBadgeUI, setColorMenu, setCommentsFor, setEdgeMenu, setEditingId, setFocusId, setPaletteUI, tidySelection, toggleGroupLock, toggleNodeLock, updateBadge, updateEdge, updatePaletteColor }) {
+  const { store, selection, camera } = useBoard();
+  const { board } = store;
+  const { selectedGroupIds, selectedIds, setSelectedIds } = selection;
   const { t } = useLingui();
   return (
     <>
