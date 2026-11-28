@@ -17,7 +17,9 @@ import {
 // index.js gọi assertStartupConfig().
 dotenv.config();
 
-export const PORT = process.env.PORT || 3001;
+// 3345 = cổng dev của dự án (proxy trong client/vite.config.js, README, AGENTS.md).
+// Trên Render, PORT luôn do nền tảng đặt nên giá trị mặc định này không có tác dụng.
+export const PORT = process.env.PORT || 3345;
 export const MONGODB_URI = process.env.MONGODB_URI;
 
 export function assertStartupConfig() {
