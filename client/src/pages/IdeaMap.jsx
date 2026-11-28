@@ -94,6 +94,7 @@ import TopMenu from "../components/board/TopMenu.jsx";
 import PaletteEditor from "../components/board/PaletteEditor.jsx";
 import EdgeMenu from "../components/board/EdgeMenu.jsx";
 import CommentsPopover from "../components/board/CommentsPopover.jsx";
+import IoDrawer from "../components/board/IoDrawer.jsx";
 import PresentBar from "../components/board/PresentBar.jsx";
 import BoardPopovers from "../components/board/BoardPopovers.jsx";
 import CaptureOverlay from "../components/board/CaptureOverlay.jsx";
@@ -2425,20 +2426,7 @@ export default function IdeaMap() {
           </aside>
         )}
 
-        {ioOpen && (
-          <div className="io-drawer">
-            <div className="note">
-              {ioMode === "export"
-                ? <Trans>JSON hiện tại — copy để sao lưu hoặc gửi cho người khác xem.</Trans>
-                : <Trans>Dán JSON đã xuất trước đó, rồi bấm Nhập vào bản đồ.</Trans>}
-            </div>
-            <textarea spellCheck={false} value={ioText} onChange={(e) => setIoText(e.target.value)} />
-            <div className="io-actions">
-              {ioMode === "import" && <button className="btn small" onClick={handleImportConfirm}><Trans>Nhập vào bản đồ</Trans></button>}
-              <button className="btn ghost small" onClick={() => setIoOpen(false)}><Trans>Đóng</Trans></button>
-            </div>
-          </div>
-        )}
+        <IoDrawer {...{ handleImportConfirm, ioMode, ioOpen, ioText, setIoOpen, setIoText }} />
 
       </div>
 
