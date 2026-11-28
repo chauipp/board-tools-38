@@ -1,0 +1,111 @@
+/* Thanh công cụ bên trái NỔI trên canvas chứ không chiếm chỗ trong layout:
+   đổi mode không làm khung nhìn co giãn, nên thẻ trên bảng không xê dịch.
+   z-index 30: trên mọi thứ trong .canvas (cao nhất ở đó là 7), dưới panel neo
+   (45) và menu popover (90). */
+.tool-rail, .tool-options {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  display: flex; flex-direction: column;
+  z-index: 30;
+}
+/* Bao ngoài của thanh chỉ làm việc xếp chỗ; mặt kính (nền, viền, đổ bóng) nằm ở
+   từng .tool-group, nên mỗi nhóm chức năng là một khung rời.
+   pointer-events: none để khoảng hở 10px giữa hai khung không nuốt cú bấm xuống
+   canvas: bao ngoài trải suốt cả cột, kể cả những chỗ trong suốt đó. Nút bên
+   trong bật lại pointer-events nên vẫn bấm được, và sự kiện của chúng vẫn nổi
+   bọt qua bao ngoài tới onMouseDown khai ở ToolRail.jsx. */
+.tool-rail { left: 12px; width: 46px; gap: 10px; pointer-events: none; }
+.tool-group { pointer-events: auto; }
+.tool-group, .tool-options {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: 6px; border-radius: 12px;
+  background: var(--surface); border: 1px solid var(--line);
+  box-shadow: var(--shadow);
+}
+/* Khu 4 của tool hình khối cao chừng 300px (6 hình + 7 màu + 3 độ dày + 2 chế
+   độ tô). Vì khối này canh giữa dọc bằng translateY(-50%), màn hình thấp sẽ
+   tràn ra ngoài khung nhìn nếu không kẹp chiều cao lại.
+   Rộng 62px thay vì 54px: .tool-grid xếp 2 cột, mà nút chọn hình phải lớn hơn ô
+   màu 18px mới nhìn ra hình.
+   Phép tính bề rộng — `* { box-sizing: border-box }` khai ở src/index.css nên
+   62px là bề rộng NGOÀI, đã gồm cả padding và border:
+     62 - 6*2 padding - 1*2 border = 48px vùng nội dung
+     48 = 22 + 4 gap + 22  →  hai cột của .tool-grid mỗi cột đúng 22px
+   Vậy .shape-pick/.fill-pick phải là 22px. Trước đây chúng là 23px (bỏ sót 2px
+   border) nên hàng rộng 50px > 48px; cộng với overflow-y: auto thì trục x tự
+   thành `auto` theo spec, sinh ra thanh cuộn ngang / cột phải bị cắt.
+   overflow-x: hidden khai thẳng để dù số có lệch lại thì cũng không mọc thanh
+   cuộn ngang trong một khối bé thế này. */
+.tool-options {
+  left: 66px; width: 62px;
+  max-height: calc(100% - 24px); overflow-y: auto; overflow-x: hidden;
+}
+.tool-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; margin: 0 auto; padding: 0;
+  background: none; border: 1px solid transparent; border-radius: 8px;
+  color: var(--ink-dim); cursor: pointer;
+}
+.tool-btn:hover:not(:disabled) { background: var(--surface-2); color: var(--ink); }
+.tool-btn.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tool-btn:disabled { opacity: 0.35; cursor: default; }
+
+/* .tool-btn mặc định 34px — quá rộng cho một cột của .tool-grid, sẽ tràn ra
+   ngoài khối. Nút chọn hình và nút chế độ tô phải tự thu lại đúng bề rộng một
+   cột (22px, xem phép tính ở .tool-options).
+   PHẢI đứng SAU khối .tool-btn: cả hai đều là selector một class nên độ đặc hiệu
+   bằng nhau, và khi đó thứ tự nguồn quyết định. Đặt trước thì `width: 34px` của
+   .tool-btn đè mất, track của .tool-grid bị min-content đội lên 34px, và cột
+   phải của bảng chọn hình bị cắt khỏi panel — lỗi này smoke test không thấy
+   được vì jsdom không tính cascade lẫn layout. */
+.shape-pick, .fill-pick, .dash-pick, .erase-pick { width: 22px; height: 22px; }
+.shape-pick svg, .fill-pick svg, .dash-pick svg, .erase-pick svg { display: block; }
+
+/* Ba nút cỡ cục tẩy: một vòng tròn rỗng to dần, đúng thứ nó tạo ra — cùng luật
+   với .pen-width (một vạch dày dần) ngay trên. Vòng RỖNG chứ không phải chấm
+   đặc, vì cục tẩy là một cái vùng chứ không phải một cục mực. Xếp một cột như
+   .pen-width, không vào .tool-grid: lưới 2 cột thì ba nút thành hàng 2 + hàng 1
+   lệch hẳn sang trái. */
+.erase-width .dot {
+  display: block; border-radius: 50%;
+  border: 1.5px solid currentColor;
+}
+
+/* Nút chọn bậc thẻ xếp MỘT cột (không dùng .tool-grid): icon của nó rộng 30px,
+   nhét hai cột vào 48px vùng nội dung thì hình thẻ bé tới mức không phân biệt
+   nổi bậc 3 với bậc 4 — mà phân biệt được chính là toàn bộ mục đích của nó. */
+.level-pick { width: 46px; height: 26px; }
+.level-pick svg { display: block; }
+
+.tool-sep { height: 1px; margin: 3px 2px; background: var(--line); }
+
+/* Ô màu và nút độ dày xếp 2 cột cho khu 4 khỏi dài quá một màn hình. */
+.tool-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px; }
+.pen-swatch {
+  width: 18px; height: 18px; margin: 0 auto; padding: 0;
+  border: 2px solid transparent; border-radius: 50%; cursor: pointer;
+}
+.pen-swatch.on { border-color: var(--ink); }
+.pen-width { display: flex; align-items: center; justify-content: center; height: 22px; }
+.pen-width .bar { width: 22px; border-radius: 99px; background: currentColor; }
+
+/* Thanh trượt của khu 4 (thời gian tan của vệt laser). Vùng nội dung chỉ rộng
+   48px — xem phép tính ở .tool-options — nên thanh phải khai đúng bề rộng đó và
+   KHÔNG được có margin ngang, không thì trục x mọc thanh cuộn.
+   accent-color lo cả tay cầm lẫn phần đã tô của rãnh ở mọi trình duyệt hiện đại;
+   viết tay ::-webkit-slider-thumb chỉ để đổi màu là ba khối CSS cho một việc mà
+   một dòng làm được. */
+.tool-range-wrap { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.tool-range {
+  width: 48px; height: 14px; margin: 0; padding: 0;
+  accent-color: var(--accent); cursor: pointer;
+}
+.tool-range-val { font-size: 10px; color: var(--ink-dim); line-height: 1; }
+
+/* Nút cỡ chữ: chữ "A" ba kích thước. Cố ý KHÔNG dùng var(--canvas-font) — nút
+   công cụ là vỏ giao diện, phải đứng yên khi bật skin vẽ tay, cùng lý do icon
+   chữ T ở ToolRail vẽ bằng path chứ không dùng ký tự. */
+.text-size {
+  display: flex; align-items: center; justify-content: center; height: 22px;
+  font-family: "IBM Plex Sans", Arial, sans-serif; font-weight: 600;
+}
+

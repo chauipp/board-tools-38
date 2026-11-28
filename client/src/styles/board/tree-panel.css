@@ -1,0 +1,74 @@
+/* Bảng Xếp cây: dock bên phải, cùng khuôn với .outline-panel (cùng mép, cùng bo
+   góc, cùng né đảo người ở góc trên phải) — hai bảng phải đọc ra là một họ.
+   Hẹp hơn mục lục 20px vì ruột chỉ có nút và thanh trượt, không có danh sách
+   tên thẻ dài. */
+.tree-panel {
+  position: absolute; top: 58px; right: 12px; width: 220px;
+  max-height: calc(100vh - 130px);
+  background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+  box-shadow: var(--shadow); z-index: 46; display: flex; flex-direction: column;
+}
+/* Mục lục đang mở thì hai bảng cùng neo mép phải sẽ chồng lên nhau: bảng cây né
+   sang trái đúng bề ngang mục lục (240) + khe 12. */
+.tree-panel.shifted { right: 264px; }
+.tree-panel, .outline-panel, .edit-dock { max-width: calc(100vw - 24px); }
+.workspace-settings { flex-wrap: wrap; gap: 8px; }
+.workspace-settings [role="status"] { font-size: 10px; color: var(--ink-dim); }
+@media (max-width: 767px) {
+  .tree-panel.shifted { right: 12px; }
+  .shell:has(.tree-panel) .outline-panel,
+  .shell:has(.edit-dock) .outline-panel { display: none; }
+}
+.tree-panel .tp-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px; border-bottom: 1px solid var(--line);
+}
+.tree-panel .tp-title { font-size: 11.5px; font-weight: 600; flex: 1; }
+.tree-panel .tp-body { overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 12px; }
+.tree-panel .tp-root {
+  display: flex; align-items: center; gap: 6px;
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 5px 7px;
+}
+.tree-panel .tp-root-name {
+  font-size: 11.5px; flex: 1; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.tree-panel .tp-count { font-size: 10px; color: var(--ink-dim); flex-shrink: 0; }
+.tree-panel .tp-section { display: flex; flex-direction: column; gap: 7px; }
+.tree-panel .tp-label {
+  font-size: 10px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.tree-panel .tp-hint { font-size: 10px; line-height: 1.4; color: var(--ink-dim); }
+.tree-panel .tp-dirs { display: flex; gap: 6px; }
+/* Cùng dáng .em-icon-btn của menu chuột phải, nhưng ở đây trạng thái "on" là
+   thật (hướng đang bật) chứ không phải nháy một cái rồi thôi. */
+.tree-panel .tp-dir {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  padding: 6px; border-radius: 4px; border: 1px solid var(--line);
+  background: var(--bg); color: var(--ink-dim); cursor: pointer;
+}
+.tree-panel .tp-dir:hover { color: var(--ink); border-color: var(--ink-dim); }
+.tree-panel .tp-dir.on { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.tree-panel .tp-slider { display: flex; flex-direction: column; gap: 3px; }
+.tree-panel .tp-slider-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  font-size: 11px; color: var(--ink);
+}
+.tree-panel .tp-slider-head .mono { font-size: 10px; color: var(--ink-dim); }
+.tree-panel .tp-slider input[type="range"] { width: 100%; accent-color: var(--accent); cursor: pointer; }
+.tree-panel .tp-reset { align-self: flex-start; }
+.tree-panel .tp-auto-lock { display: flex; align-items: flex-start; gap: 8px; font-size: 11px; line-height: 1.5; cursor: pointer; }
+.tree-panel .tp-auto-lock input { margin: 2px 0 0; accent-color: var(--accent); flex-shrink: 0; }
+.idea-card[data-layout-locked="true"] { cursor: default; }
+.idea-card[data-layout-swappable="true"] { cursor: grab; }
+[data-tree-swap="source"] { opacity: .55; cursor: grabbing !important; }
+[data-tree-swap="candidate"] { outline: 1px dashed var(--accent); outline-offset: 4px; }
+[data-tree-swap="target"] { outline: 3px solid var(--accent); outline-offset: 4px; box-shadow: 0 0 0 8px color-mix(in srgb, var(--accent) 18%, transparent); }
+.tree-swap-hint { position: fixed; z-index: 1000; pointer-events: none; max-width: min(232px, calc(100vw - 16px)); padding: 8px 10px; border: 1px solid var(--accent); border-radius: 8px; background: var(--surface); color: var(--ink); font-size: 12px; line-height: 1.4; box-shadow: 0 4px 16px #0003; }
+.layout-lock-badge { color: var(--accent); font-size: 9px; line-height: 1.3; flex-shrink: 0; }
+
+/* Lối vào bảng nằm ngay dưới bốn nút mũi tên trong menu chuột phải, nên phải
+   tách khỏi hàng nút một chút để không dính thành một khối. */
+.ctx-menu .cm-item.tp-open { margin-top: 2px; }
+
