@@ -361,7 +361,7 @@ router.get("/:id/snapshots", async (req, res) => {
     res.json({ snapshots: snapshots.map(snapshotSummary) });
   } catch (e) {
     if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
-    res.status(500).json({ error: "KhÃ´ng Ä‘á»c Ä‘Æ°á»£c snapshot." });
+    res.status(500).json({ error: "Không đọc được snapshot." });
   }
 });
 
@@ -387,7 +387,7 @@ router.post("/:id/snapshots", async (req, res) => {
     res.status(201).json({ snapshot: snapshotSummary(snapshot) });
   } catch (e) {
     if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
-    res.status(500).json({ error: "KhÃ´ng táº¡o Ä‘Æ°á»£c snapshot." });
+    res.status(500).json({ error: "Không tạo được snapshot." });
   }
 });
 
@@ -437,7 +437,7 @@ router.post("/:id/snapshots/:snapshotId/restore", async (req, res) => {
     syncBoardRefs(found.board._id, normalized.nodes).catch(() => {});
   } catch (e) {
     if (e.name === "CastError") return res.status(404).json({ error: "not_found" });
-    res.status(500).json({ error: "KhÃ´ng khÃ´i phá»¥c Ä‘Æ°á»£c snapshot." });
+    res.status(500).json({ error: "Không khôi phục được snapshot." });
   }
 });
 
