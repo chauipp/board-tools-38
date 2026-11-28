@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { replaceIdSet, toggleId, unionIdSet } from "./selection.js";
+import { replaceIdSet, toggleId, unionIdSet, selectionDragSet } from "./selection.js";
 
 test("replaceIdSet: cùng nội dung → trả về CHÍNH Set cũ (không kích hoạt effect oan)", () => {
   const prev = new Set([1, 2, 3]);
@@ -80,4 +80,30 @@ test("unionIdSet: kết quả y như nhịp trước → trả về CHÍNH Set c
 test("unionIdSet: base rỗng → hệt replaceIdSet (quét thường, không giữ Ctrl)", () => {
   const next = unionIdSet(new Set([9]), new Set(), [1, 2]);
   assert.deepEqual(Array.from(next).sort(), [1, 2]);
+});
+
+const size = () => ({ w: 100, h: 50 });
+const dragBoard = () => ({
+  nodes: [
+    { id: 1, x: 10, y: 10 },             // trong khung 1
+    { id: 2, x: 500, y: 500 },           // ngoài khung
+    { id: 3, x: 20, y: 80, locked: true } // trong khung 1 nhưng khoá
+  ],
+  groups: [
+    { id: 1, x: 0, y: 0, w: 300, h: 300 },
+    { id: 2, x: 400, y: 400, w: 300, h: 300, locked: true }
+  ],
+  edges: []
+});
+
+test("selectionDragSet: kéo khung mang theo thẻ nằm trong nó, trừ thẻ khoá", () => {
+  const out = selectionDragSet(dragBoard(), new Set([1]), new Set(), size);
+  assert.deepEqual(out.groupIds, [1]);
+  assert.deepEqual(out.nodeIds, [1]);
+});
+
+test("selectionDragSet: khung khoá và thẻ khoá đang chọn đều bị loại", () => {
+  const out = selectionDragSet(dragBoard(), new Set([2]), new Set([2, 3]), size);
+  assert.deepEqual(out.groupIds, []);
+  assert.deepEqual(out.nodeIds, [2]);
 });

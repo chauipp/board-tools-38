@@ -62,6 +62,8 @@ import { useCardSizes } from "../lib/card-sizes.js";
 import { rafThrottle } from "../lib/raf-throttle.js";
 import { startDrag } from "../lib/drag-session.js";
 import { replaceIdSet, toggleId, unionIdSet } from "../lib/selection.js";
+import { rectsOverlap } from "../lib/board-geometry.js";
+import { useBoardSelection } from "../lib/useBoardSelection.js";
 import { readImageFile } from "../lib/image-utils.js";
 import { canAddImage, formatMB } from "../lib/image-budget.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
@@ -225,19 +227,6 @@ export default function IdeaMap() {
   const [cardLevelPref, setCardLevelPref] = useState(() => loadCardLevel(window.localStorage));
   const [paletteUI, setPaletteUI] = useState(null); // { mode: "create"|"edit", id?, hex, x, y } | null
   const [colorDrag, setColorDrag] = useState(null); // { token, x, y } | null
-  const [selectedIds, setSelectedIds] = useState(new Set());
-  const [selectedEdgeIds, setSelectedEdgeIds] = useState(new Set());
-  // Khung (nhóm) cũng là một thứ chọn được, quét trúng là vào đây. Kéo một khung
-  // luôn kéo theo thẻ nằm trong nó, nên tập này KHÔNG chứa sẵn các thẻ thành
-  // viên — chúng được tính lại tại chỗ (selectionDragSet), vì thẻ có thể ra vào
-  // khung bất cứ lúc nào.
-  const [selectedGroupIds, setSelectedGroupIds] = useState(new Set());
-  // Nét bút, hình khối và chữ — cả ba nằm chung trong board.drawings nên chung
-  // một tập chọn. Chúng không có nút DOM riêng (cả lớp vẽ là một thẻ <svg>
-  // pointer-events: none), nên mọi phép bắt chuột ở đây đều là hit-test hình học
-  // trên toạ độ canvas, không phải elementFromPoint như thẻ.
-  const [selectedDrawingIds, setSelectedDrawingIds] = useState(new Set());
-  const [marquee, setMarquee] = useState(null);
   const [snapGuides, setSnapGuides] = useState([]);
   const [badgeUI, setBadgeUI] = useState(null); // { mode: "create"|"edit", kind, def?, x, y }
   const [colorMenu, setColorMenu] = useState(null); // { kind: "card"|"group", id, x, y }
@@ -280,6 +269,14 @@ export default function IdeaMap() {
   // tại chỗ (xem lib/card-sizes.js). `frameCardSize` giữ nguyên tên cũ vì nó là
   // tham số `sizeOf` của rất nhiều hàm hình học.
   const { cardSize: frameCardSize, observeCard } = useCardSizes();
+  // Lựa chọn trên bảng (thẻ, dây, khung, nét vẽ), quét chọn, ?card= trên URL:
+  // lib/useBoardSelection.js.
+  const selection = useBoardSelection({ board, frameCardSize });
+  const {
+    selectedIds, setSelectedIds, selectedEdgeIds, setSelectedEdgeIds,
+    selectedGroupIds, setSelectedGroupIds, selectedDrawingIds, setSelectedDrawingIds,
+    marquee, selectionSet, selBounds, clearSelection, selectionDragSet, handleMarqueeMouseDown
+  } = selection;
   const treeSizeRef = useRef(frameCardSize);
   treeSizeRef.current = frameCardSize;
   const layoutOwners = useMemo(
@@ -335,7 +332,6 @@ export default function IdeaMap() {
     onSwapTool: swapPenEraser,
     live: inkLive
   });
-
 
   // Mở ô tìm là để gõ ngay, không phải để rồi bấm thêm một cú vào nó. Đặt ở
   // effect chứ không ở toggleSearch: Ctrl+F lúc ô đang đóng thì ô nhập chưa nằm
@@ -474,7 +470,6 @@ export default function IdeaMap() {
     });
   }, [view, viewportSize, watcherCount, sendView]); // eslint-disable-line react-hooks/exhaustive-deps
 
-
   const { geomOverlay, textOverlay, sendLiveText, publishGeom, finishGeom } =
     useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, applyRemoteBoard);
 
@@ -500,6 +495,7 @@ export default function IdeaMap() {
     [board?.edges, nodeById, groupById, frameCardSize]
   );
   const edgeRoutesRef = useRef(edgeRoutes);
+  selection.bind({ viewportRef, viewRef, boardRef, edgeRoutesRef });
   edgeRoutesRef.current = edgeRoutes;
   const statusDefById = useMemo(
     () => (board ? new Map(board.statuses.map((s) => [s.id, s])) : EMPTY_MAP),
@@ -556,24 +552,6 @@ export default function IdeaMap() {
     }
     return out;
   }
-
-  // Vùng chọn gói lại thành MỘT object để truyền xuống lib/selection-box.js —
-  // ba Set rời nhau là ba tham số phải bê theo qua từng hàm.
-  const selectionSet = useMemo(
-    () => ({ nodeIds: selectedIds, groupIds: selectedGroupIds, drawingIds: selectedDrawingIds }),
-    [selectedIds, selectedGroupIds, selectedDrawingIds]
-  );
-
-  // Hộp bao của cả vùng chọn. Có nó thì: cầm chỗ nào TRONG vùng cũng kéo được cả
-  // cụm (không phải nhắm đúng vào một cái thẻ hay một cái nét), thả màu vào chỗ
-  // trống trong vùng là cả cụm đổi màu, và bốn góc trở thành tay cầm co giãn.
-  //
-  // Phụ thuộc cả `frameCardSize`: chiều cao thẻ do ResizeObserver đo, thẻ vừa
-  // được đo lại (ảnh tải xong, chữ xuống dòng) thì hộp phải ôm lại theo.
-  const selBounds = useMemo(
-    () => selectionBounds(board, selectionSet, frameCardSize),
-    [board?.nodes, board?.groups, board?.drawings, selectionSet, frameCardSize]
-  );
 
   // Hình đang được sửa từng góc/cạnh: chọn ĐÚNG MỘT hình khối, không kèm thẻ hay
   // khung nào. Chỉ một hình mới có tay cầm — chọn hai hình thì tay cầm của chúng
@@ -743,16 +721,6 @@ export default function IdeaMap() {
     document.body.classList.toggle("presenting", presentIndex != null);
     return () => document.body.classList.remove("presenting");
   }, [presentIndex]);
-
-  useEffect(() => {
-    const url = new URL(window.location.href);
-    const want = selectedIds.size === 1 ? String(Array.from(selectedIds)[0]) : null;
-    const have = url.searchParams.get("card");
-    if (want === have) return;
-    if (want != null) url.searchParams.set("card", want);
-    else url.searchParams.delete("card");
-    window.history.replaceState(null, "", url);
-  }, [selectedIds]);
 
   useEffect(() => {
     if (!workspace.ready || !board || pendingJumpRef.current == null) return;
@@ -1741,10 +1709,6 @@ export default function IdeaMap() {
     e.preventDefault();
   }
 
-  function rectsOverlap(x1, y1, w1, h1, x2, y2, w2, h2) {
-    return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
-  }
-
   // `sourceId` quyết định dây nối, `anchorId` quyết định chỗ đặt. Hai thứ này
   // tách nhau vì Shift+Enter tạo thẻ CÙNG CẤP: dây đi từ thẻ cha, nhưng vị trí
   // phải nằm ngay dưới thẻ đang chọn chứ không phải dưới cha.
@@ -2469,75 +2433,6 @@ export default function IdeaMap() {
     startDrag(e, { onMove, onEnd: onUp });
   }
 
-  function handleMarqueeMouseDown(e) {
-    const rect = viewportRef.current.getBoundingClientRect();
-    const startScreenX = e.clientX, startScreenY = e.clientY;
-    let dragging = false;
-    const THRESHOLD = 4;
-    // Giữ Ctrl/Cmd lúc bắt đầu quét = quét thêm vào lựa chọn đang có. Chốt lại
-    // mốc ngay đây, không đọc `selectedIds` trong onMove: onMove là closure của
-    // lần render này nên `selectedIds` ở đó cũng là bản cũ, nhưng đọc từ biến
-    // này thì rõ ý là "lựa chọn lúc bắt đầu quét" chứ không phải nhìn nhầm.
-    const additive = e.ctrlKey || e.metaKey;
-    const baseNodeIds = additive ? selectedIds : EMPTY_SET;
-    const baseEdgeIds = additive ? selectedEdgeIds : EMPTY_SET;
-    const baseGroupIds = additive ? selectedGroupIds : EMPTY_SET;
-    const baseDrawingIds = additive ? selectedDrawingIds : EMPTY_SET;
-
-    function toCanvas(clientX, clientY) {
-      const view = viewRef.current;
-      return { x: (clientX - rect.left - view.panX) / view.scale, y: (clientY - rect.top - view.panY) / view.scale };
-    }
-
-    function hitIdsFor(m) {
-      return boardRef.current.nodes
-        .filter((n) => {
-          const { w, h } = frameCardSize(n.id);
-          return rectsOverlap(m.x, m.y, m.w, m.h, n.x, n.y, w, h);
-        })
-        .map((n) => n.id);
-    }
-
-    // Khung dính khi vùng quét CHẠM nó, cùng luật với thẻ — không đòi quét trùm
-    // kín. Khung thường to hơn cả khung nhìn, đòi trùm kín thì gần như không bao
-    // giờ chọn được bằng chuột.
-    function groupHitIdsFor(m) {
-      return boardRef.current.groups
-        .filter((g) => rectsOverlap(m.x, m.y, m.w, m.h, g.x, g.y, g.w, g.h))
-        .map((g) => g.id);
-    }
-
-    function edgeHitIdsFor(m) {
-      return boardRef.current.edges
-        .filter((edge) => routeIntersectsRect(edgeRoutesRef.current.get(edge.id), m))
-        .map((edge) => edge.id);
-    }
-
-    const onMove = (ev) => {
-      if (!dragging && Math.hypot(ev.clientX - startScreenX, ev.clientY - startScreenY) > THRESHOLD) dragging = true;
-      if (!dragging) return;
-      const a = toCanvas(startScreenX, startScreenY);
-      const b = toCanvas(ev.clientX, ev.clientY);
-      const m = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
-      setMarquee(m);
-      // Giữ nguyên Set cũ khi tập chọn không đổi: một Set mới ở mỗi nhịp chuột
-      // sẽ kích hoạt effect ghi URL và effect phát selection lên socket dù
-      // chẳng có gì thay đổi.
-      setSelectedIds((prev) => unionIdSet(prev, baseNodeIds, hitIdsFor(m)));
-      setSelectedEdgeIds((prev) => unionIdSet(prev, baseEdgeIds, edgeHitIdsFor(m)));
-      setSelectedGroupIds((prev) => unionIdSet(prev, baseGroupIds, groupHitIdsFor(m)));
-      setSelectedDrawingIds((prev) => unionIdSet(prev, baseDrawingIds, drawingsInRect(boardRef.current.drawings || [], m)));
-    };
-    function onUp() {
-      // Bấm-không-kéo trên nền trống = bỏ chọn hết, NHƯNG có Ctrl thì không:
-      // ở đó Ctrl nghĩa là "đang cộng dồn lựa chọn", trượt tay bấm nhầm nền
-      // trống mà mất cả vùng chọn vừa gom là hỏng việc.
-      if (!dragging) { if (!additive) clearSelection(); return; }
-      setMarquee(null);
-    }
-    startDrag(e, { onMove, onEnd: onUp, release: "cancel" });
-  }
-
   function startPan(e) {
     e.preventDefault();
     // Tự lia nền → thôi bám theo người khác. Đặt ở đây (mousedown) chứ không
@@ -3229,33 +3124,6 @@ export default function IdeaMap() {
     const { next, cloneIds } = duplicateNodes(Array.from(selectedIds));
     store.commit(next);
     setSelectedIds(new Set(cloneIds));
-  }
-
-  function clearSelection() {
-    setSelectedIds(new Set());
-    setSelectedEdgeIds(new Set());
-    setSelectedGroupIds(new Set());
-    setSelectedDrawingIds(new Set());
-  }
-
-  /**
-   * Những gì một cú kéo trong vùng chọn mang theo: các khung đang chọn, các thẻ
-   * đang chọn, CỘNG mọi thẻ nằm trong những khung đó — kéo khung mà bỏ ruột lại
-   * là hỏng ý nghĩa của cái khung. Thẻ/khung đang khoá bị loại ngay ở đây, nên
-   * mọi phần sau của cú kéo không phải nghĩ tới `locked` nữa.
-   */
-  function selectionDragSet(base, groupIds, nodeIds) {
-    const owners = treeLockOwners(base, frameCardSize);
-    const groups = base.groups.filter((g) => groupIds.has(g.id) && !g.locked && !owners.has(edgeKey("group", g.id)));
-    const nodeSet = new Set();
-    base.nodes.forEach((n) => { if (nodeIds.has(n.id) && !n.locked && !owners.has(edgeKey("node", n.id))) nodeSet.add(n.id); });
-    const lockedById = new Map(base.nodes.map((n) => [n.id, !!n.locked || owners.has(edgeKey("node", n.id))]));
-    groups.forEach((g) => {
-      nodesInFrame(base.nodes, g, frameCardSize).forEach((id) => {
-        if (!lockedById.get(id)) nodeSet.add(id);
-      });
-    });
-    return { groupIds: groups.map((g) => g.id), nodeIds: Array.from(nodeSet) };
   }
 
   function applyToSelection(patch) {
