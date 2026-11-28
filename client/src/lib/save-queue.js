@@ -30,17 +30,31 @@ export const MAX_REBASE_TRIES = 3;
 //                           Trả Promise<{ updatedAt }>, lỗi 409 mang
 //                           `code: "CONFLICT"` và `board` (bản server).
 // - rebase(server, base, next)  đắp delta base → next lên bản server; null = hỏng.
-// - merge(rebased)          trộn bản đã ghép với bản local hiện tại (giữ camera,
-//                           thẻ đang gõ dở); trả về bản sẽ lưu tiếp.
-// - adopt(merged)           đưa bản đã trộn lên màn hình.
+// - rebaseDetailed(server, base, next)  như rebase nhưng trả `{ board, plan }`,
+//                           `plan` là bản đồ đổi id (lib/rebase.js). Có thì dùng
+//                           thay cho `rebase`, và plan được đưa cho merge/adopt.
+// - merge(rebased, plan)    trộn bản đã ghép với bản local hiện tại (giữ thẻ
+//                           đang gõ dở); trả về bản sẽ lưu tiếp / sẽ hiện.
+// - adopt(board, plan)      đưa bản đã trộn lên màn hình.
 // - getBase/setBase, getStamp/setStamp  bản nền + mốc updatedAt mà ta tin
 //                           server đang giữ.
 // - onState({ error })      error: true khi lưu hỏng, null khi lưu được.
+//
+// BẢN CHỜ VÀ BẢN NỀN CỦA NÓ (review PR #7, vòng 2). Có hai chỗ một board nằm
+// chờ: `pending` (xếp sau cú PUT đang bay) và `timerEntry` (cú lưu hẹn giờ của
+// saveDebounced). Mỗi bản chờ đi kèm BẢN NỀN mà nó được dựng trên đó. Mỗi khi
+// biết một bản server mới — 409 của cú đang bay, hoặc board:update của người
+// khác (rebaseQueued) — bản chờ được đắp lại `nền → bản chờ` lên bản server đó
+// và nhận bản server làm nền mới. Thiếu việc này thì bản chờ là một board CŨ
+// được gửi kèm mốc MỚI: server chấp nhận, và thay đổi của người kia bị xoá âm
+// thầm. Đắp lại từ nền của chính nó cũng là thứ giữ cho id đổi do va chạm
+// (hai người cùng tạo thẻ số 1) nhất quán qua mọi bản chờ, kể cả tham chiếu.
 export function createSaveQueue({
   canSave = () => true,
   prepare = (next) => next,
   save,
   rebase,
+  rebaseDetailed,
   merge = (rebased) => rebased,
   adopt = () => {},
   getBase,
@@ -53,15 +67,51 @@ export function createSaveQueue({
   clearTimer = (id) => clearTimeout(id)
 }) {
   let saving = false;
-  let pending = null;
+  let pending = null;     // { board, base } | null
   let timer = null;
-  // Bản mà cú lưu hẹn giờ (saveDebounced) sẽ gửi. Giữ ở đây chứ không chỉ trong
-  // closure của timer: một cú 409 xảy ra trong lúc chờ phải ghép được cả nó.
-  let timerNext = null;
+  let timerEntry = null;  // { board, base } | null
+
+  function doRebase(server, base, next) {
+    if (rebaseDetailed) return rebaseDetailed(server, base, next) || null;
+    const board = rebase(server, base, next);
+    return board ? { board, plan: null } : null;
+  }
+
+  // Mốc dạng thời gian thì không bao giờ lùi: phản hồi của một PUT cũ có thể về
+  // SAU gói board:update mới hơn của người khác. Mốc không phải thời gian (test)
+  // thì coi như luôn mới.
+  function isOlderStamp(candidate, current) {
+    const a = Date.parse(candidate), b = Date.parse(current);
+    return Number.isFinite(a) && Number.isFinite(b) && a < b;
+  }
 
   function cancelTimer() {
     if (timer) { clearTimer(timer); timer = null; }
-    timerNext = null;
+    timerEntry = null;
+  }
+
+  // Đắp lại mọi bản chờ lên `server`. Trả về bản chờ MỚI NHẤT sau khi ghép (cú
+  // hẹn giờ mới hơn cú xếp hàng) cùng plan của nó, hoặc null nếu không có gì chờ.
+  function requeueOnto(server) {
+    let latest = null;
+    for (const entry of [pending, timerEntry]) {
+      if (!entry) continue;
+      const r = doRebase(server, entry.base, entry.board);
+      // Ghép hỏng thì giữ nguyên bản chờ — đúng hành vi cũ, không tệ hơn.
+      if (!r) continue;
+      entry.board = r.board;
+      entry.base = server;
+      latest = r;
+    }
+    return latest;
+  }
+
+  // Người khác vừa lưu và bản của họ (`server`) sắp thành bản nền mới: gọi hàm
+  // này TRƯỚC khi dời nền/mốc. Trả về board nên hiện lên màn hình (bản server
+  // cộng những gì mình làm mà chưa lưu), hoặc null nếu không có gì đang chờ.
+  function rebaseQueued(server) {
+    const latest = requeueOnto(server);
+    return latest ? latest.board : null;
   }
 
   // Cú lưu hiện tại (kể cả các vòng ghép lại của riêng nó) vừa xong — cho nó
@@ -71,44 +121,59 @@ export function createSaveQueue({
     if (pending == null) return;
     const queued = pending;
     pending = null;
-    saveNow(queued);
+    // Rút bản chờ ra gửi là việc NỘI BỘ: không được huỷ cú hẹn giờ. Cú hẹn giờ
+    // (nếu có) mới hơn bản này và sẽ tự gửi khi tới hạn.
+    start(queued.board);
   }
 
-  function saveNow(next, tries = 0) {
-    // Chỉ một cú lưu MỚI mới thay cho cú hẹn giờ. Vòng ghép lại (tries > 0) là
-    // việc nội bộ của cú đang bay: huỷ timer ở đó là đánh rơi thay đổi mà người
-    // dùng vừa làm trong lúc chờ (review PR #7 — nhích phím rồi 409).
-    if (tries === 0) cancelTimer();
+  // Người dùng vừa làm một việc mới và muốn lưu ngay: nó thay cho cú hẹn giờ.
+  function saveNow(next) {
+    cancelTimer();
+    enqueue(next, getBase());
+  }
+
+  function enqueue(next, base) {
     if (!canSave()) return;
-    next = prepare(next);
     // Đang có một cú PUT bay (kể cả đang ghép lại): không bắn cú mới đè lên nó.
-    // `base` chốt bên dưới sẽ là bản NGAY LÚC NÀY, mà cú đang bay có thể sắp
+    // `base` chốt lúc gửi sẽ là bản NGAY LÚC ĐÓ, mà cú đang bay có thể sắp
     // thêm một thẻ mà `base` chưa biết — bắn chồng lên là hạt giống của đúng
     // bug "dán ảnh rồi kéo rộng ra thì hiện thêm 1 ảnh cỡ gốc ở vị trí cũ" (xem
     // ghi chú đầu file). Chỉ giữ lại BẢN MỚI NHẤT cần lưu; những state ở giữa
     // không cần lưu riêng.
-    if (tries === 0) {
-      if (saving) { pending = next; return; }
-      saving = true;
-    }
+    if (saving) { pending = { board: prepare(next), base }; return; }
+    start(next);
+  }
+
+  function start(next) {
+    if (!canSave()) return;
+    saving = true;
+    send(prepare(next), 0);
+  }
+
+  function send(next, tries) {
     // Mốc và bản nền được CHỐT ngay đây, trước khi cú PUT rời máy: nếu đọc lại ở
     // trong .catch thì lúc đó chúng có thể đã bị một gói board:update chen vào
     // sửa mất, và delta sẽ tính từ nhầm mốc.
     const base = getBase();
     const baseUpdatedAt = getStamp();
-    save(next, baseUpdatedAt)
-      .then((res) => {
+    const saved = (res) => {
+      // Trong lúc cú này bay, một board:update mới hơn có thể đã dời nền/mốc.
+      // Khi đó bản nền hiện tại đã gồm cả cú này — đừng lùi về mốc cũ.
+      if (!isOlderStamp(res.updatedAt, getStamp())) {
         setStamp(res.updatedAt);
         setBase(next);
-        onState({ error: null });
-        settleSave();
-      })
+      }
+      onState({ error: null });
+      settleSave();
+    };
+    save(next, baseUpdatedAt)
+      .then(saved)
       .catch((e) => {
         if (e.code !== "CONFLICT") { onState({ error: true }); settleSave(); return; }
         // Có người lưu chen vào giữa. Bản của họ đi kèm ngay trong lỗi; đắp
         // những gì mình đã đổi (base → next) lên đó rồi lưu lại.
         const server = e.board;
-        const rebased = server ? rebase(server, base, next) : null;
+        const rebased = server ? doRebase(server, base, next) : null;
         if (!rebased || tries >= maxTries) {
           // Đường dự phòng = đúng hành vi trước khi có chốt này: ghi đè. Không
           // đẹp, nhưng nó bảo đảm việc thêm chốt không bao giờ làm mọi thứ TỆ
@@ -116,52 +181,43 @@ export function createSaveQueue({
           // Tới đây nghĩa là ghép ra một board không lành lặn (id trùng, dây mất
           // đầu) hoặc đã thử quá số lần.
           save(next, undefined)
-            .then((res) => {
-              setStamp(res.updatedAt);
-              setBase(next);
-              onState({ error: null });
-              settleSave();
-            })
+            .then(saved)
             .catch(() => { onState({ error: true }); settleSave(); });
           return;
         }
-        // Giữ nguyên camera của mình và giữ nguyên đúng cái thẻ đang gõ dở —
-        // cùng luật với lúc áp một board:update, nên không có hai cách trộn
-        // khác nhau để lệch nhau.
-        const merged = merge(rebased);
-        // Cú đang xếp hàng và cú hẹn giờ được dựng TRƯỚC khi ghép, tức là chưa
-        // có thay đổi của người kia. Gửi nguyên chúng sau cú này (với mốc mới) là
-        // server chấp nhận và xoá mất phần vừa ghép (review PR #7). Đắp riêng
-        // phần chúng đổi so với cú đang bay (next → bản chờ) lên bản vừa ghép.
-        // Ghép hỏng thì giữ nguyên — đúng hành vi cũ, không tệ hơn.
-        let shown = merged;
-        if (pending != null) {
-          const p = rebase(merged, next, pending);
-          if (p) { pending = p; shown = p; }
-        }
-        if (timerNext != null) {
-          const d = rebase(merged, next, timerNext);
-          if (d) { timerNext = d; shown = d; }
-        }
+        // Giữ nguyên đúng cái thẻ đang gõ dở — cùng luật với lúc áp một
+        // board:update, nên không có hai cách trộn khác nhau để lệch nhau.
+        const merged = merge(rebased.board, rebased.plan);
+        // Các bản chờ được dựng TRƯỚC khi ghép: đắp lại chúng lên bản server.
+        const latest = requeueOnto(server);
         setStamp(server.updatedAt);
         setBase(server);
         // Màn hình hiện bản MỚI NHẤT: bản ghép cộng những gì người dùng làm
         // trong lúc chờ, chứ không lùi về bản ghép của riêng cú đang bay.
-        adopt(shown);
-        saveNow(merged, tries + 1);
+        if (latest) adopt(merge(latest.board, latest.plan), latest.plan);
+        else adopt(merged, rebased.plan);
+        send(prepare(merged), tries + 1);
       });
   }
 
   function saveDebounced(next, ms = 500) {
     if (timer) clearTimer(timer);
-    timerNext = next;
+    timerEntry = { board: next, base: getBase() };
     timer = setTimer(() => {
-      const queued = timerNext;
+      const entry = timerEntry;
       timer = null;
-      timerNext = null;
-      saveNow(queued);
+      timerEntry = null;
+      if (entry) enqueue(entry.board, entry.base);
     }, ms);
   }
 
-  return { saveNow: (next) => saveNow(next), saveDebounced, cancelTimer };
+  // Bỏ mọi bản đang chờ (không đụng cú đang bay). Dùng khi board bị THAY HẲN,
+  // ví dụ khôi phục snapshot: bản chờ dựng trên board cũ mà gửi sau đó sẽ đè
+  // mất bản vừa khôi phục.
+  function discardQueued() {
+    pending = null;
+    cancelTimer();
+  }
+
+  return { saveNow, saveDebounced, cancelTimer, rebaseQueued, discardQueued };
 }

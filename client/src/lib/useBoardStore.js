@@ -3,7 +3,7 @@ import { createBoardSnapshot, getBoard, restoreBoardSnapshot, saveBoard } from "
 import { normalizeGameDesignBoard } from "./normalize-board.js";
 import { arrangeLockedTrees } from "./locked-tree.js";
 import { mergeRemoteBoard } from "./useLiveSync.js";
-import { rebaseBoard } from "./rebase.js";
+import { rebaseBoardDetailed, hasRemap, remapId } from "./rebase.js";
 import { createSaveQueue } from "./save-queue.js";
 import { emptyHistory, record as recordStep, undo as undoStep, redo as redoStep, beginNudge as beginNudgeStep, flushNudge } from "./history.js";
 
@@ -92,7 +92,7 @@ export function useBoardStore(boardId) {
       canSave: hook("canSave"),
       prepare: hook("prepare"),
       save: hook("save"),
-      rebase: rebaseBoard,
+      rebaseDetailed: rebaseBoardDetailed,
       merge: hook("merge"),
       adopt: hook("adopt"),
       getBase: () => serverBaseRef.current,
@@ -121,14 +121,24 @@ export function useBoardStore(boardId) {
     // Giữ nguyên camera của mình và giữ nguyên đúng cái thẻ đang gõ dở —
     // cùng luật với lúc áp một board:update, nên không có hai cách trộn
     // khác nhau để lệch nhau.
-    merge: (rebased) => {
+    merge: (rebased, plan) => {
       const local = boardRef.current;
-      return normalizeGameDesignBoard(local ? mergeRemoteBoard(local, rebased, deps().editingIdRef.current) : rebased);
+      if (!local) return normalizeGameDesignBoard(rebased);
+      // Thẻ đang gõ dở vừa bị ĐỔI ID (mình và người kia cùng tạo thẻ số N): bản
+      // đã ghép mang nó dưới id mới rồi. Chép "thẻ local" đè lên id CŨ lúc này
+      // là đè lên thẻ của người kia (review PR #7, vòng 2).
+      const editingId = deps().editingIdRef.current;
+      const keepLocal = editingId != null && remapId(plan, "nodes", editingId) === editingId;
+      return normalizeGameDesignBoard(mergeRemoteBoard(local, rebased, keepLocal ? editingId : null));
     },
-    adopt: (merged) => {
+    adopt: (merged, plan) => {
       setBoard(merged);
       boardRef.current = merged;
       deps().inkLive.reconcile(merged);
+      // Id của thứ mình vừa tạo đã đổi: mọi thứ còn cầm id cũ (thẻ đang sửa,
+      // vùng chọn) phải dời theo, nếu không thao tác kế tiếp sẽ rơi vào thẻ của
+      // người kia.
+      if (hasRemap(plan)) deps().onIdsRemapped?.(plan);
     }
   };
 
@@ -228,12 +238,20 @@ export function useBoardStore(boardId) {
   // tục vẽ một bản tạm đè lên dữ liệu thật vừa nhận — nét nhấp nháy.
   const applyRemoteBoard = useCallback((next) => {
     const normalized = normalizeGameDesignBoard(next);
-    setBoard(normalized);
+    // Những gì mình đã làm mà CHƯA lưu (cú nhích đang hẹn giờ, cú lưu đang xếp
+    // hàng) được đắp lại lên bản vừa nhận — cả trong hàng đợi lẫn trên màn hình.
+    // Thiếu bước này thì bản chờ là một board cũ được gửi kèm mốc mới: server
+    // chấp nhận và thay đổi của người kia bị xoá (review PR #7, vòng 2 — ca hai
+    // người nhích hai thẻ gần như đồng thời).
+    const queued = saveQueueRef.current.rebaseQueued(normalized);
+    const shown = queued ? normalizeGameDesignBoard(queued) : normalized;
+    setBoard(shown);
+    boardRef.current = shown;
     // Vừa áp bản của người khác → đó là bản mới nhất ta biết server đang giữ.
     // Thiếu dòng này thì lần va chạm sau sẽ tính delta từ một mốc quá cũ và đắp
     // lại cả những thay đổi đã được lưu từ lâu.
     serverBaseRef.current = normalized;
-    deps().inkLive.reconcile(normalized);
+    deps().inkLive.reconcile(shown);
   }, []);
 
   async function createSnapshot(label) {
@@ -252,6 +270,8 @@ export function useBoardStore(boardId) {
       const result = await restoreBoardSnapshot(boardId, snapshotId);
       const { view: _savedView, ...content } = result.board;
       const restored = normalizeGameDesignBoard(content);
+      // Board bị thay hẳn: bản đang chờ lưu dựng trên board cũ, bỏ đi.
+      saveQueueRef.current.discardQueued();
       setBoard(restored);
       boardRef.current = restored;
       serverBaseRef.current = restored;

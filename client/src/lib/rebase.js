@@ -187,6 +187,17 @@ function rewriteRefs(key, item, plan) {
  * đúng hành vi cũ còn hơn ghi một board hỏng.
  */
 export function rebaseBoard(server, base, next) {
+  const out = rebaseBoardDetailed(server, base, next);
+  return out ? out.board : null;
+}
+
+/**
+ * Như rebaseBoard, nhưng trả kèm BẢN ĐỒ ĐỔI ID: `{ board, plan }`, với
+ * `plan[<bộ sưu tập>]` là Map id cũ → id mới của những thứ MÌNH vừa tạo mà trùng
+ * id với thứ người kia tạo. Người gọi cần nó để dời theo mọi thứ còn đang cầm id
+ * cũ (thẻ đang sửa, vùng chọn) — xem lib/useBoardStore.js.
+ */
+export function rebaseBoardDetailed(server, base, next) {
   if (!server || !base || !next) return null;
   const delta = diffBoard(base, next);
   const plan = planRemap(server, base, delta);
@@ -239,7 +250,18 @@ export function rebaseBoard(server, base, next) {
     return from.has(e.from) && to.has(e.to);
   });
 
-  return isSaneBoard(out) ? out : null;
+  return isSaneBoard(out) ? { board: out, plan } : null;
+}
+
+// Id mới của một phần tử sau khi ghép (hoặc chính id đó nếu không bị đổi).
+// `plan` là bản đồ do rebaseBoardDetailed trả về; null/thiếu nghĩa là không đổi gì.
+export function remapId(plan, key, id) {
+  return plan ? remapped(plan, key, id) : id;
+}
+
+// Bản đồ có thật sự đổi id nào không.
+export function hasRemap(plan) {
+  return !!plan && Object.values(plan).some((m) => m && m.size > 0);
 }
 
 /**
@@ -266,4 +288,19 @@ export function isSaneBoard(board) {
     if (!from.has(e.from) || !to.has(e.to)) return false;
   }
   return true;
+}
+
+// Dời một tập id (vùng chọn) theo bản đồ đổi id. Trả về CHÍNH Set cũ khi không
+// có id nào đổi — vùng chọn là deps của nhiều effect, đừng báo "đã đổi" oan.
+export function remapIdSet(prev, plan, key) {
+  const m = plan ? plan[key] : null;
+  if (!m || !m.size || !prev || !prev.size) return prev;
+  let changed = false;
+  const next = new Set();
+  for (const id of prev) {
+    const to = m.get(id);
+    if (to !== undefined) changed = true;
+    next.add(to === undefined ? id : to);
+  }
+  return changed ? next : prev;
 }

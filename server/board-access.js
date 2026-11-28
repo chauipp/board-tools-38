@@ -35,3 +35,11 @@ export async function loadBoardWithRole(req, res, minRole, projection) {
   }
   return { board, role };
 }
+
+// Mốc phiên bản kế tiếp của board: thời điểm hiện tại, nhưng LUÔN lớn hơn mốc
+// đang lưu. `updatedAt` là thứ client dùng để khai "bản tôi đang dựa trên"; hai
+// lần ghi trùng mốc thì chốt va chạm ở PUT không phân biệt được chúng.
+export function nextUpdatedAt(current, now = Date.now()) {
+  const prev = current ? new Date(current).getTime() : NaN;
+  return new Date(Number.isFinite(prev) ? Math.max(now, prev + 1) : now);
+}
