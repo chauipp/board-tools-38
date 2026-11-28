@@ -81,6 +81,7 @@ import CaptureOverlay from "../components/board/CaptureOverlay.jsx";
 import TreeDock from "../components/board/TreeDock.jsx";
 import OutlinePanel from "../components/board/OutlinePanel.jsx";
 import MiniMapIsland from "../components/board/MiniMapIsland.jsx";
+import BoardHints from "../components/board/BoardHints.jsx";
 import "../styles/idea-map.css";
 
 export default function IdeaMap() {
@@ -1149,19 +1150,7 @@ export default function IdeaMap() {
         )}
         <BoardCanvas {...{ boardId, canGrabShapeHandles, canvasRef, cardHandlers, currentUser, dependency, dropTargetId, edgeDrag, edgeRoutes, editShape, editingGroupTitleId, editingId, flashId, focusSet, frameCardSize, gameDesign, groupById, groupHandlers, handleEdgeEndpointMouseDown, handleInkCaptureMouseDown, handleSelectionResizeMouseDown, handleShapeHandleMouseDown, handleViewportMouseDown, hoveredEdgeId, ink, inkDrawings, inkLive, isNodeDropTarget, laser, layoutOwners, linkDraft, linkMode, liveGroups, liveNodes, mode, nodeById, observeCard, onEdgeClick, onEdgeContextMenu, onEdgeEnter, onEdgeLeave, passesFilter, pendingSource, placeDraft, setDesignEditId, setHoveredEdgeId, shapeHandleAt, skin, snapGuides, socket, spotlightPeerId, statusDefById, tagDefById, textEdit, textOverlay, tool, treeSwapState }} />
 
-        {board.nodes.length === 0 && (
-          <div className="empty-hint">
-            <Trans>Nhấp đúp vào khoảng trống để tạo ý tưởng đầu tiên.</Trans><br />
-            <Trans>Chuột trái kéo để bôi đen chọn thẻ, chuột phải kéo để lia sa bàn, cuộn để lia, giữ Ctrl/⌘ + cuộn để phóng to.</Trans>
-          </div>
-        )}
-
-        {focusSet != null && (
-          <div className="focus-banner">
-            <Trans>Đang tập trung — Esc để thoát</Trans>
-            <button onClick={() => setFocusId(null)}>×</button>
-          </div>
-        )}
+        <BoardHints {...{ board, focusSet, setFocusId }} />
 
         <MiniMapIsland {...{ camera, goToPoint, miniOpen, miniShapes, setMiniOpen, view, viewportSize }} />
 
