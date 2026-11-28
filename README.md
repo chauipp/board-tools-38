@@ -75,8 +75,10 @@ Scenarios: `source-checks`, `board`, `concurrent-nudge`, `game-design-panels`, `
 
 - `pages/IdeaMap.jsx` - composes the board: calls the hooks below and renders the board components. Loaded lazily, like `pages/Calculator.jsx`.
 - `lib/useBoardStore.js` - the single write path for a board: load, `preview`/`commit`, save queue (`lib/save-queue.js`), undo history (`lib/history.js`), remote updates, snapshots.
-- `lib/useCamera.js` - pan/zoom state, kept outside the board; `lib/useCameraControls.js` holds the camera actions.
-- `lib/use<Domain>.js` - one hook per area: `useBoardSelection`, `useBoardFilters`, `useBadgesAndPalette`, `useEdgeInteractions`, `useGroupInteractions`, `useNodeInteractions`, `useNodeMedia`, `useDrawingSelection`, `useTextTool`, `useTreeLayout`, `usePresentation`, `useGameDesignBoard`, `useBoardKeyboard`, `useSelectionActions`, `useViewportInput`.
+- `lib/useCamera.js` - pan/zoom state, kept outside the board; `lib/useCameraControls.js` holds the camera actions and the follow (screen pinning) loop.
+- `lib/use<Domain>.js` - one hook per area: `useBoardSelection`, `useBoardFilters`, `useBadgesAndPalette`, `useEdgeInteractions`, `useGroupInteractions`, `useNodeInteractions`, `useNodeMedia`, `useDrawingSelection` (owns `useInk`), `useTextTool`, `useTreeLayout`, `usePresentation`, `useGameDesignBoard`, `useBoardKeyboard`, `useSelectionActions`, `useViewportInput`, `useEdgeLayerHandlers`, `useBoardItemHandlers`, `useBoardImportExport`.
+- Board plumbing hooks: `useWorkspaceInspectors` (panel/inspector flags from the per-user workspace state), `useBoardUiState` (plain UI state), `useBoardRefs` (shared refs), `useBoardDerived` (render-only derived values), `useBoardSync` (workspace camera/inspector sync, snapshots list, `?card=` jump), `usePresenceSync` (selection/edge-draft/camera broadcasts), `useViewportGestures` (page-level DOM listeners).
+- `lib/bind-all.js` - gives every domain hook the IdeaMap functions/refs it needs but that exist only after it is called.
 - `lib/drag-session.js` - `startDrag()` for every mouse drag; `lib/useStableHandlers.js` - fixed-identity handler objects for memoized cards and frames.
 - `lib/board-context.js` - read-only `{ store, selection, camera }` context for the board components.
 - `lib/game-design/` - game-design logic by domain; `lib/game-design.js` re-exports it.
