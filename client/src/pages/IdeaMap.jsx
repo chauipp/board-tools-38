@@ -94,6 +94,7 @@ import TopMenu from "../components/board/TopMenu.jsx";
 import PaletteEditor from "../components/board/PaletteEditor.jsx";
 import EdgeMenu from "../components/board/EdgeMenu.jsx";
 import CommentsPopover from "../components/board/CommentsPopover.jsx";
+import PresentBar from "../components/board/PresentBar.jsx";
 import BoardPopovers from "../components/board/BoardPopovers.jsx";
 import CaptureOverlay from "../components/board/CaptureOverlay.jsx";
 import "../styles/idea-map.css";
@@ -2441,20 +2442,7 @@ export default function IdeaMap() {
 
       </div>
 
-      {presentIndex != null && (() => {
-        // Khung có thể bị xoá trong lúc trình chiếu → kẹp chỉ số khi render;
-        // nếu xoá hết khung vẫn giữ thanh (0/0) để nút thoát × còn bấm được
-        // (bên cạnh Esc).
-        const idx = Math.min(presentIndex, Math.max(0, board.groups.length - 1));
-        const group = board.groups[idx];
-        return (
-          <div className="present-bar" onMouseDown={(e) => e.stopPropagation()}>
-            <span className="pb-step mono">{group ? `${idx + 1}/${board.groups.length}` : "0/0"}</span>
-            {group && <span className="pb-title">{group.title}</span>}
-            <button className="pb-exit" onClick={exitPresentation}>×</button>
-          </div>
-        );
-      })()}
+      <PresentBar {...{ board, exitPresentation, presentIndex }} />
 
       <BoardPopovers {...{ addComment, applyColorToSelection, applyGroupColor, applyNodeColor, applyNodeDashed, applyNodeLevel, applyNodeShape, applyToSelection, arrangeAsTree, badgeUI, board, chipDrag, colorDrag, colorMenu, commentsFor, createBadge, createPaletteColor, deleteBadge, deleteComment, deleteEdge, deleteGroup, deleteNode, deletePaletteColor, deleteSelection, dropIdsFor, dropTargetId, duplicateNodes, duplicateSelection, edgeMenu, groupSelectedCards, openTreePanel, paletteUI, selectedGroupIds, selectedIds, setBadgeUI, setColorMenu, setCommentsFor, setEdgeMenu, setEditingId, setFocusId, setPaletteUI, setSelectedIds, store, tidySelection, toggleGroupLock, toggleNodeLock, updateBadge, updateEdge, updatePaletteColor }} />
       <CaptureOverlay {...{ captureOpen, captureText, confirmCapture, setCaptureOpen, setCaptureText }} />
