@@ -78,6 +78,7 @@ import IoDrawer from "../components/board/IoDrawer.jsx";
 import PresentBar from "../components/board/PresentBar.jsx";
 import BoardPopovers from "../components/board/BoardPopovers.jsx";
 import CaptureOverlay from "../components/board/CaptureOverlay.jsx";
+import TreeDock from "../components/board/TreeDock.jsx";
 import "../styles/idea-map.css";
 
 export default function IdeaMap() {
@@ -1220,30 +1221,7 @@ export default function IdeaMap() {
           );
         })()}
 
-        {/* Bảng Xếp cây — dock bên phải như bảng thuộc tính của Figma. Né sang
-            trái khi Mục lục đang mở, hai bảng cùng neo mép phải. */}
-        {treeUI && (() => {
-          const root = treeUI.kind === "group"
-            ? board.groups.find((g) => g.id === treeUI.id)
-            : board.nodes.find((n) => n.id === treeUI.id);
-          if (!root) return null;             // gốc vừa bị xoá: bảng tự biến mất
-          const { order } = buildTree(board.edges, edgeKey(treeUI.kind, treeUI.id));
-          return (
-            <TreePanel
-              canEdit={role !== "viewer"}
-              opts={treeOpts}
-              locked={!!normalizeTreeLock(root.treeLayoutLock)}
-              onLock={toggleTreeLock}
-              count={order.length}
-              rootTitle={root.title || t`Không tên`}
-              shifted={outlineOpen}
-              onOpts={previewTree}
-              onCommit={commitTree}
-              onReset={() => { previewTree(TREE_OPTS); commitTree(); }}
-              onClose={closeTreePanel}
-            />
-          );
-        })()}
+        <TreeDock {...{ board, closeTreePanel, commitTree, outlineOpen, previewTree, role, toggleTreeLock, treeOpts, treeUI }} />
 
         <EditDock {...{ applyColorToSelection, applyToSelection, balanceOpen, briefOpen, createRelatedDesignNode, createSnapshot, decisionTimelineOpen, deleteEdge, deleteSelection, dependency, designEditId, duplicateDesignNode, duplicateSelection, editDockRef, flowOpen, groupSelectedCards, handoffOpen, hasDashableSelected, impactCardId, impactOpen, insightsOpen, inspector, playtestsOpen, reportsOpen, saveDesignNode, saveGameDesignBalance, saveGameDesignBrief, saveGameDesignFlow, setBalanceOpen, setBriefOpen, setDecisionTimelineOpen, setDesignEditId, setDrawingsDashed, setFlowOpen, setHandoffOpen, setImpactCardId, setImpactOpen, setInsightsOpen, setPlaytestsOpen, setReportsOpen, setSnapshotsOpen, snapshots, snapshotsLoading, snapshotsOpen, tidySelection, treeUI, updateEdge }} />
 
