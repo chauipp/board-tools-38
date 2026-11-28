@@ -94,6 +94,7 @@ import TopMenu from "../components/board/TopMenu.jsx";
 import PaletteEditor from "../components/board/PaletteEditor.jsx";
 import EdgeMenu from "../components/board/EdgeMenu.jsx";
 import CommentsPopover from "../components/board/CommentsPopover.jsx";
+import HistoryIsland from "../components/board/HistoryIsland.jsx";
 import BoardCanvas from "../components/board/BoardCanvas.jsx";
 import ZoomControl from "../components/board/ZoomControl.jsx";
 import EditDock from "../components/board/EditDock.jsx";
@@ -1881,21 +1882,7 @@ export default function IdeaMap() {
         onStop={stopFollow}
       />
 
-      {/* ĐẢO HOÀN TÁC — góc dưới trái, đối xứng với nút zoom ở góc dưới phải:
-          cả hai đều là thao tác lên TRẠNG THÁI khung nhìn/bảng chứ không tạo ra
-          nội dung, nên chúng thuộc về đáy màn hình, không phải mặt tiền.
-          Chỗ này trước đây trống hoàn toàn. */}
-      <div className="island bl">
-        <div className="island-row">
-          <button type="button" className="island-btn" data-mutating onClick={undo} disabled={past.length === 0} title={t`Hoàn tác (Ctrl+Z)`}><IconUndo /></button>
-          <button type="button" className="island-btn" data-mutating onClick={redo} disabled={future.length === 0} title={t`Làm lại (Ctrl+Shift+Z)`}><IconRedo /></button>
-          {saveError && (
-            <span style={{ fontSize: 11, color: "var(--danger)", paddingRight: 4 }}>
-              <Trans>Không lưu được lên server.</Trans>
-            </span>
-          )}
-        </div>
-      </div>
+      <HistoryIsland {...{ future, past, redo, saveError, undo }} />
 
       <div
         className={"viewport" + (isPanning ? " panning" : "")}
