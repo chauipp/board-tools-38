@@ -94,6 +94,7 @@ import TopMenu from "../components/board/TopMenu.jsx";
 import PaletteEditor from "../components/board/PaletteEditor.jsx";
 import EdgeMenu from "../components/board/EdgeMenu.jsx";
 import CommentsPopover from "../components/board/CommentsPopover.jsx";
+import ZoomControl from "../components/board/ZoomControl.jsx";
 import EditDock from "../components/board/EditDock.jsx";
 import IoDrawer from "../components/board/IoDrawer.jsx";
 import PresentBar from "../components/board/PresentBar.jsx";
@@ -2234,19 +2235,7 @@ export default function IdeaMap() {
           />
         )}
 
-        <div className="zoom-ctrl">
-          <button onClick={() => zoomButton(1 / 1.2)} title={t`Thu nhỏ`}>−</button>
-          <span className="pct mono">{Math.round(view.scale * 100)}%</span>
-          <button onClick={() => zoomButton(1.2)} title={t`Phóng to`}>+</button>
-          <div className="sep" />
-          <button onClick={fitToView} style={{ width: "auto", padding: "0 8px", fontSize: 11 }}><Trans>Vừa khung</Trans></button>
-          <div className="sep" />
-          <button
-            className={miniOpen ? "on" : undefined}
-            onClick={() => setMiniOpen((v) => !v)}
-            title={miniOpen ? t`Ẩn bản đồ thu nhỏ` : t`Hiện bản đồ thu nhỏ`}
-          ><MiniMapIcon /></button>
-        </div>
+        <ZoomControl {...{ fitToView, miniOpen, setMiniOpen, view, zoomButton }} />
 
         {outlineOpen && (() => {
           const outline = buildOutline(board, frameCardSize);
