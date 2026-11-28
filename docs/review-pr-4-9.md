@@ -71,7 +71,7 @@ Sau khi #5–#8 đã vào `main`, diff của #9 cần đối chiếu lại. Gi�
 | #6 | `61fd73d` | `61fd73d` | Không đổi |
 | #7 | `235d698` | `6f92f20` | +1 commit: hàng đợi lưu (cú xếp hàng và timer qua 409) |
 | #8 | `2d7c509` | `2d7c509` | Không đổi |
-| #9 | `3d197dd` | `e51cc65` | Merge bản sửa #5/#7 qua `refactor/integration-trial`; +3 commit (Vite `fs.allow`, nút Game Flow, cổng 3345); +1 commit ghi phản hồi review vào file này |
+| #9 | `3d197dd` | đầu nhánh `refactor/7.2-docs` (`e51cc65` + các commit chỉ sửa file này) | Merge bản sửa #5/#7 qua `refactor/integration-trial`; +3 commit (Vite `fs.allow`, nút Game Flow, cổng 3345); các commit ghi phản hồi review vào file này |
 
 **Diff cần xem cho từng bản sửa:**
 
