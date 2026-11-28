@@ -44,6 +44,7 @@ import { usePresentation } from "../lib/usePresentation.js";
 import { useGameDesignBoard } from "../lib/useGameDesignBoard.js";
 import { useBoardKeyboard } from "../lib/useBoardKeyboard.js";
 import { useStableHandlers } from "../lib/useStableHandlers.js";
+import { bindAll } from "../lib/bind-all.js";
 import { BoardContext } from "../lib/board-context.js";
 import { useSelectionActions } from "../lib/useSelectionActions.js";
 import { useViewportInput } from "../lib/useViewportInput.js";
@@ -127,7 +128,6 @@ export default function IdeaMap() {
     search, setSearch, searchOpen, toggleSearch, setSearchOpen, focusId, setFocusId, matchIdx,
     passesFilter, focusSet, matches, activeFilterCount, matchCount, goToMatch, clearFilters
   } = filters;
-  filters.bind({ jumpToCard: (id) => jumpToCard(id) });
 
   const { sendCursor, sendSelection, sendEdgeDraft, sendView, sendFollow, socket } = usePresence(user, boardId);
   const inkLive = useInkLive(socket);
@@ -155,11 +155,6 @@ export default function IdeaMap() {
     openPaletteEditor, setBoardBg, setBoardGrid, setBoardPack,
     createPaletteColor, updatePaletteColor, deletePaletteColor, handleColorMouseDown
   } = badges;
-  badges.bind({
-    dropIdsFor: (...a) => dropIdsFor(...a),
-    clientToCanvas: (...a) => clientToCanvas(...a),
-    applyColorToSelection: (...a) => applyColorToSelection(...a)
-  });
   // Ref dùng chung giữa các hook và component của board — lib/useBoardRefs.js.
   const refs = useBoardRefs({
     frameCardSize, selectedIds, editingId, socket
@@ -179,11 +174,6 @@ export default function IdeaMap() {
   const {
     linkMode, setLinkMode, pendingSource, setPendingSource, linkDraft, setLinkDraft, edgeMenu, setEdgeMenu, edgeDrag, setEdgeDrag, toggleLinkMode, handleConnectorMouseDown, handleGroupConnectorMouseDown, handleEdgeEndpointMouseDown, toggleEdge, updateEdge, deleteEdge
   } = edgeUI;
-  edgeUI.bind({
-    createLinkedNode: (...a) => createLinkedNode(...a),
-    enterMode: (...a) => enterMode(...a),
-    entityAtPoint: (...a) => entityAtPoint(...a)
-  });
   // Khung (nhóm): tạo, kéo, co giãn, tiêu đề, màu, khoá — lib/useGroupInteractions.js.
   const groupUI = useGroupInteractions({
     store, board, boardRef, view, frameCardSize, layoutOwners, selectedIds, selectedGroupIds, selectionDragSet, setBoard, recordHistory, saveNow, setSelectedIds, setSelectedEdgeIds, setSelectedGroupIds, setSnapGuides, setColorMenu, spacePanRef
@@ -191,16 +181,6 @@ export default function IdeaMap() {
   const {
     placeDraft, editingGroupTitleId, setEditingGroupTitleId, createGroupAt, startPlaceGroup, groupSelectedCards, handleGroupMouseDown, handleGroupResizeMouseDown, saveGroupTitle, deleteGroup, applyGroupColor, toggleGroupLock
   } = groupUI;
-  groupUI.bind({
-    commitStroke: (...a) => commitStroke(...a),
-    enterMode: (...a) => enterMode(...a),
-    finishGeom: (...a) => finishGeom(...a),
-    publishGeom: (...a) => publishGeom(...a),
-    handleNodeMouseDown: (...a) => handleNodeMouseDown(...a),
-    startLockedTreeSwap: (...a) => startLockedTreeSwap(...a),
-    startPan: (...a) => startPan(...a),
-    toCanvasPoint: (...a) => toCanvasPoint(...a)
-  });
   // Bảng Xếp cây, khoá cây, đổi chỗ nhánh trong cây khoá — lib/useTreeLayout.js.
   const treeLayout = useTreeLayout({
     store, board, boardRef, role, roleRef, workspace, treeUI, setTreeUI, frameCardSize, treeSizeRef, layoutOwners, cardDragClickGuardRef, recordHistory, saveNow, setColorMenu
@@ -215,14 +195,6 @@ export default function IdeaMap() {
   const {
     createNode, placeNodeAt, duplicateNodes, createLinkedNode, createSiblingNode, deleteNode, saveNodeEdit, saveNodeEditAndNext, handleCardClick, handleNodeMouseDown, duplicateSelection, applyNodeColor, toggleNodeLock, applyNodeShape, applyNodeDashed, applyNodeLevel, toggleFavorite, addComment, deleteComment
   } = nodeUI;
-  nodeUI.bind({
-    enterMode: (...a) => enterMode(...a),
-    finishGeom: (...a) => finishGeom(...a),
-    publishGeom: (...a) => publishGeom(...a),
-    startLockedTreeSwap: (...a) => startLockedTreeSwap(...a),
-    startPan: (...a) => startPan(...a),
-    toCanvasPoint: (...a) => toCanvasPoint(...a)
-  });
   // Ảnh và PDF trên thẻ: dán, thả, tải lên, co giãn — lib/useNodeMedia.js.
   const media = useNodeMedia({
     store, board, boardId, boardRef, role, roleRef, view, viewRef, viewportRef, selectedIdsRef, setBoard, setSelectedIds, recordHistory, saveNow, handleGroupResizeMouseDown
@@ -230,10 +202,6 @@ export default function IdeaMap() {
   const {
     imageFitsBoard, applyImageToNode, createImageNode, handleImageDrop, handleViewportImageDrop, uploadPdfFile, handleImageResizeMouseDown, handlePdfResizeMouseDown, removeNodeImage
   } = media;
-  media.bind({
-    finishGeom: (...a) => finishGeom(...a),
-    publishGeom: (...a) => publishGeom(...a)
-  });
   // Trình chiếu theo khung — lib/usePresentation.js.
   const presentation = usePresentation({
     board, view, viewportRef, setBadgeUI, setCaptureOpen, setColorMenu, setCommentsFor, setEdgeMenu, setEditingId, setIoOpen
@@ -241,9 +209,6 @@ export default function IdeaMap() {
   const {
     presentIndex, jumpToGroup, startPresentation, stepPresentation, exitPresentation
   } = presentation;
-  presentation.bind({
-    setCamera: (...a) => setCamera(...a)
-  });
   // Tool chữ: ô nhập, kéo chữ, chốt chữ — lib/useTextTool.js.
   const textUI = useTextTool({
     store, board, boardRef, inkLive, penPrefs, skin, tool, measureCtxRef
@@ -251,11 +216,6 @@ export default function IdeaMap() {
   const {
     textEdit, setTextEdit, textDrag, measureTextWidth, handleTextMouseDown, startTextDrag, beginLiveText, commitText
   } = textUI;
-  textUI.bind({
-    commitStroke: (...a) => commitStroke(...a),
-    eventToCanvas: (...a) => eventToCanvas(...a),
-    movingPayload: (...a) => movingPayload(...a)
-  });
 
   const ink = useInk({
     tool, penPrefs, boardRef, viewRef, viewportRef,
@@ -311,7 +271,6 @@ export default function IdeaMap() {
     liveNodes, liveGroups, nodeById, groupById, edgeRoutes, edgeRoutesRef, statusDefById, tagDefById, paletteStyle, inkDrawings, editShape, miniShapes, movingPayload
   } = derived;
 
-  selection.bind({ viewportRef, viewRef, boardRef, edgeRoutesRef });
   // Board game-design: thẻ GD, brief/flow/balance, dependency, xuất Markdown/JSON — lib/useGameDesignBoard.js.
   const gameDesign = useGameDesignBoard({
     store, board, boardRef, role, view, boardName, frameCardSize, viewportRef, setDesignEditId
@@ -319,9 +278,6 @@ export default function IdeaMap() {
   const {
     dependency, addGameDesignCard, saveDesignNode, createRelatedDesignNode, duplicateDesignNode, saveGameDesignBrief, saveGameDesignFlow, saveGameDesignBalance, exportMarkdown, exportVersionedJson
   } = gameDesign;
-  gameDesign.bind({
-    toCanvasPoint: (...a) => toCanvasPoint(...a)
-  });
 
   // Nét vẽ / hình / chữ: chốt nét, tẩy, chọn, kéo, tay cầm hình, co giãn vùng chọn, nét đứt — lib/useDrawingSelection.js.
   const drawUI = useDrawingSelection({
@@ -330,17 +286,6 @@ export default function IdeaMap() {
   const {
     canGrabShapeHandles, commitStroke, commitErase, swapPenEraser, pickDrawingWhileDrawing, setDrawingsDashed, toggleDrawingDash, dashTargetAt, handleDrawingMouseDown, startDrawingDrag, startSelectionDrag, handleShapeHandleMouseDown, handleSelectionResizeMouseDown, shapeHandleAt, handleInkCaptureMouseDown
   } = drawUI;
-  drawUI.bind({
-    clientToCanvas: (...a) => clientToCanvas(...a),
-    eventToCanvas: (...a) => eventToCanvas(...a),
-    handleViewportMouseDown: (...a) => handleViewportMouseDown(...a),
-    finishGeom: (...a) => finishGeom(...a),
-    publishGeom: (...a) => publishGeom(...a),
-    handleTextMouseDown: (...a) => handleTextMouseDown(...a),
-    movingPayload: (...a) => movingPayload(...a),
-    startPan: (...a) => startPan(...a),
-    startTextDrag: (...a) => startTextDrag(...a)
-  });
   // Thao tác trên cả vùng chọn và menu màu — lib/useSelectionActions.js.
   const selectionUI = useSelectionActions({
     store, board, frameCardSize, layoutOwners, selectedIds, selectedEdgeIds, selectedGroupIds, selectedDrawingIds, clearSelection, chipDrag, colorDrag, dropTargetId, setColorMenu, setCommentsFor, setEdgeMenu, suppressContextMenuRef
@@ -429,12 +374,12 @@ export default function IdeaMap() {
   const {
     nudgeSelection
   } = keyboard;
-  keyboard.bind({
-    armPlace: (...a) => armPlace(...a),
-    deleteSelection: (...a) => deleteSelection(...a),
-    enterMode: (...a) => enterMode(...a),
-    movingPayload: (...a) => movingPayload(...a),
-    zoomToSelection: (...a) => zoomToSelection(...a)
+  // Hàm/ref mà các hook theo miền cần nhưng chỉ có sau khi gọi chúng (lib/bind-all.js).
+  bindAll([filters, badges, edgeUI, groupUI, nodeUI, media, presentation, textUI, selection, gameDesign, drawUI, keyboard], {
+    jumpToCard, dropIdsFor, clientToCanvas, applyColorToSelection, createLinkedNode, enterMode, entityAtPoint, commitStroke,
+    finishGeom, publishGeom, handleNodeMouseDown, startLockedTreeSwap, startPan, toCanvasPoint, setCamera, eventToCanvas,
+    movingPayload, viewportRef, viewRef, boardRef, edgeRoutesRef, handleViewportMouseDown, handleTextMouseDown, startTextDrag,
+    armPlace, deleteSelection, zoomToSelection
   });
 
   if (loadError) {
