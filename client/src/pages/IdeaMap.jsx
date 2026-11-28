@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useWorkspaceState } from "../lib/useWorkspaceState.js";
-import { cameraToCenter, centerToCamera } from "../lib/workspace-state.js";
 import { useParams } from "react-router-dom";
 import { Trans, useLingui } from "@lingui/react/macro";
-import { listBoardSnapshots } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import { useSkin } from "../lib/useSkin.js";
 import { textLines, textBox, TEXT_LINE_H } from "../lib/text-el.js";
@@ -20,7 +18,7 @@ import ToolOptions from "../components/ToolOptions.jsx";
 import { buildOutline } from "../lib/outline.js";
 import { gridLayout } from "../lib/layout.js";
 import { buildTree, edgeKey } from "../lib/tree-layout.js";
-import { normalizeTreeLock, treeLockOwners, arrangeLockedTrees } from "../lib/locked-tree.js";
+import { treeLockOwners } from "../lib/locked-tree.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { usePresence } from "../lib/usePresence.js";
 import { useFollow } from "../lib/useFollow.js";
@@ -30,6 +28,7 @@ import { useWorkspaceInspectors } from "../lib/useWorkspaceInspectors.js";
 import { useBoardUiState } from "../lib/useBoardUiState.js";
 import { useBoardRefs } from "../lib/useBoardRefs.js";
 import { useBoardDerived } from "../lib/useBoardDerived.js";
+import { useBoardSync } from "../lib/useBoardSync.js";
 import { remapId, remapIdSet } from "../lib/rebase.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { startDrag } from "../lib/drag-session.js";
@@ -301,46 +300,6 @@ export default function IdeaMap() {
     return () => ro.disconnect();
   }, [board != null]);
 
-  useLayoutEffect(() => {
-    if (!workspace.ready || !board || !viewportSize.w || !viewportSize.h) return;
-    const previous = workspaceCameraRef.current;
-    if (previous?.controller === workspace.controller && previous.hydration === workspace.hydration && previous.w === viewportSize.w && previous.h === viewportSize.h) return;
-    const camera = previous?.controller === workspace.controller && previous.hydration === workspace.hydration
-      ? cameraToCenter(viewRef.current, previous)
-      : workspace.state.camera;
-    const view = camera ? centerToCamera(camera, viewportSize) : { panX: 0, panY: 0, scale: 1 };
-    workspaceCameraRef.current = { controller: workspace.controller, hydration: workspace.hydration, ...viewportSize, applying: view };
-    setView(view);
-  }, [workspace.ready, workspace.hydration, workspace.controller, viewportSize, board != null]);
-
-  useEffect(() => {
-    const applied = workspaceCameraRef.current;
-    if (!workspace.ready || !board || applied?.controller !== workspace.controller) return;
-    if (applied.applying) {
-      if (applied.applying === view) applied.applying = null;
-      return;
-    }
-    workspace.update({ camera: cameraToCenter(view, viewportSize) });
-  }, [view, board != null, workspace.ready, workspace.controller, viewportSize]);
-
-  useEffect(() => {
-    if (!workspace.ready || !board || !inspector) return;
-    const valid = inspector.type === "tree"
-      ? (inspector.kind === "group" ? board.groups : board.nodes).some((item) => item.id === inspector.id)
-      : inspector.type === "design" ? board.kind === "game-design" && board.nodes.some((item) => item.id === inspector.id)
-      : inspector.type === "snapshots" || board.kind === "game-design";
-    if (!valid) workspace.update({ inspector: null });
-  }, [workspace.ready, workspace.controller, inspector, board?.nodes, board?.groups, board?.kind]);
-
-  useEffect(() => {
-    if (!snapshotsOpen) return;
-    let cancelled = false;
-    setSnapshotsLoading(true);
-    listBoardSnapshots(boardId).then((result) => { if (!cancelled) setSnapshots(result.snapshots || []); })
-      .catch(() => { if (!cancelled) setSaveError(true); }).finally(() => { if (!cancelled) setSnapshotsLoading(false); });
-    return () => { cancelled = true; };
-  }, [snapshotsOpen, boardId]);
-
   useEffect(() => { sendSelection(Array.from(selectedIds)); }, [selectedIds, sendSelection]);
   useEffect(() => {
     const draft = linkDraft
@@ -372,6 +331,10 @@ export default function IdeaMap() {
   const {
     setCamera, zoomButton, goToPoint, fitToView, zoomToNodes, zoomToSelection, jumpToCard, jumpToPeer, startPan, clientToCanvas, toCanvasPoint, eventToCanvas
   } = cameraUI;
+  // Đồng bộ board ↔ trạng thái làm việc riêng (camera, inspector), tải snapshot, nhảy tới ?card=, xếp lại cây khoá — lib/useBoardSync.js.
+  useBoardSync({
+    store, board, boardId, boardRef, roleRef, workspace, inspector, view, viewRef, setView, viewportSize, frameCardSize, saveNow, setSaveError, setSelectedIds, setFlashId, setSnapshots, setSnapshotsLoading, snapshotsOpen, pendingJumpRef, workspaceCameraRef, zoomToNodes
+  });
 
   // Chỉ phát camera khi THỰC SỰ có người đang xem. Ghim là tính năng dùng theo
   // đợt (lúc họp), nên mặc định phải là im lặng tuyệt đối: không ai ghim thì
@@ -536,16 +499,6 @@ export default function IdeaMap() {
   }, [board?.kind]);
 
   useEffect(() => {
-    if (!workspace.ready || !board || pendingJumpRef.current == null) return;
-    const id = pendingJumpRef.current;
-    pendingJumpRef.current = null;
-    setSelectedIds(new Set([id]));
-    setFlashId(id);
-    zoomToNodes([id]);
-    setTimeout(() => setFlashId(null), 1600);
-  }, [board != null, workspace.ready]);
-
-  useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
     function wheelHandler(e) {
@@ -610,14 +563,6 @@ export default function IdeaMap() {
     setSnapshots((current) => [snapshot, ...current].slice(0, 30));
   }
 
-  useEffect(() => {
-    const current = boardRef.current;
-    if (!current || roleRef.current === "viewer") return;
-    const next = arrangeLockedTrees(current, frameCardSize);
-    if (next === current) return;
-    store.preview(next);
-    saveNow(next);
-  }, [frameCardSize]);
   // Phím tắt toàn cục và nhích bằng phím mũi tên — lib/useBoardKeyboard.js.
   const keyboard = useBoardKeyboard({
     store, board, boardRef, role, view, mode, tool, setTool, placeTool, setPlaceTool, past, future, undo, redo, saveNow, saveDebounced, flushNudgeBurst, nudgeTimerRef, setBoard, inkLive, laser, editingId, selectedIds, selectedEdgeIds, selectedGroupIds, selectedDrawingIds, selectionDragSet, clearSelection, linkMode, setLinkMode, setPendingSource, toggleLinkMode, colorMenu, setColorMenu, badgeUI, setBadgeUI, edgeMenu, setEdgeMenu, commentsFor, setCommentsFor, focusId, setFocusId, searchOpen, setSearchOpen, searchInputRef, setCardLevelPref, presentIndex, stepPresentation, exitPresentation, createLinkedNode, createSiblingNode, duplicateSelection, publishGeom, finishGeom
