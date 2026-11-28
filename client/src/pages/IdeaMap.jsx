@@ -94,6 +94,7 @@ import TopMenu from "../components/board/TopMenu.jsx";
 import PaletteEditor from "../components/board/PaletteEditor.jsx";
 import EdgeMenu from "../components/board/EdgeMenu.jsx";
 import CommentsPopover from "../components/board/CommentsPopover.jsx";
+import CaptureOverlay from "../components/board/CaptureOverlay.jsx";
 import "../styles/idea-map.css";
 
 export default function IdeaMap() {
@@ -2626,31 +2627,7 @@ export default function IdeaMap() {
           />
         );
       })()}
-      {captureOpen && (
-        <div className="capture-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setCaptureOpen(false); }}>
-          <div
-            className="capture-modal"
-            onKeyDown={(e) => {
-              if (e.key === "Escape") { e.stopPropagation(); setCaptureOpen(false); }
-            }}
-          >
-            <div className="cm-note"><Trans>Mỗi dòng một ý tưởng — xác nhận để tạo hàng loạt thẻ.</Trans></div>
-            <textarea
-              autoFocus
-              value={captureText}
-              onChange={(e) => setCaptureText(e.target.value)}
-              onKeyDown={(e) => {
-                if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); confirmCapture(); }
-              }}
-              placeholder={t`Ý tưởng 1\nÝ tưởng 2\n…`}
-            />
-            <div className="cm-actions">
-              <button className="btn small" onClick={confirmCapture}><Trans>Tạo thẻ</Trans></button>
-              <button className="btn ghost small" onClick={() => setCaptureOpen(false)}><Trans>Hủy</Trans></button>
-            </div>
-          </div>
-        </div>
-      )}
+      <CaptureOverlay {...{ captureOpen, captureText, confirmCapture, setCaptureOpen, setCaptureText }} />
 
       {inviteOpen && role === "owner" && (
         <InviteModal boardId={boardId} onClose={() => setInviteOpen(false)} />
