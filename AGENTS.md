@@ -28,7 +28,7 @@ npm test
 npm run dev
 ```
 
-To run one smoke scenario after a smoke build: `SMOKE_ONLY=<name> node smoke-run.mjs` in `client/` (names: `source-checks`, `board`, `game-design-panels`, `tree-panel`, `workspace`).
+To run one smoke scenario after a smoke build: `SMOKE_ONLY=<name> node smoke-run.mjs` in `client/` (names: `source-checks`, `board`, `concurrent-nudge`, `game-design-panels`, `tree-panel`, `workspace`).
 
 The normal development ports are client `7155` and server `3345`.
 

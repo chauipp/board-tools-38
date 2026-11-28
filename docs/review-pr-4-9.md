@@ -114,3 +114,67 @@ Phép dò `fs.allow` được chạy bằng script tạm ngoài repo, không com
 | P2 | #5 · `server/routes/board-snapshots.js:74` | Bản sửa chuẩn hóa bộ đếm khi GET và khi tạo snapshot mới. Restore snapshot cũ lại dùng `pickBoardContent(normalized)`, ghi, broadcast và trả nguyên bộ đếm 9. Người dùng thêm trạng thái ngay sau restore vẫn có thể cấp trùng ID 9. Chuẩn hóa trước khi ghi restore. Test snapshot cũ qua route restore, kiểm tra phản hồi, broadcast và bản lưu đều trả 10. Phát hiện qua đọc code. |
 
 Bản sửa giới hạn Game Flow, phạm vi file Vite và cổng mặc định phù hợp với review trước. Đã kiểm trực tiếp đăng nhập và presence qua proxy Vite ở cổng 7155 với backend 3345. `npm run verify` trên cây tích hợp đạt 802 test client, cả 5 kịch bản smoke và 213 test server, lint có 36 warning. Các test queue hiện có bao phủ riêng thao tác chờ và thao tác debounce, nhưng chưa bao phủ tình huống đồng thời ở trên.
+
+---
+
+## Phản hồi vòng 2 của người làm PR (Claude, 2026-11-28)
+
+**Cả 4 phát hiện đều đúng, đã sửa.** Ngoài ra tôi tìm được nguyên nhân của ca end-to-end mà review chưa quy kết (A lùi về x=0, B giữ y=10). Nó là **lỗi thứ năm**, nằm ở client, và bản sửa server một mình không chặn được.
+
+### Nguyên nhân của ca end-to-end
+
+Khi gói `board:update` của người kia về trong lúc một cú nhích của mình còn đang hẹn giờ (debounce 500 ms):
+
+1. `useLiveSync` dời mốc (`lastUpdatedAtRef`) lên mốc mới và thay board trên màn hình bằng bản vừa nhận.
+2. Board nằm trong timer vẫn là bản **cũ**, chụp lúc nhích, chưa có thay đổi của người kia.
+3. Timer nổ, gửi bản cũ kèm **mốc mới**. Mốc khớp thật nên server chấp nhận, và thay đổi của người kia bị xoá.
+
+Khớp với quan sát: owner lưu A=10 trước; editor nhận gói đó giữa lúc debounce rồi gửi bản (A=0, B=10) với mốc mới. Chốt nguyên tử phía server không cứu được ca này vì không có va chạm mốc nào.
+
+Tôi tái hiện ca này qua IdeaMap thật bằng kịch bản smoke mới `concurrent-nudge`: trên code cũ nó **đỏ**, sau bản sửa nó **xanh**. Tôi **chưa** chạy lại ca này với hai tài khoản trên backend thật (cần đăng nhập hai tài khoản); nhờ reviewer lặp lại đúng thao tác ở vòng trước.
+
+### Từng phát hiện
+
+| Phát hiện | Kết luận | Đã sửa (nhánh · commit) | Kiểm chứng |
+|---|---|---|---|
+| P1 #5 · kiểm mốc rồi ghi ở hai lệnh | **Đúng.** | `refactor/1.4-split-board-payload` · `f45cec9`. PUT ghi bằng `findOneAndUpdate({ _id, updatedAt: <mốc đã đọc> })`: điều kiện phiên bản nằm ngay trong lệnh cập nhật. Không khớp thì trả 409 kèm board mới (hoặc 404 nếu board đã bị xoá). Mốc mới lấy từ `nextUpdatedAt()`, luôn lớn hơn mốc cũ, kể cả hai lần ghi trong cùng một mili-giây. PUT không khai mốc (nhập JSON, đường dự phòng ghi đè của client) vẫn ghi vô điều kiện như trước. | Test với model giả có trạng thái, cả hai request cùng đọc thấy một phiên bản: đúng một 200, một 409 mang board của bên thắng, một lần ghi, một lần broadcast. Thêm test mốc luôn tăng và test PUT không mốc. |
+| P1 #7 · ánh xạ ID qua các bản chờ | **Đúng.** | `refactor/2.9-cleanup` · `601545e`. Mỗi bản chờ giờ đi kèm **bản nền của chính nó**. Sau 409, bản chờ được đắp lại `nền → bản chờ` thẳng lên bản server (không còn đắp `A → B` lên bản đã ghép), nên `rebaseBoard` cấp cho nó cùng id mới và viết lại tham chiếu. `rebaseBoardDetailed` trả thêm bản đồ đổi id; store dùng nó để dời `editingId` và vùng chọn sang id mới, và không chép "thẻ đang gõ dở" đè lên id cũ khi thẻ đó vừa bị đổi id. | Test đúng kịch bản review với `rebaseBoard` thật: thẻ remote số 1 nguyên vẹn, thẻ local mang tên B dưới id mới, không nhân đôi. Test `remapId`/`remapIdSet`. |
+| P1 #7 · rút B khỏi hàng đợi huỷ timer của C | **Đúng.** Bản sửa vòng 1 của tôi chỉ chặn vòng retry, bỏ sót đường `settleSave`. | Cùng commit `601545e`. Tách hai việc: `saveNow()` công khai (thao tác mới của người dùng) mới huỷ timer; rút bản chờ ra gửi (`start`) thì không. | Test A đang gửi + B chờ + C debounce, cho **cả hai** trường hợp review yêu cầu (lưu thành công ngay, và có 409): timer của C còn, PUT cuối mang C, thẻ remote vẫn còn. |
+| P2 #5 · restore snapshot cũ giữ bộ đếm 9 | **Đúng.** | `refactor/1.4-split-board-payload` · `f45cec9`. Restore chuẩn hoá `nextStatusId` bằng `safeNextStatusId` **trước khi ghi**, và cũng dùng `nextUpdatedAt()`. | Test snapshot cũ (9 trạng thái, bộ đếm 9) qua route restore: bản ghi, gói broadcast và phản hồi đều là 10; id trạng thái và `statusId` trên thẻ giữ nguyên. |
+| (mới) #7 · `board:update` về trong lúc debounce | Tôi tự tìm ra khi truy ca end-to-end. | Cùng commit `601545e`. Hàng đợi có `rebaseQueued(server)`; store gọi nó khi áp `board:update`, trước khi dời nền. Bản chờ được đắp lại lên bản vừa nhận, và màn hình hiện bản đó (cú nhích chưa lưu không biến mất). Thêm chốt: phản hồi của một PUT cũ về sau một `board:update` mới hơn không được lùi mốc/bản nền. | Test đơn vị + kịch bản smoke `concurrent-nudge` (đỏ trên code cũ). |
+
+### Thay đổi kèm theo, ngoài yêu cầu
+
+- `discardQueued()`: khi khôi phục snapshot, các bản đang chờ lưu bị bỏ. Chúng dựng trên board cũ; nếu gửi sau restore sẽ đè mất bản vừa khôi phục.
+- README và AGENTS.md thêm kịch bản `concurrent-nudge` vào danh sách.
+
+### Giới hạn còn lại, xin reviewer soi
+
+- **Hai người sửa cùng một phần tử:** bản chờ được đắp lại theo kiểu "ai đổi thì người đó thắng" trên từng phần tử (luật sẵn có của `rebaseBoard`). Nếu cả hai cùng dời đúng một thẻ thì người lưu sau thắng trên thẻ đó. Đây là luật cũ, tôi không đổi.
+- **Thao tác đang kéo chuột dở** không nằm trong hàng đợi. Các handler kéo đọc `boardRef` mới nhất ở mỗi nhịp, nên vẫn như trước.
+- **Chưa kiểm với backend thật:** chốt nguyên tử chỉ được test với model giả mô phỏng ngữ nghĩa bộ lọc của MongoDB. Ca hai tài khoản trên trình duyệt cũng chưa chạy lại.
+
+### Head và lệnh tái hiện
+
+| PR | Head vòng trước | Head mới |
+|---|---|---|
+| #5 | `d347bec` | `f45cec9` |
+| #7 | `6f92f20` | `601545e` |
+| #9 | đầu `refactor/7.2-docs` lúc đó | đầu `refactor/7.2-docs` hiện tại: merge hai bản sửa trên qua `refactor/integration-trial`, cộng cập nhật README/AGENTS và file này |
+| #4, #6, #8 | không đổi | không đổi |
+
+```bash
+# #5 — PUT đồng thời, mốc tăng, restore snapshot cũ
+cd server && node --test board-fields.test.js
+
+# #7 — hàng đợi lưu (17 test) và rebase
+cd client && node --test src/lib/save-queue.test.js src/lib/rebase.test.js
+
+# #7 — ca end-to-end qua IdeaMap thật (jsdom, API và socket giả)
+cd client && npx vite build -c smoke.vite.config.js && SMOKE_ONLY=concurrent-nudge node smoke-run.mjs
+
+# Toàn bộ, trên refactor/7.2-docs
+npm run verify
+```
+
+**Kết quả sau khi sửa:** trên `refactor/7.2-docs`, `npm run verify` pass: lint 0 lỗi / 36 cảnh báo, client 807 test, build, 6 kịch bản smoke, server 217 test. Nhánh #7 riêng: client 778 test, build, smoke pass. Nhánh #5 riêng: `npm run verify` pass, server 216 test.

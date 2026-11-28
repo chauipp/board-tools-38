@@ -67,7 +67,7 @@ cd client
 $env:SMOKE_ONLY="tree-panel"; node smoke-run.mjs
 ```
 
-Scenarios: `source-checks`, `board`, `game-design-panels`, `tree-panel`, `workspace`. Add a new one as `client/src/__smoke__/scenarios/<name>.jsx` exporting `async function run(log)`, then register it in `client/src/__smoke__/entry.jsx` and in `SCENARIOS` in `client/smoke-run.mjs`.
+Scenarios: `source-checks`, `board`, `concurrent-nudge`, `game-design-panels`, `tree-panel`, `workspace`. Add a new one as `client/src/__smoke__/scenarios/<name>.jsx` exporting `async function run(log)`, then register it in `client/src/__smoke__/entry.jsx` and in `SCENARIOS` in `client/smoke-run.mjs`.
 
 ## Code map
 
