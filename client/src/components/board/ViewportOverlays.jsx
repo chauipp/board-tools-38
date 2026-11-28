@@ -3,11 +3,15 @@ import ToolRail from "../ToolRail.jsx";
 import ToolOptions from "../ToolOptions.jsx";
 import { penVar } from "../../lib/pen.js";
 import { useInk } from "../../lib/useInk.js";
+import { useBoard } from "../../lib/board-context.js";
 
 // Mọi thứ nằm trên khung nhìn nhưng ngoài .canvas: thanh công cụ trái và khu 4,
 // lớp bắt chuột của mode vẽ/laser/Đặt, vòng báo giữ tay, ô nhập chữ. Trước là
 // một khối JSX trong IdeaMap.jsx; cây DOM và class giữ nguyên.
-export default function ViewportOverlays({ addGameDesignCard, armPlace, board, camera, cardLevelPref, commitText, enterMode, eraseCursor, gameDesign, handleInkCaptureMouseDown, handleLaserMouseDown, handleLaserMouseMove, handleLaserMouseUp, handlePlaceCaptureMouseDown, ink, inkLive, laser, laserPrefs, linkMode, measureTextWidth, mode, penPrefs, placeTool, role, setCaptureOpen, setCardLevelPref, setLaserPrefs, setPenPrefs, setTextEdit, setTool, textEdit, toggleLinkMode, tool, view }) {
+export default function ViewportOverlays({ addGameDesignCard, armPlace, cardLevelPref, commitText, enterMode, eraseCursor, gameDesign, handleInkCaptureMouseDown, handleLaserMouseDown, handleLaserMouseMove, handleLaserMouseUp, handlePlaceCaptureMouseDown, ink, inkLive, laser, laserPrefs, linkMode, measureTextWidth, mode, penPrefs, placeTool, setCaptureOpen, setCardLevelPref, setLaserPrefs, setPenPrefs, setTextEdit, setTool, textEdit, toggleLinkMode, tool }) {
+  const { store, selection, camera } = useBoard();
+  const { board, role } = store;
+  const { view } = camera;
   return (
     <>
       <ToolRail
