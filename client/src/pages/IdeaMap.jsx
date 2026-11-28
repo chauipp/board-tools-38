@@ -6,14 +6,10 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { listBoardSnapshots } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import { useSkin } from "../lib/useSkin.js";
-import { drawingBox, shapeHandles } from "../lib/shape.js";
 import { textLines, textBox, TEXT_LINE_H } from "../lib/text-el.js";
-import { colorVar, statusById } from "../lib/badges.js";
-import { paletteCss } from "../lib/palette.js";
 import { isBoardBg, isBoardGrid, isColorPack } from "../lib/board-theme.js";
 import TreePanel from "../components/TreePanel.jsx";
 import MiniMap from "../components/MiniMap.jsx";
-import { rectsOf } from "../lib/minimap.js";
 import LoadError from "../components/LoadError.jsx";
 import InviteModal from "../components/InviteModal.jsx";
 import ColorMenu from "../components/ColorMenu.jsx";
@@ -21,7 +17,6 @@ import FrameBox from "../components/FrameBox.jsx";
 import IdeaCard from "../components/IdeaCard.jsx";
 import ToolRail from "../components/ToolRail.jsx";
 import ToolOptions from "../components/ToolOptions.jsx";
-import { buildEdgeRoutes } from "../lib/edge-routing.js";
 import { buildOutline } from "../lib/outline.js";
 import { gridLayout } from "../lib/layout.js";
 import { buildTree, edgeKey } from "../lib/tree-layout.js";
@@ -29,11 +24,12 @@ import { normalizeTreeLock, treeLockOwners, arrangeLockedTrees } from "../lib/lo
 import { useAuth } from "../context/AuthContext.jsx";
 import { usePresence } from "../lib/usePresence.js";
 import { useFollow } from "../lib/useFollow.js";
-import { useLiveSync, applyGeomOverlay } from "../lib/useLiveSync.js";
+import { useLiveSync } from "../lib/useLiveSync.js";
 import { useBoardStore } from "../lib/useBoardStore.js";
 import { useWorkspaceInspectors } from "../lib/useWorkspaceInspectors.js";
 import { useBoardUiState } from "../lib/useBoardUiState.js";
 import { useBoardRefs } from "../lib/useBoardRefs.js";
+import { useBoardDerived } from "../lib/useBoardDerived.js";
 import { remapId, remapIdSet } from "../lib/rebase.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { startDrag } from "../lib/drag-session.js";
@@ -61,7 +57,6 @@ import { ERASE_PART } from "../lib/erase.js";
 import InkLayer from "../components/InkLayer.jsx";
 import { useInk } from "../lib/useInk.js";
 import { useInkLive } from "../lib/useInkLive.js";
-import { applyInkMoves } from "../lib/ink-live.js";
 import { useLaser } from "../lib/useLaser.js";
 import { CARD_W, SEL_GRAB_PAD, PICK_RADIUS, MIN_SCALE, PANEL_KEYS, TREE_OPTS, EMPTY_ARRAY, EMPTY_MAP, EMPTY_SET, MAX_SCALE } from "../lib/board-constants.js";
 import { useCamera } from "../lib/useCamera.js";
@@ -395,39 +390,15 @@ export default function IdeaMap() {
 
   const { geomOverlay, textOverlay, sendLiveText, publishGeom, finishGeom } =
     useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, applyRemoteBoard);
+  // Giá trị dẫn xuất từ board để vẽ (vị trí tạm của người khác, tra cứu theo id, đường dây, nét vẽ, minimap) — lib/useBoardDerived.js.
+  const derived = useBoardDerived({
+    board, frameCardSize, geomOverlay, inkLive, textDrag, selectedIds, selectedGroupIds, selectedDrawingIds
+  });
+  const {
+    liveNodes, liveGroups, nodeById, groupById, edgeRoutes, edgeRoutesRef, statusDefById, tagDefById, paletteStyle, inkDrawings, editShape, miniShapes, movingPayload
+  } = derived;
 
-  // Toạ độ dùng để VẼ: board thật + vị trí tạm của người khác đang kéo. Mọi thứ
-  // hiển thị (thẻ, khung, dây, tay cầm dây) phải đọc từ đây, còn handler tương
-  // tác vẫn đọc `board` gốc — nếu không, phép tính kéo sẽ lấy vị trí tạm của
-  // người khác làm mốc.
-  const liveNodes = useMemo(
-    () => (board ? applyGeomOverlay(board.nodes, geomOverlay, "node:") : EMPTY_ARRAY),
-    [board?.nodes, geomOverlay]
-  );
-  const liveGroups = useMemo(
-    () => (board ? applyGeomOverlay(board.groups, geomOverlay, "group:") : EMPTY_ARRAY),
-    [board?.groups, geomOverlay]
-  );
-  // Chỉ mục tra cứu O(1) cho lớp dây và lớp peer. Trước đây mỗi đầu dây quét
-  // lại cả mảng thẻ ở mỗi lần render: bảng 150 cạnh × 100 thẻ là 30.000 phép so
-  // sánh cho một khung hình, nhân với 60 khung hình mỗi giây lúc kéo.
-  const nodeById = useMemo(() => new Map(liveNodes.map((n) => [n.id, n])), [liveNodes]);
-  const groupById = useMemo(() => new Map(liveGroups.map((g) => [g.id, g])), [liveGroups]);
-  const edgeRoutes = useMemo(
-    () => buildEdgeRoutes(board?.edges || EMPTY_ARRAY, nodeById, groupById, frameCardSize),
-    [board?.edges, nodeById, groupById, frameCardSize]
-  );
-  const edgeRoutesRef = useRef(edgeRoutes);
   selection.bind({ viewportRef, viewRef, boardRef, edgeRoutesRef });
-  edgeRoutesRef.current = edgeRoutes;
-  const statusDefById = useMemo(
-    () => (board ? new Map(board.statuses.map((s) => [s.id, s])) : EMPTY_MAP),
-    [board?.statuses]
-  );
-  const tagDefById = useMemo(
-    () => (board ? new Map(board.tags.map((tg) => [tg.id, tg])) : EMPTY_MAP),
-    [board?.tags]
-  );
   // Board game-design: thẻ GD, brief/flow/balance, dependency, xuất Markdown/JSON — lib/useGameDesignBoard.js.
   const gameDesign = useGameDesignBoard({
     store, board, boardRef, role, view, boardName, frameCardSize, viewportRef, setDesignEditId
@@ -438,54 +409,7 @@ export default function IdeaMap() {
   gameDesign.bind({
     toCanvasPoint: (...a) => toCanvasPoint(...a)
   });
-  const paletteStyle = useMemo(() => paletteCss(board?.palette ?? EMPTY_ARRAY), [board?.palette]);
 
-  const inkDrawings = useMemo(() => {
-    const list = board?.drawings ?? EMPTY_ARRAY;
-    const dragged = !textDrag
-      ? list
-      : list.map((d) => (d.id === textDrag.id ? { ...d, pts: [textDrag.x, textDrag.y] } : d));
-    // Nét người KHÁC đang dời / co giãn / sửa hình. Đắp ở đây chứ không trong
-    // InkLayer, để đối xứng với liveNodes/liveGroups: mọi thứ hiển thị đọc từ
-    // bản đã đắp overlay, còn handler tương tác vẫn đọc `board` gốc.
-    return applyInkMoves(dragged, inkLive.liveStrokes);
-  }, [board?.drawings, textDrag, inkLive.liveStrokes]);
-
-  // Trạng thái HIỆN TẠI của các nét đang bị thao tác, dạng gói live. Chỉ mang
-  // phần hình học — kiểu dáng thì người nhận đã có trong board của họ.
-  function movingPayload(b, ids) {
-    const out = [];
-    for (const d of b?.drawings || []) {
-      if (!ids.has(d.id)) continue;
-      const m = { id: d.id, pts: d.pts };
-      // kind chỉ đổi khi kéo tay cầm một góc; gửi luôn cho mọi nét thì gói to ra
-      // vô ích, nên chỉ gửi khi nó thật sự khác bản người nhận đang có... mà
-      // "bản người nhận đang có" thì mình không biết. Gửi cho hình khối là đủ:
-      // nét bút và chữ không bao giờ đổi kind.
-      if (d.kind && d.kind !== "pen" && d.kind !== "text") m.kind = d.kind;
-      if (d.kind === "text") {
-        if (Number.isFinite(d.size)) m.size = d.size;
-        if (Number.isFinite(d.w)) m.w = d.w;
-        if (Number.isFinite(d.h)) m.h = d.h;
-      }
-      out.push(m);
-    }
-    return out;
-  }
-
-  // Hình đang được sửa từng góc/cạnh: chọn ĐÚNG MỘT hình khối, không kèm thẻ hay
-  // khung nào. Chỉ một hình mới có tay cầm — chọn hai hình thì tay cầm của chúng
-  // chen vào nhau và không ai biết cái nào của cái nào; ở đó việc cần làm là kéo
-  // cả cụm, mà hộp bao vùng chọn đã lo (xem selBounds).
-  const editShape = useMemo(() => {
-    if (!board || selectedDrawingIds.size !== 1) return null;
-    if (selectedIds.size || selectedGroupIds.size) return null;
-    const id = Array.from(selectedDrawingIds)[0];
-    const d = (board.drawings || []).find((x) => x.id === id);
-    if (!d) return null;
-    const handles = shapeHandles(d);
-    return handles.length ? { d, handles } : null;
-  }, [board?.drawings, selectedDrawingIds, selectedIds, selectedGroupIds]);
   // Nét vẽ / hình / chữ: chốt nét, tẩy, chọn, kéo, tay cầm hình, co giãn vùng chọn, nét đứt — lib/useDrawingSelection.js.
   const drawUI = useDrawingSelection({
     store, board, boardRef, role, mode, tool, setTool, ink, inkLive, editShape, layoutOwners, selBounds, selectionSet, selectedIds, selectedGroupIds, selectedDrawingIds, selectionDragSet, clearSelection, setSelectedIds, setSelectedEdgeIds, setSelectedGroupIds, setSelectedDrawingIds, setBoard, recordHistory, saveNow, spacePanRef, view, applyImageToNode
@@ -518,13 +442,6 @@ export default function IdeaMap() {
   const {
     handlePresenceMouseMove, entityAtPoint, armPlace, handlePlaceCaptureMouseDown, enterMode, isBoardBackground, handleViewportMouseDownCapture, handleViewportClickCapture, handlePageContextMenu, handleViewportMouseDown, handleLaserMouseDown, handleLaserMouseMove, handleLaserMouseUp
   } = viewportInput;
-
-  // Hình khối cho minimap. Tính lại khi NỘI DUNG đổi, không phải khi camera đổi:
-  // lia bảng là chuyện xảy ra liên tục, mà lia thì mấy cái hộp này không hề khác.
-  const miniShapes = useMemo(
-    () => (board ? rectsOf(board, CARD_W, drawingBox) : null),
-    [board?.nodes, board?.groups, board?.drawings]
-  );
 
   // Nền và bộ màu là DỮ LIỆU BOARD, nhưng thuộc tính lại đặt trên <html> — cùng
   // chỗ với data-theme (thiết lập của người dùng). Hai lý do: chip nhãn/trạng
