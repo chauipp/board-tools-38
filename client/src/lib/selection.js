@@ -1,3 +1,7 @@
+import { nodesInFrame } from "./board-geometry.js";
+import { treeLockOwners } from "./locked-tree.js";
+import { edgeKey } from "./tree-layout.js";
+
 // Bôi đen chọn (marquee) tính lại tập thẻ/dây trúng khung ở mỗi nhịp chuột.
 // Nếu lần nào cũng dựng một Set mới thì React coi lựa chọn là "đã đổi" và mọi
 // effect bám theo nó đều nổ oan: ghi lại URL, phát selection lên socket, tô lại
@@ -25,4 +29,24 @@ export function unionIdSet(prev, base, ids) {
   const merged = new Set(base);
   for (const id of ids) merged.add(id);
   return replaceIdSet(prev, Array.from(merged));
+}
+
+/**
+ * Những gì một cú kéo trong vùng chọn mang theo: các khung đang chọn, các thẻ
+ * đang chọn, CỘNG mọi thẻ nằm trong những khung đó — kéo khung mà bỏ ruột lại
+ * là hỏng ý nghĩa của cái khung. Thẻ/khung đang khoá bị loại ngay ở đây, nên
+ * mọi phần sau của cú kéo không phải nghĩ tới `locked` nữa.
+ */
+export function selectionDragSet(base, groupIds, nodeIds, frameCardSize) {
+  const owners = treeLockOwners(base, frameCardSize);
+  const groups = base.groups.filter((g) => groupIds.has(g.id) && !g.locked && !owners.has(edgeKey("group", g.id)));
+  const nodeSet = new Set();
+  base.nodes.forEach((n) => { if (nodeIds.has(n.id) && !n.locked && !owners.has(edgeKey("node", n.id))) nodeSet.add(n.id); });
+  const lockedById = new Map(base.nodes.map((n) => [n.id, !!n.locked || owners.has(edgeKey("node", n.id))]));
+  groups.forEach((g) => {
+    nodesInFrame(base.nodes, g, frameCardSize).forEach((id) => {
+      if (!lockedById.get(id)) nodeSet.add(id);
+    });
+  });
+  return { groupIds: groups.map((g) => g.id), nodeIds: Array.from(nodeSet) };
 }

@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { pointInRect, nodesInFrame, edgeEndpoint, edgesMatch } from "./board-geometry.js";
-import { clipToRect, rectForEndpoint, segmentIntersectsRect } from "./board-geometry.js";
+import { clipToRect, rectForEndpoint, segmentIntersectsRect, rectsOverlap } from "./board-geometry.js";
 
 test("pointInRect: điểm trong và ngoài hình chữ nhật, biên tính là trong", () => {
   const rect = { x: 0, y: 0, w: 100, h: 50 };
@@ -114,4 +114,10 @@ test("edgeEndpoint nhận Map và cho cùng kết quả như khi nhận mảng",
     edgeEndpoint("node", 1, new Map(arr.map((n) => [n.id, n])), new Map(), sizeOf),
     edgeEndpoint("node", 1, arr, [], sizeOf)
   );
+});
+
+test("rectsOverlap: chồng lên nhau thì chạm, chỉ chạm mép thì không", () => {
+  assert.equal(rectsOverlap(0, 0, 10, 10, 5, 5, 10, 10), true);
+  assert.equal(rectsOverlap(0, 0, 10, 10, 10, 0, 10, 10), false);
+  assert.equal(rectsOverlap(0, 0, 10, 10, 20, 20, 5, 5), false);
 });
