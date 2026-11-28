@@ -27,6 +27,7 @@ import { usePresenceSync } from "../lib/usePresenceSync.js";
 import { useViewportGestures } from "../lib/useViewportGestures.js";
 import { useEdgeLayerHandlers } from "../lib/useEdgeLayerHandlers.js";
 import { useBoardImportExport } from "../lib/useBoardImportExport.js";
+import { useBoardItemHandlers } from "../lib/useBoardItemHandlers.js";
 import { remapId, remapIdSet } from "../lib/rebase.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { useBoardSelection } from "../lib/useBoardSelection.js";
@@ -42,7 +43,6 @@ import { useTreeLayout } from "../lib/useTreeLayout.js";
 import { usePresentation } from "../lib/usePresentation.js";
 import { useGameDesignBoard } from "../lib/useGameDesignBoard.js";
 import { useBoardKeyboard } from "../lib/useBoardKeyboard.js";
-import { useStableHandlers } from "../lib/useStableHandlers.js";
 import { bindAll } from "../lib/bind-all.js";
 import { eraseCursorFor } from "../lib/erase-cursor.js";
 import { BoardContext } from "../lib/board-context.js";
@@ -190,8 +190,6 @@ export default function IdeaMap() {
     textEdit, setTextEdit, textDrag, measureTextWidth, handleTextMouseDown, startTextDrag, beginLiveText, commitText
   } = textUI;
 
-
-
   // Điều khiển camera: zoom, vừa khung, nhảy tới thẻ/người, lia, đổi toạ độ — lib/useCameraControls.js.
   const cameraUI = useCameraControls({
     store, board, boardRef, camera, view, setView, viewRef, viewportRef, frameCardSize, saveNow, selectedIds, setSelectedIds, setBoard, setFlashId, setIsPanning, setSpotlightPeerId, suppressContextMenuRef, undo, socket, sendFollow, viewportSize
@@ -252,38 +250,14 @@ export default function IdeaMap() {
   const {
     handlePresenceMouseMove, entityAtPoint, armPlace, handlePlaceCaptureMouseDown, enterMode, isBoardBackground, handleViewportMouseDownCapture, handleViewportClickCapture, handlePageContextMenu, handleViewportMouseDown, handleLaserMouseDown, handleLaserMouseMove, handleLaserMouseUp
   } = viewportInput;
+  // Vỏ handler định danh cố định cho thẻ và khung (React.memo) — lib/useBoardItemHandlers.js.
+  const itemHandlers = useBoardItemHandlers({
+    cardDragClickGuardRef, deleteGroup, deleteNode, handleCardClick, handleConnectorMouseDown, handleGroupConnectorMouseDown, handleGroupMouseDown, handleGroupResizeMouseDown, handleImageDrop, handleImageResizeMouseDown, handleNodeMouseDown, handlePdfResizeMouseDown, openColorMenu, removeNodeImage, saveGroupTitle, saveNodeEdit, saveNodeEditAndNext, sendLiveText, setColorMenu, setCommentsFor, setEdgeMenu, setEditingGroupTitleId, setEditingId, toggleFavorite
+  });
+  const {
+    cardHandlers, groupHandlers
+  } = itemHandlers;
 
-  // Lớp vỏ định danh cố định cho React.memo trên IdeaCard/FrameBox (xem
-  // lib/useStableHandlers.js): mỗi khoá gọi xuyên tới bản mới nhất của hàm.
-  const cardHandlers = useStableHandlers({
-    mouseDown: (e, id) => handleNodeMouseDown(e, id),
-    click: (id) => handleCardClick(id),
-    isClick: () => cardDragClickGuardRef.current.consume(),
-    contextMenu: (e, id) => openColorMenu(e, "card", id),
-    connectorMouseDown: (e, id, direction) => handleConnectorMouseDown(e, id, direction),
-    edit: (id) => setEditingId(id),
-    cancelEdit: () => setEditingId(null),
-    remove: (id) => deleteNode(id),
-    toggleFavorite: (id) => toggleFavorite(id),
-    openComments: (e, id) => { setColorMenu(null); setEdgeMenu(null); setCommentsFor({ id, x: e.clientX, y: e.clientY }); },
-    liveText: (id, field, value) => sendLiveText({ nodeId: id, field, value }),
-    save: (id, fields) => saveNodeEdit(id, fields),
-    saveAndNext: (id, fields) => saveNodeEditAndNext(id, fields),
-    dropImage: (e, id) => handleImageDrop(e, id),
-    removeImage: (id) => removeNodeImage(id),
-    imageResize: (e, id) => handleImageResizeMouseDown(e, id),
-    pdfResize: (e, id) => handlePdfResizeMouseDown(e, id)
-  });
-  const groupHandlers = useStableHandlers({
-    mouseDown: (e, id) => handleGroupMouseDown(e, id),
-    contextMenu: (e, id) => openColorMenu(e, "group", id),
-    remove: (id) => deleteGroup(id),
-    editTitle: (id) => setEditingGroupTitleId(id),
-    cancelTitle: () => setEditingGroupTitleId(null),
-    saveTitle: (id, title) => saveGroupTitle(id, title),
-    resizeMouseDown: (e, id) => handleGroupResizeMouseDown(e, id),
-    connectorMouseDown: (e, id) => handleGroupConnectorMouseDown(e, id)
-  });
   // Handler định danh ổn định cho lớp dây (hover, bấm chọn, chuột phải mở menu) — lib/useEdgeLayerHandlers.js.
   const edgeLayer = useEdgeLayerHandlers({
     board, setHoveredEdgeId, setColorMenu, setCommentsFor, setEdgeMenu, setDesignEditId, setSelectedIds, setSelectedEdgeIds, setSelectedGroupIds, setSelectedDrawingIds
