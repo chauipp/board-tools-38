@@ -70,6 +70,7 @@ import { useTreeLayout } from "../lib/useTreeLayout.js";
 import { usePresentation } from "../lib/usePresentation.js";
 import { useGameDesignBoard } from "../lib/useGameDesignBoard.js";
 import { useBoardKeyboard } from "../lib/useBoardKeyboard.js";
+import { useStableHandlers } from "../lib/useStableHandlers.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
 import { loadPenPrefs, savePenPrefs, penVar } from "../lib/pen.js";
 import { ERASE_PART } from "../lib/erase.js";
@@ -665,42 +666,37 @@ export default function IdeaMap() {
     };
   }, [board?.bg, board?.grid, board?.pack]);
 
-  // Điều kiện để React.memo trên IdeaCard/FrameBox/EdgeLayer có tác dụng: prop
-  // hàm phải giữ nguyên định danh giữa các lần render. Các hàm xử lý thật thì
-  // được định nghĩa lại ở mỗi lần render (chúng đóng gói `board`, `selectedIds`
-  // …), nên ta cất bản mới nhất vào một ref và cho component nhận một lớp vỏ
-  // bất biến gọi xuyên qua ref. Không có lớp vỏ này, kéo MỘT thẻ vẫn dựng lại
-  // toàn bộ thẻ, khung và dây trên bảng ở từng khung hình.
-  const actionsRef = useRef({});
-  const cardHandlers = useMemo(() => ({
-    mouseDown: (e, id) => actionsRef.current.nodeMouseDown(e, id),
-    click: (id) => actionsRef.current.cardClick(id),
-    isClick: () => actionsRef.current.isCardClick(),
-    contextMenu: (e, id) => actionsRef.current.openColorMenu(e, "card", id),
-    connectorMouseDown: (e, id, direction) => actionsRef.current.connectorMouseDown(e, id, direction),
+  // Lớp vỏ định danh cố định cho React.memo trên IdeaCard/FrameBox (xem
+  // lib/useStableHandlers.js): mỗi khoá gọi xuyên tới bản mới nhất của hàm.
+  const cardHandlers = useStableHandlers({
+    mouseDown: (e, id) => handleNodeMouseDown(e, id),
+    click: (id) => handleCardClick(id),
+    isClick: () => cardDragClickGuardRef.current.consume(),
+    contextMenu: (e, id) => openColorMenu(e, "card", id),
+    connectorMouseDown: (e, id, direction) => handleConnectorMouseDown(e, id, direction),
     edit: (id) => setEditingId(id),
     cancelEdit: () => setEditingId(null),
-    remove: (id) => actionsRef.current.deleteNode(id),
-    toggleFavorite: (id) => actionsRef.current.toggleFavorite(id),
-    openComments: (e, id) => actionsRef.current.openComments(e, id),
-    liveText: (id, field, value) => actionsRef.current.liveText(id, field, value),
-    save: (id, fields) => actionsRef.current.saveNodeEdit(id, fields),
-    saveAndNext: (id, fields) => actionsRef.current.saveNodeEditAndNext(id, fields),
-    dropImage: (e, id) => actionsRef.current.dropImage(e, id),
-    removeImage: (id) => actionsRef.current.removeImage(id),
-    imageResize: (e, id) => actionsRef.current.imageResize(e, id),
-    pdfResize: (e, id) => actionsRef.current.pdfResize(e, id)
-  }), []);
-  const groupHandlers = useMemo(() => ({
-    mouseDown: (e, id) => actionsRef.current.groupMouseDown(e, id),
-    contextMenu: (e, id) => actionsRef.current.openColorMenu(e, "group", id),
-    remove: (id) => actionsRef.current.deleteGroup(id),
+    remove: (id) => deleteNode(id),
+    toggleFavorite: (id) => toggleFavorite(id),
+    openComments: (e, id) => { setColorMenu(null); setEdgeMenu(null); setCommentsFor({ id, x: e.clientX, y: e.clientY }); },
+    liveText: (id, field, value) => sendLiveText({ nodeId: id, field, value }),
+    save: (id, fields) => saveNodeEdit(id, fields),
+    saveAndNext: (id, fields) => saveNodeEditAndNext(id, fields),
+    dropImage: (e, id) => handleImageDrop(e, id),
+    removeImage: (id) => removeNodeImage(id),
+    imageResize: (e, id) => handleImageResizeMouseDown(e, id),
+    pdfResize: (e, id) => handlePdfResizeMouseDown(e, id)
+  });
+  const groupHandlers = useStableHandlers({
+    mouseDown: (e, id) => handleGroupMouseDown(e, id),
+    contextMenu: (e, id) => openColorMenu(e, "group", id),
+    remove: (id) => deleteGroup(id),
     editTitle: (id) => setEditingGroupTitleId(id),
     cancelTitle: () => setEditingGroupTitleId(null),
-    saveTitle: (id, title) => actionsRef.current.saveGroupTitle(id, title),
-    resizeMouseDown: (e, id) => actionsRef.current.groupResizeMouseDown(e, id),
-    connectorMouseDown: (e, id) => actionsRef.current.groupConnectorMouseDown(e, id)
-  }), []);
+    saveTitle: (id, title) => saveGroupTitle(id, title),
+    resizeMouseDown: (e, id) => handleGroupResizeMouseDown(e, id),
+    connectorMouseDown: (e, id) => handleGroupConnectorMouseDown(e, id)
+  });
   const onEdgeEnter = useMemo(() => (id) => setHoveredEdgeId(id), []);
   const onEdgeLeave = useMemo(() => (id) => setHoveredEdgeId((cur) => (cur === id ? null : cur)), []);
   // Chuột TRÁI trên dây = chọn, y như bấm vào thẻ: một mình nó, hoặc Ctrl để
@@ -1432,30 +1428,6 @@ export default function IdeaMap() {
     setColorMenu({ kind, id, x: e.clientX, y: e.clientY });
   }
 
-  // Nối lớp vỏ ổn định ở trên với bản mới nhất của từng hàm xử lý. Gán thường,
-  // không phải hook — nên đặt được sau các nhánh return sớm.
-  actionsRef.current = {
-    nodeMouseDown: handleNodeMouseDown,
-    cardClick: handleCardClick,
-    isCardClick: () => cardDragClickGuardRef.current.consume(),
-    openColorMenu,
-    connectorMouseDown: handleConnectorMouseDown,
-    deleteNode,
-    toggleFavorite,
-    openComments: (e, id) => { setColorMenu(null); setEdgeMenu(null); setCommentsFor({ id, x: e.clientX, y: e.clientY }); },
-    liveText: (id, field, value) => sendLiveText({ nodeId: id, field, value }),
-    saveNodeEdit,
-    saveNodeEditAndNext,
-    dropImage: handleImageDrop,
-    removeImage: removeNodeImage,
-    imageResize: handleImageResizeMouseDown,
-    pdfResize: handlePdfResizeMouseDown,
-    groupMouseDown: handleGroupMouseDown,
-    deleteGroup,
-    saveGroupTitle,
-    groupResizeMouseDown: handleGroupResizeMouseDown,
-    groupConnectorMouseDown: handleGroupConnectorMouseDown
-  };
 
   return (
     <div className={"shell" + (presentIndex != null ? " presenting" : "") + (role === "viewer" ? " readonly" : "")} style={{ visibility: workspace.ready ? "visible" : "hidden" }} onContextMenu={handlePageContextMenu}>
