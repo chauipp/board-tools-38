@@ -2,6 +2,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { BADGE_PALETTE, colorVar } from "../../lib/badges.js";
 import { RELATION_OPTIONS, relationDefinition, isGameDesignRelation } from "../../lib/game-design.js";
 import { lazyPanel } from "../../lib/lazy-panel.jsx";
+import { useBoard } from "../../lib/board-context.js";
 
 // Các panel game-design tách chunk riêng (task 2.9): board ý tưởng không phải
 // tải chúng.
@@ -20,7 +21,10 @@ const PlaytestComparisonPanel = lazyPanel(() => import("../PlaytestComparisonPan
 // Dock bên phải cho các bảng game-design (brief, flow, balance, handoff,
 // decision timeline, snapshot, insights, reports, impact, playtest) và chi tiết
 // thẻ/dây. Trước là một khối JSX trong IdeaMap.jsx; cây DOM và class giữ nguyên.
-export default function EditDock({ applyColorToSelection, applyToSelection, balanceOpen, board, boardName, briefOpen, clearSelection, createRelatedDesignNode, createSnapshot, decisionTimelineOpen, deleteEdge, deleteSelection, dependency, designEditId, duplicateDesignNode, duplicateSelection, editDockRef, flowOpen, groupSelectedCards, handoffOpen, hasDashableSelected, impactCardId, impactOpen, insightsOpen, inspector, playtestsOpen, reportsOpen, restoreSnapshot, role, saveDesignNode, saveGameDesignBalance, saveGameDesignBrief, saveGameDesignFlow, selectedDrawingIds, selectedEdgeIds, selectedGroupIds, selectedIds, setBalanceOpen, setBriefOpen, setDecisionTimelineOpen, setDesignEditId, setDrawingsDashed, setFlowOpen, setHandoffOpen, setImpactCardId, setImpactOpen, setInsightsOpen, setPlaytestsOpen, setReportsOpen, setSnapshotsOpen, snapshots, snapshotsLoading, snapshotsOpen, tidySelection, treeUI, updateEdge }) {
+export default function EditDock({ applyColorToSelection, applyToSelection, balanceOpen, briefOpen, createRelatedDesignNode, createSnapshot, decisionTimelineOpen, deleteEdge, deleteSelection, dependency, designEditId, duplicateDesignNode, duplicateSelection, editDockRef, flowOpen, groupSelectedCards, handoffOpen, hasDashableSelected, impactCardId, impactOpen, insightsOpen, inspector, playtestsOpen, reportsOpen, saveDesignNode, saveGameDesignBalance, saveGameDesignBrief, saveGameDesignFlow, setBalanceOpen, setBriefOpen, setDecisionTimelineOpen, setDesignEditId, setDrawingsDashed, setFlowOpen, setHandoffOpen, setImpactCardId, setImpactOpen, setInsightsOpen, setPlaytestsOpen, setReportsOpen, setSnapshotsOpen, snapshots, snapshotsLoading, snapshotsOpen, tidySelection, treeUI, updateEdge }) {
+  const { store, selection, camera } = useBoard();
+  const { board, boardName, restoreSnapshot, role } = store;
+  const { clearSelection, selectedDrawingIds, selectedEdgeIds, selectedGroupIds, selectedIds } = selection;
   const { t } = useLingui();
   return (
     <>

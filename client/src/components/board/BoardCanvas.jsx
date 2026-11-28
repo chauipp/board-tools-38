@@ -9,13 +9,18 @@ import { edgeKey } from "../../lib/tree-layout.js";
 import InkLayer from "../InkLayer.jsx";
 import LaserLayer from "../LaserLayer.jsx";
 import { cornerPoint, SELECTION_CORNERS } from "../../lib/selection-box.js";
+import { useBoard } from "../../lib/board-context.js";
 
 // Lớp .canvas: mọi thứ di chuyển theo camera — khung, dây, thẻ, nét vẽ, laser,
 // con trỏ người khác, tay cầm. Bọc memo; nhưng thứ thực sự chặn việc dựng lại
 // toàn bộ thẻ khi kéo một thẻ vẫn là React.memo của IdeaCard/FrameBox/EdgeLayer
 // cùng các prop hàm ổn định (useStableHandlers) — giữ nguyên như trước. Trước là
 // một khối JSX trong IdeaMap.jsx; cây DOM và class giữ nguyên.
-function BoardCanvas({ board, boardId, canGrabShapeHandles, canvasRef, cardHandlers, currentUser, dependency, dropTargetId, edgeDrag, edgeRoutes, editShape, editingGroupTitleId, editingId, flashId, focusSet, frameCardSize, gameDesign, groupById, groupHandlers, handleEdgeEndpointMouseDown, handleInkCaptureMouseDown, handleSelectionResizeMouseDown, handleShapeHandleMouseDown, handleViewportMouseDown, hoveredEdgeId, ink, inkDrawings, inkLive, isNodeDropTarget, laser, layoutOwners, linkDraft, linkMode, liveGroups, liveNodes, marquee, mode, nodeById, observeCard, onEdgeClick, onEdgeContextMenu, onEdgeEnter, onEdgeLeave, passesFilter, pendingSource, placeDraft, role, selBounds, selectedDrawingIds, selectedEdgeIds, selectedGroupIds, selectedIds, selection, setDesignEditId, setHoveredEdgeId, shapeHandleAt, skin, snapGuides, socket, spotlightPeerId, statusDefById, store, tagDefById, textEdit, textOverlay, tool, treeSwapState, view }) {
+function BoardCanvas({ boardId, canGrabShapeHandles, canvasRef, cardHandlers, currentUser, dependency, dropTargetId, edgeDrag, edgeRoutes, editShape, editingGroupTitleId, editingId, flashId, focusSet, frameCardSize, gameDesign, groupById, groupHandlers, handleEdgeEndpointMouseDown, handleInkCaptureMouseDown, handleSelectionResizeMouseDown, handleShapeHandleMouseDown, handleViewportMouseDown, hoveredEdgeId, ink, inkDrawings, inkLive, isNodeDropTarget, laser, layoutOwners, linkDraft, linkMode, liveGroups, liveNodes, mode, nodeById, observeCard, onEdgeClick, onEdgeContextMenu, onEdgeEnter, onEdgeLeave, passesFilter, pendingSource, placeDraft, setDesignEditId, setHoveredEdgeId, shapeHandleAt, skin, snapGuides, socket, spotlightPeerId, statusDefById, tagDefById, textEdit, textOverlay, tool, treeSwapState }) {
+  const { store, selection, camera } = useBoard();
+  const { board, role } = store;
+  const { marquee, selBounds, selectedDrawingIds, selectedEdgeIds, selectedGroupIds, selectedIds } = selection;
+  const { view } = camera;
   const { t } = useLingui();
   return (
     <>
