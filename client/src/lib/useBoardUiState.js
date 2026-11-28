@@ -8,9 +8,7 @@ import { loadWheelMode, saveWheelMode } from "./pointer-input.js";
 // bút/laser/cuộn/bậc thẻ (lưu localStorage), các menu và popover đang mở,
 // nhập/xuất, nhập nhanh, kích thước khung nhìn. Không có logic nào ở đây — chỉ
 // là chỗ chứa. Trước nằm trong IdeaMap.jsx.
-export function useBoardUiState({
-  
-}) {
+export function useBoardUiState() {
   const depsRef = useRef({});
 
   const [editingId, setEditingId] = useState(null);

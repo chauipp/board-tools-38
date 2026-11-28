@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import { useWorkspaceState } from "../lib/useWorkspaceState.js";
 import { useParams } from "react-router-dom";
 import { Trans } from "@lingui/react/macro";
@@ -16,7 +16,6 @@ import ToolOptions from "../components/ToolOptions.jsx";
 import { treeLockOwners } from "../lib/locked-tree.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { usePresence } from "../lib/usePresence.js";
-import { useFollow } from "../lib/useFollow.js";
 import { useLiveSync } from "../lib/useLiveSync.js";
 import { useBoardStore } from "../lib/useBoardStore.js";
 import { useWorkspaceInspectors } from "../lib/useWorkspaceInspectors.js";
@@ -51,10 +50,9 @@ import { useSelectionActions } from "../lib/useSelectionActions.js";
 import { useViewportInput } from "../lib/useViewportInput.js";
 import { useCameraControls } from "../lib/useCameraControls.js";
 import InkLayer from "../components/InkLayer.jsx";
-import { useInk } from "../lib/useInk.js";
 import { useInkLive } from "../lib/useInkLive.js";
 import { useLaser } from "../lib/useLaser.js";
-import { MIN_SCALE, PANEL_KEYS, MAX_SCALE } from "../lib/board-constants.js";
+import { PANEL_KEYS } from "../lib/board-constants.js";
 import { useCamera } from "../lib/useCamera.js";
 import BoardTopBar from "../components/board/BoardTopBar.jsx";
 import BoardHudBottom from "../components/board/BoardHudBottom.jsx";
@@ -80,16 +78,12 @@ export default function IdeaMap() {
   const workspace = useWorkspaceState(user?.email, boardId);
   const workspaceState = workspace.state;
   // Panel/inspector đang mở, lưu theo trạng thái làm việc riêng từng người — lib/useWorkspaceInspectors.js.
-  const inspectors = useWorkspaceInspectors({
-    workspace, workspaceState
-  });
+  const inspectors = useWorkspaceInspectors({ workspace, workspaceState });
   const {
     balanceOpen, briefOpen, decisionTimelineOpen, designEditId, flowOpen, handoffOpen, impactCardId, impactOpen, insightsOpen, inspector, miniOpen, outlineOpen, panels, playtestsOpen, reportsOpen, setBalanceOpen, setBriefOpen, setDecisionTimelineOpen, setDesignEditId, setFlowOpen, setHandoffOpen, setImpactCardId, setImpactOpen, setInsightsOpen, setMiniOpen, setOutlineOpen, setPanels, setPlaytestsOpen, setReportsOpen, setSnapshotsOpen, setTreeUI, snapshotsOpen, toolsOpen, treeUI, workspaceSetters
   } = inspectors;
   // State giao diện của board (mode, tool, menu, popover, tuỳ chọn bút/laser/cuộn) — lib/useBoardUiState.js.
-  const ui = useBoardUiState({
-    
-  });
+  const ui = useBoardUiState();
   const {
     editingId, setEditingId, ioOpen, setIoOpen, ioMode, setIoMode, ioText, setIoText, captureOpen, setCaptureOpen, captureText, setCaptureText, isPanning, setIsPanning, dropTargetId, setDropTargetId, mode, setMode, tool, setTool, placeTool, setPlaceTool, penPrefs, setPenPrefs, laserPrefs, setLaserPrefs, wheelMode, setWheelMode, cardLevelPref, setCardLevelPref, snapGuides, setSnapGuides, colorMenu, setColorMenu, hoveredEdgeId, setHoveredEdgeId, commentsFor, setCommentsFor, flashId, setFlashId, spotlightPeerId, setSpotlightPeerId, snapshots, setSnapshots, snapshotsLoading, setSnapshotsLoading, inviteOpen, setInviteOpen, initialCardParam, viewportSize, setViewportSize
   } = ui;
@@ -141,9 +135,7 @@ export default function IdeaMap() {
     createPaletteColor, updatePaletteColor, deletePaletteColor, handleColorMouseDown
   } = badges;
   // Ref dùng chung giữa các hook và component của board — lib/useBoardRefs.js.
-  const refs = useBoardRefs({
-    frameCardSize, selectedIds, editingId, socket
-  });
+  const refs = useBoardRefs({ frameCardSize, selectedIds, editingId, socket });
   const {
     treeSizeRef, viewportRef, canvasRef, editDockRef, searchInputRef, editingIdRef, socketRef, selectedIdsRef, suppressContextMenuRef, spacePanRef, multiClickRef, cardDragClickGuardRef, clickAnchorRef, laserDownRef, pendingJumpRef, measureCtxRef, wheelReaderRef, workspaceCameraRef
   } = refs;
@@ -153,9 +145,7 @@ export default function IdeaMap() {
   );
 
   // Dây nối: chế độ nối, kéo từ connector/đầu dây, menu dây — lib/useEdgeInteractions.js.
-  const edgeUI = useEdgeInteractions({
-    store, board, setSelectedEdgeIds, setDropTargetId, viewRef, viewportRef
-  });
+  const edgeUI = useEdgeInteractions({ store, board, setSelectedEdgeIds, setDropTargetId, viewRef, viewportRef });
   const {
     linkMode, setLinkMode, pendingSource, setPendingSource, linkDraft, setLinkDraft, edgeMenu, setEdgeMenu, edgeDrag, setEdgeDrag, toggleLinkMode, handleConnectorMouseDown, handleGroupConnectorMouseDown, handleEdgeEndpointMouseDown, toggleEdge, updateEdge, deleteEdge
   } = edgeUI;
@@ -195,42 +185,19 @@ export default function IdeaMap() {
     presentIndex, jumpToGroup, startPresentation, stepPresentation, exitPresentation
   } = presentation;
   // Tool chữ: ô nhập, kéo chữ, chốt chữ — lib/useTextTool.js.
-  const textUI = useTextTool({
-    store, board, boardRef, inkLive, penPrefs, skin, tool, measureCtxRef
-  });
+  const textUI = useTextTool({ store, board, boardRef, inkLive, penPrefs, skin, tool, measureCtxRef });
   const {
     textEdit, setTextEdit, textDrag, measureTextWidth, handleTextMouseDown, startTextDrag, beginLiveText, commitText
   } = textUI;
 
-  const ink = useInk({
-    tool, penPrefs, boardRef, viewRef, viewportRef,
-    // Gọi trễ qua drawUI: hook nét vẽ cần `ink` nên được gọi SAU useInk.
-    onStrokeDone: (...a) => drawUI.commitStroke(...a),
-    onEraseDone: (...a) => drawUI.commitErase(...a),
-    onPick: (...a) => drawUI.pickDrawingWhileDrawing(...a),
-    onSwapTool: (...a) => drawUI.swapPenEraser(...a),
-    live: inkLive
-  });
 
-  // Đường ghi camera dành RIÊNG cho vòng bám khi ghim màn hình. Cố ý không đi
-  // qua setCamera: setCamera là "người dùng chủ động đổi camera" nên nó huỷ
-  // ghim, mà vòng bám cũng đổi camera — dùng chung một cửa thì vòng bám tự huỷ
-  // mình ngay khung hình đầu tiên.
-  const applyFollowCamera = useCallback((view) => {
-    if (!boardRef.current) return;
-    setView((prev) => ({ ...prev, ...view }));
-  }, []);
 
-  const { followingId, pendingId, followError, watcherCount, follow, stopFollow } = useFollow({
-    socket, sendFollow, viewportSize,
-    applyCamera: applyFollowCamera,
-    minScale: MIN_SCALE, maxScale: MAX_SCALE
-  });
   // Điều khiển camera: zoom, vừa khung, nhảy tới thẻ/người, lia, đổi toạ độ — lib/useCameraControls.js.
   const cameraUI = useCameraControls({
-    store, board, boardRef, camera, view, setView, viewRef, viewportRef, frameCardSize, saveNow, selectedIds, setSelectedIds, setBoard, setFlashId, setIsPanning, setSpotlightPeerId, stopFollow, suppressContextMenuRef, undo, applyFollowCamera
+    store, board, boardRef, camera, view, setView, viewRef, viewportRef, frameCardSize, saveNow, selectedIds, setSelectedIds, setBoard, setFlashId, setIsPanning, setSpotlightPeerId, suppressContextMenuRef, undo, socket, sendFollow, viewportSize
   });
   const {
+    followingId, pendingId, followError, watcherCount, follow, stopFollow,
     setCamera, zoomButton, goToPoint, fitToView, zoomToNodes, zoomToSelection, jumpToCard, jumpToPeer, startPan, clientToCanvas, toCanvasPoint, eventToCanvas
   } = cameraUI;
   // Đo khung nhìn, bánh xe/touchpad, giữ Space để lia, chặn bôi đen, thuộc tính nền/bộ màu trên <html> — lib/useViewportGestures.js.
@@ -266,10 +233,10 @@ export default function IdeaMap() {
 
   // Nét vẽ / hình / chữ: chốt nét, tẩy, chọn, kéo, tay cầm hình, co giãn vùng chọn, nét đứt — lib/useDrawingSelection.js.
   const drawUI = useDrawingSelection({
-    store, board, boardRef, role, mode, tool, setTool, ink, inkLive, editShape, layoutOwners, selBounds, selectionSet, selectedIds, selectedGroupIds, selectedDrawingIds, selectionDragSet, clearSelection, setSelectedIds, setSelectedEdgeIds, setSelectedGroupIds, setSelectedDrawingIds, setBoard, recordHistory, saveNow, spacePanRef, view, applyImageToNode
+    store, board, boardRef, role, mode, tool, setTool, penPrefs, viewRef, viewportRef, inkLive, editShape, layoutOwners, selBounds, selectionSet, selectedIds, selectedGroupIds, selectedDrawingIds, selectionDragSet, clearSelection, setSelectedIds, setSelectedEdgeIds, setSelectedGroupIds, setSelectedDrawingIds, setBoard, recordHistory, saveNow, spacePanRef, view, applyImageToNode
   });
   const {
-    canGrabShapeHandles, commitStroke, commitErase, swapPenEraser, pickDrawingWhileDrawing, setDrawingsDashed, toggleDrawingDash, dashTargetAt, handleDrawingMouseDown, startDrawingDrag, startSelectionDrag, handleShapeHandleMouseDown, handleSelectionResizeMouseDown, shapeHandleAt, handleInkCaptureMouseDown
+    ink, canGrabShapeHandles, commitStroke, commitErase, swapPenEraser, pickDrawingWhileDrawing, setDrawingsDashed, toggleDrawingDash, dashTargetAt, handleDrawingMouseDown, startDrawingDrag, startSelectionDrag, handleShapeHandleMouseDown, handleSelectionResizeMouseDown, shapeHandleAt, handleInkCaptureMouseDown
   } = drawUI;
   // Thao tác trên cả vùng chọn và menu màu — lib/useSelectionActions.js.
   const selectionUI = useSelectionActions({
