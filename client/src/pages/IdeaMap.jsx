@@ -13,7 +13,7 @@ import { paletteCss } from "../lib/palette.js";
 import { isBoardBg, isBoardGrid, isColorPack } from "../lib/board-theme.js";
 import TreePanel from "../components/TreePanel.jsx";
 import MiniMap from "../components/MiniMap.jsx";
-import { rectsOf, panForCenter } from "../lib/minimap.js";
+import { rectsOf } from "../lib/minimap.js";
 import LoadError from "../components/LoadError.jsx";
 import InviteModal from "../components/InviteModal.jsx";
 import ColorMenu from "../components/ColorMenu.jsx";
@@ -50,6 +50,7 @@ import { useGameDesignBoard } from "../lib/useGameDesignBoard.js";
 import { useBoardKeyboard } from "../lib/useBoardKeyboard.js";
 import { useStableHandlers } from "../lib/useStableHandlers.js";
 import { BoardContext } from "../lib/board-context.js";
+import { useCameraControls } from "../lib/useCameraControls.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
 import { loadPenPrefs, savePenPrefs, penVar } from "../lib/pen.js";
 import { ERASE_PART } from "../lib/erase.js";
@@ -63,7 +64,6 @@ import { loadLaserPrefs, saveLaserPrefs } from "../lib/laser.js";
 import { createWheelReader, loadWheelMode, saveWheelMode } from "../lib/pointer-input.js";
 import { pointInBounds } from "../lib/selection-box.js";
 import { CARD_W, SEL_GRAB_PAD, PICK_RADIUS, MIN_SCALE, PANEL_KEYS, TREE_OPTS, EMPTY_ARRAY, EMPTY_MAP, EMPTY_SET, MAX_SCALE } from "../lib/board-constants.js";
-import { computeZoom } from "../lib/camera.js";
 import { useCamera } from "../lib/useCamera.js";
 import { normalizeGameDesignBoard } from "../lib/normalize-board.js";
 import BoardTopBar from "../components/board/BoardTopBar.jsx";
@@ -490,6 +490,13 @@ export default function IdeaMap() {
     applyCamera: applyFollowCamera,
     minScale: MIN_SCALE, maxScale: MAX_SCALE
   });
+  // Điều khiển camera: zoom, vừa khung, nhảy tới thẻ/người, lia, đổi toạ độ — lib/useCameraControls.js.
+  const cameraUI = useCameraControls({
+    store, board, boardRef, camera, view, setView, viewRef, viewportRef, frameCardSize, saveNow, selectedIds, setSelectedIds, setBoard, setFlashId, setIsPanning, setSpotlightPeerId, stopFollow, suppressContextMenuRef, undo, applyFollowCamera
+  });
+  const {
+    setCamera, zoomButton, goToPoint, fitToView, zoomToNodes, zoomToSelection, jumpToCard, jumpToPeer, startPan, clientToCanvas, toCanvasPoint, eventToCanvas
+  } = cameraUI;
 
   // Chỉ phát camera khi THỰC SỰ có người đang xem. Ghim là tính năng dùng theo
   // đợt (lúc họp), nên mặc định phải là im lặng tuyệt đối: không ai ghim thì
@@ -881,19 +888,6 @@ export default function IdeaMap() {
     return null;
   }
 
-  // Điểm trên bảng (toạ độ canvas) ứng với một điểm trên màn hình. Đọc qua
-  // boardRef chứ không phải `board`: hàm này được gọi từ trong listener của một
-  // cú kéo dài vài giây, mà closure của listener giữ `board` của lượt render lúc
-  // mousedown — camera có thể đã đổi từ lúc đó.
-  function toCanvasPoint(clientX, clientY) {
-    const rect = viewportRef.current.getBoundingClientRect();
-    const view = viewRef.current;
-    return {
-      x: (clientX - rect.left - view.panX) / view.scale,
-      y: (clientY - rect.top - view.panY) / view.scale
-    };
-  }
-
   // Khu 3 lên nòng một việc rồi chờ người dùng chỉ chỗ. Bấm lại đúng nút đang
   // sáng thì hạ nòng — không có nút nào để "thoát" ngoài Esc thì nút đang sáng
   // phải tự làm được việc đó.
@@ -1043,42 +1037,6 @@ export default function IdeaMap() {
     return selectedIds.size > 1 && selectedIds.has(dropTargetId.id) && selectedIds.has(nodeId);
   }
 
-  function startPan(e) {
-    e.preventDefault();
-    // Tự lia nền → thôi bám theo người khác. Đặt ở đây (mousedown) chứ không
-    // trong onMove: người dùng vừa chạm vào là dừng ngay, không phải đợi camera
-    // giằng co với vòng bám qua vài khung hình.
-    stopFollow();
-    const startX = e.clientX, startY = e.clientY;
-    const startPanX = view.panX, startPanY = view.panY;
-    let dragging = false;
-    const THRESHOLD = 4;
-
-    const onMove = (ev) => {
-      if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) {
-        dragging = true;
-        setIsPanning(true);
-      }
-      if (!dragging) return;
-      const nx = startPanX + (ev.clientX - startX);
-      const ny = startPanY + (ev.clientY - startY);
-      setView((prev) => ({ ...prev, panX: nx, panY: ny }));
-    };
-    function onUp() {
-      if (dragging) {
-        setIsPanning(false);
-        // KHÔNG lưu: lia sa bàn chỉ đổi camera, mà camera là riêng từng người
-        // (api.js đã bỏ `view` khỏi payload). Lần PUT ở đây không ghi được gì,
-        // nhưng vẫn đẩy cả board — kể cả ảnh base64 — lên server rồi bắt server
-        // phát board:update cho MỌI người khác. Mỗi cú lia nền của một người là
-        // một cú giật trên màn hình tất cả những người còn lại.
-        suppressContextMenuRef.current = true;
-        setTimeout(() => { suppressContextMenuRef.current = false; }, 0);
-      }
-    }
-    startDrag(e, { onMove, onEnd: onUp });
-  }
-
   function handleViewportMouseDown(e) {
     if (e.target !== viewportRef.current && e.target !== canvasRef.current) return;
     if (linkMode) { setPendingSource(null); return; }
@@ -1138,77 +1096,6 @@ export default function IdeaMap() {
     if (!laserDownRef.current) return;
     laserDownRef.current = false;
     laser.end();
-  }
-
-  // Chuột → toạ độ canvas. Bản sao của toCanvas trong useInk.js; không gom
-  // chung được vì ở đó nó nhận `view` qua ref của hook, còn ở đây board đã có
-  // sẵn trong tầm tay.
-  function clientToCanvas(clientX, clientY) {
-    const rect = viewportRef.current.getBoundingClientRect();
-    const view = viewRef.current;
-    return {
-      x: (clientX - rect.left - view.panX) / view.scale,
-      y: (clientY - rect.top - view.panY) / view.scale
-    };
-  }
-
-  function eventToCanvas(e) {
-    return clientToCanvas(e.clientX, e.clientY);
-  }
-
-  // Mọi thao tác CHỈ đổi camera đều đi qua đây. Camera là riêng từng người: nó
-  // được lưu vào localStorage bằng effect theo view, còn api.js thì đã cắt
-  // `view` khỏi payload PUT từ lâu. Vì vậy gọi saveNow/store.commit ở nhóm hàm
-  // này (bản cũ có ở zoom, vừa khung, nhảy tới thẻ/khung, thoát trình chiếu)
-  // KHÔNG ghi được gì lên server, nhưng vẫn đẩy cả board kèm ảnh base64 đi và
-  // bắt server phát board:update cho mọi người — nghĩa là chỉ cần một người
-  // cuộn chuột là màn hình của tất cả những người còn lại bị dựng lại.
-  //
-  // Đây cũng là chỗ huỷ ghim màn hình: người dùng tự lái camera thì thôi bám
-  // theo người khác. Không có chốt này thì họ zoom xong màn hình bị kéo ngược
-  // lại ngay lập tức — trông y như app treo. Vòng bám đi cửa riêng
-  // (applyFollowCamera) nên không tự huỷ mình ở đây.
-  function setCamera(nextView) {
-    stopFollow();
-    setView(nextView);
-  }
-
-  function zoomButton(factor) {
-    const rect = viewportRef.current.getBoundingClientRect();
-    setCamera(computeZoom(view, rect, rect.left + rect.width / 2, rect.top + rect.height / 2, factor));
-  }
-
-  // Bấm/kéo trên minimap: chỉ dời camera, giữ nguyên mức phóng. Camera là của
-  // riêng từng người (api.js không gửi `view` lên server) nên đây không phải một
-  // sửa đổi board — không ghi lịch sử, không lưu, không phát cho ai.
-  function goToPoint(pt) {
-    const el = viewportRef.current;
-    if (!el) return;
-    // Bấm/kéo trên minimap cũng là tự lái camera → thôi bám theo người khác.
-    stopFollow();
-    const rect = el.getBoundingClientRect();
-    const view = viewRef.current;
-    setView((prev) => ({ ...prev, ...panForCenter(pt, view, { w: rect.width, h: rect.height }) }));
-  }
-
-  function fitToView() {
-    if (board.nodes.length === 0) return;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    board.nodes.forEach((n) => {
-      const { w, h } = frameCardSize(n.id);
-      minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
-      maxX = Math.max(maxX, n.x + w); maxY = Math.max(maxY, n.y + h);
-    });
-    const rect = viewportRef.current.getBoundingClientRect();
-    const pad = 60;
-    const bboxW = maxX - minX + pad * 2, bboxH = maxY - minY + pad * 2;
-    let scale = Math.min(rect.width / bboxW, rect.height / bboxH, MAX_SCALE);
-    scale = Math.max(scale, MIN_SCALE);
-    setCamera({
-      scale,
-      panX: -(minX - pad) * scale + (rect.width - bboxW * scale) / 2,
-      panY: -(minY - pad) * scale + (rect.height - bboxH * scale) / 2
-    });
   }
 
   function deleteSelection() {
@@ -1278,56 +1165,6 @@ export default function IdeaMap() {
       ...board,
       nodes: board.nodes.map((n) => (pos.has(n.id) ? { ...n, ...pos.get(n.id) } : n))
     });
-  }
-
-  function zoomToNodes(ids) {
-    if (!ids || ids.length === 0) return;
-    const targets = board.nodes.filter((n) => ids.includes(n.id));
-    if (targets.length === 0) return;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    targets.forEach((n) => {
-      const { w, h } = frameCardSize(n.id);
-      minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
-      maxX = Math.max(maxX, n.x + w); maxY = Math.max(maxY, n.y + h);
-    });
-    const rect = viewportRef.current.getBoundingClientRect();
-    const pad = 60;
-    const bboxW = maxX - minX + pad * 2, bboxH = maxY - minY + pad * 2;
-    let scale = Math.min(rect.width / bboxW, rect.height / bboxH, MAX_SCALE);
-    scale = Math.max(scale, MIN_SCALE);
-    setCamera({
-      scale,
-      panX: -(minX - pad) * scale + (rect.width - bboxW * scale) / 2,
-      panY: -(minY - pad) * scale + (rect.height - bboxH * scale) / 2
-    });
-  }
-
-  function zoomToSelection() {
-    zoomToNodes(selectedIds.size > 0 ? Array.from(selectedIds) : board.nodes.map((n) => n.id));
-  }
-
-  function jumpToCard(id) {
-    setSelectedIds(new Set([id]));
-    zoomToNodes([id]);
-    setFlashId(id);
-    setTimeout(() => setFlashId((cur) => (cur === id ? null : cur)), 1600);
-  }
-
-  // Đưa con trỏ của một người khác vào giữa màn hình. Camera là dữ liệu riêng
-  // từng máy (lib/camera.js) nên chỉ setBoard, không commit vào lịch sử undo —
-  // nhìn sang chỗ đồng đội không phải là một thao tác sửa board.
-  //
-  // Đi qua setCamera (không setBoard thẳng) để nó huỷ ghim: đang bám màn hình A
-  // mà bấm nhảy tới con trỏ B thì vòng bám sẽ kéo ngược về A ngay khung hình
-  // sau, và cú bấm trông như không có tác dụng gì.
-  function jumpToPeer(peer) {
-    const rect = viewportRef.current.getBoundingClientRect();
-    const { scale } = view;
-    setCamera({ scale, panX: rect.width / 2 - peer.x * scale, panY: rect.height / 2 - peer.y * scale });
-    // Con trỏ peer nhỏ và có thể đang đứng yên giữa một rừng thẻ — nháy sáng
-    // một nhịp để mắt bắt được sau khi màn hình vừa nhảy.
-    setSpotlightPeerId(peer.socketId);
-    setTimeout(() => setSpotlightPeerId((cur) => (cur === peer.socketId ? null : cur)), 1600);
   }
 
   function exportPng() {
@@ -1410,7 +1247,6 @@ export default function IdeaMap() {
     setCommentsFor(null);
     setColorMenu({ kind, id, x: e.clientX, y: e.clientY });
   }
-
 
   return (
     <BoardContext.Provider value={{ store, selection, camera }}>
