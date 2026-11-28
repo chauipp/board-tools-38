@@ -67,6 +67,7 @@ import { useNodeMedia } from "../lib/useNodeMedia.js";
 import { useDrawingSelection } from "../lib/useDrawingSelection.js";
 import { useTextTool } from "../lib/useTextTool.js";
 import { useTreeLayout } from "../lib/useTreeLayout.js";
+import { usePresentation } from "../lib/usePresentation.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
 import { loadPenPrefs, savePenPrefs, penVar } from "../lib/pen.js";
 import { ERASE_PART } from "../lib/erase.js";
@@ -207,7 +208,6 @@ export default function IdeaMap() {
   const [commentsFor, setCommentsFor] = useState(null); // { id, x, y } | null
   const [flashId, setFlashId] = useState(null);
   const [spotlightPeerId, setSpotlightPeerId] = useState(null);
-  const [presentIndex, setPresentIndex] = useState(null); // null = không trình chiếu
   const inspector = workspaceState.inspector;
   const designEditId = inspector?.type === "design" ? inspector.id : null;
   const setDesignEditId = useMemo(() => workspaceSetters.inspector("design"), [workspaceSetters]);
@@ -354,7 +354,16 @@ export default function IdeaMap() {
   // và chỉ được đọc trong handler chuột, không có gì trên màn hình phụ thuộc nó.
   const laserDownRef = useRef(false);
   const pendingJumpRef = useRef(null);
-  const prePresentViewRef = useRef(null);
+  // Trình chiếu theo khung — lib/usePresentation.js.
+  const presentation = usePresentation({
+    board, view, viewportRef, setBadgeUI, setCaptureOpen, setColorMenu, setCommentsFor, setEdgeMenu, setEditingId, setIoOpen
+  });
+  const {
+    presentIndex, jumpToGroup, startPresentation, stepPresentation, exitPresentation
+  } = presentation;
+  presentation.bind({
+    setCamera: (...a) => setCamera(...a)
+  });
   // Ngữ cảnh 2d dùng để đo bề rộng chữ, dựng một lần rồi dùng lại.
   // undefined = chưa dò; null = đã dò và môi trường không có canvas 2d.
   const measureCtxRef = useRef(undefined);
@@ -722,14 +731,6 @@ export default function IdeaMap() {
     }
     setEdgeMenu({ id, x: e.clientX, y: e.clientY });
   }, [board?.kind]);
-
-  // Chip danh tính được render ở AuthGate, ngoài `.shell`, nên selector
-  // `.shell.presenting` không với tới được. Đánh dấu trên body để ẩn nó khi
-  // trình chiếu, giống mọi thứ chrome khác của board.
-  useEffect(() => {
-    document.body.classList.toggle("presenting", presentIndex != null);
-    return () => document.body.classList.remove("presenting");
-  }, [presentIndex]);
 
   useEffect(() => {
     if (!workspace.ready || !board || pendingJumpRef.current == null) return;
@@ -1477,58 +1478,6 @@ export default function IdeaMap() {
     // một nhịp để mắt bắt được sau khi màn hình vừa nhảy.
     setSpotlightPeerId(peer.socketId);
     setTimeout(() => setSpotlightPeerId((cur) => (cur === peer.socketId ? null : cur)), 1600);
-  }
-
-  function jumpToGroup(group) {
-    const rect = viewportRef.current.getBoundingClientRect();
-    const pad = 60;
-    const bboxW = group.w + pad * 2, bboxH = group.h + pad * 2;
-    let scale = Math.min(rect.width / bboxW, rect.height / bboxH, MAX_SCALE);
-    scale = Math.max(scale, MIN_SCALE);
-    setCamera({
-      scale,
-      panX: -(group.x - pad) * scale + (rect.width - bboxW * scale) / 2,
-      panY: -(group.y - pad) * scale + (rect.height - bboxH * scale) / 2
-    });
-  }
-
-  function startPresentation() {
-    if (board.groups.length === 0) return;
-    // Đóng mọi UI tạm thời trước khi trình chiếu — CSS chỉ ẩn được chrome cố
-    // định, còn popover/modal đang mở phải đóng bằng state.
-    setColorMenu(null);
-    setEdgeMenu(null);
-    setBadgeUI(null);
-    setCommentsFor(null);
-    setEditingId(null);
-    setIoOpen(false);
-    setCaptureOpen(false);
-    prePresentViewRef.current = view;
-    setPresentIndex(0);
-    jumpToGroup(board.groups[0]);
-  }
-
-  // Đọc thẳng `presentIndex` từ state (đã nằm trong deps của effect keydown)
-  // thay vì dùng setState updater: jumpToGroup tự setState + lưu, không được
-  // gọi bên trong updater (side effect trong updater bị cấm).
-  function stepPresentation(delta) {
-    if (board.groups.length === 0) { exitPresentation(); return; }
-    // Khung có thể bị xoá giữa chừng (canvas vẫn tương tác được) → kẹp lại
-    // chỉ số hiện tại trước khi bước.
-    const current = Math.min(presentIndex, board.groups.length - 1);
-    const next = Math.min(board.groups.length - 1, Math.max(0, current + delta));
-    if (next !== presentIndex) {
-      setPresentIndex(next);
-      jumpToGroup(board.groups[next]);
-    }
-  }
-
-  function exitPresentation() {
-    setPresentIndex(null);
-    if (prePresentViewRef.current) {
-      setCamera(prePresentViewRef.current);
-      prePresentViewRef.current = null;
-    }
   }
 
   function exportMarkdown() {
