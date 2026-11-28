@@ -1,48 +1,27 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useWorkspaceState } from "../lib/useWorkspaceState.js";
-import { cameraToCenter, centerToCamera, normalizeWorkspace } from "../lib/workspace-state.js";
-import { Link, useParams } from "react-router-dom";
+import { cameraToCenter, centerToCamera } from "../lib/workspace-state.js";
+import { useParams } from "react-router-dom";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { listBoardSnapshots } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import { useSkin } from "../lib/useSkin.js";
-import { drawingsHitBy, moveDrawing, drawingBox, shapeHandles, HANDLE_EDGE } from "../lib/shape.js";
+import { drawingsHitBy, drawingBox, shapeHandles } from "../lib/shape.js";
 import { textLines, textBox, TEXT_LINE_H } from "../lib/text-el.js";
-import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
-import { RELATION_OPTIONS, relationDefinition, isGameDesignRelation, exportPackage } from "../lib/game-design.js";
+import { colorVar, statusById } from "../lib/badges.js";
 import { paletteCss } from "../lib/palette.js";
-import { BOARD_BGS, BOARD_GRIDS, COLOR_PACKS, isBoardBg, isBoardGrid, isColorPack } from "../lib/board-theme.js";
-import FilterPanel from "../components/FilterPanel.jsx";
+import { isBoardBg, isBoardGrid, isColorPack } from "../lib/board-theme.js";
 import TreePanel from "../components/TreePanel.jsx";
 import MiniMap from "../components/MiniMap.jsx";
 import { rectsOf, panForCenter } from "../lib/minimap.js";
 import LoadError from "../components/LoadError.jsx";
-import LocaleToggle from "../components/LocaleToggle.jsx";
 import InviteModal from "../components/InviteModal.jsx";
-import PresenceBar from "../components/PresenceBar.jsx";
-import FollowBanner from "../components/FollowBanner.jsx";
-import BadgeEditor from "../components/BadgeEditor.jsx";
 import ColorMenu from "../components/ColorMenu.jsx";
 import FrameBox from "../components/FrameBox.jsx";
 import IdeaCard from "../components/IdeaCard.jsx";
-import GameDesignPanel from "../components/GameDesignPanel.jsx";
-import GameDesignBriefPanel from "../components/GameDesignBriefPanel.jsx";
-import GameDesignFlowPanel from "../components/GameDesignFlowPanel.jsx";
-import DevHandoffPanel from "../components/DevHandoffPanel.jsx";
-import GameDesignBalancePanel from "../components/GameDesignBalancePanel.jsx";
-import DecisionTimelinePanel from "../components/DecisionTimelinePanel.jsx";
-import BoardSnapshotsPanel from "../components/BoardSnapshotsPanel.jsx";
-import GameDesignInsightsPanel from "../components/GameDesignInsightsPanel.jsx";
-import GameDesignReportsPanel from "../components/GameDesignReportsPanel.jsx";
-import GameDesignImpactPanel from "../components/GameDesignImpactPanel.jsx";
-import PlaytestComparisonPanel from "../components/PlaytestComparisonPanel.jsx";
-import EdgeLayer from "../components/EdgeLayer.jsx";
-import PeerLayer from "../components/PeerLayer.jsx";
 import ToolRail from "../components/ToolRail.jsx";
-import PdfUsage from "../components/PdfUsage.jsx";
 import ToolOptions from "../components/ToolOptions.jsx";
-import { nodesInFrame } from "../lib/board-geometry.js";
-import { buildEdgeRoutes, routeIntersectsRect } from "../lib/edge-routing.js";
+import { buildEdgeRoutes } from "../lib/edge-routing.js";
 import { createDragClickGuard, createMultiClick, isDragGesture } from "../lib/multi-click.js";
 import { buildOutline } from "../lib/outline.js";
 import { gridLayout, layerLayout } from "../lib/layout.js";
@@ -56,7 +35,6 @@ import { useBoardStore } from "../lib/useBoardStore.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { startDrag } from "../lib/drag-session.js";
 import { toggleId } from "../lib/selection.js";
-import { rectsOverlap } from "../lib/board-geometry.js";
 import { useBoardSelection } from "../lib/useBoardSelection.js";
 import { useBoardFilters } from "../lib/useBoardFilters.js";
 import { useBadgesAndPalette } from "../lib/useBadgesAndPalette.js";
@@ -74,26 +52,30 @@ import { useStableHandlers } from "../lib/useStableHandlers.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
 import { loadPenPrefs, savePenPrefs, penVar } from "../lib/pen.js";
 import { ERASE_PART } from "../lib/erase.js";
-import { cardLevel, levelPatch, loadCardLevel, saveCardLevel } from "../lib/card-levels.js";
+import { loadCardLevel, saveCardLevel } from "../lib/card-levels.js";
 import InkLayer from "../components/InkLayer.jsx";
 import { useInk } from "../lib/useInk.js";
 import { useInkLive } from "../lib/useInkLive.js";
 import { applyInkMoves } from "../lib/ink-live.js";
-import LaserLayer from "../components/LaserLayer.jsx";
 import { useLaser } from "../lib/useLaser.js";
 import { loadLaserPrefs, saveLaserPrefs } from "../lib/laser.js";
 import { createWheelReader, loadWheelMode, saveWheelMode } from "../lib/pointer-input.js";
-import { pointInBounds, cornerPoint, SELECTION_CORNERS } from "../lib/selection-box.js";
-import { CARD_W, TEXT_DRAG_THRESHOLD, SEL_GRAB_PAD, SELECTION_DROP, PICK_RADIUS, MIN_GROUP_W, MIN_SCALE, PANEL_KEYS, TREE_OPTS, EMPTY_ARRAY, EMPTY_MAP, EMPTY_SET, MIN_GROUP_H, MAX_SCALE } from "../lib/board-constants.js";
+import { pointInBounds } from "../lib/selection-box.js";
+import { CARD_W, SEL_GRAB_PAD, PICK_RADIUS, MIN_SCALE, PANEL_KEYS, TREE_OPTS, EMPTY_ARRAY, EMPTY_MAP, EMPTY_SET, MAX_SCALE } from "../lib/board-constants.js";
 import { computeZoom } from "../lib/camera.js";
 import { useCamera } from "../lib/useCamera.js";
 import { normalizeGameDesignBoard } from "../lib/normalize-board.js";
-import { IconSketch, IconMenu, MiniMapIcon, IconSearch, IconStatus, IconTag, IconPalette, IconBoardStyle, IconStar, IconUndo, IconRedo } from "../components/board/icons.jsx";
-import DropCount from "../components/board/DropCount.jsx";
-import TopMenu from "../components/board/TopMenu.jsx";
-import PaletteEditor from "../components/board/PaletteEditor.jsx";
-import EdgeMenu from "../components/board/EdgeMenu.jsx";
-import CommentsPopover from "../components/board/CommentsPopover.jsx";
+import BoardTopBar from "../components/board/BoardTopBar.jsx";
+import BoardHudBottom from "../components/board/BoardHudBottom.jsx";
+import PresenceIsland from "../components/board/PresenceIsland.jsx";
+import HistoryIsland from "../components/board/HistoryIsland.jsx";
+import BoardCanvas from "../components/board/BoardCanvas.jsx";
+import ZoomControl from "../components/board/ZoomControl.jsx";
+import EditDock from "../components/board/EditDock.jsx";
+import IoDrawer from "../components/board/IoDrawer.jsx";
+import PresentBar from "../components/board/PresentBar.jsx";
+import BoardPopovers from "../components/board/BoardPopovers.jsx";
+import CaptureOverlay from "../components/board/CaptureOverlay.jsx";
 import "../styles/board/index.css";
 
 export default function IdeaMap() {
@@ -1440,455 +1422,13 @@ export default function IdeaMap() {
       {/* Khai báo màu tự tạo trong cây React: sửa hex là mọi card/dây/badge dùng
           var(--pal-N) repaint ngay, không cần đi ghi lại từng chỗ tham chiếu. */}
       <style>{paletteStyle}</style>
-      {/* ĐẢO TO — góc trên trái. Vừa là bảng điều khiển (☰, tên board, tìm kiếm,
-          bật/tắt panel) vừa là CHỖ NEO của các đảo nhỏ. Nó co lại còn bằng đúng
-          hàng nút của mình khi không panel nào neo vào, nên bảng trống thì không
-          còn một pixel nào bị chiếm — khác hẳn .topbar + .filterbar cũ ăn ~140px
-          vĩnh viễn. */}
-      <div className="island tl">
-        <div className="island-row">
-          {/* Một ☰ duy nhất thay cho ba menu Board/Dữ liệu/Xem + cụm thiết lập:
-              tất cả đều là việc thỉnh thoảng mới làm, không đáng chiếm mặt tiền.
-              data-mutating = móc CSS đánh dấu control ghi dữ liệu board; ở chế độ
-              chỉ xem chúng bị vô hiệu hoá, phần còn lại vẫn dùng được.
-              "Mời thành viên" nằm ở PresenceBar (đảo người), cạnh danh sách người
-              đang mở board — mời ai đó là việc của cùng một mạch suy nghĩ. */}
-          <TopMenu label={<IconMenu />} title={t`Menu`}>
-            <Link to="/idea-map" className="btn ghost"><Trans>← Danh sách board</Trans></Link>
-            <div className="menubar-sep" />
-            <button className="btn ghost" onClick={() => { setIoMode("export"); setIoText(JSON.stringify(board.kind === "game-design" ? exportPackage({ ...board, view, name: boardName }) : { ...board, view }, null, 2)); setIoOpen(true); }}><Trans>Xuất JSON</Trans></button>
-            <button className="btn ghost" onClick={exportVersionedJson}><Trans>Tải JSON</Trans></button>
-            <button className="btn ghost" data-mutating onClick={() => { setIoMode("import"); setIoText(""); setIoOpen(true); }}><Trans>Nhập JSON</Trans></button>
-            <button className="btn ghost" onClick={openSnapshots}>Snapshots</button>
-            {/* Dung lượng PDF đứng cùng nhóm "dữ liệu" với Xuất/Nhập JSON, không
-                đứng cùng nhóm "cách xem" — nó nói về thứ đang chiếm chỗ trên
-                kho, chứ không đổi gì trên màn hình. */}
-            <PdfUsage />
-            <div className="menubar-sep" />
-            <button className="btn ghost" disabled={board.groups.length === 0} onClick={startPresentation}><Trans>Trình chiếu</Trans></button>
-            <button className={"btn ghost toggle" + (outlineOpen ? " active" : "")} onClick={() => setOutlineOpen((v) => !v)}><Trans>Mục lục</Trans></button>
-            {/* Ngôn ngữ, sáng/tối và skin đã rời menu này sang panel Giao diện ở
-                thanh đáy — chúng cùng một họ với nền bảng và bộ màu, để rải hai
-                chỗ thì muốn chỉnh giao diện phải nhớ mở hai nơi. Còn lại ở đây
-                đúng ba nhóm: đi đâu, dữ liệu, và cách xem. */}
-          </TopMenu>
+      <BoardTopBar {...{ BG_LABEL, GRID_LABEL, PACK_LABEL, activeFilterCount, balanceOpen, board, boardName, briefOpen, camera, clearFilters, decisionTimelineOpen, dependency, exportVersionedJson, flowOpen, goToMatch, handoffOpen, impactOpen, insightsOpen, matchCount, matchIdx, matches, openSnapshots, outlineOpen, playtestsOpen, reportsOpen, role, search, searchInputRef, searchOpen, setBalanceOpen, setBoardBg, setBoardGrid, setBoardPack, setBriefOpen, setDecisionTimelineOpen, setDesignEditId, setFlowOpen, setHandoffOpen, setImpactCardId, setImpactOpen, setInsightsOpen, setIoMode, setIoOpen, setIoText, setOutlineOpen, setPlaytestsOpen, setReportsOpen, setSearch, setSelectedEdgeIds, setTheme, setView, setWheelMode, skin, startPresentation, theme, toggleSearch, toggleSkin, toolsOpen, view, viewportSize, wheelMode, workspace, workspaceCameraRef }} />
 
-          <span className="island-name" title={boardName}>{boardName}</span>
+      <BoardHudBottom {...{ anyPanelOn, board, filterFav, filterStatus, filterTags, handleChipMouseDown, handleColorMouseDown, hasNoStatus, hasNoTag, openBadgeCreate, openBadgeMenu, openPaletteEditor, panels, setFilterFav, setFilterStatus, setFilterTags, togglePanel }} />
 
-          <button
-            type="button"
-            className={"island-btn" + (searchOpen ? " on" : "")}
-            title={t`Tìm kiếm (Ctrl+F)`}
-            onClick={toggleSearch}
-          ><IconSearch /></button>
-          {searchOpen && (
-            <div className="search-box">
-              <input
-                ref={searchInputRef}
-                type="text"
-                placeholder={t`Tìm theo tên/mô tả…`}
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") { e.preventDefault(); goToMatch(e.shiftKey ? -1 : 1); }
-                  // Escape đóng ô tìm — cùng phản xạ với mọi ô nhập khác trong app.
-                  if (e.key === "Escape") { e.preventDefault(); toggleSearch(); }
-                }}
-              />
-              {search.trim() && (
-                <>
-                  <span className="search-count mono">{matches.length ? matchIdx + 1 : 0}/{matches.length}</span>
-                  <button type="button" className="island-btn" title={t`Kết quả trước (Shift+Enter)`} onClick={() => goToMatch(-1)}>↑</button>
-                  <button type="button" className="island-btn" title={t`Kết quả sau (Enter)`} onClick={() => goToMatch(1)}>↓</button>
-                </>
-              )}
-            </div>
-          )}
+      <PresenceIsland {...{ board, follow, followError, followingId, jumpToPeer, logout, pendingId, role, setInviteOpen, socket, stopFollow, user, watcherCount }} />
 
-          <div className="island-sep" />
-
-          {/* Giao diện đứng ở ĐÂY chứ không ở thanh đáy: ba nút dưới đó mở ra bộ
-              LỌC (bấm chip là thẻ bị làm mờ), còn cái này là THIẾT LẬP, không lọc
-              gì cả. Cùng một dải chỉ cách nhau một vạch ngăn thì vẫn đọc ra là
-              cùng loại — phải tách hẳn sang chỗ khác.
-              Nội dung bung ra ngay dưới nút, không hiện tuốt dưới đáy: bấm ở đây
-              mà kết quả nhảy ra chỗ khác thì mắt phải đi tìm. */}
-          <TopMenu label={<IconBoardStyle />} title={t`Giao diện`} wide closeOnClick={false}>
-            {/* Ranh giới quan trọng nhất của bảng này: ba hàng trên chỉ đổi cho
-                MÌNH (localStorage), hai hàng dưới ghi vào dữ liệu board nên MỌI
-                NGƯỜI cùng thấy. Không nói rõ thì người ta đổi nền bảng mà tưởng
-                chỉ mình thấy. Hai hàng dưới đã mang data-mutating nên tài khoản
-                chỉ xem thấy chúng mờ đi — thêm một tín hiệu nữa cùng hướng. */}
-            <div className="theme-section"><Trans>Chỉ mình bạn thấy</Trans></div>
-            <div className="theme-row workspace-settings">
-              <span role="status" aria-live="polite">{workspace.status === "account-changed" ? t`Tài khoản đã thay đổi — tải lại trang để đồng bộ` : workspace.status === "local" ? t`Giao diện lưu trên máy — chờ đồng bộ` : workspace.status === "saved" ? t`Giao diện đã đồng bộ` : t`Đang lưu giao diện…`}</span>
-              <button type="button" className="btn ghost small" onClick={() => {
-                const defaults = normalizeWorkspace();
-                workspace.update({ ...defaults, camera: { x: viewportSize.w / 2, y: viewportSize.h / 2, scale: 1 } });
-                const view = { panX: 0, panY: 0, scale: 1 };
-                workspaceCameraRef.current = { controller: workspace.controller, hydration: workspace.hydration, ...viewportSize, applying: view };
-                setView(view);
-                void workspace.flush();
-              }}><Trans>Đặt lại giao diện</Trans></button>
-            </div>
-            <div className="theme-row">
-              <span className="fb-count"><Trans>Ngôn ngữ</Trans></span>
-              <div className="fb-chips"><LocaleToggle /></div>
-            </div>
-            <div className="theme-row">
-              <span className="fb-count"><Trans>Sáng/tối</Trans></span>
-              <div className="fb-chips">
-                <button
-                  className={"btn ghost toggle" + (theme === "light" ? " active" : "")}
-                  onClick={() => setTheme("light")}
-                ><Trans>Sáng</Trans></button>
-                <button
-                  className={"btn ghost toggle" + (theme === "dark" ? " active" : "")}
-                  onClick={() => setTheme("dark")}
-                ><Trans>Tối</Trans></button>
-              </div>
-            </div>
-            {/* Cuộn hai ngón nghĩa là gì. Đứng ở nhóm "chỉ mình bạn thấy" vì nó
-                là chuyện CÁI MÁY đang cầm, không phải chuyện cái bảng: cùng một
-                board mở trên laptop và trên máy có chuột rời thì hai người muốn
-                hai hành vi khác nhau.
-                "Tự động" nhận thiết bị theo dấu hiệu của từng sự kiện wheel và
-                đúng gần hết các trường hợp — nhưng trên macOS thì nút lăn chuột
-                cho ra đúng những con số mà touchpad cho, không có cách nào tách.
-                Đó là lý do hai nút chọn tay tồn tại, không phải để cho đủ bộ. */}
-            <div className="theme-row">
-              <span className="fb-count"><Trans>Cuộn hai ngón</Trans></span>
-              <div className="fb-chips">
-                <button
-                  className={"btn ghost toggle" + (wheelMode === "auto" ? " active" : "")}
-                  title={t`Nhận thiết bị theo cách cuộn: touchpad thì lia bảng, nút lăn thì thu phóng`}
-                  onClick={() => setWheelMode("auto")}
-                ><Trans>Tự động</Trans></button>
-                <button
-                  className={"btn ghost toggle" + (wheelMode === "pan" ? " active" : "")}
-                  title={t`Cuộn luôn là lia bảng. Chụm hai ngón (hoặc Ctrl+cuộn) để thu phóng`}
-                  onClick={() => setWheelMode("pan")}
-                ><Trans>Lia bảng</Trans></button>
-                <button
-                  className={"btn ghost toggle" + (wheelMode === "zoom" ? " active" : "")}
-                  title={t`Cuộn luôn là thu phóng. Giữ Shift để lia bảng`}
-                  onClick={() => setWheelMode("zoom")}
-                ><Trans>Thu phóng</Trans></button>
-              </div>
-            </div>
-            <div className="theme-row">
-              <span className="fb-count"><Trans>Kiểu vẽ</Trans></span>
-              <div className="fb-chips">
-                <button
-                  className={"btn ghost toggle" + (skin !== "sketch" ? " active" : "")}
-                  onClick={() => { if (skin === "sketch") toggleSkin(); }}
-                ><Trans>Sạch</Trans></button>
-                <button
-                  className={"btn ghost toggle" + (skin === "sketch" ? " active" : "")}
-                  onClick={() => { if (skin !== "sketch") toggleSkin(); }}
-                ><IconSketch /> <Trans>Vẽ tay</Trans></button>
-              </div>
-            </div>
-
-            <div className="theme-section"><Trans>Mọi người cùng thấy</Trans></div>
-            <div className="theme-row">
-              <span className="fb-count"><Trans>Nền bảng</Trans></span>
-              <div className="fb-chips">
-                {/* Nút đầu là "theo giao diện" (bg = null): nền chạy theo sáng/tối
-                    như trước khi có preset. Nó KHÔNG nằm trong BOARD_BGS vì đó là
-                    danh sách preset, còn đây là "không preset nào". */}
-                <button
-                  className={"bg-swatch bg-none" + (board.bg == null ? " on" : "")}
-                  data-mutating
-                  disabled={role === "viewer"}
-                  onClick={() => setBoardBg(null)}
-                  title={t`Theo giao diện sáng/tối`}
-                />
-                {BOARD_BGS.map((id) => (
-                  <button
-                    key={id}
-                    className={"bg-swatch" + (board.bg === id ? " on" : "")}
-                    data-bg={id}
-                    data-mutating
-                    disabled={role === "viewer"}
-                    onClick={() => setBoardBg(id)}
-                    title={BG_LABEL[id]}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="theme-row">
-              <span className="fb-count"><Trans>Lưới</Trans></span>
-              <div className="fb-chips">
-                {/* Lưới chấm là kiểu duy nhất có từ đầu nên nó là grid = null,
-                    y hệt "theo giao diện" ở hàng nền: board cũ trong DB không có
-                    field này và phải vẽ ra đúng như trước. */}
-                <button
-                  className={"grid-swatch" + (board.grid == null ? " on" : "")}
-                  data-grid="dots"
-                  data-mutating
-                  disabled={role === "viewer"}
-                  onClick={() => setBoardGrid(null)}
-                  title={GRID_LABEL.dots}
-                />
-                {BOARD_GRIDS.map((id) => (
-                  <button
-                    key={id}
-                    className={"grid-swatch" + (board.grid === id ? " on" : "")}
-                    data-grid={id}
-                    data-mutating
-                    disabled={role === "viewer"}
-                    onClick={() => setBoardGrid(id)}
-                    title={GRID_LABEL[id]}
-                  />
-                ))}
-              </div>
-            </div>
-            <div className="theme-row">
-              <span className="fb-count"><Trans>Bộ màu</Trans></span>
-              <div className="fb-chips">
-                <button
-                  className={"btn ghost toggle" + (board.pack == null ? " active" : "")}
-                  data-mutating
-                  disabled={role === "viewer"}
-                  onClick={() => setBoardPack(null)}
-                ><Trans>Cổ điển</Trans></button>
-                {COLOR_PACKS.map((id) => (
-                  <button
-                    key={id}
-                    className={"btn ghost toggle" + (board.pack === id ? " active" : "")}
-                    data-mutating
-                    disabled={role === "viewer"}
-                    onClick={() => setBoardPack(id)}
-                  >{PACK_LABEL[id]}</button>
-                ))}
-              </div>
-            </div>
-          </TopMenu>
-        </div>
-
-        {board.kind === "game-design" && <div className="island-row gd-tools-row">
-          {board.kind === "game-design" && <button
-            type="button"
-            className="btn ghost gd-tools-toggle"
-            aria-expanded={toolsOpen}
-            aria-controls="game-design-toolbar"
-            title={toolsOpen ? t`Thu gọn công cụ thiết kế` : t`Mở công cụ thiết kế`}
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={() => workspace.update({ toolsOpen: !toolsOpen })}
-          ><Trans>Thiết kế</Trans> <span aria-hidden="true">{toolsOpen ? "▾" : "▸"}</span></button>}
-
-          {board.kind === "game-design" && <div id="game-design-toolbar" className="gd-toolbar-actions" hidden={!toolsOpen}>
-
-          {board.kind === "game-design" && <button
-            type="button"
-            className={"btn ghost gd-brief-trigger" + (briefOpen ? " active" : "")}
-            title="Mở Game brief"
-            onClick={() => {
-              setDesignEditId(null);
-              setSelectedEdgeIds(EMPTY_SET);
-              setFlowOpen(false);
-              setHandoffOpen(false);
-              setDecisionTimelineOpen(false);
-              setBriefOpen(true);
-            }}
-          >Game brief</button>}
-
-          {board.kind === "game-design" && <button
-            type="button"
-            className={"btn ghost gd-brief-trigger" + (flowOpen ? " active" : "")}
-            title="Mở Game flow"
-            onClick={() => {
-              setDesignEditId(null);
-              setSelectedEdgeIds(EMPTY_SET);
-              setBriefOpen(false);
-              setHandoffOpen(false);
-              setDecisionTimelineOpen(false);
-              setFlowOpen(true);
-            }}
-          >Game flow</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (balanceOpen ? " active" : "")} title="Mở Balance sheet" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setBalanceOpen(true); }}>Balance</button>}
-
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (handoffOpen ? " active" : "")} title="Mở Team handoff" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setDecisionTimelineOpen(false); setHandoffOpen(true); }}>Handoff</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (decisionTimelineOpen ? " active" : "")} title="Mở Decision timeline" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(true); }}>Decisions</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (insightsOpen ? " active" : "")} title="Mở Game Design insights" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setInsightsOpen(true); }}>Insights</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (impactOpen ? " active" : "")} title="Mở dependency impact map" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setInsightsOpen(false); setReportsOpen(false); setImpactCardId(null); setImpactOpen(true); }}>Impact</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (playtestsOpen ? " active" : "")} onClick={() => { setDesignEditId(null); setPlaytestsOpen(true); }}>Playtests</button>}
-          {board.kind === "game-design" && <button type="button" className={"btn ghost gd-brief-trigger" + (reportsOpen ? " active" : "")} title="Mở Report Center" onClick={() => { setDesignEditId(null); setSelectedEdgeIds(EMPTY_SET); setBriefOpen(false); setFlowOpen(false); setBalanceOpen(false); setHandoffOpen(false); setDecisionTimelineOpen(false); setReportsOpen(true); }}>Reports</button>}
-          </div>}
-        </div>}
-
-        {activeFilterCount > 0 && (
-          <div className="fb-tail">
-            <span className="fb-count mono" title={t`Số ý tưởng khớp bộ lọc`}>
-              <Trans>Khớp {matchCount}/{board.nodes.length}</Trans>
-            </span>
-            <button className="fb-clear" onClick={clearFilters}><Trans>Xoá lọc</Trans></button>
-          </div>
-        )}
-
-      </div>
-
-      {/* THANH ĐÁY — đảo nút bật panel, và ngay cạnh nó là đảo nội dung của panel
-          đang bật. Panel chỉ sống ở đúng chỗ này: không neo, không nổi, không kéo
-          đi đâu được. Đổi lại thì cũng không còn cách nào làm mất nó. */}
-      <div className="hud-bottom">
-        <div className="island">
-          <div className="island-row">
-            <button type="button" className={"island-btn" + (panels.status ? " on" : "")} title={t`Trạng thái`} onClick={() => togglePanel("status")}><IconStatus /></button>
-            <button type="button" className={"island-btn" + (panels.tag ? " on" : "")} title={t`Nhãn`} onClick={() => togglePanel("tag")}><IconTag /></button>
-            <button type="button" className={"island-btn" + (panels.palette ? " on" : "")} title={t`Bảng màu`} onClick={() => togglePanel("palette")}><IconPalette /></button>
-            {/* ★ xuống đây theo ba nút kia: nó cũng là BỘ LỌC. Ở lại đảo trên trái
-                thì nó đứng lẫn giữa menu, tên board và tìm kiếm — đúng kiểu trộn
-                mà cả nhóm này vừa được dọn cho hết. Khác ba nút bên trái ở chỗ nó
-                không mở ra khối nội dung nào, bật là ăn ngay. */}
-            <button type="button" className={"island-btn" + (filterFav ? " on" : "")} title={t`Chỉ hiện thẻ yêu thích`} onClick={() => setFilterFav((v) => !v)}><IconStar /></button>
-          </div>
-        </div>
-
-        {anyPanelOn && (
-        <div className="island">
-        <div className="filter-dock">
-        {panels.status && (
-          <FilterPanel title={t`Trạng thái`}>
-            <div className="fb-chips">
-              {board.statuses.map((s) => {
-                const key = String(s.id);
-                return (
-                  <span
-                    key={key}
-                    className={"chip-toggle status" + (filterStatus[key] ? " on" : "")}
-                    data-badge-kind="status"
-                    data-badge-id={s.id}
-                    onMouseDown={(e) => handleChipMouseDown(e, "status", key)}
-                    onContextMenu={(e) => openBadgeMenu(e, "status", s)}
-                    onClick={() => setFilterStatus((prev) => ({ ...prev, [key]: !prev[key] }))}
-                    title={t`Bấm để lọc — kéo thả vào thẻ để gán trạng thái — chuột phải để sửa`}
-                  >
-                    <span className="dot" style={{ background: colorVar(s.color) }}></span>
-                    {s.name}
-                  </span>
-                );
-              })}
-              {hasNoStatus && (
-                <span
-                  className={"chip-toggle status" + (filterStatus["none"] ? " on" : "")}
-                  onMouseDown={(e) => handleChipMouseDown(e, "status", "none")}
-                  onClick={() => setFilterStatus((prev) => ({ ...prev, none: !prev["none"] }))}
-                  title={t`Lọc thẻ chưa có trạng thái`}
-                >
-                  <span className="dot dot-empty"></span>
-                  <Trans>Không trạng thái</Trans>
-                </span>
-              )}
-              <button className="fb-add" onClick={(e) => openBadgeCreate(e, "status")} title={t`Thêm trạng thái`}>+</button>
-            </div>
-          </FilterPanel>
-        )}
-
-        {panels.tag && (
-          <FilterPanel title={t`Nhãn`}>
-            <div className="fb-chips">
-              {board.tags.map((tg) => {
-                const key = String(tg.id);
-                return (
-                  <span
-                    key={key}
-                    className={"chip-toggle tag" + (filterTags[key] ? " on" : "")}
-                    data-badge-kind="tag"
-                    data-badge-id={tg.id}
-                    onMouseDown={(e) => handleChipMouseDown(e, "tag", key)}
-                    onContextMenu={(e) => openBadgeMenu(e, "tag", tg)}
-                    onClick={() => setFilterTags((prev) => ({ ...prev, [key]: !prev[key] }))}
-                    title={t`Bấm để lọc — kéo thả vào thẻ để gán nhãn — chuột phải để sửa`}
-                  >
-                    <span className="dot" style={{ background: colorVar(tg.color) }}></span>
-                    {tg.name}
-                  </span>
-                );
-              })}
-              {hasNoTag && (
-                <span
-                  className={"chip-toggle tag" + (filterTags["none"] ? " on" : "")}
-                  onMouseDown={(e) => handleChipMouseDown(e, "tag", "none")}
-                  onClick={() => setFilterTags((prev) => ({ ...prev, none: !prev["none"] }))}
-                  title={t`Lọc thẻ chưa gắn nhãn`}
-                >
-                  <span className="dot dot-empty"></span>
-                  <Trans>Không nhãn</Trans>
-                </span>
-              )}
-              <button className="fb-add" onClick={(e) => openBadgeCreate(e, "tag")} title={t`Thêm nhãn`}>+</button>
-            </div>
-          </FilterPanel>
-        )}
-
-        {panels.palette && (
-          <FilterPanel title={t`Bảng màu`}>
-            <div className="fb-chips">
-              {board.palette.map((c) => (
-                <button
-                  key={c.id}
-                  className="pal-swatch"
-                  style={{ background: colorVar(`pal-${c.id}`) }}
-                  onMouseDown={(e) => handleColorMouseDown(e, `pal-${c.id}`)}
-                  onClick={(e) => openPaletteEditor(e, c)}
-                  title={t`Bấm để sửa màu — kéo thả vào thẻ / dây / badge để tô màu`}
-                />
-              ))}
-              <button className="fb-add" onClick={(e) => openPaletteEditor(e, null)} title={t`Thêm màu`}>+</button>
-            </div>
-            {board.palette.length === 0 && (
-              <span className="fb-count"><Trans>Chưa có màu nào — bấm + để tạo.</Trans></span>
-            )}
-          </FilterPanel>
-        )}
-        </div>
-        </div>
-        )}
-      </div>
-
-      {/* ĐẢO NGƯỜI — góc trên phải. Ai đang mở board + nút mời. */}
-      <div className="island tr">
-        <div className="island-row">
-          <PresenceBar
-            user={user}
-            socket={socket}
-            canInvite={role === "owner"}
-            onInvite={() => setInviteOpen(true)}
-            onJumpToPeer={jumpToPeer}
-            onLogout={logout}
-            followingId={followingId}
-            watcherCount={watcherCount}
-            onFollowPeer={follow}
-            onStopFollow={stopFollow}
-          />
-        </div>
-      </div>
-
-      <FollowBanner
-        socket={socket}
-        followingId={followingId}
-        pendingId={pendingId}
-        followError={followError}
-        onStop={stopFollow}
-      />
-
-      {/* ĐẢO HOÀN TÁC — góc dưới trái, đối xứng với nút zoom ở góc dưới phải:
-          cả hai đều là thao tác lên TRẠNG THÁI khung nhìn/bảng chứ không tạo ra
-          nội dung, nên chúng thuộc về đáy màn hình, không phải mặt tiền.
-          Chỗ này trước đây trống hoàn toàn. */}
-      <div className="island bl">
-        <div className="island-row">
-          <button type="button" className="island-btn" data-mutating onClick={undo} disabled={past.length === 0} title={t`Hoàn tác (Ctrl+Z)`}><IconUndo /></button>
-          <button type="button" className="island-btn" data-mutating onClick={redo} disabled={future.length === 0} title={t`Làm lại (Ctrl+Shift+Z)`}><IconRedo /></button>
-          {saveError && (
-            <span style={{ fontSize: 11, color: "var(--danger)", paddingRight: 4 }}>
-              <Trans>Không lưu được lên server.</Trans>
-            </span>
-          )}
-        </div>
-      </div>
+      <HistoryIsland {...{ future, past, redo, saveError, undo }} />
 
       <div
         className={"viewport" + (isPanning ? " panning" : "")}
@@ -2015,192 +1555,7 @@ export default function IdeaMap() {
             onMouseDown={handlePlaceCaptureMouseDown}
           />
         )}
-        <div
-          className="canvas"
-          ref={canvasRef}
-          style={{ transform: `translate(${view.panX}px, ${view.panY}px) scale(${view.scale})` }}
-        >
-          {marquee && (
-            <div className="marquee-box" style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h }} />
-          )}
-          {placeDraft && (
-            <div className="place-draft" style={{ left: placeDraft.x, top: placeDraft.y, width: placeDraft.w, height: placeDraft.h }} />
-          )}
-          {/* TAY CẦM SỬA HÌNH — hiện khi chọn đúng MỘT hình khối. Kéo tay cầm
-              góc để đặt từng đỉnh, kéo tay cầm cạnh (ô tròn ở giữa cạnh) để dời
-              trọn một cạnh. Với hình định nghĩa bằng hộp bao (chữ nhật, ê-líp,
-              hình thoi, tam giác cân) thì góc là góc hộp và cạnh là mép hộp —
-              xem ghi chú dài ở lib/shape.js về lý do hai ý nghĩa khác nhau.
-              Hiện ở mode Chuột, VÀ ở mode Sửa khi đang cầm BÚT. Ở mode Sửa thì
-              `.ink-capture` phủ kín khung nhìn nên chúng không tự nhận được
-              chuột — handleInkCaptureMouseDown dò tay để bắt hộ (xem
-              shapeHandleAt). Cố ý chỉ ở tool Bút: cục gôm quét trúng tay cầm là
-              xoá mất hình, còn tool Hình khối thì việc đang làm là ĐẶT hình mới,
-              mấy ô vuông nhỏ nằm giữa vùng kéo chỉ tổ vướng. */}
-          {editShape && canGrabShapeHandles && role !== "viewer" && editShape.handles.map((h) => (
-            <div
-              key={h.t + h.i}
-              className={"shape-handle" + (h.t === HANDLE_EDGE ? " edge" : "")}
-              // Bù trừ zoom, cùng lý do với tay cầm của hộp bao vùng chọn: cỡ cố
-              // định thì ở zoom 40% không bấm nổi, ở 240% thì to hơn cả cái hình.
-              style={{
-                left: h.x, top: h.y,
-                transform: `translate(-50%, -50%) scale(${1 / view.scale})`
-              }}
-              title={h.t === HANDLE_EDGE ? t`Kéo để dời cả cạnh này` : t`Kéo để đặt góc này vào chỗ khác`}
-              onMouseDown={(e) => handleShapeHandleMouseDown(e, h)}
-            />
-          ))}
-          {/* HỘP BAO VÙNG CHỌN. Bản thân hộp KHÔNG nhận chuột (pointer-events:
-              none trong CSS) — nó chỉ nói cho mắt biết "cả vùng này là một cụm".
-              Cú kéo trong lòng hộp do handleViewportMouseDown bắt, nên bấm trúng
-              một cái thẻ ở giữa vùng vẫn là bấm vào cái thẻ đó: bấm đúp để sửa,
-              kéo góc ảnh, bấm chip… tất cả còn nguyên.
-              Bốn tay cầm ở góc thì NGƯỢC LẠI, chúng bật lại pointer-events —
-              chúng là thứ duy nhất trong hộp cướp chuột, và chỉ ở đúng 4 ô nhỏ.
-              Chỉ hiện ở mode Chuột: ở mode Sửa cả khung nhìn đã bị .ink-capture
-              phủ kín, tay cầm sẽ không bao giờ bấm được, mà vẫn che mất chỗ vẽ. */}
-          {selBounds && mode === "select" && (
-            <div
-              className={"selection-box" + (dropTargetId?.kind === "selection" ? " drop" : "")}
-              style={{ left: selBounds.x, top: selBounds.y, width: selBounds.w, height: selBounds.h }}
-            >
-              {role !== "viewer" && SELECTION_CORNERS.map((corner) => {
-                const p = cornerPoint(selBounds, corner);
-                return (
-                  <div
-                    key={corner}
-                    className={"selection-handle " + corner}
-                    // Bù trừ zoom: tay cầm nằm trong .canvas (đã scale) nên nếu
-                    // để cỡ cố định thì ở zoom 40% nó bé tới mức không bấm nổi,
-                    // còn ở zoom 240% thì nó to hơn cả cái thẻ.
-                    style={{
-                      left: p.x - selBounds.x,
-                      top: p.y - selBounds.y,
-                      transform: `translate(-50%, -50%) scale(${1 / view.scale})`
-                    }}
-                    title={t`Kéo để phóng to / thu nhỏ cả cụm`}
-                    onMouseDown={(e) => handleSelectionResizeMouseDown(e, corner)}
-                  />
-                );
-              })}
-            </div>
-          )}
-          {liveGroups.map((group) => (
-            <FrameBox
-              key={group.id}
-              group={group}
-              treeSwapState={treeSwapState(edgeKey("group", group.id))}
-              editingTitle={editingGroupTitleId === group.id}
-              dropTarget={!!dropTargetId && dropTargetId.kind === "group" && dropTargetId.id === group.id}
-              selected={selectedGroupIds.has(group.id)}
-              h={groupHandlers}
-            />
-          ))}
-
-          <EdgeLayer
-            edges={board.edges}
-            routes={edgeRoutes}
-            nodeById={nodeById}
-            groupById={groupById}
-            cardSize={frameCardSize}
-            sketch={skin === "sketch"}
-            gameDesign={board.kind === "game-design"}
-            cycleEdgeIds={dependency?.cycleEdgeIds}
-            hoveredEdgeId={hoveredEdgeId}
-            selectedEdgeIds={selectedEdgeIds}
-            edgeDragId={edgeDrag ? edgeDrag.edgeId : null}
-            snapGuides={snapGuides}
-            linkDraft={linkDraft}
-            edgeDraft={edgeDrag}
-            onEdgeEnter={onEdgeEnter}
-            onEdgeLeave={onEdgeLeave}
-            onEdgeClick={onEdgeClick}
-            onEdgeContextMenu={onEdgeContextMenu}
-          />
-
-          {liveNodes.map((liveNode) => {
-            const liveText = editingId === liveNode.id ? null : textOverlay.get(String(liveNode.id));
-            const renderNode = liveText
-              ? { ...liveNode, title: liveText.title ?? liveNode.title, desc: liveText.desc ?? liveNode.desc }
-              : liveNode;
-            return (
-              <IdeaCard
-                key={liveNode.id}
-                node={renderNode}
-                layoutLocked={layoutOwners.has(edgeKey("node", liveNode.id))}
-                layoutSwappable={!liveNode.locked && layoutOwners.has(edgeKey("node", liveNode.id)) && layoutOwners.get(edgeKey("node", liveNode.id)) !== edgeKey("node", liveNode.id)}
-                treeSwapState={treeSwapState(edgeKey("node", liveNode.id))}
-                boardId={boardId}
-                statusDef={statusDefById.get(liveNode.statusId) ?? null}
-                tagDef={tagDefById.get(liveNode.tagId) ?? null}
-                statuses={board.statuses}
-                tags={board.tags}
-                currentUser={currentUser}
-                observeCard={observeCard}
-                editing={editingId === liveNode.id}
-                dimmed={(!passesFilter(liveNode) || (focusSet != null && !focusSet.has(liveNode.id))) && editingId !== liveNode.id}
-                linkPending={linkMode && pendingSource === liveNode.id}
-                dropTarget={isNodeDropTarget(liveNode.id)}
-                selected={selectedIds.has(liveNode.id)}
-                flash={flashId === liveNode.id}
-                gameDesign={board.kind === "game-design"}
-                balance={board.gameDesignBalance}
-                blocked={dependency?.blockedNodeIds.has(String(liveNode.id))}
-                dependencyCycle={dependency?.cycleNodeIds.has(String(liveNode.id))}
-                onDesign={() => setDesignEditId(liveNode.id)}
-                h={cardHandlers}
-              />
-            );
-          })}
-
-          <PeerLayer socket={socket} nodeById={nodeById} groupById={groupById} cardSize={frameCardSize} spotlightPeerId={spotlightPeerId} />
-
-          <InkLayer
-            drawings={inkDrawings}
-            draft={ink.draft}
-            eraseIds={ink.eraseIds}
-            cut={ink.cut}
-            liveStrokes={inkLive.liveStrokes}
-            sketch={skin === "sketch"}
-            editingTextId={textEdit ? textEdit.id : null}
-            selectedIds={selectedDrawingIds}
-          />
-
-          {/* Nằm trong .canvas nên vệt bám theo bảng khi lia/phóng — chỉ vào
-              một cái thẻ thì vệt ở lại đúng cái thẻ đó, không trôi ra chỗ khác
-              khi người xem lia bảng. */}
-          <LaserLayer socket={socket} store={laser.store} scale={view.scale} />
-
-          {/* Tay cầm nổi trên cùng, tách khỏi .edge-layer: đầu dây thường trùng
-              đúng chỗ connector-zone của thẻ (cả hai đều ở tâm cạnh), và thẻ
-              luôn vẽ sau .edge-layer nên connector-zone sẽ che tay cầm nếu để
-              chung lớp — chuột sẽ trúng connector-zone thay vì tay cầm. */}
-          {hoveredEdgeId != null && !edgeDrag && (() => {
-            const edge = board.edges.find((e) => e.id === hoveredEdgeId);
-            if (!edge) return null;
-            const route = edgeRoutes.get(edge.id);
-            if (!route) return null;
-            const p1 = route.start, p2 = route.end;
-            return (
-              <svg
-                className="edge-handle-layer"
-                onMouseLeave={() => setHoveredEdgeId((id) => (id === edge.id ? null : id))}
-              >
-                <circle
-                  className="edge-handle" cx={p1.x} cy={p1.y} r={6}
-                  onMouseEnter={() => setHoveredEdgeId(edge.id)}
-                  onMouseDown={(e) => handleEdgeEndpointMouseDown(e, edge, "from")}
-                />
-                <circle
-                  className="edge-handle" cx={p2.x} cy={p2.y} r={6}
-                  onMouseEnter={() => setHoveredEdgeId(edge.id)}
-                  onMouseDown={(e) => handleEdgeEndpointMouseDown(e, edge, "to")}
-                />
-              </svg>
-            );
-          })()}
-        </div>
+        <BoardCanvas {...{ board, boardId, canGrabShapeHandles, canvasRef, cardHandlers, currentUser, dependency, dropTargetId, edgeDrag, edgeRoutes, editShape, editingGroupTitleId, editingId, flashId, focusSet, frameCardSize, gameDesign, groupById, groupHandlers, handleEdgeEndpointMouseDown, handleInkCaptureMouseDown, handleSelectionResizeMouseDown, handleShapeHandleMouseDown, handleViewportMouseDown, hoveredEdgeId, ink, inkDrawings, inkLive, isNodeDropTarget, laser, layoutOwners, linkDraft, linkMode, liveGroups, liveNodes, marquee, mode, nodeById, observeCard, onEdgeClick, onEdgeContextMenu, onEdgeEnter, onEdgeLeave, passesFilter, pendingSource, placeDraft, role, selBounds, selectedDrawingIds, selectedEdgeIds, selectedGroupIds, selectedIds, selection, setDesignEditId, setHoveredEdgeId, shapeHandleAt, skin, snapGuides, socket, spotlightPeerId, statusDefById, store, tagDefById, textEdit, textOverlay, tool, treeSwapState, view }} />
 
         {board.nodes.length === 0 && (
           <div className="empty-hint">
@@ -2229,19 +1584,7 @@ export default function IdeaMap() {
           />
         )}
 
-        <div className="zoom-ctrl">
-          <button onClick={() => zoomButton(1 / 1.2)} title={t`Thu nhỏ`}>−</button>
-          <span className="pct mono">{Math.round(view.scale * 100)}%</span>
-          <button onClick={() => zoomButton(1.2)} title={t`Phóng to`}>+</button>
-          <div className="sep" />
-          <button onClick={fitToView} style={{ width: "auto", padding: "0 8px", fontSize: 11 }}><Trans>Vừa khung</Trans></button>
-          <div className="sep" />
-          <button
-            className={miniOpen ? "on" : undefined}
-            onClick={() => setMiniOpen((v) => !v)}
-            title={miniOpen ? t`Ẩn bản đồ thu nhỏ` : t`Hiện bản đồ thu nhỏ`}
-          ><MiniMapIcon /></button>
-        </div>
+        <ZoomControl {...{ fitToView, miniOpen, setMiniOpen, view, zoomButton }} />
 
         {outlineOpen && (() => {
           const outline = buildOutline(board, frameCardSize);
@@ -2313,344 +1656,16 @@ export default function IdeaMap() {
           );
         })()}
 
-        {/* Dock bên phải là chỗ DUY NHẤT cho mọi thao tác làm đổi dữ liệu: spec
-            của thẻ GD và batch edit của mọi loại board cùng sống ở đây. */}
-        {!treeUI && (briefOpen || flowOpen || balanceOpen || handoffOpen || decisionTimelineOpen || snapshotsOpen || insightsOpen || reportsOpen || impactOpen || playtestsOpen || designEditId != null || selectedEdgeIds.size >= 1 || selectedIds.size + selectedGroupIds.size >= 2 || selectedGroupIds.size >= 1 || selectedDrawingIds.size >= 1) && (
-          <aside className="edit-dock" ref={editDockRef}>
-            {briefOpen && board.kind === "game-design" && <GameDesignBriefPanel brief={board.gameDesignBrief} canEdit={role !== "viewer"} onSave={saveGameDesignBrief} onClose={() => setBriefOpen(false)} outsideRef={editDockRef} />}
-            {flowOpen && board.kind === "game-design" && <GameDesignFlowPanel flow={board.gameDesignFlow} nodes={board.nodes} canEdit={role !== "viewer"} onSave={saveGameDesignFlow} onClose={() => setFlowOpen(false)} outsideRef={editDockRef} />}
-            {balanceOpen && board.kind === "game-design" && <GameDesignBalancePanel balance={board.gameDesignBalance} nodes={board.nodes} canEdit={role !== "viewer"} onSave={saveGameDesignBalance} onClose={() => setBalanceOpen(false)} outsideRef={editDockRef} />}
-            {handoffOpen && board.kind === "game-design" && <DevHandoffPanel board={board} boardName={boardName} selectedIds={selectedIds} onClose={() => setHandoffOpen(false)} outsideRef={editDockRef} />}
-            {decisionTimelineOpen && board.kind === "game-design" && <DecisionTimelinePanel nodes={board.nodes} onOpenCard={(id) => { setDecisionTimelineOpen(false); setDesignEditId(id); }} onClose={() => setDecisionTimelineOpen(false)} outsideRef={editDockRef} />}
-            {snapshotsOpen && <BoardSnapshotsPanel snapshots={snapshots} loading={snapshotsLoading} canEdit={role !== "viewer"} onCreate={createSnapshot} onRestore={restoreSnapshot} onClose={() => setSnapshotsOpen(false)} outsideRef={editDockRef} />}
-            {insightsOpen && board.kind === "game-design" && <GameDesignInsightsPanel nodes={board.nodes} onOpenCard={(id) => { setInsightsOpen(false); setDesignEditId(id); }} onClose={() => setInsightsOpen(false)} outsideRef={editDockRef} />}
-            {impactOpen && board.kind === "game-design" && <GameDesignImpactPanel board={board} initialCardId={impactCardId} onOpenCard={(id) => { setImpactOpen(false); setDesignEditId(id); }} onClose={() => setImpactOpen(false)} outsideRef={editDockRef} />}
-            {playtestsOpen && board.kind === "game-design" && <PlaytestComparisonPanel nodes={board.nodes} onOpenCard={(id) => { setPlaytestsOpen(false); setDesignEditId(id); }} onClose={() => setPlaytestsOpen(false)} outsideRef={editDockRef} />}
-            {reportsOpen && board.kind === "game-design" && <GameDesignReportsPanel board={board} boardName={boardName} onClose={() => setReportsOpen(false)} outsideRef={editDockRef} />}
-            {designEditId != null && board.kind === "game-design" && (() => {
-              const node = board.nodes.find((n) => n.id === designEditId);
-              return node ? <GameDesignPanel node={node} nodes={board.nodes} balance={board.gameDesignBalance} canEdit={role !== "viewer"} onSave={saveDesignNode} onDuplicate={() => duplicateDesignNode(node.id)} onCreateRelated={(type, relation) => createRelatedDesignNode(node.id, type, relation)} onClose={() => setDesignEditId(null)} onOpenBalance={() => { setDesignEditId(null); setBalanceOpen(true); }} onOpenImpact={() => { setDesignEditId(null); setImpactCardId(node.id); setImpactOpen(true); }} outsideRef={editDockRef} /> : null;
-            })()}
-            {board.kind === "game-design" && selectedEdgeIds.size === 1 && (() => {
-              const edge = board.edges.find((item) => item.id === [...selectedEdgeIds][0]);
-              if (!edge) return null;
-              const relation = relationDefinition(edge.relation);
-              const isDependency = edge.relation === "depends-on";
-              const chain = isDependency ? dependency?.chainFrom(edge.from) || [] : [];
-              const chainLabels = chain.map((id) => board.nodes.find((node) => String(node.id) === id)?.title || `#${id}`);
-              const hasCycle = dependency?.cycleEdgeIds.has(edge.id);
-              const isBlocked = dependency?.blockedNodeIds.has(String(edge.from));
-              return (
-                <div className="edge-inspector" onMouseDown={(e) => e.stopPropagation()}>
-                  <div className="gd-kicker">Quan hệ edge</div>
-                  <h2>Liên kết thẻ</h2>
-                  <label>Loại quan hệ
-                    <select value={isGameDesignRelation(edge.relation) ? edge.relation : "depends-on"} disabled={role === "viewer"} onChange={(e) => updateEdge(edge.id, { relation: e.target.value })}>
-                      {RELATION_OPTIONS.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-                    </select>
-                  </label>
-                  <p className="edge-relation-help">{relation.description}</p>
-                  {isDependency && (
-                    <div className="dependency-inspector">
-                      <div className="dependency-chain"><strong>Chuỗi phụ thuộc</strong><span>{chainLabels.join(" → ")}</span></div>
-                      {isBlocked && <p className="dependency-warning">Thẻ nguồn đang bị chặn: có prerequisite chưa ở trạng thái Done.</p>}
-                      {hasCycle && <p className="dependency-warning">Vòng lặp phụ thuộc: chuỗi này không thể được hoàn tất theo thứ tự hiện tại.</p>}
-                    </div>
-                  )}
-                  {role !== "viewer" && <button className="btn danger edge-delete" onClick={() => deleteEdge(edge.id)}>Xóa dây</button>}
-                </div>
-              );
-            })()}
-            {/* Quét trúng cả khung/nét vẽ cũng cần edit dock; nút chỉ có nghĩa
-                với thẻ thì tự ẩn khi không có thẻ nào trong vùng chọn. */}
-            {(selectedIds.size + selectedGroupIds.size >= 2 || selectedGroupIds.size >= 1 || selectedDrawingIds.size >= 1) && (
-              <div className="bulk-bar" onMouseDown={(e) => e.stopPropagation()}>
-            <span className="bb-count mono">
-              {selectedIds.size > 0 && <Trans>{selectedIds.size} thẻ</Trans>}
-              {selectedIds.size > 0 && selectedGroupIds.size > 0 && " · "}
-              {selectedGroupIds.size > 0 && <Trans>{selectedGroupIds.size} khung</Trans>}
-              {(selectedIds.size > 0 || selectedGroupIds.size > 0) && selectedDrawingIds.size > 0 && " · "}
-              {selectedDrawingIds.size > 0 && <Trans>{selectedDrawingIds.size} nét vẽ</Trans>}
-            </span>
-            {selectedIds.size >= 2 && (
-              <>
-                <select value="" onChange={(e) => { if (e.target.value !== "") applyToSelection({ statusId: e.target.value === "none" ? null : Number(e.target.value) }); }}>
-                  <option value="">{t`Trạng thái…`}</option>
-                  <option value="none">{t`Không trạng thái`}</option>
-                  {board.statuses.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-                <select value="" onChange={(e) => { if (e.target.value !== "") applyToSelection({ tagId: e.target.value === "none" ? null : Number(e.target.value) }); }}>
-                  <option value="">{t`Nhãn…`}</option>
-                  <option value="none">{t`Không nhãn`}</option>
-                  {board.tags.map((tg) => <option key={tg.id} value={tg.id}>{tg.name}</option>)}
-                </select>
-              </>
-            )}
-            {/* Ô màu áp cho CẢ thẻ lẫn khung đang chọn — cả hai đều nhận cùng
-                một `color` token, nên một hàng màu là đủ cho mọi thứ đang chọn. */}
-            <div className="bb-swatches">
-              <button className="be-swatch dot-empty" onClick={() => applyColorToSelection(null)} title={t`Không màu`} />
-              {BADGE_PALETTE.map((token) => (
-                <button key={token} className="be-swatch" style={{ background: colorVar(token) }} onClick={() => applyColorToSelection(token)} title={token} />
-              ))}
-            </div>
-            {/* NÉT LIỀN / NÉT ĐỨT cho cả vùng chọn. Cử chỉ bấm hai lần đã làm
-                được việc này, nhưng nó đòi nhắm TRÚNG một cái nét — với một nét
-                mảnh giữa một đám vừa quét thì đó là việc khó chịu. Ở đây thì
-                không phải nhắm gì cả.
-                Hai nút đặt giá trị TƯỜNG MINH chứ không phải một nút lật: vùng
-                chọn có thể đang nửa liền nửa đứt, mà "lật" một tập lẫn lộn thì
-                không có nghĩa gì rõ ràng. */}
-            {hasDashableSelected && (
-              <>
-                <button className="bb-clear" onClick={() => setDrawingsDashed(selectedDrawingIds, false)}><Trans>Nét liền</Trans></button>
-                <button className="bb-clear" onClick={() => setDrawingsDashed(selectedDrawingIds, true)}><Trans>Nét đứt</Trans></button>
-              </>
-            )}
-            {selectedIds.size >= 2 && (
-              <>
-                <button className="bb-clear" onClick={groupSelectedCards}><Trans>Gom nhóm</Trans></button>
-                <button className="bb-clear" onClick={tidySelection}><Trans>Xếp gọn</Trans></button>
-                <button className="bb-clear" onClick={duplicateSelection}><Trans>Nhân bản</Trans></button>
-              </>
-            )}
-            <button className="bb-clear danger" onClick={deleteSelection}><Trans>Xoá</Trans></button>
-            <span className="bb-sep" />
-            <button className="bb-clear" onClick={clearSelection}><Trans>Bỏ chọn</Trans></button>
-              </div>
-            )}
-          </aside>
-        )}
+        <EditDock {...{ applyColorToSelection, applyToSelection, balanceOpen, board, boardName, briefOpen, clearSelection, createRelatedDesignNode, createSnapshot, decisionTimelineOpen, deleteEdge, deleteSelection, dependency, designEditId, duplicateDesignNode, duplicateSelection, editDockRef, flowOpen, groupSelectedCards, handoffOpen, hasDashableSelected, impactCardId, impactOpen, insightsOpen, inspector, playtestsOpen, reportsOpen, restoreSnapshot, role, saveDesignNode, saveGameDesignBalance, saveGameDesignBrief, saveGameDesignFlow, selectedDrawingIds, selectedEdgeIds, selectedGroupIds, selectedIds, setBalanceOpen, setBriefOpen, setDecisionTimelineOpen, setDesignEditId, setDrawingsDashed, setFlowOpen, setHandoffOpen, setImpactCardId, setImpactOpen, setInsightsOpen, setPlaytestsOpen, setReportsOpen, setSnapshotsOpen, snapshots, snapshotsLoading, snapshotsOpen, tidySelection, treeUI, updateEdge }} />
 
-        {ioOpen && (
-          <div className="io-drawer">
-            <div className="note">
-              {ioMode === "export"
-                ? <Trans>JSON hiện tại — copy để sao lưu hoặc gửi cho người khác xem.</Trans>
-                : <Trans>Dán JSON đã xuất trước đó, rồi bấm Nhập vào bản đồ.</Trans>}
-            </div>
-            <textarea spellCheck={false} value={ioText} onChange={(e) => setIoText(e.target.value)} />
-            <div className="io-actions">
-              {ioMode === "import" && <button className="btn small" onClick={handleImportConfirm}><Trans>Nhập vào bản đồ</Trans></button>}
-              <button className="btn ghost small" onClick={() => setIoOpen(false)}><Trans>Đóng</Trans></button>
-            </div>
-          </div>
-        )}
+        <IoDrawer {...{ handleImportConfirm, ioMode, ioOpen, ioText, setIoOpen, setIoText }} />
 
       </div>
 
-      {presentIndex != null && (() => {
-        // Khung có thể bị xoá trong lúc trình chiếu → kẹp chỉ số khi render;
-        // nếu xoá hết khung vẫn giữ thanh (0/0) để nút thoát × còn bấm được
-        // (bên cạnh Esc).
-        const idx = Math.min(presentIndex, Math.max(0, board.groups.length - 1));
-        const group = board.groups[idx];
-        return (
-          <div className="present-bar" onMouseDown={(e) => e.stopPropagation()}>
-            <span className="pb-step mono">{group ? `${idx + 1}/${board.groups.length}` : "0/0"}</span>
-            {group && <span className="pb-title">{group.title}</span>}
-            <button className="pb-exit" onClick={exitPresentation}>×</button>
-          </div>
-        );
-      })()}
+      <PresentBar {...{ board, exitPresentation, presentIndex }} />
 
-      {chipDrag && (
-        <div className="chip-ghost" style={{ left: chipDrag.x, top: chipDrag.y }}>
-          {(() => {
-            const def = chipDrag.value === "none"
-              ? null
-              : (chipDrag.kind === "status" ? statusById(board, Number(chipDrag.value)) : tagById(board, Number(chipDrag.value)));
-            return (
-              <>
-                <span className="dot" style={{ background: def ? colorVar(def.color) : "transparent" }}></span>
-                {def ? def.name : (chipDrag.kind === "status" ? t`Không trạng thái` : t`Không nhãn`)}
-                <DropCount targetId={dropTargetId} idsFor={dropIdsFor} />
-              </>
-            );
-          })()}
-        </div>
-      )}
-
-      {colorDrag && (
-        <div className="chip-ghost" style={{ left: colorDrag.x, top: colorDrag.y }}>
-          <span className="dot" style={{ background: colorVar(colorDrag.token) }}></span>
-          <DropCount targetId={dropTargetId} idsFor={dropIdsFor} />
-        </div>
-      )}
-
-      {colorMenu && colorMenu.kind === "card" && (() => {
-        const node = board.nodes.find((n) => n.id === colorMenu.id);
-        if (!node) return null;
-        // Chuột phải vào thẻ đang nằm trong vùng chọn thì tác động lên cả vùng chọn.
-        // Trước đây nó chỉ đổi đúng một thẻ, im lặng — chọn 5 thẻ rồi bấm màu là ra
-        // một thẻ đổi màu. Lúc đó chỉ hiện những việc có nghĩa với nhiều thẻ.
-        const multi = selectedIds.size > 1 && selectedIds.has(node.id);
-        const one = (fn) => (multi ? undefined : fn);
-        return (
-          <ColorMenu
-            x={colorMenu.x}
-            y={colorMenu.y}
-            count={multi ? selectedIds.size : 1}
-            color={multi ? null : node.color ?? null}
-            onPick={(color) => (multi ? applyToSelection({ color }) : applyNodeColor(node.id, color))}
-            onEdit={one(() => { setColorMenu(null); setEditingId(node.id); })}
-            onGroup={multi ? groupSelectedCards : undefined}
-            onTidy={multi ? () => { setColorMenu(null); tidySelection(); } : undefined}
-            onFocus={one(() => { setColorMenu(null); setFocusId(node.id); })}
-            onDuplicate={() => {
-              setColorMenu(null);
-              if (multi) return duplicateSelection();
-              const { next, cloneIds } = duplicateNodes([node.id]);
-              store.commit(next);
-              setSelectedIds(new Set(cloneIds));
-            }}
-            onComments={one(() => { setColorMenu(null); setEdgeMenu(null); setCommentsFor({ id: node.id, x: colorMenu.x, y: colorMenu.y }); })}
-            onCopyLink={one(() => {
-              const url = new URL(window.location.href);
-              url.searchParams.set("card", String(node.id));
-              navigator.clipboard.writeText(url.toString());
-              setColorMenu(null);
-            })}
-            onDelete={() => { setColorMenu(null); multi ? deleteSelection() : deleteNode(node.id); }}
-            onClose={() => setColorMenu(null)}
-            locked={node.locked ?? false}
-            onToggleLock={one(() => toggleNodeLock(node.id))}
-            shape={multi ? "rect" : node.shape ?? "rect"}
-            onSetShape={one((shape) => applyNodeShape(node.id, shape))}
-            dashed={multi ? false : !!node.dashed}
-            onSetDashed={one((dashed) => applyNodeDashed(node.id, dashed))}
-            // Đổi bậc dùng được cho cả một tập thẻ đang chọn: hạ cả một nhánh
-            // xuống bậc phụ là việc hay làm, bắt sửa từng thẻ thì rất mỏi.
-            level={multi ? null : cardLevel(node)}
-            onSetLevel={(level) => (multi ? applyToSelection(levelPatch(level)) : applyNodeLevel(node.id, level))}
-            onArrangeTree={one((direction) => arrangeAsTree("node", node.id, direction))}
-            onTreePanel={one(() => openTreePanel("node", node.id))}
-          />
-        );
-      })()}
-
-      {colorMenu && colorMenu.kind === "group" && (() => {
-        const group = board.groups.find((g) => g.id === colorMenu.id);
-        if (!group) return null;
-        // Cùng luật với menu của thẻ: chuột phải vào một khung đang nằm trong
-        // vùng chọn thì tác động lên cả vùng chọn, và chỉ hiện những việc có
-        // nghĩa với nhiều khung.
-        const multi = selectedGroupIds.size > 1 && selectedGroupIds.has(group.id);
-        const one = (fn) => (multi ? undefined : fn);
-        return (
-          <ColorMenu
-            x={colorMenu.x}
-            y={colorMenu.y}
-            kind="group"
-            count={multi ? selectedGroupIds.size : 1}
-            color={multi ? null : group.color ?? null}
-            onPick={(color) => (multi ? applyColorToSelection(color) : applyGroupColor(group.id, color))}
-            onClose={() => setColorMenu(null)}
-            locked={group.locked ?? false}
-            onToggleLock={one(() => toggleGroupLock(group.id))}
-            onDelete={() => { setColorMenu(null); multi ? deleteSelection() : deleteGroup(group.id); }}
-            onArrangeTree={one((direction) => arrangeAsTree("group", group.id, direction))}
-            onTreePanel={one(() => openTreePanel("group", group.id))}
-          />
-        );
-      })()}
-
-      {badgeUI && badgeUI.mode === "create" && (
-        <BadgeEditor
-          key={badgeUI.mode + "-" + (badgeUI.def?.id ?? "new")}
-          x={badgeUI.x}
-          y={badgeUI.y}
-          initialName=""
-          initialColor={BADGE_PALETTE[0]}
-          submitLabel={t`Tạo`}
-          onSubmit={(name, color) => createBadge(badgeUI.kind, name, color)}
-          onClose={() => setBadgeUI(null)}
-        />
-      )}
-      {badgeUI && badgeUI.mode === "edit" && (
-        <BadgeEditor
-          key={badgeUI.mode + "-" + (badgeUI.def?.id ?? "new")}
-          x={badgeUI.x}
-          y={badgeUI.y}
-          initialName={badgeUI.def.name}
-          initialColor={badgeUI.def.color}
-          submitLabel={t`Lưu`}
-          onDelete={() => deleteBadge(badgeUI.kind, badgeUI.def.id)}
-          onSubmit={(name, color) => updateBadge(badgeUI.kind, badgeUI.def.id, name, color)}
-          onClose={() => setBadgeUI(null)}
-        />
-      )}
-
-      {paletteUI && (
-        <PaletteEditor
-          key={paletteUI.mode + "-" + (paletteUI.id ?? "new")}
-          x={paletteUI.x}
-          y={paletteUI.y}
-          hex={paletteUI.hex}
-          onPick={(hex) => (paletteUI.mode === "create" ? createPaletteColor(hex) : updatePaletteColor(paletteUI.id, hex))}
-          onDelete={paletteUI.mode === "edit" ? () => deletePaletteColor(paletteUI.id) : undefined}
-          onClose={() => setPaletteUI(null)}
-        />
-      )}
-
-      {edgeMenu && (() => {
-        const edge = board.edges.find((e) => e.id === edgeMenu.id);
-        if (!edge) return null;
-        return (
-          <EdgeMenu
-            key={edge.id}
-            x={edgeMenu.x} y={edgeMenu.y}
-            edge={edge}
-            onStyleToggle={() => updateEdge(edge.id, { style: (edge.style === "dashed" ? "solid" : "dashed") })}
-            onArrowToggle={() => updateEdge(edge.id, { arrow: edge.arrow === "none" ? undefined : "none" })}
-            onReverse={() => updateEdge(edge.id, { from: edge.to, fromKind: edge.toKind, to: edge.from, toKind: edge.fromKind })}
-            onLabel={(label) => updateEdge(edge.id, { label: label.trim() || undefined })}
-            onColorChange={(color) => updateEdge(edge.id, { color: color || undefined })}
-            onDelete={() => deleteEdge(edge.id)}
-            onClose={() => setEdgeMenu(null)}
-          />
-        );
-      })()}
-
-      {commentsFor && (() => {
-        const node = board.nodes.find((n) => n.id === commentsFor.id);
-        if (!node) return null;
-        return (
-          <CommentsPopover
-            key={node.id}
-            x={commentsFor.x} y={commentsFor.y}
-            comments={node.comments ?? []}
-            onAdd={(text) => addComment(node.id, text)}
-            onDelete={(index) => deleteComment(node.id, index)}
-            onClose={() => setCommentsFor(null)}
-          />
-        );
-      })()}
-      {captureOpen && (
-        <div className="capture-overlay" onMouseDown={(e) => { if (e.target === e.currentTarget) setCaptureOpen(false); }}>
-          <div
-            className="capture-modal"
-            onKeyDown={(e) => {
-              if (e.key === "Escape") { e.stopPropagation(); setCaptureOpen(false); }
-            }}
-          >
-            <div className="cm-note"><Trans>Mỗi dòng một ý tưởng — xác nhận để tạo hàng loạt thẻ.</Trans></div>
-            <textarea
-              autoFocus
-              value={captureText}
-              onChange={(e) => setCaptureText(e.target.value)}
-              onKeyDown={(e) => {
-                if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); confirmCapture(); }
-              }}
-              placeholder={t`Ý tưởng 1\nÝ tưởng 2\n…`}
-            />
-            <div className="cm-actions">
-              <button className="btn small" onClick={confirmCapture}><Trans>Tạo thẻ</Trans></button>
-              <button className="btn ghost small" onClick={() => setCaptureOpen(false)}><Trans>Hủy</Trans></button>
-            </div>
-          </div>
-        </div>
-      )}
+      <BoardPopovers {...{ addComment, applyColorToSelection, applyGroupColor, applyNodeColor, applyNodeDashed, applyNodeLevel, applyNodeShape, applyToSelection, arrangeAsTree, badgeUI, board, chipDrag, colorDrag, colorMenu, commentsFor, createBadge, createPaletteColor, deleteBadge, deleteComment, deleteEdge, deleteGroup, deleteNode, deletePaletteColor, deleteSelection, dropIdsFor, dropTargetId, duplicateNodes, duplicateSelection, edgeMenu, groupSelectedCards, openTreePanel, paletteUI, selectedGroupIds, selectedIds, setBadgeUI, setColorMenu, setCommentsFor, setEdgeMenu, setEditingId, setFocusId, setPaletteUI, setSelectedIds, store, tidySelection, toggleGroupLock, toggleNodeLock, updateBadge, updateEdge, updatePaletteColor }} />
+      <CaptureOverlay {...{ captureOpen, captureText, confirmCapture, setCaptureOpen, setCaptureText }} />
 
       {inviteOpen && role === "owner" && (
         <InviteModal boardId={boardId} onClose={() => setInviteOpen(false)} />
