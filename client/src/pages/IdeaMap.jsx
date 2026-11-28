@@ -41,7 +41,7 @@ import PeerLayer from "../components/PeerLayer.jsx";
 import ToolRail from "../components/ToolRail.jsx";
 import PdfUsage from "../components/PdfUsage.jsx";
 import ToolOptions from "../components/ToolOptions.jsx";
-import { nodesInFrame, edgesMatch } from "../lib/board-geometry.js";
+import { nodesInFrame } from "../lib/board-geometry.js";
 import { buildEdgeRoutes, routeIntersectsRect } from "../lib/edge-routing.js";
 import { computeSnap } from "../lib/snap.js";
 import { createDragClickGuard, createMultiClick, isDragGesture } from "../lib/multi-click.js";
@@ -63,6 +63,7 @@ import { rectsOverlap } from "../lib/board-geometry.js";
 import { useBoardSelection } from "../lib/useBoardSelection.js";
 import { useBoardFilters } from "../lib/useBoardFilters.js";
 import { useBadgesAndPalette } from "../lib/useBadgesAndPalette.js";
+import { useEdgeInteractions } from "../lib/useEdgeInteractions.js";
 import { readImageFile } from "../lib/image-utils.js";
 import { canAddImage, formatMB } from "../lib/image-budget.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
@@ -142,8 +143,6 @@ export default function IdeaMap() {
   const camera = useCamera();
   const { view, viewRef, setView } = camera;
   const [editingId, setEditingId] = useState(null);
-  const [linkMode, setLinkMode] = useState(false);
-  const [pendingSource, setPendingSource] = useState(null);
   // Bộ lọc, tìm kiếm, chế độ tập trung: lib/useBoardFilters.js.
   const filters = useBoardFilters({ board });
   const {
@@ -177,7 +176,6 @@ export default function IdeaMap() {
   const [captureOpen, setCaptureOpen] = useState(false);
   const [captureText, setCaptureText] = useState("");
   const [isPanning, setIsPanning] = useState(false);
-  const [linkDraft, setLinkDraft] = useState(null);
   const [dropTargetId, setDropTargetId] = useState(null);
   // Mặc định mở Trạng thái + Nhãn để giữ đúng hành vi cũ khi mới vào; Bảng màu
   // đóng. Trạng thái riêng của tài khoản, board và nhóm màn hình.
@@ -222,9 +220,7 @@ export default function IdeaMap() {
   const [cardLevelPref, setCardLevelPref] = useState(() => loadCardLevel(window.localStorage));
   const [snapGuides, setSnapGuides] = useState([]);
   const [colorMenu, setColorMenu] = useState(null); // { kind: "card"|"group", id, x, y }
-  const [edgeMenu, setEdgeMenu] = useState(null); // { id, x, y } | null
   const [hoveredEdgeId, setHoveredEdgeId] = useState(null);
-  const [edgeDrag, setEdgeDrag] = useState(null); // { edgeId, end: "from"|"to", fixedKind, fixedId, x, y } | null
   const [commentsFor, setCommentsFor] = useState(null); // { id, x, y } | null
   const [editingGroupTitleId, setEditingGroupTitleId] = useState(null);
   const [flashId, setFlashId] = useState(null);
@@ -298,6 +294,18 @@ export default function IdeaMap() {
   const canvasRef = useRef(null);
   const editDockRef = useRef(null);
   const searchInputRef = useRef(null);
+  // Dây nối: chế độ nối, kéo từ connector/đầu dây, menu dây — lib/useEdgeInteractions.js.
+  const edgeUI = useEdgeInteractions({
+    store, board, setSelectedEdgeIds, setDropTargetId, viewRef, viewportRef
+  });
+  const {
+    linkMode, setLinkMode, pendingSource, setPendingSource, linkDraft, setLinkDraft, edgeMenu, setEdgeMenu, edgeDrag, setEdgeDrag, toggleLinkMode, handleConnectorMouseDown, handleGroupConnectorMouseDown, handleEdgeEndpointMouseDown, toggleEdge, updateEdge, deleteEdge
+  } = edgeUI;
+  edgeUI.bind({
+    createLinkedNode: (...a) => createLinkedNode(...a),
+    enterMode: (...a) => enterMode(...a),
+    entityAtPoint: (...a) => entityAtPoint(...a)
+  });
   const editingIdRef = useRef(null);
   // socket.id gửi kèm mỗi lần lưu để server loại chính mình khỏi broadcast
   // board:update; updatedAt của lần lưu/nhận gần nhất để so sánh gói đến
@@ -1227,18 +1235,6 @@ export default function IdeaMap() {
     }
   }
 
-  // Bật "Nối ý tưởng" mà vẫn còn ở mode Sửa thì vô dụng: `.ink-capture` phủ
-  // kín viewport ở mode Sửa và nuốt hết click lên thẻ, nên không bấm chọn
-  // được thẻ nguồn/đích nào — bật lên rồi coi như chết. Bật link mode phải
-  // kéo về mode Chuột (select) trước; tắt link mode thì giữ nguyên mode hiện
-  // tại. Dùng chung cho cả phím tắt `l` và nút trên ToolRail.
-  function toggleLinkMode() {
-    const turningOn = !linkMode;
-    if (turningOn) enterMode("select");
-    setLinkMode(turningOn);
-    setPendingSource(null);
-  }
-
   function groupSelectedCards() {
     const PAD = 28, TITLE_ROOM = 20;
     const ids = Array.from(selectedIds);
@@ -1744,118 +1740,6 @@ export default function IdeaMap() {
     createLinkedNode(parentId, "bottom", board, { anchorId: nodeId });
   }
 
-  function handleConnectorMouseDown(e, nodeId, direction) {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const rect = viewportRef.current.getBoundingClientRect();
-    const startX = e.clientX, startY = e.clientY;
-    let dragging = false;
-    const THRESHOLD = 5;
-
-    function toCanvas(clientX, clientY) {
-      const view = viewRef.current;
-      return { x: (clientX - rect.left - view.panX) / view.scale, y: (clientY - rect.top - view.panY) / view.scale };
-    }
-    function targetAt(clientX, clientY) {
-      const t = entityAtPoint(clientX, clientY);
-      if (!t) return null;
-      if (t.kind === "node" && t.id === nodeId) return null;
-      return t;
-    }
-
-    // rAF: mỗi nhịp gọi document.elementFromPoint — một phép hit-test buộc
-    // trình duyệt tính lại layout. Ở tần số chuột thô đó là vài trăm lần/giây.
-    const onMove = (ev) => {
-      if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
-      if (!dragging) return;
-      const p = toCanvas(ev.clientX, ev.clientY);
-      setLinkDraft({ fromId: nodeId, fromKind: "node", x: p.x, y: p.y });
-      const t = targetAt(ev.clientX, ev.clientY);
-      setDropTargetId(t ? { id: t.id, kind: t.kind } : null);
-    };
-    function onUp(ev) {
-      if (dragging) {
-        setLinkDraft(null);
-        const t = targetAt(ev.clientX, ev.clientY);
-        setDropTargetId(null);
-        if (t) toggleEdge(nodeId, "node", t.id, t.kind);
-      } else {
-        createLinkedNode(nodeId, direction);
-      }
-    }
-    startDrag(e, { onMove, onEnd: onUp, release: "cancel" });
-  }
-
-  function handleGroupConnectorMouseDown(e, groupId) {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    const rect = viewportRef.current.getBoundingClientRect();
-
-    function toCanvas(clientX, clientY) {
-      const view = viewRef.current;
-      return { x: (clientX - rect.left - view.panX) / view.scale, y: (clientY - rect.top - view.panY) / view.scale };
-    }
-    function targetAt(clientX, clientY) {
-      const t = entityAtPoint(clientX, clientY);
-      if (!t) return null;
-      if (t.kind === "group" && t.id === groupId) return null;
-      return t;
-    }
-
-    const onMove = (ev) => {
-      const p = toCanvas(ev.clientX, ev.clientY);
-      setLinkDraft({ fromId: groupId, fromKind: "group", x: p.x, y: p.y });
-      const t = targetAt(ev.clientX, ev.clientY);
-      setDropTargetId(t ? { id: t.id, kind: t.kind } : null);
-    };
-    function onUp(ev) {
-      setLinkDraft(null);
-      setDropTargetId(null);
-      const t = targetAt(ev.clientX, ev.clientY);
-      if (t) toggleEdge(groupId, "group", t.id, t.kind);
-    }
-    startDrag(e, { onMove, onEnd: onUp, release: "cancel" });
-  }
-
-  // Cầm một đầu dây có sẵn và kéo sang thẻ/khung khác để đổi hướng nối. Khung
-  // (group) là điểm đến hợp lệ y hệt thẻ — cả hai đi qua entityAtPoint chung.
-  function handleEdgeEndpointMouseDown(e, edge, end) {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    e.stopPropagation();
-    setEdgeMenu(null);
-    const rect = viewportRef.current.getBoundingClientRect();
-    const fixedKind = end === "from" ? (edge.toKind || "node") : (edge.fromKind || "node");
-    const fixedId = end === "from" ? edge.to : edge.from;
-
-    function toCanvas(clientX, clientY) {
-      const view = viewRef.current;
-      return { x: (clientX - rect.left - view.panX) / view.scale, y: (clientY - rect.top - view.panY) / view.scale };
-    }
-    function targetAt(clientX, clientY) {
-      const t = entityAtPoint(clientX, clientY);
-      if (!t) return null;
-      if (t.id === fixedId && t.kind === fixedKind) return null;
-      return t;
-    }
-
-    const onMove = (ev) => {
-      const p = toCanvas(ev.clientX, ev.clientY);
-      setEdgeDrag({ edgeId: edge.id, end, fixedKind, fixedId, x: p.x, y: p.y });
-      const t = targetAt(ev.clientX, ev.clientY);
-      setDropTargetId(t ? { id: t.id, kind: t.kind } : null);
-    };
-    function onUp(ev) {
-      setEdgeDrag(null);
-      setDropTargetId(null);
-      const t = targetAt(ev.clientX, ev.clientY);
-      if (t) updateEdge(edge.id, end === "from" ? { from: t.id, fromKind: t.kind } : { to: t.id, toKind: t.kind });
-    }
-    startDrag(e, { onMove, onEnd: onUp, release: "cancel" });
-  }
-
   // Thả badge/màu vào một thẻ ĐANG nằm trong vùng chọn nhiều thì cả vùng chọn
   // nhận — cùng quy tắc với menu màu chuột phải (xem chỗ dựng ColorMenu bên
   // dưới). Thả vào thẻ NGOÀI vùng chọn thì chỉ thẻ đó, và vùng chọn để nguyên:
@@ -2059,26 +1943,6 @@ export default function IdeaMap() {
         return rest;
       })
     });
-  }
-
-  function toggleEdge(a, aKind, b, bKind) {
-    const existing = board.edges.find((e) => edgesMatch(e, a, aKind, b, bKind));
-    if (existing) {
-      store.commit({ ...board, edges: board.edges.filter((e) => e.id !== existing.id) });
-    } else {
-      const edge = { id: board.nextEdgeId, from: a, fromKind: aKind, to: b, toKind: bKind, ...(board.kind === "game-design" ? { relation: "depends-on" } : {}) };
-      store.commit({ ...board, edges: [...board.edges, edge], nextEdgeId: board.nextEdgeId + 1 });
-    }
-  }
-
-  function updateEdge(id, patch) {
-    store.commit({ ...board, edges: board.edges.map((e) => (e.id === id ? { ...e, ...patch } : e)) });
-  }
-
-  function deleteEdge(id) {
-    store.commit({ ...board, edges: board.edges.filter((e) => e.id !== id) });
-    setEdgeMenu(null);
-    setSelectedEdgeIds((prev) => { if (!prev.has(id)) return prev; const next = new Set(prev); next.delete(id); return next; });
   }
 
   function handleCardClick(nodeId) {
