@@ -70,6 +70,12 @@ export function useViewportInput({
     }
   }
 
+  // ── Bấm nhiều lần lên một nét vẽ: 2 lần đổi nét liền ↔ nét đứt ─────────────
+  //
+  // Luật đếm và các hằng số nằm ở lib/multi-click.js; ở đây chỉ là phần nối
+  // chuột: lọc ra đúng những cú bấm TRÊN NỀN, và tách bấm khỏi kéo. Hai cái ref
+  // của cử chỉ này (multiClickRef, clickAnchorRef) nằm ở lib/useBoardRefs.js.
+
   // Nền trống của bảng, kể cả những lớp phủ kín khung nhìn của từng mode. KHÔNG
   // gồm lớp của mode Đặt: ở đó mỗi cú bấm là một cái thẻ mới, đếm chồng lên
   // thành ra vừa tạo thẻ vừa hoàn tác nó.

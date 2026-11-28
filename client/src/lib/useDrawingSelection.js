@@ -103,6 +103,13 @@ export function useDrawingSelection({
     store.commit(next, { from: current });
   }
 
+  // Giữ tay ở CHỖ TRỐNG: đổi qua lại giữa bút và cục gôm. useInk lo toàn bộ
+  // phần cử chỉ (đo thời gian, vòng báo, bỏ lượt vẽ dở); ở đây chỉ còn đúng
+  // việc lật một ô state.
+  //
+  // Vẽ rồi xoá rồi vẽ tiếp là nhịp làm việc thường xuyên nhất trên một cái bảng,
+  // mà cho tới giờ mỗi lần đổi đều phải với tay lên thanh công cụ bên trái hoặc
+  // nhớ phím tắt — cả hai đều bắt rời mắt khỏi chỗ đang vẽ.
   function swapPenEraser() {
     if (role === "viewer") return;
     setTool(tool === "eraser" ? "pen" : "eraser");

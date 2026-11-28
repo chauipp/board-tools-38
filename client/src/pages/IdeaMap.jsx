@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { useWorkspaceState } from "../lib/useWorkspaceState.js";
 import { useParams } from "react-router-dom";
-import { Trans, useLingui } from "@lingui/react/macro";
+import { Trans } from "@lingui/react/macro";
 import { useTheme } from "../lib/useTheme.js";
 import { useSkin } from "../lib/useSkin.js";
 import TreePanel from "../components/TreePanel.jsx";
@@ -45,11 +45,11 @@ import { useGameDesignBoard } from "../lib/useGameDesignBoard.js";
 import { useBoardKeyboard } from "../lib/useBoardKeyboard.js";
 import { useStableHandlers } from "../lib/useStableHandlers.js";
 import { bindAll } from "../lib/bind-all.js";
+import { eraseCursorFor } from "../lib/erase-cursor.js";
 import { BoardContext } from "../lib/board-context.js";
 import { useSelectionActions } from "../lib/useSelectionActions.js";
 import { useViewportInput } from "../lib/useViewportInput.js";
 import { useCameraControls } from "../lib/useCameraControls.js";
-import { ERASE_PART } from "../lib/erase.js";
 import InkLayer from "../components/InkLayer.jsx";
 import { useInk } from "../lib/useInk.js";
 import { useInkLive } from "../lib/useInkLive.js";
@@ -95,21 +95,6 @@ export default function IdeaMap() {
   } = ui;
   const { theme, setTheme } = useTheme();
   const { skin, toggle: toggleSkin } = useSkin();
-  const { t } = useLingui();
-  // Tên preset nằm ở đây chứ không ở lib/board-theme.js: module đó là dữ liệu
-  // thuần, test bằng node:test, không kéo được `t` của lingui vào.
-  const BG_LABEL = {
-    paper: t`Giấy kraft`, white: t`Trắng`, slate: t`Xám đá`,
-    mint: t`Bạc hà`, blush: t`Hồng phấn`, sky: t`Xanh trời`,
-    sand: t`Cát`, lavender: t`Oải hương`, blueprint: t`Bản vẽ`
-  };
-  const GRID_LABEL = {
-    dots: t`Lưới chấm`, lines: t`Lưới ô`, plain: t`Không lưới`
-  };
-  const PACK_LABEL = {
-    pastel: t`Pastel`, vivid: t`Rực`, mono: t`Đơn sắc`,
-    earth: t`Đất`, neon: t`Neon`
-  };
   // Board, role, hàng đợi lưu, lịch sử hoàn tác: lib/useBoardStore.js.
   const store = useBoardStore(boardId);
   const {
@@ -391,49 +376,14 @@ export default function IdeaMap() {
 
   const currentUser = user.name;
 
-  // Giữ tay ở CHỖ TRỐNG: đổi qua lại giữa bút và cục gôm. useInk lo toàn bộ
-  // phần cử chỉ (đo thời gian, vòng báo, bỏ lượt vẽ dở); ở đây chỉ còn đúng
-  // việc lật một ô state.
-  //
-  // Vẽ rồi xoá rồi vẽ tiếp là nhịp làm việc thường xuyên nhất trên một cái bảng,
-  // mà cho tới giờ mỗi lần đổi đều phải với tay lên thanh công cụ bên trái hoặc
-  // nhớ phím tắt — cả hai đều bắt rời mắt khỏi chỗ đang vẽ.
-  // Con trỏ của CỤC TẨY THEO ĐỘ RỘNG: một vòng tròn đúng bằng cục tẩy thật, vẽ
-  // thẳng vào con trỏ bằng data-URI. Không có nó thì bề rộng là một con số vô
-  // hình — người dùng chọn cỡ "to" rồi phải quét thử vài lần mới đoán ra nó với
-  // tới đâu, mà mỗi lần thử là một lần cắt nhầm phải hoàn tác.
-  //
-  // Chỉ ở kiểu "theo độ rộng". Kiểu "cả nét" giữ crosshair vì ở đó cục tẩy là
-  // một cái que chỉ, vẽ một vòng tròn to quanh nó là nói dối về tầm với.
-  const eraseCursor = (() => {
-    if (mode !== "draw" || tool !== "eraser" || penPrefs.erase !== ERASE_PART) return undefined;
-    // Trình duyệt bỏ qua HẲN con trỏ tuỳ biến quá lớn (Chrome: 128px) — không
-    // phải thu nhỏ mà là mất luôn cả con trỏ. Kẹp lại: ở mức phóng cao thì vòng
-    // tròn nhỏ hơn cục tẩy thật, vẫn hơn là không có con trỏ nào.
-    const d = Math.max(6, Math.min(120, Math.round(penPrefs.ew * view.scale)));
-    const box = d + 4;
-    const c = box / 2;
-    const r = d / 2;
-    // Hai vòng chồng nhau, trắng dày dưới đen mảnh trên: con trỏ phải đọc được
-    // trên cả nền sáng lẫn nền tối, mà con trỏ thì không nghe được prefers-color.
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${box}" height="${box}">`
-      + `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="white" stroke-width="3" opacity="0.9"/>`
-      + `<circle cx="${c}" cy="${c}" r="${r}" fill="none" stroke="black" stroke-width="1.2"/></svg>`;
-    return `url("data:image/svg+xml,${encodeURIComponent(svg)}") ${Math.round(c)} ${Math.round(c)}, crosshair`;
-  })();
+  // Con trỏ của cục tẩy theo độ rộng — xem lib/erase-cursor.js.
+  const eraseCursor = eraseCursorFor({ mode, tool, penPrefs, scale: view.scale });
 
   // Vùng chọn có ít nhất một thứ ĐỔI ĐƯỢC nét hay không. Không phải cứ
   // `selectedDrawingIds.size >= 1` là đủ: quét trúng đúng một đoạn chữ thì hai
   // nút nét liền/nét đứt hiện ra nhưng bấm vào không có gì xảy ra.
   const hasDashableSelected = (board.drawings || [])
     .some((d) => selectedDrawingIds.has(d.id) && d.kind !== "text");
-
-  // ── Bấm nhiều lần lên một nét vẽ: 2 lần đổi nét liền ↔ nét đứt ─────────────
-  //
-  // Luật đếm và các hằng số nằm ở lib/multi-click.js; ở đây chỉ là phần nối
-  // chuột: lọc ra đúng những cú bấm TRÊN NỀN, và tách bấm khỏi kéo. Hai cái ref
-  // của cử chỉ này khai ở đầu component cùng mọi hook khác — dưới đây đã qua
-  // nhánh `if (!board) return`, gọi hook ở đây là gọi có điều kiện.
 
   const hasNoStatus = board.nodes.some((n) => n.statusId == null);
   const hasNoTag = board.nodes.some((n) => n.tagId == null);
@@ -452,7 +402,7 @@ export default function IdeaMap() {
       {/* Khai báo màu tự tạo trong cây React: sửa hex là mọi card/dây/badge dùng
           var(--pal-N) repaint ngay, không cần đi ghi lại từng chỗ tham chiếu. */}
       <style>{paletteStyle}</style>
-      <BoardTopBar {...{ BG_LABEL, GRID_LABEL, PACK_LABEL, activeFilterCount, balanceOpen, briefOpen, clearFilters, decisionTimelineOpen, dependency, exportVersionedJson, flowOpen, goToMatch, handoffOpen, impactOpen, insightsOpen, matchCount, matchIdx, matches, openSnapshots, outlineOpen, playtestsOpen, reportsOpen, search, searchInputRef, searchOpen, setBalanceOpen, setBoardBg, setBoardGrid, setBoardPack, setBriefOpen, setDecisionTimelineOpen, setDesignEditId, setFlowOpen, setHandoffOpen, setImpactCardId, setImpactOpen, setInsightsOpen, setIoMode, setIoOpen, setIoText, setOutlineOpen, setPlaytestsOpen, setReportsOpen, setSearch, setTheme, setWheelMode, skin, startPresentation, theme, toggleSearch, toggleSkin, toolsOpen, viewportSize, wheelMode, workspace, workspaceCameraRef }} />
+      <BoardTopBar {...{ activeFilterCount, balanceOpen, briefOpen, clearFilters, decisionTimelineOpen, dependency, exportVersionedJson, flowOpen, goToMatch, handoffOpen, impactOpen, insightsOpen, matchCount, matchIdx, matches, openSnapshots, outlineOpen, playtestsOpen, reportsOpen, search, searchInputRef, searchOpen, setBalanceOpen, setBoardBg, setBoardGrid, setBoardPack, setBriefOpen, setDecisionTimelineOpen, setDesignEditId, setFlowOpen, setHandoffOpen, setImpactCardId, setImpactOpen, setInsightsOpen, setIoMode, setIoOpen, setIoText, setOutlineOpen, setPlaytestsOpen, setReportsOpen, setSearch, setTheme, setWheelMode, skin, startPresentation, theme, toggleSearch, toggleSkin, toolsOpen, viewportSize, wheelMode, workspace, workspaceCameraRef }} />
 
       <BoardHudBottom {...{ anyPanelOn, filterFav, filterStatus, filterTags, handleChipMouseDown, handleColorMouseDown, hasNoStatus, hasNoTag, openBadgeCreate, openBadgeMenu, openPaletteEditor, panels, setFilterFav, setFilterStatus, setFilterTags, togglePanel }} />
 
