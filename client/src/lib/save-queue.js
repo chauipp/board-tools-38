@@ -70,6 +70,13 @@ export function createSaveQueue({
   let pending = null;     // { board, base } | null
   let timer = null;
   let timerEntry = null;  // { board, base } | null
+  // Gói board:update mới nhất về trong lúc một PUT đang bay (R3-1, Codex vòng
+  // 3). Chưa thể biết gói đó ĐÃ gồm cú PUT này hay chưa: nếu người kia lưu SAU
+  // mình thì có (và PUT sẽ thành công), nếu TRƯỚC thì không (và PUT sẽ 409, vì
+  // server ghi có điều kiện theo mốc). Đắp bản chờ lên gói đó ngay lúc ấy là
+  // đoán; đoán "chưa gồm" thì thẻ mình vừa tạo bị coi là thẻ của người khác
+  // trùng id và bị nhân đôi. Nên giữ gói lại, đợi PUT có kết quả rồi mới xử.
+  let heldRemote = null;
 
   function doRebase(server, base, next) {
     if (rebaseDetailed) return rebaseDetailed(server, base, next) || null;
@@ -112,6 +119,60 @@ export function createSaveQueue({
   function rebaseQueued(server) {
     const latest = requeueOnto(server);
     return latest ? latest.board : null;
+  }
+
+  // Gọi TRƯỚC rebaseQueued khi một board:update về. Trả true nghĩa là đang có
+  // PUT bay: hàng đợi đã giữ gói lại và sẽ tự đưa nó lên màn hình (adopt) khi
+  // PUT có kết quả — người gọi KHÔNG được đụng board, bản nền hay bản chờ. Mốc
+  // (getStamp) thì người gọi vẫn dời như thường: không cú PUT nào rời máy trước
+  // lúc gói được xử, và `saved` dựa vào mốc đó để biết gói mới hơn phản hồi.
+  function deferRemote(server) {
+    if (!saving) return false;
+    heldRemote = server;
+    return true;
+  }
+
+  // Đưa lên màn hình bản chờ mới nhất, hoặc chính bản server nếu không còn gì
+  // chờ. `merge` giữ thẻ đang gõ dở.
+  function show(latest, server) {
+    if (latest) adopt(merge(latest.board, latest.plan), latest.plan);
+    else adopt(merge(server, null), null);
+  }
+
+  // PUT `flight` vừa thành công và gói giữ lại `remote` mới hơn nó: gói đó là
+  // bản của người lưu SAU mình, nên đã gồm `flight`. Mọi bản chờ được dựng trên
+  // `flight` (chúng mới hơn nó), nên delta của chúng tính từ `flight`, không từ
+  // nền cũ — tính từ nền cũ là đắp lại cả thẻ `flight` vừa tạo, ra thẻ trùng.
+  function adoptHeldAfterSave(remote, flight) {
+    let latest = null;
+    for (const entry of [pending, timerEntry]) {
+      if (!entry) continue;
+      const r = doRebase(remote, flight, entry.board);
+      if (r) { entry.board = r.board; latest = r; }
+      entry.base = remote;
+    }
+    setBase(remote);
+    show(latest, remote);
+  }
+
+  // PUT hỏng (lỗi mạng, không phải 409): server vẫn giữ `remote`, chưa có gì
+  // của mình. Đắp toàn bộ phần chưa lưu — tính từ nền cũ — lên `remote`, để bản
+  // chờ gửi sau không xoá thay đổi của người kia.
+  function adoptHeldAfterFailure(remote, flight, flightBase) {
+    let latest = null;
+    for (const entry of [pending, timerEntry]) {
+      if (!entry) continue;
+      const r = doRebase(remote, entry.base, entry.board);
+      if (!r) continue;
+      entry.board = r.board;
+      entry.base = remote;
+      latest = r;
+    }
+    // Không còn gì chờ: phần của cú hỏng vẫn phải còn trên màn hình (và trong
+    // delta của lần lưu sau, vì nền giờ là `remote`).
+    if (!latest) latest = doRebase(remote, flightBase, flight);
+    setBase(remote);
+    show(latest, remote);
   }
 
   // Cú lưu hiện tại (kể cả các vòng ghép lại của riêng nó) vừa xong — cho nó
@@ -157,22 +218,42 @@ export function createSaveQueue({
     const base = getBase();
     const baseUpdatedAt = getStamp();
     const saved = (res) => {
-      // Trong lúc cú này bay, một board:update mới hơn có thể đã dời nền/mốc.
-      // Khi đó bản nền hiện tại đã gồm cả cú này — đừng lùi về mốc cũ.
-      if (!isOlderStamp(res.updatedAt, getStamp())) {
+      const remote = heldRemote;
+      heldRemote = null;
+      // Gói giữ lại mới hơn phản hồi: người kia lưu SAU cú này, bản của họ đã
+      // gồm nó. Mốc tương ứng useLiveSync đã dời rồi; chỉ còn nền và bản chờ.
+      // (Mốc không so được — test — thì cũng coi là mới hơn: PUT có mốc mà
+      // thành công nghĩa là không ai ghi chen TRƯỚC nó.)
+      if (remote && !isOlderStamp(remote.updatedAt, res.updatedAt)) {
+        adoptHeldAfterSave(remote, next);
+      } else if (!isOlderStamp(res.updatedAt, getStamp())) {
         setStamp(res.updatedAt);
         setBase(next);
+        // Bản chờ mới hơn cú vừa lưu, và server giờ giữ đúng cú đó: nền của
+        // chúng là `next`. Để nền cũ thì gói board:update kế tiếp sẽ đắp lại cả
+        // phần đã lưu (thẻ vừa tạo bị nhân đôi — cùng họ lỗi R3-1).
+        for (const entry of [pending, timerEntry]) if (entry) entry.base = next;
       }
       onState({ error: null });
+      settleSave();
+    };
+    const failed = () => {
+      const remote = heldRemote;
+      heldRemote = null;
+      onState({ error: true });
+      if (remote) adoptHeldAfterFailure(remote, next, base);
       settleSave();
     };
     save(next, baseUpdatedAt)
       .then(saved)
       .catch((e) => {
-        if (e.code !== "CONFLICT") { onState({ error: true }); settleSave(); return; }
+        if (e.code !== "CONFLICT") { failed(); return; }
         // Có người lưu chen vào giữa. Bản của họ đi kèm ngay trong lỗi; đắp
-        // những gì mình đã đổi (base → next) lên đó rồi lưu lại.
-        const server = e.board;
+        // những gì mình đã đổi (base → next) lên đó rồi lưu lại. Gói giữ lại
+        // (nếu có) không gồm cú này — nó 409 — nên chỉ dùng nó khi mới hơn.
+        const remote = heldRemote;
+        heldRemote = null;
+        const server = remote && e.board && isOlderStamp(e.board.updatedAt, remote.updatedAt) ? remote : e.board;
         const rebased = server ? doRebase(server, base, next) : null;
         if (!rebased || tries >= maxTries) {
           // Đường dự phòng = đúng hành vi trước khi có chốt này: ghi đè. Không
@@ -182,7 +263,7 @@ export function createSaveQueue({
           // đầu) hoặc đã thử quá số lần.
           save(next, undefined)
             .then(saved)
-            .catch(() => { onState({ error: true }); settleSave(); });
+            .catch(failed);
           return;
         }
         // Giữ nguyên đúng cái thẻ đang gõ dở — cùng luật với lúc áp một
@@ -216,8 +297,9 @@ export function createSaveQueue({
   // mất bản vừa khôi phục.
   function discardQueued() {
     pending = null;
+    heldRemote = null;
     cancelTimer();
   }
 
-  return { saveNow, saveDebounced, cancelTimer, rebaseQueued, discardQueued };
+  return { saveNow, saveDebounced, cancelTimer, rebaseQueued, deferRemote, discardQueued };
 }

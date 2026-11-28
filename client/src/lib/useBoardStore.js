@@ -238,6 +238,9 @@ export function useBoardStore(boardId) {
   // tục vẽ một bản tạm đè lên dữ liệu thật vừa nhận — nét nhấp nháy.
   const applyRemoteBoard = useCallback((next) => {
     const normalized = normalizeGameDesignBoard(next);
+    // Đang có PUT bay: chưa biết bản này đã gồm cú đó chưa, nên hàng đợi giữ nó
+    // lại và tự đưa lên màn hình khi PUT có kết quả (R3-1, Codex vòng 3).
+    if (saveQueueRef.current.deferRemote(normalized)) return;
     // Những gì mình đã làm mà CHƯA lưu (cú nhích đang hẹn giờ, cú lưu đang xếp
     // hàng) được đắp lại lên bản vừa nhận — cả trong hàng đợi lẫn trên màn hình.
     // Thiếu bước này thì bản chờ là một board cũ được gửi kèm mốc mới: server
