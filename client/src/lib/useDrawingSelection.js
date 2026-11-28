@@ -1,13 +1,11 @@
 import { useRef } from "react";
-import { drawingsHitBy, moveDrawing, shapeHandles, moveShapeHandle } from "./shape.js";
+import { drawingsHitBy, moveDrawing, moveShapeHandle } from "./shape.js";
 import { edgeKey } from "./tree-layout.js";
 import { startDrag } from "./drag-session.js";
 import { toggleId } from "./selection.js";
 import { useInk } from "./useInk.js";
-import { useInkLive } from "./useInkLive.js";
 import { anchorFor, scaleFactorFor, scaleSelection } from "./selection-box.js";
 import { TEXT_DRAG_THRESHOLD, PICK_RADIUS, EMPTY_SET } from "./board-constants.js";
-import { useLingui } from "@lingui/react/macro";
 
 // Nét vẽ, hình khối và chữ trên bảng: chốt nét vừa vẽ và cú tẩy, đổi bút ↔ gôm,
 // chọn nét khi đang cầm bút, nét liền/đứt, kéo nét (kèm cả vùng chọn), tay cầm
@@ -15,10 +13,19 @@ import { useLingui } from "@lingui/react/macro";
 // Trước nằm trong IdeaMap.jsx. Những hàm IdeaMap khai báo sau hook gắn qua
 // bind() mỗi lượt render.
 export function useDrawingSelection({
-  store, board, boardRef, role, mode, tool, setTool, ink, inkLive, editShape, layoutOwners, selBounds, selectionSet, selectedIds, selectedGroupIds, selectedDrawingIds, selectionDragSet, clearSelection, setSelectedIds, setSelectedEdgeIds, setSelectedGroupIds, setSelectedDrawingIds, setBoard, recordHistory, saveNow, spacePanRef, view, applyImageToNode
+  store, board, boardRef, role, mode, tool, setTool, penPrefs, viewRef, viewportRef, inkLive, editShape, layoutOwners, selBounds, selectionSet, selectedIds, selectedGroupIds, selectedDrawingIds, selectionDragSet, clearSelection, setSelectedIds, setSelectedEdgeIds, setSelectedGroupIds, setSelectedDrawingIds, setBoard, recordHistory, saveNow, spacePanRef, view, applyImageToNode
 }) {
   const depsRef = useRef({});
-  const { t } = useLingui();
+  // Cử chỉ vẽ (bút, hình, tẩy, giữ tay) — lib/useInk.js. Gọi ở đây vì mọi chỗ
+  // chốt nét nằm trong hook này; các hàm dưới là khai báo nên dùng được trước.
+  const ink = useInk({
+    tool, penPrefs, boardRef, viewRef, viewportRef,
+    onStrokeDone: commitStroke,
+    onEraseDone: commitErase,
+    onPick: pickDrawingWhileDrawing,
+    onSwapTool: swapPenEraser,
+    live: inkLive
+  });
   const clientToCanvas = (...a) => depsRef.current.clientToCanvas(...a);
   const eventToCanvas = (...a) => depsRef.current.eventToCanvas(...a);
   const handleViewportMouseDown = (...a) => depsRef.current.handleViewportMouseDown(...a);
@@ -103,6 +110,13 @@ export function useDrawingSelection({
     store.commit(next, { from: current });
   }
 
+  // Giữ tay ở CHỖ TRỐNG: đổi qua lại giữa bút và cục gôm. useInk lo toàn bộ
+  // phần cử chỉ (đo thời gian, vòng báo, bỏ lượt vẽ dở); ở đây chỉ còn đúng
+  // việc lật một ô state.
+  //
+  // Vẽ rồi xoá rồi vẽ tiếp là nhịp làm việc thường xuyên nhất trên một cái bảng,
+  // mà cho tới giờ mỗi lần đổi đều phải với tay lên thanh công cụ bên trái hoặc
+  // nhớ phím tắt — cả hai đều bắt rời mắt khỏi chỗ đang vẽ.
   function swapPenEraser() {
     if (role === "viewer") return;
     setTool(tool === "eraser" ? "pen" : "eraser");
@@ -479,7 +493,7 @@ export function useDrawingSelection({
   }
 
   return {
-    canGrabShapeHandles, commitStroke, commitErase, swapPenEraser, pickDrawingWhileDrawing, setDrawingsDashed, toggleDrawingDash, dashTargetAt, handleDrawingMouseDown, startDrawingDrag, startSelectionDrag, handleShapeHandleMouseDown, handleSelectionResizeMouseDown, shapeHandleAt, handleInkCaptureMouseDown,
+    ink, canGrabShapeHandles, commitStroke, commitErase, swapPenEraser, pickDrawingWhileDrawing, setDrawingsDashed, toggleDrawingDash, dashTargetAt, handleDrawingMouseDown, startDrawingDrag, startSelectionDrag, handleShapeHandleMouseDown, handleSelectionResizeMouseDown, shapeHandleAt, handleInkCaptureMouseDown,
     bind: (d) => { depsRef.current = d; }
   };
 }

@@ -14,12 +14,26 @@ import { useBoard } from "../../lib/board-context.js";
 // Đảo to góc trên trái: menu ☰, tên board, tìm kiếm, menu Giao diện, các nút
 // panel, hàng công cụ game-design và số bộ lọc đang bật. Trước là một khối JSX
 // trong IdeaMap.jsx; cây DOM và class giữ nguyên.
-export default function BoardTopBar({ BG_LABEL, GRID_LABEL, PACK_LABEL, activeFilterCount, balanceOpen, briefOpen, clearFilters, decisionTimelineOpen, dependency, exportVersionedJson, flowOpen, goToMatch, handoffOpen, impactOpen, insightsOpen, matchCount, matchIdx, matches, openSnapshots, outlineOpen, playtestsOpen, reportsOpen, search, searchInputRef, searchOpen, setBalanceOpen, setBoardBg, setBoardGrid, setBoardPack, setBriefOpen, setDecisionTimelineOpen, setDesignEditId, setFlowOpen, setHandoffOpen, setImpactCardId, setImpactOpen, setInsightsOpen, setIoMode, setIoOpen, setIoText, setOutlineOpen, setPlaytestsOpen, setReportsOpen, setSearch, setTheme, setWheelMode, skin, startPresentation, theme, toggleSearch, toggleSkin, toolsOpen, viewportSize, wheelMode, workspace, workspaceCameraRef }) {
+export default function BoardTopBar({ activeFilterCount, balanceOpen, briefOpen, clearFilters, decisionTimelineOpen, dependency, exportVersionedJson, flowOpen, goToMatch, handoffOpen, impactOpen, insightsOpen, matchCount, matchIdx, matches, openSnapshots, outlineOpen, playtestsOpen, reportsOpen, search, searchInputRef, searchOpen, setBalanceOpen, setBoardBg, setBoardGrid, setBoardPack, setBriefOpen, setDecisionTimelineOpen, setDesignEditId, setFlowOpen, setHandoffOpen, setImpactCardId, setImpactOpen, setInsightsOpen, setIoMode, setIoOpen, setIoText, setOutlineOpen, setPlaytestsOpen, setReportsOpen, setSearch, setTheme, setWheelMode, skin, startPresentation, theme, toggleSearch, toggleSkin, toolsOpen, viewportSize, wheelMode, workspace, workspaceCameraRef }) {
   const { store, selection, camera } = useBoard();
   const { board, boardName, role } = store;
   const { setSelectedEdgeIds } = selection;
   const { setView, view } = camera;
   const { t } = useLingui();
+  // Tên preset nằm ở đây chứ không ở lib/board-theme.js: module đó là dữ liệu
+  // thuần, test bằng node:test, không kéo được `t` của lingui vào.
+  const BG_LABEL = {
+    paper: t`Giấy kraft`, white: t`Trắng`, slate: t`Xám đá`,
+    mint: t`Bạc hà`, blush: t`Hồng phấn`, sky: t`Xanh trời`,
+    sand: t`Cát`, lavender: t`Oải hương`, blueprint: t`Bản vẽ`
+  };
+  const GRID_LABEL = {
+    dots: t`Lưới chấm`, lines: t`Lưới ô`, plain: t`Không lưới`
+  };
+  const PACK_LABEL = {
+    pastel: t`Pastel`, vivid: t`Rực`, mono: t`Đơn sắc`,
+    earth: t`Đất`, neon: t`Neon`
+  };
   return (
     <>
       {/* ĐẢO TO — góc trên trái. Vừa là bảng điều khiển (☰, tên board, tìm kiếm,

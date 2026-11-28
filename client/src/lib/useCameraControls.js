@@ -1,4 +1,5 @@
-import { useRef } from "react";
+import { useRef, useCallback } from "react";
+import { useFollow } from "./useFollow.js";
 import { panForCenter } from "./minimap.js";
 import { startDrag } from "./drag-session.js";
 import { MIN_SCALE, MAX_SCALE } from "./board-constants.js";
@@ -8,9 +9,24 @@ import { computeZoom } from "./camera.js";
 // thẻ/khung/người khác, bấm minimap, lia bằng chuột phải hoặc Space, và đổi toạ
 // độ màn hình ↔ canvas. Trước nằm trong IdeaMap.jsx (task 2.5 để lại).
 export function useCameraControls({
-  store, board, boardRef, camera, view, setView, viewRef, viewportRef, frameCardSize, saveNow, selectedIds, setSelectedIds, setBoard, setFlashId, setIsPanning, setSpotlightPeerId, stopFollow, suppressContextMenuRef, undo, applyFollowCamera
+  store, board, boardRef, camera, view, setView, viewRef, viewportRef, frameCardSize, saveNow, selectedIds, setSelectedIds, setBoard, setFlashId, setIsPanning, setSpotlightPeerId, suppressContextMenuRef, undo, socket, sendFollow, viewportSize
 }) {
   const depsRef = useRef({});
+
+  // Đường ghi camera dành RIÊNG cho vòng bám khi ghim màn hình. Cố ý không đi
+  // qua setCamera: setCamera là "người dùng chủ động đổi camera" nên nó huỷ
+  // ghim, mà vòng bám cũng đổi camera — dùng chung một cửa thì vòng bám tự huỷ
+  // mình ngay khung hình đầu tiên.
+  const applyFollowCamera = useCallback((view) => {
+    if (!boardRef.current) return;
+    setView((prev) => ({ ...prev, ...view }));
+  }, []);
+
+  const { followingId, pendingId, followError, watcherCount, follow, stopFollow } = useFollow({
+    socket, sendFollow, viewportSize,
+    applyCamera: applyFollowCamera,
+    minScale: MIN_SCALE, maxScale: MAX_SCALE
+  });
 
   // Mọi thao tác CHỈ đổi camera đều đi qua đây. Camera là riêng từng người: nó
   // được lưu vào localStorage bằng effect theo view, còn api.js thì đã cắt
@@ -183,7 +199,7 @@ export function useCameraControls({
   }
 
   return {
-    setCamera, zoomButton, goToPoint, fitToView, zoomToNodes, zoomToSelection, jumpToCard, jumpToPeer, startPan, clientToCanvas, toCanvasPoint, eventToCanvas,
+    followingId, pendingId, followError, watcherCount, follow, stopFollow, setCamera, zoomButton, goToPoint, fitToView, zoomToNodes, zoomToSelection, jumpToCard, jumpToPeer, startPan, clientToCanvas, toCanvasPoint, eventToCanvas,
     bind: (d) => { depsRef.current = d; }
   };
 }
