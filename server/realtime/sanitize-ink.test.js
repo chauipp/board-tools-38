@@ -159,3 +159,11 @@ test("ink: seq rác coi như 0 (gói mở)", () => {
   assert.equal(sanitizeInk(open({ seq: "abc" })).seq, 0);
   assert.equal(sanitizeInk(open({ seq: "abc", color: undefined })), null);
 });
+
+// Ba tập này giờ dựng từ shared/ink-kinds.js; nội dung phải y như bản chép tay cũ.
+test("LIVE_INK_* giữ đúng nội dung như trước khi dùng shared/", async () => {
+  const m = await import("./sanitize-ink.js");
+  assert.deepEqual([...m.LIVE_INK_KINDS].sort(), ["arrow", "diamond", "ellipse", "line", "pen", "quad", "rect", "text", "triangle"]);
+  assert.deepEqual([...m.LIVE_INK_FILLABLE_KINDS].sort(), ["diamond", "ellipse", "quad", "rect", "triangle"]);
+  assert.deepEqual(m.LIVE_INK_VERTEX_NUMBERS, { triangle: 6, quad: 8 });
+});

@@ -1,6 +1,7 @@
 // Kiểm gói live:ink trước khi relay cho cả phòng. Di chuyển nguyên văn từ
 // index.js; các hằng số MAX/MIN_LIVE_INK_* cũng được sanitize-laser.js dùng chung.
 import { sanitizeLiveText, sanitizeLiveMoves } from "../live-text.js";
+import { SHAPE_KINDS, SHAPE_CLOSED, VERTEX_NUMBERS } from "../../shared/ink-kinds.js";
 
 // Gói live:ink mang ĐIỂM MỚI THÊM của một nét đang vẽ. Trần này để một client
 // lỗi (hoặc cố tình) không bơm được mảng khổng lồ rồi bắt server phát cho cả
@@ -27,27 +28,22 @@ export const MAX_LIVE_INK_W = 64;
 // hiển thị hữu hạn. Chốt này áp cho MỌI kind, cả nét bút.
 export const MAX_LIVE_INK_COORD = 20000;
 
-// Bản sao TAY của SHAPE_KINDS trong client/src/lib/shape.js, cộng
-// "pen". Server không import được lib của client. Thêm một kind mới thì phải
-// sửa cả hai chỗ — client sẽ vẽ được nhưng server sẽ chặn gói nếu quên.
-export const LIVE_INK_KINDS = new Set(["pen", "rect", "ellipse", "line", "arrow", "triangle", "diamond", "quad", "text"]);
-// Bản sao TAY của SHAPE_CLOSED trong client/src/lib/shape.js — cũng
-// vì server không import được lib client, cũng phải sửa hai chỗ nếu đổi.
+// SHAPE_KINDS dùng chung với client (shared/ink-kinds.js), cộng "pen" và "text".
+export const LIVE_INK_KINDS = new Set(["pen", ...SHAPE_KINDS, "text"]);
+// SHAPE_CLOSED dùng chung với client (shared/ink-kinds.js).
 // Chỉ bốn hình ĐÓNG mới có vùng trong để tô. Client không bao giờ gắn `fill`
 // cho line/arrow, nên nếu server chấp thì một gói {kind:"arrow", fill:true} làm
 // đầu mũi tên hiện thành nêm tô đặc lúc peer kéo rồi biến mất khi board:update
 // về — nhấp nháy không giải thích được.
-export const LIVE_INK_FILLABLE_KINDS = new Set(["rect", "ellipse", "triangle", "diamond", "quad"]);
+export const LIVE_INK_FILLABLE_KINDS = new Set(SHAPE_CLOSED);
 export const LIVE_INK_BOX_NUMBERS = 4;
 // Hình có dạng ĐỈNH THẬT thì pts dài hơn 4 số. Hộp bao chỉ tả được hình "chuẩn"
 // (tam giác cân, chữ nhật thẳng trục), mà hình nhận ra từ nét vẽ tay — hoặc hình
 // vừa bị kéo tay cầm đỉnh — thì đủ loại: tam giác vuông/tù/bè, hình bình hành,
 // hình thang. Xem ghi chú đầu client/src/lib/shape.js.
 //
-// Đây là bản sao TAY của VERTEX_NUMBERS ở đó, cùng lý do với LIVE_INK_KINDS:
-// server không import được lib của client. Thêm một hình N đỉnh mới thì phải sửa
-// cả hai chỗ — client sẽ vẽ được nhưng server sẽ chặn gói nếu quên.
-export const LIVE_INK_VERTEX_NUMBERS = { triangle: 6, quad: 8 };
+// VERTEX_NUMBERS dùng chung với client (shared/ink-kinds.js).
+export const LIVE_INK_VERTEX_NUMBERS = VERTEX_NUMBERS;
 
 export function sanitizeInk(payload) {
   if (!payload || typeof payload !== "object") return null;

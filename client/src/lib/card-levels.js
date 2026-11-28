@@ -14,7 +14,7 @@ const KEY = "ideamap.card";
 export const CARD_LEVELS = [1, 2, 3, 4, 5];
 export const DEFAULT_CARD_LEVEL = 3;
 
-// Bề rộng theo bậc. PHẢI khớp `width` của .idea-card.lv-N trong idea-map.css:
+// Bề rộng theo bậc. PHẢI khớp `width` của .idea-card.lv-N trong styles/board/cards.css:
 // số ở đây chỉ dùng để tính chỗ đặt thẻ lúc bấm chuột (canh giữa thẻ vào con
 // trỏ). Bề rộng thật của thẻ đã nằm trên bảng do ResizeObserver đo, xem
 // lib/card-sizes.js.

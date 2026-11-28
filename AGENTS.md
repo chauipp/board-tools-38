@@ -5,13 +5,19 @@
 - Main application: repository root
 - Client: React + Vite in `client/`
 - Server: Express + Socket.IO + MongoDB in `server/`
+- Shared: plain ESM constants used by both in `shared/` (no dependencies, no DOM/Node APIs). Change a shared constant there once, not in client and server separately.
+- Code map: see the "Code map" section of `README.md`.
 
 ## Common commands
 
 Run these from the indicated directory:
 
 ```bash
+# repository root: everything CI runs (lint, client tests, build, all smoke scenarios, server tests)
+npm run verify
+
 # client
+npm run lint
 npm test
 npm run build
 npm run test:smoke
@@ -22,13 +28,15 @@ npm test
 npm run dev
 ```
 
+To run one smoke scenario after a smoke build: `SMOKE_ONLY=<name> node smoke-run.mjs` in `client/` (names: `source-checks`, `board`, `concurrent-nudge`, `game-design-panels`, `tree-panel`, `workspace`).
+
 The normal development ports are client `7155` and server `3345`.
 
 ## Working rules
 
 - Preserve unrelated user changes in a dirty worktree.
 - Use `apply_patch` for source edits.
-- Run focused checks after a change; run build/smoke tests for cross-cutting UI work.
+- Run focused checks after a change; run build/smoke tests for cross-cutting UI work, and `npm run verify` before handing work over.
 - Do not print secrets from `.env` files.
 - For files attached to boards, do not store large binary data directly in MongoDB board documents; use file storage and retain only metadata/URLs in the board.
 

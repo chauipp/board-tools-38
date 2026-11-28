@@ -1,3 +1,4 @@
+import { GAME_DESIGN_BALANCE_LIMITS } from "../../../../shared/game-design-limits.js";
 export function emptyGameDesignBalance() { return { metrics: [], curves: [] }; }
 
 export const BALANCE_TEMPLATES = [
@@ -53,7 +54,7 @@ export function normalizeGameDesignBalance(value, nodes) {
       cardIds: Array.isArray(item.cardIds) ? item.cardIds.map((id) => String(id).trim())
         .filter((id, i, ids) => id && ids.indexOf(id) === i && (!nodeIds || nodeIds.has(id))) : []
     };
-  }).filter((item) => item.key && item.name && !used.has(item.key) && (used.add(item.key) || true)).slice(0, 100);
+  }).filter((item) => item.key && item.name && !used.has(item.key) && (used.add(item.key) || true)).slice(0, GAME_DESIGN_BALANCE_LIMITS.metrics);
   const metricKeys = new Set(metrics.map((item) => item.key));
   const curveIds = new Set();
   return {
@@ -71,7 +72,7 @@ export function normalizeGameDesignBalance(value, nodes) {
         steps,
         mode: item.mode === "exponential" ? "exponential" : "linear"
       };
-    }).filter((item) => item.name && metricKeys.has(item.metricKey) && !curveIds.has(item.id) && (curveIds.add(item.id) || true)).slice(0, 30)
+    }).filter((item) => item.name && metricKeys.has(item.metricKey) && !curveIds.has(item.id) && (curveIds.add(item.id) || true)).slice(0, GAME_DESIGN_BALANCE_LIMITS.curves)
   };
 }
 

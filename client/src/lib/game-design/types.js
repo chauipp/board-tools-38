@@ -1,3 +1,4 @@
+import { RELATION_IDS } from "../../../../shared/game-design-limits.js";
 export const GAME_DESIGN_TYPES = [
   { id: "pillar", label: "Game Pillar", fields: ["goal", "rules", "owner", "priority", "acceptanceCriteria"] },
   { id: "core-loop", label: "Core Loop", fields: ["goal", "inputs", "outputs", "rules", "acceptanceCriteria"] },
@@ -29,7 +30,9 @@ export const RELATION_OPTIONS = [
   { id: "conflicts-with", label: "Xung đột", description: "Hai thẻ không nên cùng được áp dụng." }
 ];
 
-export const RELATION_IDS = new Set(RELATION_OPTIONS.map((item) => item.id));
+// Tập id hợp lệ dùng chung với server (shared/game-design-limits.js);
+// RELATION_OPTIONS ở trên phải liệt kê đúng các id đó (có test).
+export { RELATION_IDS };
 
 export function relationDefinition(relation) {
   return RELATION_OPTIONS.find((item) => item.id === relation) || RELATION_OPTIONS[0];

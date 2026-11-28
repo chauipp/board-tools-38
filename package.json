@@ -8,6 +8,7 @@
     "test:smoke": "npm --prefix client run test:smoke",
     "test:server": "npm --prefix server test",
     "test": "npm run test:client && npm run test:server",
-    "verify": "npm run test:client && npm run build:client && npm run test:smoke && npm run test:server"
+    "verify": "npm run lint:client && npm run test:client && npm run build:client && npm run test:smoke && npm run test:server",
+    "lint:client": "npm --prefix client run lint"
   }
 }

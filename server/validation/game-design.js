@@ -3,20 +3,46 @@
 // văn từ board-payload.js; nguyên tắc "chặn nhầm là mất bài" ở đầu
 // validation/board.js áp cho cả file này.
 
-export const GAME_DESIGN_BRIEF_LIMITS = { text: 4000, stageText: 1000, stages: 50, id: 120 };
-export const GAME_DESIGN_FLOW_LIMITS = { text: 1000, playerLoop: 20, progressionMap: 30, id: 120 };
-export const GAME_DESIGN_DETAIL_LIMITS = { text: 1000, id: 120, examples: 20, failureStates: 20, tuningParameters: 30 };
-export const GAME_DESIGN_TECHNICAL_NOTES_LIMIT = 2000;
-export const GAME_DESIGN_PLAYTEST_LIMITS = { text: 4000, references: 100 };
-export const GAME_DESIGN_DECISION_LIMITS = { entries: 30, text: 4000, id: 120, references: 100 };
-export const GAME_DESIGN_BALANCE_LIMITS = { metrics: 100, curves: 30, curveSteps: 200, text: 4000, id: 120, references: 100 };
-export const GAME_DESIGN_HANDOFF_LIMITS = { text: 4000 };
-export const GAME_DESIGN_REVIEW_LIMITS = { comments: 20, text: 4000, id: 120 };
-export const GAME_DESIGN_DELIVERY_LIMITS = { text: 4000 };
-export const GAME_DESIGN_ANALYTICS_LIMITS = { events: 20, text: 4000 };
-export const GAME_DESIGN_AB_TEST_LIMITS = { tests: 20, text: 4000, id: 120 };
-export const GAME_DESIGN_LIVE_OPS_LIMITS = { text: 4000 };
-export const GAME_DESIGN_POST_LAUNCH_LIMITS = { text: 4000, references: 100 };
+import {
+  GAME_DESIGN_BRIEF_LIMITS,
+  GAME_DESIGN_FLOW_LIMITS,
+  GAME_DESIGN_DETAIL_LIMITS,
+  GAME_DESIGN_TECHNICAL_NOTES_LIMIT,
+  GAME_DESIGN_PLAYTEST_LIMITS,
+  GAME_DESIGN_DECISION_LIMITS,
+  GAME_DESIGN_BALANCE_LIMITS,
+  GAME_DESIGN_HANDOFF_LIMITS,
+  GAME_DESIGN_REVIEW_LIMITS,
+  GAME_DESIGN_DELIVERY_LIMITS,
+  GAME_DESIGN_ANALYTICS_LIMITS,
+  GAME_DESIGN_AB_TEST_LIMITS,
+  GAME_DESIGN_LIVE_OPS_LIMITS,
+  GAME_DESIGN_POST_LAUNCH_LIMITS,
+  REVIEW_OUTCOMES,
+  POST_LAUNCH_STATUSES,
+  AB_TEST_STATUSES,
+  LIVE_OPS_STATUSES,
+  TEAM_HANDOFF_STATUSES
+} from "../../shared/game-design-limits.js";
+
+// Các trần *_LIMITS nằm ở shared/game-design-limits.js; re-export để mọi
+// import cũ (board-payload.js, test) không phải đổi.
+export {
+  GAME_DESIGN_BRIEF_LIMITS,
+  GAME_DESIGN_FLOW_LIMITS,
+  GAME_DESIGN_DETAIL_LIMITS,
+  GAME_DESIGN_TECHNICAL_NOTES_LIMIT,
+  GAME_DESIGN_PLAYTEST_LIMITS,
+  GAME_DESIGN_DECISION_LIMITS,
+  GAME_DESIGN_BALANCE_LIMITS,
+  GAME_DESIGN_HANDOFF_LIMITS,
+  GAME_DESIGN_REVIEW_LIMITS,
+  GAME_DESIGN_DELIVERY_LIMITS,
+  GAME_DESIGN_ANALYTICS_LIMITS,
+  GAME_DESIGN_AB_TEST_LIMITS,
+  GAME_DESIGN_LIVE_OPS_LIMITS,
+  GAME_DESIGN_POST_LAUNCH_LIMITS
+};
 
 export function validateGameDesignBrief(brief) {
   if (brief === undefined || brief === null) return null;
@@ -189,7 +215,7 @@ export function validateTeamHandoff(value) {
   for (const [team, fields] of Object.entries(configs)) {
     const item = value[team];
     if (!item || typeof item !== "object" || Array.isArray(item)) return `teamHandoff.${team} không hợp lệ`;
-    if (!["draft", "ready", "handed-off"].includes(item.status)) return `teamHandoff.${team}.status không hợp lệ`;
+    if (!TEAM_HANDOFF_STATUSES.includes(item.status)) return `teamHandoff.${team}.status không hợp lệ`;
     for (const field of ["owner", "handedOffAt", ...fields]) {
       if (typeof item[field] !== "string" || item[field].length > GAME_DESIGN_HANDOFF_LIMITS.text) return `teamHandoff.${team}.${field} không hợp lệ`;
     }
@@ -202,7 +228,7 @@ export function validateReview(value) {
   if (
     typeof value.reviewer !== "string" || value.reviewer.length > 4000 ||
     typeof value.date !== "string" || value.date.length > 4000 ||
-    !["pending", "approved", "changes-requested", "rejected"].includes(value.outcome)
+    !REVIEW_OUTCOMES.includes(value.outcome)
   ) return "review metadata không hợp lệ";
   if (!Array.isArray(value.comments) || value.comments.length > GAME_DESIGN_REVIEW_LIMITS.comments) return "review.comments không hợp lệ";
   const ids = new Set();
@@ -258,7 +284,7 @@ export function validateABTests(value) {
         return `abTests.${field} không hợp lệ`;
       }
     }
-    if (!["draft", "running", "concluded", "rejected"].includes(item.status)) return "abTests.status không hợp lệ";
+    if (!AB_TEST_STATUSES.includes(item.status)) return "abTests.status không hợp lệ";
   }
   return null;
 }
@@ -269,7 +295,7 @@ export function validateLiveOps(value) {
     if (typeof value[field] !== "string" || value[field].length > GAME_DESIGN_LIVE_OPS_LIMITS.text) return `liveOps.${field} không hợp lệ`;
   }
   if (value.rolloutPercent && !/^(0|[1-9]\d?|100)$/.test(value.rolloutPercent)) return "liveOps.rolloutPercent không hợp lệ";
-  if (!["planned", "running", "paused", "full", "rolled-back"].includes(value.status)) return "liveOps.status không hợp lệ";
+  if (!LIVE_OPS_STATUSES.includes(value.status)) return "liveOps.status không hợp lệ";
   return null;
 }
 export function validatePostLaunchReview(value, nodeIds) {
@@ -279,7 +305,7 @@ export function validatePostLaunchReview(value, nodeIds) {
     if (typeof value[field] !== "string" || value[field].length > GAME_DESIGN_POST_LAUNCH_LIMITS.text) return `postLaunchReview.${field} không hợp lệ`;
   }
   if (value.reviewDate && !/^\d{4}-\d{2}-\d{2}$/.test(value.reviewDate)) return "postLaunchReview.reviewDate không hợp lệ";
-  if (!["pending", "healthy", "needs-iteration", "sunset"].includes(value.status)) return "postLaunchReview.status không hợp lệ";
+  if (!POST_LAUNCH_STATUSES.includes(value.status)) return "postLaunchReview.status không hợp lệ";
   return validateCardReferences(value.cardIds, "postLaunchReview", nodeIds, GAME_DESIGN_POST_LAUNCH_LIMITS.references);
 }
 export function validateFollowUpTasks(value, nodeIds) {

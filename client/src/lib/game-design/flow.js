@@ -1,3 +1,4 @@
+import { GAME_DESIGN_FLOW_LIMITS } from "../../../../shared/game-design-limits.js";
 export function emptyGameDesignFlow() {
   return { playerLoop: [], progressionMap: [] };
 }
@@ -26,10 +27,10 @@ export function normalizeGameDesignFlow(value, nodes) {
   const nodeIds = Array.isArray(nodes) ? new Set(nodes.map((node) => String(node?.id))) : null;
   return {
     playerLoop: normalizeFlowItems(flow.playerLoop, {
-      prefix: "loop", fields: ["title", "action", "outcome", "note"], limit: 20
+      prefix: "loop", fields: ["title", "action", "outcome", "note"], limit: GAME_DESIGN_FLOW_LIMITS.playerLoop
     }, nodeIds),
     progressionMap: normalizeFlowItems(flow.progressionMap, {
-      prefix: "progression", fields: ["title", "objective", "unlocks", "description", "emotion"], limit: 30
+      prefix: "progression", fields: ["title", "objective", "unlocks", "description", "emotion"], limit: GAME_DESIGN_FLOW_LIMITS.progressionMap
     }, nodeIds)
   };
 }

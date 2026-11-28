@@ -1,3 +1,4 @@
+import { GAME_DESIGN_DECISION_LIMITS } from "../../../../shared/game-design-limits.js";
 export function emptyDecisionLog() { return []; }
 
 export function normalizeDecisionLog(value, nodes) {
@@ -18,7 +19,7 @@ export function normalizeDecisionLog(value, nodes) {
         .filter((id, itemIndex, ids) => id && ids.indexOf(id) === itemIndex && (!nodeIds || nodeIds.has(id))) : []
     }))
     .filter((item) => item.decision)
-    .slice(0, 30);
+    .slice(0, GAME_DESIGN_DECISION_LIMITS.entries);
 }
 
 export function decisionTimeline(nodes) {

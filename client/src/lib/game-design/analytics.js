@@ -1,3 +1,4 @@
+import { GAME_DESIGN_ANALYTICS_LIMITS } from "../../../../shared/game-design-limits.js";
 export function normalizeAnalyticsEvents(value) {
   if (!Array.isArray(value)) return [];
   return value.filter((item) => item && typeof item === "object" && !Array.isArray(item)).map((item, index) => ({
@@ -7,5 +8,5 @@ export function normalizeAnalyticsEvents(value) {
     properties: typeof item.properties === "string" ? item.properties.trim() : "",
     kpi: typeof item.kpi === "string" ? item.kpi.trim() : "",
     owner: typeof item.owner === "string" ? item.owner.trim() : ""
-  })).filter((item) => item.eventName).slice(0, 20);
+  })).filter((item) => item.eventName).slice(0, GAME_DESIGN_ANALYTICS_LIMITS.events);
 }
