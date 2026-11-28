@@ -9,7 +9,7 @@ import { useSkin } from "../lib/useSkin.js";
 import { drawingsHitBy, moveDrawing, drawingBox, shapeHandles, HANDLE_EDGE } from "../lib/shape.js";
 import { textLines, textBox, TEXT_LINE_H } from "../lib/text-el.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
-import { RELATION_OPTIONS, relationDefinition, isGameDesignRelation, createRelatedGameDesignCard, duplicateGameDesignCard, exportPackage, exportVersion, normalizeGameDesignBrief, normalizeGameDesignFlow, normalizeGameDesignBalance, createGameDesignNode, dependencyAnalysis, gameDesignMarkdown } from "../lib/game-design.js";
+import { RELATION_OPTIONS, relationDefinition, isGameDesignRelation, exportPackage } from "../lib/game-design.js";
 import { paletteCss } from "../lib/palette.js";
 import { BOARD_BGS, BOARD_GRIDS, COLOR_PACKS, isBoardBg, isBoardGrid, isColorPack } from "../lib/board-theme.js";
 import FilterPanel from "../components/FilterPanel.jsx";
@@ -44,7 +44,7 @@ import ToolOptions from "../components/ToolOptions.jsx";
 import { nodesInFrame } from "../lib/board-geometry.js";
 import { buildEdgeRoutes, routeIntersectsRect } from "../lib/edge-routing.js";
 import { createDragClickGuard, createMultiClick, isDragGesture } from "../lib/multi-click.js";
-import { buildOutline, outlineToMarkdown } from "../lib/outline.js";
+import { buildOutline } from "../lib/outline.js";
 import { gridLayout, layerLayout } from "../lib/layout.js";
 import { buildTree, edgeKey } from "../lib/tree-layout.js";
 import { normalizeTreeLock, treeLockOwners, arrangeLockedTrees } from "../lib/locked-tree.js";
@@ -68,6 +68,7 @@ import { useDrawingSelection } from "../lib/useDrawingSelection.js";
 import { useTextTool } from "../lib/useTextTool.js";
 import { useTreeLayout } from "../lib/useTreeLayout.js";
 import { usePresentation } from "../lib/usePresentation.js";
+import { useGameDesignBoard } from "../lib/useGameDesignBoard.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
 import { loadPenPrefs, savePenPrefs, penVar } from "../lib/pen.js";
 import { ERASE_PART } from "../lib/erase.js";
@@ -555,12 +556,16 @@ export default function IdeaMap() {
     () => (board ? new Map(board.tags.map((tg) => [tg.id, tg])) : EMPTY_MAP),
     [board?.tags]
   );
-  // Dependency chỉ là một lớp thông tin dẫn đường trên canvas: giữ phân tích
-  // thuần theo snapshot board để card, dây và dock luôn nói cùng một sự thật.
-  const dependency = useMemo(
-    () => (board?.kind === "game-design" ? dependencyAnalysis(board) : null),
-    [board]
-  );
+  // Board game-design: thẻ GD, brief/flow/balance, dependency, xuất Markdown/JSON — lib/useGameDesignBoard.js.
+  const gameDesign = useGameDesignBoard({
+    store, board, boardRef, role, view, boardName, frameCardSize, viewportRef, setDesignEditId
+  });
+  const {
+    dependency, addGameDesignCard, saveDesignNode, createRelatedDesignNode, duplicateDesignNode, saveGameDesignBrief, saveGameDesignFlow, saveGameDesignBalance, exportMarkdown, exportVersionedJson
+  } = gameDesign;
+  gameDesign.bind({
+    toCanvasPoint: (...a) => toCanvasPoint(...a)
+  });
   const paletteStyle = useMemo(() => paletteCss(board?.palette ?? EMPTY_ARRAY), [board?.palette]);
 
   const inkDrawings = useMemo(() => {
@@ -984,51 +989,6 @@ export default function IdeaMap() {
     const frame = el && el.closest(".frame-box");
     if (frame) return { id: Number(frame.getAttribute("data-group-id")), kind: "group" };
     return null;
-  }
-
-  function addGameDesignCard(type = "mechanic") {
-    if (board.kind !== "game-design" || role === "viewer") return;
-    const rect = viewportRef.current.getBoundingClientRect();
-    const p = toCanvasPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
-    const node = createGameDesignNode(board.nextNodeId, p.x - CARD_W / 2, p.y - 55, type);
-    const next = { ...board, nodes: [...board.nodes, node], nextNodeId: node.id + 1 };
-    store.commit(next, { from: board }); setDesignEditId(node.id);
-  }
-
-  function saveDesignNode(nextNode) {
-    const current = boardRef.current;
-    const next = { ...current, nodes: current.nodes.map((n) => n.id === nextNode.id ? nextNode : n) };
-    // Panel là inspector của thẻ đang chọn, không phải modal dùng một lần. Giữ
-    // nó mở sau khi lưu để người thiết kế nhìn ngay phần vừa điền và chuyển qua
-    // thẻ khác bằng một cú bấm trên canvas.
-    store.commit(next, { from: current });
-  }
-  function createRelatedDesignNode(sourceId, type, relation) {
-    const current = boardRef.current; const next = createRelatedGameDesignCard(current, sourceId, type, relation);
-    if (next === current) return; store.commit(next, { from: current }); setDesignEditId(next.nextNodeId - 1);
-  }
-  function duplicateDesignNode(sourceId) {
-    const current = boardRef.current; const next = duplicateGameDesignCard(current, sourceId);
-    if (next === current) return; store.commit(next, { from: current }); setDesignEditId(next.nextNodeId - 1);
-  }
-
-  function saveGameDesignBrief(nextBrief) {
-    const current = boardRef.current;
-    if (!current || current.kind !== "game-design") return;
-    const next = { ...current, gameDesignBrief: normalizeGameDesignBrief(nextBrief) };
-    store.commit(next, { from: current });
-  }
-
-  function saveGameDesignFlow(nextFlow) {
-    const current = boardRef.current;
-    if (!current || current.kind !== "game-design") return;
-    const next = { ...current, gameDesignFlow: normalizeGameDesignFlow(nextFlow, current.nodes) };
-    store.commit(next, { from: current });
-  }
-  function saveGameDesignBalance(nextBalance) {
-    const current = boardRef.current; if (!current || current.kind !== "game-design") return;
-    const next = { ...current, gameDesignBalance: normalizeGameDesignBalance(nextBalance, current.nodes) };
-    store.commit(next, { from: current });
   }
 
   // Điểm trên bảng (toạ độ canvas) ứng với một điểm trên màn hình. Đọc qua
@@ -1478,26 +1438,6 @@ export default function IdeaMap() {
     // một nhịp để mắt bắt được sau khi màn hình vừa nhảy.
     setSpotlightPeerId(peer.socketId);
     setTimeout(() => setSpotlightPeerId((cur) => (cur === peer.socketId ? null : cur)), 1600);
-  }
-
-  function exportMarkdown() {
-    const md = board.kind === "game-design"
-      ? gameDesignMarkdown(board)
-      : outlineToMarkdown(board, frameCardSize, { other: t`Khác`, links: t`Liên kết` });
-    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${board.kind === "game-design" ? "game-design" : "idea-map"}-${exportVersion(board).replace(/[^a-zA-Z0-9]/g, "-")}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  function exportVersionedJson() {
-    const payload = board.kind === "game-design" ? exportPackage({ ...board, view, name: boardName }) : { ...board, view };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
-    const url = URL.createObjectURL(blob); const a = document.createElement("a");
-    a.href = url; a.download = `${board.kind === "game-design" ? "game-design" : "idea-map"}-${exportVersion(board).replace(/[^a-zA-Z0-9]/g, "-")}.json`; a.click(); URL.revokeObjectURL(url);
   }
 
   function exportPng() {
