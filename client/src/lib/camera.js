@@ -1,3 +1,5 @@
+import { MIN_SCALE, MAX_SCALE } from "./board-constants.js";
+
 // Camera (pan/zoom) là riêng từng người xem — không còn đồng bộ qua server
 // (xem docs/superpowers/specs/2026-07-26-idea-map-realtime-sync-design.md,
 // mục E). Lưu local theo từng board.
@@ -20,4 +22,16 @@ export function saveCamera(storage, boardId, view) {
   } catch {
     // Hết quota hoặc chế độ riêng tư — mất vị trí camera, không đáng làm sập app.
   }
+}
+
+// Phóng/thu quanh một điểm màn hình (con trỏ, hoặc tâm khung nhìn): điểm canvas
+// nằm dưới điểm đó đứng yên, scale kẹp trong [MIN_SCALE, MAX_SCALE]. Nhận và
+// trả về camera `{ panX, panY, scale }` — camera không còn nằm trong board.
+export function computeZoom(view, rect, screenX, screenY, factor) {
+  const mx = screenX - rect.left, my = screenY - rect.top;
+  const oldScale = view.scale;
+  const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, oldScale * factor));
+  const cx = (mx - view.panX) / oldScale;
+  const cy = (my - view.panY) / oldScale;
+  return { panX: mx - newScale * cx, panY: my - newScale * cy, scale: newScale };
 }

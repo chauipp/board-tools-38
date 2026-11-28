@@ -82,3 +82,8 @@ export function rectForEndpoint(kind, id, nodes, groups, sizeOf) {
   const { w, h } = sizeOf(id);
   return { cx: n.x + w / 2, cy: n.y + h / 2, w, h };
 }
+
+// Hai hình chữ nhật có chạm nhau không (chạm mép không tính).
+export function rectsOverlap(x1, y1, w1, h1, x2, y2, w2, h2) {
+  return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
+}

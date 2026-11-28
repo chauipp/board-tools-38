@@ -280,3 +280,22 @@ test("board cũ thiếu field vẫn ghép được", () => {
   assert.equal(out.nodes.find((n) => n.id === 1).x, 40);
   assert.deepEqual(out.drawings, []);
 });
+
+test("rebaseBoardDetailed trả bản đồ đổi id; remapId / remapIdSet dời theo đúng id", async () => {
+  const { rebaseBoardDetailed, remapId, remapIdSet, hasRemap } = await import("./rebase.js");
+  const empty = { nodes: [], edges: [], groups: [], statuses: [], tags: [], palette: [], drawings: [], nextNodeId: 1 };
+  const server = { ...empty, nodes: [{ id: 1, title: "Remote" }], nextNodeId: 2 };
+  const mine = { ...empty, nodes: [{ id: 1, title: "Mine" }], nextNodeId: 2 };
+  const out = rebaseBoardDetailed(server, empty, mine);
+  assert.ok(hasRemap(out.plan));
+  const newId = remapId(out.plan, "nodes", 1);
+  assert.notEqual(newId, 1);
+  assert.equal(out.board.nodes.find((n) => n.id === newId).title, "Mine");
+  assert.equal(out.board.nodes.find((n) => n.id === 1).title, "Remote");
+  assert.deepEqual([...remapIdSet(new Set([1, 9]), out.plan, "nodes")].sort(), [9, newId].sort());
+  // Không có id nào đổi thì trả CHÍNH Set cũ.
+  const keep = new Set([9]);
+  assert.equal(remapIdSet(keep, out.plan, "nodes"), keep);
+  assert.equal(remapId(null, "nodes", 5), 5);
+  assert.equal(hasRemap(rebaseBoardDetailed(server, server, server).plan), false);
+});

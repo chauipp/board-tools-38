@@ -46,7 +46,7 @@ export const HOLD_SWAP_MS = HOLD_ERASE_MS;
 // (memo) dựng lại toàn bộ nét đã lưu dù chẳng có nét nào đang bị đánh dấu.
 const EMPTY_IDS = [];
 
-// Chuột → toạ độ canvas. Camera nằm trong board.view, đọc qua ref để handler
+// Chuột → toạ độ canvas. Camera nằm trong viewRef (lib/useCamera.js), đọc qua ref để handler
 // gắn vào window không bị bám vào một bản chụp cũ.
 function toCanvas(e, viewportEl, view) {
   const rect = viewportEl.getBoundingClientRect();
@@ -57,7 +57,7 @@ function toCanvas(e, viewportEl, view) {
 }
 
 export function useInk({
-  tool, penPrefs, boardRef, viewportRef,
+  tool, penPrefs, boardRef, viewRef, viewportRef,
   onStrokeDone, onEraseDone, onPick, onSwapTool, live
 }) {
   const [draft, setDraft] = useState(null);
@@ -149,7 +149,7 @@ export function useInk({
     // nhận luôn cú bấm và vẽ ra một nét bút vô hình một điểm.
     if (tool === "text") return;
 
-    const start = toCanvas(e, viewportEl, board.view);
+    const start = toCanvas(e, viewportEl, viewRef.current);
     // Nét liền hay nét đứt là lựa chọn ở khu 4, dùng chung cho bút và hình khối —
     // và nó đi kèm nét từ lúc bắt đầu vẽ, không phải thứ chỉ chỉnh được sau khi
     // đã vẽ xong. Chốt về boolean ngay đây để mọi nhánh dưới khỏi hỏi lại.
@@ -659,7 +659,7 @@ export function useInk({
       if (snapped || erased || swapped) return;
       const b = boardRef.current;
       if (!b) return;
-      const p = toCanvas(ev, viewportEl, b.view);
+      const p = toCanvas(ev, viewportEl, viewRef.current);
 
       if (activeRef.current === "eraser") {
         // Tay đã rời chỗ ấn: đây là một cú quét thật, không còn là cú giữ để đổi
@@ -766,7 +766,7 @@ export function useInk({
       const home = verts.length >= 6 ? { x: verts[0], y: verts[1] } : null;
       // Vào thì chặt, ra thì rộng — xem CLOSE_STICK_PX/CLOSE_UNSTICK_PX.
       const near = !!home
-        && Math.hypot(p.x - home.x, p.y - home.y) * b.view.scale <= (stuck ? CLOSE_UNSTICK_PX : CLOSE_STICK_PX);
+        && Math.hypot(p.x - home.x, p.y - home.y) * viewRef.current.scale <= (stuck ? CLOSE_UNSTICK_PX : CLOSE_STICK_PX);
       if (near !== stuck) {
         stuck = near;
         if (!near) clearHold();
@@ -775,8 +775,8 @@ export function useInk({
           // "chỗ này sắp khép lại", mà chỗ đó là cái đỉnh chứ không phải con trỏ.
           const box = viewportEl.getBoundingClientRect();
           armHold("close",
-            box.left + home.x * b.view.scale + b.view.panX,
-            box.top + home.y * b.view.scale + b.view.panY);
+            box.left + home.x * viewRef.current.scale + viewRef.current.panX,
+            box.top + home.y * viewRef.current.scale + viewRef.current.panY);
         }
       } else if (stuck) {
         // Đã dính từ nhịp trước: nhích tay trong vùng dính không đổi được nét,
@@ -1022,7 +1022,7 @@ export function useInk({
       window.addEventListener("keydown", onShiftKey);
       window.addEventListener("keyup", onShiftKey);
     }
-  }, [tool, penPrefs, boardRef, viewportRef, onStrokeDone, onEraseDone, onPick, onSwapTool, live]);
+  }, [tool, penPrefs, boardRef, viewRef, viewportRef, onStrokeDone, onEraseDone, onPick, onSwapTool, live]);
 
   // Cửa sổ mất focus giữa nét: mouseup sẽ không bao giờ tới, nên phải tự huỷ —
   // nếu không, nét treo lại trên màn hình mình và trên màn hình người khác.

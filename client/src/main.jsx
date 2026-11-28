@@ -13,8 +13,10 @@ import "@fontsource/ibm-plex-mono/600.css";
 import "./index.css";
 import Home from "./pages/Home.jsx";
 import BoardList from "./pages/BoardList.jsx";
-import IdeaMap from "./pages/IdeaMap.jsx";
-import Calculator from "./pages/Calculator.jsx";
+// Hai trang nặng tải theo route (task 2.9): mở danh sách board không phải tải
+// cả bản đồ ý tưởng lẫn máy tính.
+const IdeaMap = React.lazy(() => import("./pages/IdeaMap.jsx"));
+const Calculator = React.lazy(() => import("./pages/Calculator.jsx"));
 import { AuthProvider, useAuth } from "./context/AuthContext.jsx";
 import LoginGate from "./components/LoginGate.jsx";
 
@@ -73,12 +75,14 @@ ReactDOM.createRoot(document.getElementById("root")).render(
         <AuthGate>
           <BrowserRouter>
             <GlobalIdentityChip />
+            <React.Suspense fallback={null}>
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/idea-map" element={<BoardList />} />
               <Route path="/idea-map/:boardId" element={<IdeaMapRoute />} />
               <Route path="/calculator" element={<Calculator />} />
             </Routes>
+            </React.Suspense>
           </BrowserRouter>
         </AuthGate>
       </AuthProvider>

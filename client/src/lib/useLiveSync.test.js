@@ -232,3 +232,8 @@ test("kịch bản: board:update mang vị trí CŨ (bản lưu của người t
   const drawn = applyGeomOverlay(staleBoard.nodes, after, "node:")[0];
   assert.deepEqual([drawn.x, drawn.y], [100, 100]);
 });
+
+test("mergeRemoteBoard: board không có camera thì bản trộn cũng không có", () => {
+  const merged = mergeRemoteBoard({ nodes: [], edges: [] }, { nodes: [], edges: [], view: { panX: 9, panY: 9, scale: 2 } }, null);
+  assert.equal("view" in merged, false);
+});

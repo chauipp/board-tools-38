@@ -1,6 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { loadCamera, saveCamera } from "./camera.js";
+import { computeZoom, loadCamera, saveCamera } from "./camera.js";
+import { MIN_SCALE, MAX_SCALE } from "./board-constants.js";
 
 function fakeStorage() {
   const data = new Map();
@@ -38,4 +39,35 @@ test("loadCamera returns null for a value missing required numeric fields", () =
   const storage = fakeStorage();
   storage.setItem("idea-map-camera:board-1", JSON.stringify({ panX: 1 }));
   assert.equal(loadCamera(storage, "board-1"), null);
+});
+
+
+const rect = { left: 100, top: 50 };
+
+// Điểm canvas nằm dưới con trỏ trước và sau khi phóng phải trùng nhau: đó là
+// toàn bộ ý nghĩa của "zoom quanh con trỏ".
+function canvasPointUnder(view, screenX, screenY) {
+  return { x: (screenX - rect.left - view.panX) / view.scale, y: (screenY - rect.top - view.panY) / view.scale };
+}
+
+test("phóng quanh con trỏ: điểm dưới con trỏ đứng yên", () => {
+  const before = { panX: 30, panY: -20, scale: 1 };
+  const after = computeZoom(before, rect, 400, 300, 1.5);
+  assert.equal(after.scale, 1.5);
+  const p0 = canvasPointUnder(before, 400, 300);
+  const p1 = canvasPointUnder(after, 400, 300);
+  assert.ok(Math.abs(p0.x - p1.x) < 1e-9 && Math.abs(p0.y - p1.y) < 1e-9);
+});
+
+test("kẹp scale trong [MIN_SCALE, MAX_SCALE]", () => {
+  assert.equal(computeZoom({ panX: 0, panY: 0, scale: 2 }, rect, 0, 0, 10).scale, MAX_SCALE);
+  assert.equal(computeZoom({ panX: 0, panY: 0, scale: 0.5 }, rect, 0, 0, 0.01).scale, MIN_SCALE);
+});
+
+test("trả về camera mới, không sửa camera cũ", () => {
+  const before = { panX: 0, panY: 0, scale: 1 };
+  const after = computeZoom(before, rect, 200, 200, 1.2);
+  assert.notEqual(after, before);
+  assert.deepEqual(Object.keys(after).sort(), ["panX", "panY", "scale"]);
+  assert.deepEqual(before, { panX: 0, panY: 0, scale: 1 });
 });
