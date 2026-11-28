@@ -1,17 +1,21 @@
 import { Trans, useLingui } from "@lingui/react/macro";
 import { BADGE_PALETTE, colorVar } from "../../lib/badges.js";
 import { RELATION_OPTIONS, relationDefinition, isGameDesignRelation } from "../../lib/game-design.js";
-import GameDesignPanel from "../GameDesignPanel.jsx";
-import GameDesignBriefPanel from "../GameDesignBriefPanel.jsx";
-import GameDesignFlowPanel from "../GameDesignFlowPanel.jsx";
-import DevHandoffPanel from "../DevHandoffPanel.jsx";
-import GameDesignBalancePanel from "../GameDesignBalancePanel.jsx";
-import DecisionTimelinePanel from "../DecisionTimelinePanel.jsx";
-import BoardSnapshotsPanel from "../BoardSnapshotsPanel.jsx";
-import GameDesignInsightsPanel from "../GameDesignInsightsPanel.jsx";
-import GameDesignReportsPanel from "../GameDesignReportsPanel.jsx";
-import GameDesignImpactPanel from "../GameDesignImpactPanel.jsx";
-import PlaytestComparisonPanel from "../PlaytestComparisonPanel.jsx";
+import { lazyPanel } from "../../lib/lazy-panel.jsx";
+
+// Các panel game-design tách chunk riêng (task 2.9): board ý tưởng không phải
+// tải chúng.
+const GameDesignPanel = lazyPanel(() => import("../GameDesignPanel.jsx"));
+const GameDesignBriefPanel = lazyPanel(() => import("../GameDesignBriefPanel.jsx"));
+const GameDesignFlowPanel = lazyPanel(() => import("../GameDesignFlowPanel.jsx"));
+const DevHandoffPanel = lazyPanel(() => import("../DevHandoffPanel.jsx"));
+const GameDesignBalancePanel = lazyPanel(() => import("../GameDesignBalancePanel.jsx"));
+const DecisionTimelinePanel = lazyPanel(() => import("../DecisionTimelinePanel.jsx"));
+const BoardSnapshotsPanel = lazyPanel(() => import("../BoardSnapshotsPanel.jsx"));
+const GameDesignInsightsPanel = lazyPanel(() => import("../GameDesignInsightsPanel.jsx"));
+const GameDesignReportsPanel = lazyPanel(() => import("../GameDesignReportsPanel.jsx"));
+const GameDesignImpactPanel = lazyPanel(() => import("../GameDesignImpactPanel.jsx"));
+const PlaytestComparisonPanel = lazyPanel(() => import("../PlaytestComparisonPanel.jsx"));
 
 // Dock bên phải cho các bảng game-design (brief, flow, balance, handoff,
 // decision timeline, snapshot, insights, reports, impact, playtest) và chi tiết
