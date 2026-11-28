@@ -1,9 +1,9 @@
 import { Router } from "express";
 import { Board, BoardSnapshot } from "../models.js";
 import { asyncRoute } from "../http.js";
-import { AUTH_FIELDS, AUTH_FIELDS_VERSIONED, loadBoardWithRole } from "../board-access.js";
+import { AUTH_FIELDS, AUTH_FIELDS_VERSIONED, loadBoardWithRole, nextUpdatedAt } from "../board-access.js";
 import { normalizeGameDesignFlow, resolveGameDesignFields, validateBoardPayload } from "../board-payload.js";
-import { boardPayload, pickBoardContent } from "../board-fields.js";
+import { boardPayload, pickBoardContent, safeNextStatusId } from "../board-fields.js";
 import { broadcastBoardUpdate } from "../realtime/broadcast.js";
 import { syncBoardRefs } from "../pdf-quota.js";
 
@@ -68,10 +68,14 @@ router.post("/:id/snapshots/:snapshotId/restore", asyncRoute(async (req, res) =>
   const invalid = validateBoardPayload(normalized);
   if (invalid) return res.status(409).json({ error: "invalid_snapshot", detail: invalid });
   const gameDesign = resolveGameDesignFields(normalized, found.board);
-  const updatedAt = new Date();
+  const updatedAt = nextUpdatedAt(found.board.updatedAt);
   const restored = {
     ...gameDesign,
     ...pickBoardContent(normalized),
+    // Snapshot chụp trước bản sửa B1 còn mang bộ đếm trùng id (9 trạng thái,
+    // nextStatusId = 9). Chuẩn hoá TRƯỚC khi ghi: bản lưu, gói broadcast và
+    // phản hồi đều phải mang bộ đếm dùng được (review PR #5, vòng 2).
+    nextStatusId: safeNextStatusId(normalized),
     updatedAt
   };
   await Board.findByIdAndUpdate(found.board._id, restored);

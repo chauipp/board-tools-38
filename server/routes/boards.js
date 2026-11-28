@@ -3,7 +3,7 @@ import { Board } from "../models.js";
 import { getBoardRole, hasAllBoardsAccess } from "../auth.js";
 import { rateLimit } from "../rate-limit.js";
 import { asyncRoute } from "../http.js";
-import { AUTH_FIELDS, AUTH_FIELDS_VERSIONED, loadBoardWithRole } from "../board-access.js";
+import { AUTH_FIELDS, AUTH_FIELDS_VERSIONED, loadBoardWithRole, nextUpdatedAt } from "../board-access.js";
 import { DEFAULT_STATUSES, GAME_DESIGN_STATUSES, gameDesignTemplate, nextStatusIdFor } from "../board-templates.js";
 import { normalizeGameDesignFlow, resolveGameDesignFields, validateBoardPayload } from "../board-payload.js";
 import { boardPayload, pickBoardContent } from "../board-fields.js";
@@ -123,19 +123,34 @@ router.put("/:id", asyncRoute(async (req, res) => {
   // Không khai `baseUpdatedAt` thì bỏ qua chốt này: client cũ, và luồng "Nhập
   // JSON" (cố ý thay cả bảng) vẫn ghi đè được như trước.
   if (baseUpdatedAt) {
-    const current = found.board.updatedAt;
-    if (current && new Date(baseUpdatedAt).getTime() !== new Date(current).getTime()) {
+    const stored = found.board.updatedAt;
+    if (stored && new Date(baseUpdatedAt).getTime() !== new Date(stored).getTime()) {
       const fresh = await Board.findById(req.params.id);
       if (!fresh) return res.status(404).json({ error: "not_found" });
       return res.status(409).json({ error: "conflict", board: boardPayload(fresh.toObject()) });
     }
   }
 
-  const updatedAt = new Date();
-  await Board.findByIdAndUpdate(req.params.id, {
-    ...gameDesign, ...content,
-    view, updatedAt
-  });
+  // Ghi CÓ ĐIỀU KIỆN ngay trong lệnh cập nhật. Chốt phía trên chỉ đọc mốc rồi so
+  // — hai cú PUT cùng mốc có thể cùng đọc thấy "chưa ai lưu" trước khi cú nào
+  // kịp ghi, rồi cả hai cùng ghi và cú sau xoá cú trước (review PR #5, vòng 2).
+  // Đặt điều kiện mốc vào chính bộ lọc thì MongoDB chỉ cho đúng một cú thắng;
+  // cú còn lại không khớp bản ghi nào và nhận 409 kèm bản mới để ghép.
+  const current = found.board.updatedAt;
+  const conditional = !!(baseUpdatedAt && current);
+  // Mốc mới phải KHÁC mốc cũ: hai lần lưu trong cùng một mili-giây mà trùng mốc
+  // thì người đang cầm mốc đó ghi đè được lần lưu thứ hai mà không ai hay.
+  const updatedAt = nextUpdatedAt(current);
+  const written = await Board.findOneAndUpdate(
+    conditional ? { _id: found.board._id, updatedAt: current } : { _id: found.board._id },
+    { ...gameDesign, ...content, view, updatedAt },
+    { projection: { _id: 1 } }
+  );
+  if (!written && conditional) {
+    const fresh = await Board.findById(req.params.id);
+    if (!fresh) return res.status(404).json({ error: "not_found" });
+    return res.status(409).json({ error: "conflict", board: boardPayload(fresh.toObject()) });
+  }
   // Phát cho người khác trong board ngay sau khi lưu thành công — không
   // gồm `view`: camera là riêng từng người, không đồng bộ qua kênh này.
   // clientId là socket.id của chính người lưu (nếu socket presence đã
