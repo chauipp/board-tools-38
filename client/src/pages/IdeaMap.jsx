@@ -64,6 +64,7 @@ import { startDrag } from "../lib/drag-session.js";
 import { replaceIdSet, toggleId, unionIdSet } from "../lib/selection.js";
 import { rectsOverlap } from "../lib/board-geometry.js";
 import { useBoardSelection } from "../lib/useBoardSelection.js";
+import { useBoardFilters } from "../lib/useBoardFilters.js";
 import { readImageFile } from "../lib/image-utils.js";
 import { canAddImage, formatMB } from "../lib/image-budget.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
@@ -148,10 +149,14 @@ export default function IdeaMap() {
   const [editingId, setEditingId] = useState(null);
   const [linkMode, setLinkMode] = useState(false);
   const [pendingSource, setPendingSource] = useState(null);
-  const [filterStatus, setFilterStatus] = useState({});
-  const [filterTags, setFilterTags] = useState({});
-  const [filterFav, setFilterFav] = useState(false);
-  const [search, setSearch] = useState("");
+  // Bộ lọc, tìm kiếm, chế độ tập trung: lib/useBoardFilters.js.
+  const filters = useBoardFilters({ board });
+  const {
+    filterStatus, setFilterStatus, filterTags, setFilterTags, filterFav, setFilterFav,
+    search, setSearch, searchOpen, toggleSearch, setSearchOpen, focusId, setFocusId, matchIdx,
+    passesFilter, focusSet, matches, activeFilterCount, matchCount, goToMatch, clearFilters
+  } = filters;
+  filters.bind({ jumpToCard: (id) => jumpToCard(id) });
   const outlineOpen = workspaceState.outlineOpen;
   const setOutlineOpen = useMemo(() => workspaceSetters.flag("outlineOpen"), [workspaceSetters]);
   // Bản đồ thu nhỏ ở góc dưới phải. Mặc định BẬT: nó chỉ có nghĩa khi luôn ở
@@ -184,10 +189,6 @@ export default function IdeaMap() {
   // đóng. Trạng thái riêng của tài khoản, board và nhóm màn hình.
   const panels = useMemo(() => ({ status: workspaceState.statusOpen, tag: workspaceState.tagOpen, palette: workspaceState.paletteOpen }), [workspaceState.statusOpen, workspaceState.tagOpen, workspaceState.paletteOpen]);
   const setPanels = workspaceSetters.panels;
-  // Ô tìm kiếm thu về một nút: 170px + nhãn là chỗ thường trực cho việc thỉnh
-  // thoảng mới dùng. Đóng lại thì XOÁ luôn từ khoá — từ khoá còn sống mà ô nhập
-  // biến mất là một bộ lọc vô hình, thẻ bị làm mờ mà không thấy vì sao.
-  const [searchOpen, setSearchOpen] = useState(false);
   // mode: "select" (thao tác thẻ như cũ) | "draw" (vẽ lên bảng) | "place" (đã
   // lên nòng một việc ở khu 3, đang chờ người dùng chỉ chỗ trên bảng) | "laser"
   // (bút laser — vệt sáng chạy theo con trỏ rồi tan, không ghi gì vào board).
@@ -235,10 +236,8 @@ export default function IdeaMap() {
   const [edgeDrag, setEdgeDrag] = useState(null); // { edgeId, end: "from"|"to", fixedKind, fixedId, x, y } | null
   const [commentsFor, setCommentsFor] = useState(null); // { id, x, y } | null
   const [editingGroupTitleId, setEditingGroupTitleId] = useState(null);
-  const [focusId, setFocusId] = useState(null);
   const [flashId, setFlashId] = useState(null);
   const [spotlightPeerId, setSpotlightPeerId] = useState(null);
-  const [matchIdx, setMatchIdx] = useState(-1);
   const [presentIndex, setPresentIndex] = useState(null); // null = không trình chiếu
   const inspector = workspaceState.inspector;
   const designEditId = inspector?.type === "design" ? inspector.id : null;
@@ -598,49 +597,6 @@ export default function IdeaMap() {
     };
   }, [board?.bg, board?.grid, board?.pack]);
 
-  // Bộ lọc dựng MỘT lần cho mỗi lần đổi điều kiện, thay vì tính lại
-  // Object.keys(...).filter(...) bên trong mỗi thẻ ở mỗi lần render.
-  const passesFilter = useMemo(() => {
-    const statusKeys = Object.keys(filterStatus).filter((k) => filterStatus[k]);
-    const tagKeys = Object.keys(filterTags).filter((k) => filterTags[k]);
-    const q = search.trim().toLowerCase();
-    return function passes(node) {
-      if (statusKeys.length && !filterStatus[node.statusId == null ? "none" : String(node.statusId)]) return false;
-      if (tagKeys.length && !filterTags[node.tagId == null ? "none" : String(node.tagId)]) return false;
-      if (filterFav && !(node.favorites?.length > 0)) return false;
-      if (q && (node.title + " " + node.desc).toLowerCase().indexOf(q) === -1) return false;
-      return true;
-    };
-  }, [filterStatus, filterTags, filterFav, search]);
-
-  const focusSet = useMemo(() => {
-    if (!board || focusId == null || !board.nodes.some((n) => n.id === focusId)) return null;
-    // BFS ≤2 hop trên edge node↔node (bỏ qua edge dính group)
-    const adj = new Map();
-    board.edges.forEach((e) => {
-      if ((e.fromKind || "node") !== "node" || (e.toKind || "node") !== "node") return;
-      if (!adj.has(e.from)) adj.set(e.from, []);
-      if (!adj.has(e.to)) adj.set(e.to, []);
-      adj.get(e.from).push(e.to);
-      adj.get(e.to).push(e.from);
-    });
-    const seen = new Set([focusId]);
-    let frontier = [focusId];
-    for (let hop = 0; hop < 2; hop++) {
-      const nextFrontier = [];
-      frontier.forEach((id) => (adj.get(id) || []).forEach((nb) => {
-        if (!seen.has(nb)) { seen.add(nb); nextFrontier.push(nb); }
-      }));
-      frontier = nextFrontier;
-    }
-    return seen;
-  }, [board?.nodes, board?.edges, focusId]);
-
-  const matches = useMemo(
-    () => (board ? board.nodes.filter(passesFilter).sort((a, b) => a.y - b.y || a.x - b.x) : EMPTY_ARRAY),
-    [board?.nodes, passesFilter]
-  );
-
   // Điều kiện để React.memo trên IdeaCard/FrameBox/EdgeLayer có tác dụng: prop
   // hàm phải giữ nguyên định danh giữa các lần render. Các hàm xử lý thật thì
   // được định nghĩa lại ở mỗi lần render (chúng đóng gói `board`, `selectedIds`
@@ -731,8 +687,6 @@ export default function IdeaMap() {
     zoomToNodes([id]);
     setTimeout(() => setFlashId(null), 1600);
   }, [board != null, workspace.ready]);
-
-  useEffect(() => { setMatchIdx(-1); }, [search]);
 
   useEffect(() => {
     const el = viewportRef.current;
@@ -3520,41 +3474,12 @@ export default function IdeaMap() {
 
   const hasNoStatus = board.nodes.some((n) => n.statusId == null);
   const hasNoTag = board.nodes.some((n) => n.tagId == null);
-  const activeFilterCount =
-    Object.values(filterStatus).filter(Boolean).length +
-    Object.values(filterTags).filter(Boolean).length +
-    (filterFav ? 1 : 0) +
-    (search.trim() ? 1 : 0);
-  const matchCount = matches.length;
-
-  function goToMatch(delta) {
-    if (matches.length === 0) return;
-    const next = matchIdx < 0
-      ? (delta > 0 ? 0 : matches.length - 1)
-      : (matchIdx + delta + matches.length) % matches.length;
-    setMatchIdx(next);
-    jumpToCard(matches[next].id);
-  }
 
   function togglePanel(key) {
     setPanels((prev) => ({ ...prev, [key]: !prev[key] }));
   }
 
   const anyPanelOn = PANEL_KEYS.some((k) => panels[k]);
-
-  function clearFilters() {
-    setFilterStatus({});
-    setFilterTags({});
-    setFilterFav(false);
-    setSearch("");
-  }
-
-  function toggleSearch() {
-    setSearchOpen((open) => {
-      if (open) setSearch("");
-      return !open;
-    });
-  }
 
   function openBadgeMenu(e, kind, def) {
     if (role === "viewer") return;
