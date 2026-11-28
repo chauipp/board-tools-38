@@ -8,7 +8,8 @@ import boardsRouter from "./routes/boards.js";
 import boardSnapshotsRouter from "./routes/board-snapshots.js";
 import boardMembersRouter from "./routes/board-members.js";
 import {
-  BOARD_LIST_FIELDS, BOARD_COUNTER_FIELDS, BOARD_THEME_FIELDS, BOARD_GAME_DESIGN_FIELDS, pickBoardContent
+  BOARD_LIST_FIELDS, BOARD_COUNTER_FIELDS, BOARD_THEME_FIELDS, BOARD_GAME_DESIGN_FIELDS, pickBoardContent,
+  boardPayload, safeNextStatusId
 } from "./board-fields.js";
 
 // Tập key của các payload board, chụp lại TRƯỚC khi gom danh sách field về
@@ -186,4 +187,27 @@ test("board-fields: pickBoardContent chỉ lấy field nội dung, luôn đủ k
   assert.equal(picked.edges, undefined);
   assert.equal(Object.hasOwn(picked, "view"), false);
   assert.equal(Object.hasOwn(picked, "kind"), false);
+});
+
+// Review PR #5: board game-design cũ lưu nextStatusId = 9 trong khi đã có id 9.
+test("safeNextStatusId: board cũ có bộ đếm trùng id thì nâng lên max(id)+1", () => {
+  const statuses = Array.from({ length: 9 }, (_, i) => ({ id: i + 1, name: "s" + (i + 1) }));
+  assert.equal(safeNextStatusId({ statuses, nextStatusId: 9 }), 10);
+  // Bộ đếm hợp lệ (lớn hơn) giữ nguyên — không lùi bộ đếm của ai.
+  assert.equal(safeNextStatusId({ statuses, nextStatusId: 15 }), 15);
+  // Thiếu hoặc rác thì vẫn ra số dùng được.
+  assert.equal(safeNextStatusId({ statuses }), 10);
+  assert.equal(safeNextStatusId({ statuses: [], nextStatusId: "x" }), 1);
+});
+
+test("boardPayload: board cũ đọc → thêm trạng thái → id mới không trùng, id cũ và tham chiếu giữ nguyên", () => {
+  const statuses = Array.from({ length: 9 }, (_, i) => ({ id: i + 1, name: "s" + (i + 1) }));
+  const stored = { kind: "game-design", statuses, nextStatusId: 9, nodes: [{ id: 1, statusId: 9 }], updatedAt: "t" };
+  const payload = boardPayload(stored);
+  assert.equal(payload.nextStatusId, 10);
+  assert.deepEqual(payload.statuses.map((s) => s.id), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+  assert.equal(payload.nodes[0].statusId, 9);
+  // Luồng của client (createBadge): cấp id = nextStatusId rồi tăng.
+  const id = payload.nextStatusId;
+  assert.ok(!payload.statuses.some((s) => s.id === id));
 });

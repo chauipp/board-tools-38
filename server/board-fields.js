@@ -35,6 +35,20 @@ export function boardPayload(obj) {
     kind: obj.kind || "idea",
     ...Object.fromEntries(BOARD_GAME_DESIGN_FIELDS.map((field) => [field, obj[field] ?? null])),
     ...pickBoardContent(obj),
+    nextStatusId: safeNextStatusId(obj),
     updatedAt: obj.updatedAt
   };
+}
+
+// Bộ đếm id trạng thái không bao giờ được nhỏ hơn max(id) + 1. Board
+// game-design tạo trước bản sửa B1 lưu 9 trạng thái (id 1–9) với
+// nextStatusId = 9, và client cấp thẳng số đó cho trạng thái mới → trùng id với
+// "Archived" (review PR #5). Sửa ở đây là sửa cho mọi đường trả board (GET, thân
+// 409, snapshot); lần lưu kế tiếp của client ghi lại giá trị đã sửa. Chỉ đổi bộ
+// đếm, không đụng id của trạng thái nào nên tham chiếu trên thẻ giữ nguyên.
+export function safeNextStatusId(obj) {
+  const stored = obj.nextStatusId;
+  if (!Array.isArray(obj.statuses)) return stored;
+  const maxId = obj.statuses.reduce((m, s) => (Number.isFinite(s?.id) && s.id > m ? s.id : m), 0);
+  return Math.max(Number.isFinite(stored) ? stored : 1, maxId + 1);
 }
