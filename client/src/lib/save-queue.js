@@ -1,5 +1,5 @@
 // Hàng đợi lưu board: một cú PUT bay tại một thời điểm, 409 thì ghép lại
-// (rebase) rồi thử tiếp, ghép hỏng thì ghi đè. Trước nằm trong IdeaMap.jsx
+// (rebase) rồi thử tiếp, ghép hỏng thì gác bản nháp lại chứ không ghi đè. Trước nằm trong IdeaMap.jsx
 // (saveNow / settleSave / saveDebounced); tách ra đây để test được bằng
 // node:test. Không dính React: mọi thứ đụng state/ref được tiêm qua tham số.
 //
@@ -15,8 +15,8 @@
 // delta tiếp.
 
 // Trần số lần ghép lại. Mỗi vòng đều tiến (mốc mới hơn, delta nhỏ đi), nên
-// chạm trần nghĩa là có ai đó đang lưu liên tục nhanh hơn mình — lúc đó đi
-// đường dự phòng còn hơn quay vòng mãi.
+// chạm trần nghĩa là có ai đó đang lưu liên tục nhanh hơn mình — lúc đó gác
+// bản nháp lại, đợi board:update kế tiếp, còn hơn quay vòng mãi.
 export const MAX_REBASE_TRIES = 3;
 
 // Tham số:
@@ -26,7 +26,8 @@ export const MAX_REBASE_TRIES = 3;
 // - prepare(next)           sửa bản sắp lưu trước khi gửi (IdeaMap: xếp lại cây
 //                           khoá), trả về bản sẽ lưu. Chạy ở MỌI vòng, kể cả vòng
 //                           ghép lại.
-// - save(next, stamp)       gửi PUT; `stamp` undefined = ghi đè không kèm mốc.
+// - save(next, stamp)       gửi PUT kèm mốc `stamp` (mốc bản nền). Hàng đợi
+//                           không còn tự chuyển sang ghi đè không mốc (R3-5).
 //                           Trả Promise<{ updatedAt }>, lỗi 409 mang
 //                           `code: "CONFLICT"` và `board` (bản server).
 // - rebase(server, base, next)  đắp delta base → next lên bản server; null = hỏng.
@@ -77,6 +78,12 @@ export function createSaveQueue({
   // đoán; đoán "chưa gồm" thì thẻ mình vừa tạo bị coi là thẻ của người khác
   // trùng id và bị nhân đôi. Nên giữ gói lại, đợi PUT có kết quả rồi mới xử.
   let heldRemote = null;
+  // Bản nháp bị gác lại (R3-5, Codex vòng 3): 409 mà ghép hỏng hoặc đã thử quá
+  // số lần. Trước đây chỗ này ghi đè cả board không kèm mốc, xoá luôn dữ liệu
+  // mới của người khác. Giờ bản nháp nằm đây, được đắp lại lên mỗi board:update
+  // như mọi bản chờ, và được thử lưu lại ngay sau đó. Thao tác mới của người
+  // dùng (mới hơn nó) thì thay chỗ nó.
+  let stalled = null;     // { board, base } | null
 
   function doRebase(server, base, next) {
     if (rebaseDetailed) return rebaseDetailed(server, base, next) || null;
@@ -101,7 +108,7 @@ export function createSaveQueue({
   // hẹn giờ mới hơn cú xếp hàng) cùng plan của nó, hoặc null nếu không có gì chờ.
   function requeueOnto(server) {
     let latest = null;
-    for (const entry of [pending, timerEntry]) {
+    for (const entry of [stalled, pending, timerEntry]) {
       if (!entry) continue;
       const r = doRebase(server, entry.base, entry.board);
       // Ghép hỏng thì giữ nguyên bản chờ — đúng hành vi cũ, không tệ hơn.
@@ -117,7 +124,17 @@ export function createSaveQueue({
   // này TRƯỚC khi dời nền/mốc. Trả về board nên hiện lên màn hình (bản server
   // cộng những gì mình làm mà chưa lưu), hoặc null nếu không có gì đang chờ.
   function rebaseQueued(server) {
+    const wasStalled = stalled;
     const latest = requeueOnto(server);
+    // Bản nháp gác lại vừa ghép được lên bản mới nhất: thử lưu lại. Qua timer
+    // chứ không gửi ngay, vì người gọi còn đang dời nền/mốc sang `server`.
+    if (wasStalled && stalled.base === server) {
+      stalled = null;
+      if (!timerEntry) {
+        timerEntry = wasStalled;
+        timer = setTimer(fireTimer, 0);
+      }
+    }
     return latest ? latest.board : null;
   }
 
@@ -207,6 +224,9 @@ export function createSaveQueue({
 
   function start(next) {
     if (!canSave()) return;
+    // Mọi bản gửi đi đều mới hơn bản nháp gác lại (được dựng trên màn hình, mà
+    // màn hình đã gồm nó). Để nó lại thì board:update sau sẽ gửi lại bản CŨ đó.
+    stalled = null;
     saving = true;
     send(prepare(next), 0);
   }
@@ -256,14 +276,28 @@ export function createSaveQueue({
         const server = remote && e.board && isOlderStamp(e.board.updatedAt, remote.updatedAt) ? remote : e.board;
         const rebased = server ? doRebase(server, base, next) : null;
         if (!rebased || tries >= maxTries) {
-          // Đường dự phòng = đúng hành vi trước khi có chốt này: ghi đè. Không
-          // đẹp, nhưng nó bảo đảm việc thêm chốt không bao giờ làm mọi thứ TỆ
-          // HƠN trước — trường hợp xấu nhất chỉ là quay về mức cũ.
-          // Tới đây nghĩa là ghép ra một board không lành lặn (id trùng, dây mất
-          // đầu) hoặc đã thử quá số lần.
-          save(next, undefined)
-            .then(saved)
-            .catch(failed);
+          // Ghép ra board không lành lặn (id trùng, dây mất đầu), hoặc đã thử
+          // quá số lần vì ai đó lưu liên tục. KHÔNG ghi đè (R3-5): gác bản nháp
+          // lại, báo lỗi, và thử lại khi biết bản server kế tiếp hoặc khi người
+          // dùng thao tác tiếp. Không mất gì của mình, không xoá gì của ai.
+          if (rebased) {
+            // Ghép được, chỉ hết lượt: gác bản ĐÃ ghép, nền là bản server, để
+            // màn hình thấy luôn thay đổi của người kia.
+            const latest = requeueOnto(server);
+            stalled = { board: rebased.board, base: server };
+            setStamp(server.updatedAt);
+            setBase(server);
+            if (latest) adopt(merge(latest.board, latest.plan), latest.plan);
+            else adopt(merge(rebased.board, rebased.plan), rebased.plan);
+          } else {
+            // Ghép hỏng: giữ nguyên bản nháp trên nền cũ. Mốc lùi về đúng mốc
+            // của nền đó (gói giữ lại, nếu có, đã bị bỏ), để cú PUT sau 409 và
+            // ghép từ đúng nền thay vì lọt qua với một board thiếu dữ liệu mới.
+            stalled = { board: next, base };
+            setStamp(baseUpdatedAt);
+          }
+          onState({ error: true });
+          settleSave();
           return;
         }
         // Giữ nguyên đúng cái thẻ đang gõ dở — cùng luật với lúc áp một
@@ -281,15 +315,17 @@ export function createSaveQueue({
       });
   }
 
+  function fireTimer() {
+    const entry = timerEntry;
+    timer = null;
+    timerEntry = null;
+    if (entry) enqueue(entry.board, entry.base);
+  }
+
   function saveDebounced(next, ms = 500) {
     if (timer) clearTimer(timer);
     timerEntry = { board: next, base: getBase() };
-    timer = setTimer(() => {
-      const entry = timerEntry;
-      timer = null;
-      timerEntry = null;
-      if (entry) enqueue(entry.board, entry.base);
-    }, ms);
+    timer = setTimer(fireTimer, ms);
   }
 
   // Bỏ mọi bản đang chờ (không đụng cú đang bay). Dùng khi board bị THAY HẲN,
@@ -297,6 +333,7 @@ export function createSaveQueue({
   // mất bản vừa khôi phục.
   function discardQueued() {
     pending = null;
+    stalled = null;
     heldRemote = null;
     cancelTimer();
   }

@@ -75,32 +75,37 @@ test("409 một lần rồi thành công: ghép lại, đưa lên màn hình, l�
   assert.deepEqual(h.states, [null]);
 });
 
-test("409 quá số lần: đi đường dự phòng ghi đè, không kèm mốc", async () => {
+// R3-5 (Codex, review vòng 3): không còn đường "ghi đè không kèm mốc".
+test("409 quá số lần: không ghi đè, gác bản đã ghép lại và báo lỗi", async () => {
   const conflicts = Array(MAX_REBASE_TRIES + 1).fill("conflict");
   const h = harness({ plan: [...conflicts, "ok"] });
   h.q.saveNow({ v: 1 });
   await settle(30);
-  assert.equal(h.puts.length, MAX_REBASE_TRIES + 2);
-  assert.equal(h.puts[h.puts.length - 1].stamp, undefined);
-  assert.deepEqual(h.states, [null]);
+  assert.equal(h.puts.length, MAX_REBASE_TRIES + 1);
+  assert.ok(h.puts.every((p) => p.stamp !== undefined), "mọi PUT phải kèm mốc");
+  assert.deepEqual(h.states, [true]);
+  // Nền/mốc theo bản server cuối; bản đã ghép đang hiện trên màn hình.
+  assert.equal(h.stamp, "s" + (MAX_REBASE_TRIES + 1));
+  assert.equal(h.adopted[h.adopted.length - 1].rebasedOnto, "server");
 });
 
-test("rebase trả null: ghi đè ngay, không kèm mốc", async () => {
+test("rebase trả null: không ghi đè, giữ bản nháp, mốc giữ đúng mốc của nền", async () => {
   const h = harness({ plan: ["conflict", "ok"], rebase: () => null });
   h.q.saveNow({ v: 1 });
   await settle();
-  assert.equal(h.puts.length, 2);
-  assert.deepEqual(h.puts[1].next, { v: 1 });
-  assert.equal(h.puts[1].stamp, undefined);
+  assert.equal(h.puts.length, 1);
   assert.equal(h.adopted.length, 0);
+  assert.deepEqual(h.states, [true]);
+  assert.equal(h.stamp, "t0");
+  assert.deepEqual(h.base, { v: 0 });
 });
 
-test("409 không kèm bản server: coi như ghép hỏng → ghi đè", async () => {
+test("409 không kèm bản server: coi như ghép hỏng → gác lại, không ghi đè", async () => {
   const h = harness({ plan: ["conflict-no-board", "ok"] });
   h.q.saveNow({ v: 1 });
   await settle();
-  assert.equal(h.puts.length, 2);
-  assert.equal(h.puts[1].stamp, undefined);
+  assert.equal(h.puts.length, 1);
+  assert.deepEqual(h.states, [true]);
 });
 
 test("lỗi mạng: báo error, hàng đợi vẫn chạy tiếp cú đang chờ", async () => {
@@ -260,8 +265,10 @@ test("với rebaseBoard thật: thẻ từ xa và cú nhích đang chờ đều 
 // (hoặc không mốc) → ghi đè và cấp mốc mới. Timer do test điều khiển.
 // Mốc dạng thời gian ISO như server thật (updatedAt), tăng dần theo phiên bản.
 const iso = (v) => new Date(Date.UTC(2026, 0, 1, 0, 0, v)).toISOString();
-async function realRebaseHarness(initial) {
+async function realRebaseHarness(initial, { failRebaseOnce = false } = {}) {
   const { rebaseBoardDetailed } = await import("./rebase.js");
+  let failRebase = failRebaseOnce;
+  let beforePut = null; // người khác chen vào ngay trước mỗi PUT của mình
   let serverBoard = { ...initial, updatedAt: iso(0) };
   let version = 0;
   let base = initial, stamp = iso(0);
@@ -273,6 +280,7 @@ async function realRebaseHarness(initial) {
   const q = createSaveQueue({
     save: async (next, s) => {
       puts.push({ next, stamp: s });
+      if (beforePut) beforePut();
       if (hold) await hold;
       await flush();
       if (failNext) { failNext = false; throw new Error("network"); }
@@ -285,7 +293,10 @@ async function realRebaseHarness(initial) {
       if (holdReply) { const wait = holdReply; holdReply = null; await wait; }
       return reply;
     },
-    rebaseDetailed: rebaseBoardDetailed,
+    rebaseDetailed: (...args) => {
+      if (failRebase) { failRebase = false; return null; }
+      return rebaseBoardDetailed(...args);
+    },
     adopt: (m) => { adopted.push(m); display = m; },
     getBase: () => base, setBase: (b) => { base = b; },
     getStamp: () => stamp, setStamp: (s) => { stamp = s; },
@@ -308,6 +319,7 @@ async function realRebaseHarness(initial) {
     display: () => display,
     holdNext: () => { let release; hold = new Promise((r) => { release = r; }); return () => { hold = null; release(); }; },
     failNext: () => { failNext = true; },
+    beforeEachPut: (fn) => { beforePut = fn; },
     holdNextReply: () => { let release; holdReply = new Promise((r) => { release = r; }); return () => release(); },
     fireTimers: () => { const f = timers.filter(Boolean); timers.fill(null); f.forEach((fn) => fn()); }
   };
@@ -453,4 +465,48 @@ test("R3-1: gói socket về lúc PUT đang bay mà PUT lỗi mạng: bản ch�
   assert.equal(nodes.length, 2, JSON.stringify(nodes));
   assert.equal(nodes.find((n) => n.id === 1).x, 7, "cú nhích của mình phải được lưu");
   assert.ok(nodes.some((n) => n.id === 2), "thẻ người kia không được bị xoá");
+});
+
+// ── R3-5 với rebaseBoard thật ──────────────────────────────────────────────
+test("R3-5: người kia lưu liên tục tới khi hết lượt: không xoá thẻ của họ, bản nháp được lưu ở board:update kế tiếp", async () => {
+  const h = await realRebaseHarness(boardOf([{ id: 1, title: "A", x: 0, y: 0 }], { nextNodeId: 2 }));
+  let k = 0;
+  // Trước MỖI cú PUT của mình, người kia chen vào thêm một thẻ.
+  h.beforeEachPut(() => {
+    if (k >= MAX_REBASE_TRIES + 1) return;
+    k += 1;
+    h.remoteSave((b) => ({ ...b, nodes: [...b.nodes, { id: 100 + k, title: "R" + k, x: 0, y: 50 * k }] }));
+  });
+  h.q.saveNow(boardOf([{ id: 1, title: "A", x: 30, y: 0 }], { nextNodeId: 2 }));
+  await settle(60);
+  assert.ok(h.puts.every((p) => p.stamp !== undefined), "không có PUT nào thiếu mốc");
+  const remoteIds = h.server().nodes.filter((n) => n.id > 100).map((n) => n.id);
+  assert.equal(remoteIds.length, MAX_REBASE_TRIES + 1, "thẻ của người kia phải còn đủ");
+  assert.equal(h.server().nodes.find((n) => n.id === 1).x, 0, "chưa lưu được bản nháp");
+  // Màn hình vẫn giữ cú dời của mình.
+  assert.equal(h.display().nodes.find((n) => n.id === 1).x, 30);
+  // Người kia dừng; gói board:update của lần lưu cuối của họ về → thử lại.
+  h.beforeEachPut(null);
+  h.deliver(h.server());
+  h.fireTimers();
+  await settle(30);
+  const nodes = h.server().nodes;
+  assert.equal(nodes.find((n) => n.id === 1).x, 30, "bản nháp phải được lưu");
+  assert.equal(nodes.filter((n) => n.id > 100).length, MAX_REBASE_TRIES + 1, "và thẻ người kia vẫn còn");
+});
+
+test("R3-5: ghép hỏng thì không ghi đè; thao tác kế tiếp của người dùng ghép lại từ đúng nền", async () => {
+  const start = boardOf([{ id: 1, title: "A", x: 0, y: 0 }], { nextNodeId: 2 });
+  const h = await realRebaseHarness(start, { failRebaseOnce: true });
+  h.remoteSave((b) => ({ ...b, nodes: [...b.nodes, { id: 9, title: "R", x: 0, y: 99 }] }));
+  h.q.saveNow(boardOf([{ id: 1, title: "A", x: 5, y: 0 }], { nextNodeId: 2 }));
+  await settle(30);
+  assert.equal(h.puts.length, 1, "không có cú ghi đè nào sau 409");
+  assert.ok(h.server().nodes.some((n) => n.id === 9), "thẻ người kia còn");
+  // Người dùng nhích tiếp: PUT kèm mốc cũ → 409 → lần này ghép được.
+  h.q.saveNow(boardOf([{ id: 1, title: "A", x: 6, y: 0 }], { nextNodeId: 2 }));
+  await settle(30);
+  const nodes = h.server().nodes;
+  assert.equal(nodes.find((n) => n.id === 1).x, 6);
+  assert.ok(nodes.some((n) => n.id === 9), "thẻ người kia vẫn còn sau khi lưu");
 });
