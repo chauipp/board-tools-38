@@ -6,8 +6,8 @@
 //
 // Chạy từ trong thư mục server/, và cần .env có MONGODB_URI (cùng bốn biến R2
 // nếu muốn xem kho thật thay vì thư mục uploads/pdf local).
+import "../config.js";
 import mongoose from "mongoose";
-import dotenv from "dotenv";
 import { PdfFile } from "../models.js";
 import {
   QUOTA,
@@ -17,8 +17,6 @@ import {
   reconcile,
   runQuotaCheck
 } from "../pdf-quota.js";
-
-dotenv.config();
 
 const args = new Set(process.argv.slice(2));
 const sweep = args.has("--sweep");

@@ -155,3 +155,28 @@ const pdfQuotaStateSchema = new mongoose.Schema(
 );
 
 export const PdfQuotaState = mongoose.model("PdfQuotaState", pdfQuotaStateSchema);
+
+// Mỗi người một bàn tính riêng.
+//
+// Trước đây đây là MỘT document duy nhất (`singleton: "main"`) dùng chung cho cả
+// hệ thống: ai đăng nhập cũng ghi đè được bảng chỉ số của người khác, và không
+// có cách nào biết ai vừa xoá cái gì. Khoá lại bằng phân quyền thì phải nghĩ ra
+// luật "ai được sửa"; cho mỗi người một bản thì câu hỏi đó biến mất.
+//
+// Document cũ vẫn nằm trong collection và không có `email`. Nó không còn được
+// ghi vào nữa, chỉ dùng làm bản mẫu để dựng bàn tính đầu tiên cho mỗi người —
+// xem ensureCalculatorFor() trong routes/calculator.js — nên không ai mất dữ liệu đang có.
+const calculatorSchema = new mongoose.Schema(
+  {
+    email: { type: String, required: true, lowercase: true, trim: true, index: true },
+    budget: { type: Number, default: 500 },
+    nextStatId: { type: Number, default: 1 },
+    stats: { type: Array, default: [] },
+    // Mốc do client khai lúc sửa, dùng để bỏ những cú ghi đã lỗi thời. Xem
+    // isStaleWrite() trong calculator.js.
+    savedAt: { type: Number, default: null }
+  },
+  { minimize: false, versionKey: false }
+);
+
+export const Calculator = mongoose.model("Calculator", calculatorSchema);
