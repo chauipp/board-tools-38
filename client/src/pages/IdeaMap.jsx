@@ -94,6 +94,7 @@ import TopMenu from "../components/board/TopMenu.jsx";
 import PaletteEditor from "../components/board/PaletteEditor.jsx";
 import EdgeMenu from "../components/board/EdgeMenu.jsx";
 import CommentsPopover from "../components/board/CommentsPopover.jsx";
+import PresenceIsland from "../components/board/PresenceIsland.jsx";
 import HistoryIsland from "../components/board/HistoryIsland.jsx";
 import BoardCanvas from "../components/board/BoardCanvas.jsx";
 import ZoomControl from "../components/board/ZoomControl.jsx";
@@ -1856,31 +1857,7 @@ export default function IdeaMap() {
         )}
       </div>
 
-      {/* ĐẢO NGƯỜI — góc trên phải. Ai đang mở board + nút mời. */}
-      <div className="island tr">
-        <div className="island-row">
-          <PresenceBar
-            user={user}
-            socket={socket}
-            canInvite={role === "owner"}
-            onInvite={() => setInviteOpen(true)}
-            onJumpToPeer={jumpToPeer}
-            onLogout={logout}
-            followingId={followingId}
-            watcherCount={watcherCount}
-            onFollowPeer={follow}
-            onStopFollow={stopFollow}
-          />
-        </div>
-      </div>
-
-      <FollowBanner
-        socket={socket}
-        followingId={followingId}
-        pendingId={pendingId}
-        followError={followError}
-        onStop={stopFollow}
-      />
+      <PresenceIsland {...{ board, follow, followError, followingId, jumpToPeer, logout, pendingId, role, setInviteOpen, socket, stopFollow, user, watcherCount }} />
 
       <HistoryIsland {...{ future, past, redo, saveError, undo }} />
 
