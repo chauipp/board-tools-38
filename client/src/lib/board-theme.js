@@ -3,7 +3,7 @@
 // hai thứ đó là thiết lập của từng người, nằm ở localStorage.
 //
 // Module này CHỈ giữ id, không giữ một mã màu nào: toàn bộ giá trị nằm trong
-// idea-map.css, chọn theo `data-bg` / `data-grid` / `data-pack` trên <html>.
+// styles/board/themes.css, chọn theo `data-bg` / `data-grid` / `data-pack` trên <html>.
 // Nhờ vậy không có hai nguồn sự thật để lệch nhau, và nút swatch trong panel
 // Giao diện chỉ cần mang `data-bg` là CSS tự tô đúng màu nó đại diện.
 
