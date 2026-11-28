@@ -6,7 +6,7 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { listBoardSnapshots } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import { useSkin } from "../lib/useSkin.js";
-import { drawingsHitBy, drawingBox, shapeHandles } from "../lib/shape.js";
+import { drawingBox, shapeHandles } from "../lib/shape.js";
 import { textLines, textBox, TEXT_LINE_H } from "../lib/text-el.js";
 import { colorVar, statusById } from "../lib/badges.js";
 import { paletteCss } from "../lib/palette.js";
@@ -22,9 +22,9 @@ import IdeaCard from "../components/IdeaCard.jsx";
 import ToolRail from "../components/ToolRail.jsx";
 import ToolOptions from "../components/ToolOptions.jsx";
 import { buildEdgeRoutes } from "../lib/edge-routing.js";
-import { createDragClickGuard, createMultiClick, isDragGesture } from "../lib/multi-click.js";
+import { createDragClickGuard, createMultiClick } from "../lib/multi-click.js";
 import { buildOutline } from "../lib/outline.js";
-import { gridLayout, layerLayout } from "../lib/layout.js";
+import { gridLayout } from "../lib/layout.js";
 import { buildTree, edgeKey } from "../lib/tree-layout.js";
 import { normalizeTreeLock, treeLockOwners, arrangeLockedTrees } from "../lib/locked-tree.js";
 import { useAuth } from "../context/AuthContext.jsx";
@@ -50,6 +50,8 @@ import { useGameDesignBoard } from "../lib/useGameDesignBoard.js";
 import { useBoardKeyboard } from "../lib/useBoardKeyboard.js";
 import { useStableHandlers } from "../lib/useStableHandlers.js";
 import { BoardContext } from "../lib/board-context.js";
+import { useSelectionActions } from "../lib/useSelectionActions.js";
+import { useViewportInput } from "../lib/useViewportInput.js";
 import { useCameraControls } from "../lib/useCameraControls.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
 import { loadPenPrefs, savePenPrefs, penVar } from "../lib/pen.js";
@@ -62,7 +64,6 @@ import { applyInkMoves } from "../lib/ink-live.js";
 import { useLaser } from "../lib/useLaser.js";
 import { loadLaserPrefs, saveLaserPrefs } from "../lib/laser.js";
 import { createWheelReader, loadWheelMode, saveWheelMode } from "../lib/pointer-input.js";
-import { pointInBounds } from "../lib/selection-box.js";
 import { CARD_W, SEL_GRAB_PAD, PICK_RADIUS, MIN_SCALE, PANEL_KEYS, TREE_OPTS, EMPTY_ARRAY, EMPTY_MAP, EMPTY_SET, MAX_SCALE } from "../lib/board-constants.js";
 import { useCamera } from "../lib/useCamera.js";
 import { normalizeGameDesignBoard } from "../lib/normalize-board.js";
@@ -624,6 +625,20 @@ export default function IdeaMap() {
     startPan: (...a) => startPan(...a),
     startTextDrag: (...a) => startTextDrag(...a)
   });
+  // Thao tác trên cả vùng chọn và menu màu — lib/useSelectionActions.js.
+  const selectionUI = useSelectionActions({
+    store, board, frameCardSize, layoutOwners, selectedIds, selectedEdgeIds, selectedGroupIds, selectedDrawingIds, clearSelection, chipDrag, colorDrag, dropTargetId, setColorMenu, setCommentsFor, setEdgeMenu, suppressContextMenuRef
+  });
+  const {
+    dropIdsFor, isNodeDropTarget, deleteSelection, applyToSelection, applyColorToSelection, tidySelection, openColorMenu
+  } = selectionUI;
+  // Chuột trên khung nhìn: mode, Đặt, laser, con trỏ, bấm nhiều lần — lib/useViewportInput.js.
+  const viewportInput = useViewportInput({
+    board, boardRef, role, mode, setMode, placeTool, setPlaceTool, linkMode, setLinkMode, setPendingSource, view, viewRef, viewportRef, canvasRef, clickAnchorRef, multiClickRef, laserDownRef, spacePanRef, treeSwapClickUntilRef, ink, laser, laserPrefs, selBounds, clearSelection, sendCursor, dashTargetAt, eventToCanvas, handleDrawingMouseDown, handleInkCaptureMouseDown, handleMarqueeMouseDown, placeNodeAt, startPan, startPlaceGroup, startSelectionDrag, toggleDrawingDash
+  });
+  const {
+    handlePresenceMouseMove, entityAtPoint, armPlace, handlePlaceCaptureMouseDown, enterMode, isBoardBackground, handleViewportMouseDownCapture, handleViewportClickCapture, handlePageContextMenu, handleViewportMouseDown, handleLaserMouseDown, handleLaserMouseMove, handleLaserMouseUp
+  } = viewportInput;
 
   // Hình khối cho minimap. Tính lại khi NỘI DUNG đổi, không phải khi camera đổi:
   // lia bảng là chuyện xảy ra liên tục, mà lia thì mấy cái hộp này không hề khác.
@@ -868,62 +883,6 @@ export default function IdeaMap() {
 
   const currentUser = user.name;
 
-  function handlePresenceMouseMove(e) {
-    sendCursor(() => {
-      const rect = viewportRef.current.getBoundingClientRect();
-      const view = viewRef.current;
-      return {
-        x: (e.clientX - rect.left - view.panX) / view.scale,
-        y: (e.clientY - rect.top - view.panY) / view.scale
-      };
-    });
-  }
-
-  function entityAtPoint(clientX, clientY) {
-    const el = document.elementFromPoint(clientX, clientY);
-    const card = el && el.closest(".idea-card");
-    if (card) return { id: Number(card.getAttribute("data-id")), kind: "node" };
-    const frame = el && el.closest(".frame-box");
-    if (frame) return { id: Number(frame.getAttribute("data-group-id")), kind: "group" };
-    return null;
-  }
-
-  // Khu 3 lên nòng một việc rồi chờ người dùng chỉ chỗ. Bấm lại đúng nút đang
-  // sáng thì hạ nòng — không có nút nào để "thoát" ngoài Esc thì nút đang sáng
-  // phải tự làm được việc đó.
-  function armPlace(next) {
-    if (mode === "place" && placeTool === next) { enterMode("select"); return; }
-    setPlaceTool(next);
-    enterMode("place");
-  }
-
-  // Nhường đường cho lia bảng TRƯỚC khi nghĩ tới việc đặt — cùng thứ tự mà
-  // handleInkCaptureMouseDown dùng, nên chuột phải và Space+trái vẫn lia bảng
-  // bình thường trong lúc đang lên nòng.
-  function handlePlaceCaptureMouseDown(e) {
-    if (e.button === 2) { startPan(e); return; }
-    if (e.button === 0 && spacePanRef.current) { startPan(e); return; }
-    if (e.button !== 0) return;
-    if (placeTool === "node") placeNodeAt(e.clientX, e.clientY);
-    else if (placeTool === "group") startPlaceGroup(e);
-  }
-
-  // Rời mode Chuột thì bỏ lựa chọn và tắt nối dây: để lại một thẻ đang chọn
-  // trong lúc vẽ nghĩa là bấm Delete sẽ xoá thẻ đó, trong khi người dùng đang
-  // nghĩ mình xoá nét vẽ. Mode "place" cũng vậy — lớp bắt chuột của nó phủ kín
-  // viewport nên thẻ đang chọn không còn bấm tới được.
-  function enterMode(next) {
-    setMode(next);
-    // Hạ nòng khu 3 khi đi sang mode khác. KHÔNG đụng tới placeTool khi vào
-    // chính mode "place": armPlace() đặt nó ngay trước lời gọi này.
-    if (next !== "place") setPlaceTool(null);
-    if (next !== "select") {
-      clearSelection();
-      setLinkMode(false);
-      setPendingSource(null);
-    }
-  }
-
   // Giữ tay ở CHỖ TRỐNG: đổi qua lại giữa bút và cục gôm. useInk lo toàn bộ
   // phần cử chỉ (đo thời gian, vòng báo, bỏ lượt vẽ dở); ở đây chỉ còn đúng
   // việc lật một ô state.
@@ -967,205 +926,6 @@ export default function IdeaMap() {
   // chuột: lọc ra đúng những cú bấm TRÊN NỀN, và tách bấm khỏi kéo. Hai cái ref
   // của cử chỉ này khai ở đầu component cùng mọi hook khác — dưới đây đã qua
   // nhánh `if (!board) return`, gọi hook ở đây là gọi có điều kiện.
-
-  // Nền trống của bảng, kể cả những lớp phủ kín khung nhìn của từng mode. KHÔNG
-  // gồm lớp của mode Đặt: ở đó mỗi cú bấm là một cái thẻ mới, đếm chồng lên
-  // thành ra vừa tạo thẻ vừa hoàn tác nó.
-  function isBoardBackground(el) {
-    if (el === viewportRef.current || el === canvasRef.current) return true;
-    return el instanceof Element
-      && (el.classList.contains("ink-capture") || el.classList.contains("laser-capture"));
-  }
-
-  // Ghi mốc ở pha BẮT (capture): nó chạy trước mọi handler con, nên một lớp phủ
-  // gọi stopPropagation cũng không giấu được cú bấm khỏi bộ đếm.
-  function handleViewportMouseDownCapture(e) {
-    clickAnchorRef.current = { x: e.clientX, y: e.clientY };
-  }
-
-  function handleViewportClickCapture(e) {
-    if (Date.now() < treeSwapClickUntilRef.current) {
-      e.preventDefault(); e.stopPropagation();
-      multiClickRef.current.cancel();
-      return;
-    }
-    const mc = multiClickRef.current;
-    const anchor = clickAnchorRef.current;
-    const dragged = !anchor || isDragGesture(anchor, { x: e.clientX, y: e.clientY });
-    // Kéo, bấm trúng một vật thể, hoặc không có quyền sửa: chuỗi đứt tại đây.
-    if (role === "viewer" || dragged || !isBoardBackground(e.target)) { mc.cancel(); return; }
-
-    // Đích của cú bấm đi vào bộ đếm: một nét vẽ, hay nền trống (null). Đổi đích
-    // là chuỗi bắt đầu lại, nên bấm một cái lên nét rồi một cái lên nền không
-    // cộng thành cú đổi nét nào.
-    const hitId = dashTargetAt(e);
-    const count = mc.click(Date.now(), hitId);
-    if (hitId == null) return;
-
-    // Làm NGAY ở lần thứ hai. Đóng chuỗi ngay sau khi làm: bấm thêm hai lần
-    // nữa là đổi ngược lại, chứ không phải lần thứ ba lại lật thêm một phát.
-    if (count >= 2) { mc.cancel(); toggleDrawingDash(hitId); }
-  }
-
-  // Suppress the browser's native context menu across the whole page, so
-  // right-click is free for our own gestures (chip → badge editor, drag to
-  // pan). Text inputs keep the native menu so Copy/Paste still works there.
-  function handlePageContextMenu(e) {
-    const tag = (e.target.tagName || "").toUpperCase();
-    if (tag === "INPUT" || tag === "TEXTAREA" || e.target.isContentEditable) return;
-    e.preventDefault();
-  }
-
-  // Thả badge/màu vào một thẻ ĐANG nằm trong vùng chọn nhiều thì cả vùng chọn
-  // nhận — cùng quy tắc với menu màu chuột phải (xem chỗ dựng ColorMenu bên
-  // dưới). Thả vào thẻ NGOÀI vùng chọn thì chỉ thẻ đó, và vùng chọn để nguyên:
-  // ở đó ý người dùng rõ ràng là gán cho đúng cái thẻ mình vừa nhắm.
-  function dropIdsFor(kind, id) {
-    const sel = kind === "edge" ? selectedEdgeIds : (kind === "drawing" ? selectedDrawingIds : selectedIds);
-    return sel.size > 1 && sel.has(id) ? Array.from(sel) : [id];
-  }
-
-  // Viền "sắp thả vào đây" phải sáng ở MỌI thẻ sắp nhận, không chỉ thẻ dưới con
-  // trỏ: thả badge vào một thẻ trong vùng chọn nhiều thì cả vùng đổi, mà chỉ tô
-  // một thẻ thì hình ảnh nói sai việc sắp xảy ra.
-  // Chỉ nới cho cú kéo badge/màu. `dropTargetId` còn được cú kéo dây dùng, và ở
-  // đó đích thật sự chỉ có một thẻ.
-  function isNodeDropTarget(nodeId) {
-    if (!dropTargetId || dropTargetId.kind !== "node") return false;
-    if (dropTargetId.id === nodeId) return true;
-    if (!chipDrag && !colorDrag) return false;
-    return selectedIds.size > 1 && selectedIds.has(dropTargetId.id) && selectedIds.has(nodeId);
-  }
-
-  function handleViewportMouseDown(e) {
-    if (e.target !== viewportRef.current && e.target !== canvasRef.current) return;
-    if (linkMode) { setPendingSource(null); return; }
-    if (e.button === 2) { startPan(e); return; }
-    if (e.button !== 0) return;
-    if (e.button === 0 && spacePanRef.current) { startPan(e); return; }
-    // Nét vẽ phải xét TRƯỚC vùng quét: cú bấm nào cũng rơi xuống nền canvas
-    // (lớp vẽ không nhận chuột), nên nếu quét trước thì không bao giờ chạm được
-    // vào một nét. Nét vẽ sau cùng nằm trên, nên trúng nhiều thì lấy cái trên.
-    const p = eventToCanvas(e);
-    const hits = drawingsHitBy(board.drawings || [], p, PICK_RADIUS);
-    if (hits.length) { handleDrawingMouseDown(e, hits[hits.length - 1]); return; }
-    // Khoảng TRỐNG bên trong vùng chọn: kéo cả cụm. Trước đây chỗ này quét vùng,
-    // nghĩa là muốn dời một cụm đã gom xong thì phải nhắm cho trúng đúng một cái
-    // thẻ hay đúng một cái nét — càng nhiều thứ mảnh trong cụm thì càng khó nhắm,
-    // mà trượt một cái là mất luôn cả vùng chọn vừa gom.
-    //
-    // Ctrl vẫn đi đường quét: ở đó Ctrl nghĩa là "đang cộng dồn lựa chọn", và
-    // vùng quét mới hoàn toàn có thể bắt đầu từ bên trong vùng chọn cũ.
-    if (selBounds && !e.ctrlKey && !e.metaKey && pointInBounds(selBounds, p, SEL_GRAB_PAD / view.scale)) {
-      startSelectionDrag(e);
-      return;
-    }
-    handleMarqueeMouseDown(e);
-  }
-
-  // Mode Laser. Vệt CHỈ chạy khi đang giữ chuột trái — thả ra là không vẽ gì
-  // nữa, đúng như cầm một cây laser thật phải bấm mới sáng. Nhờ vậy di chuột
-  // qua bảng để đọc nội dung không để lại vệt nào.
-  function handleLaserMouseDown(e) {
-    // Nhường đường cho lia bảng y như .ink-capture: chuột phải và Space+trái
-    // vẫn lia được.
-    if (e.button === 2) { startPan(e); return; }
-    if (e.button === 0 && spacePanRef.current) { startPan(e); return; }
-    if (e.button !== 0) return;
-    if (!viewportRef.current || !boardRef.current) return;
-    const p = eventToCanvas(e);
-    laserDownRef.current = true;
-    laser.begin(p.x, p.y, laserPrefs);
-  }
-
-  // Cố ý KHÔNG gắn listener vào window như useInk.js làm. Ở đó bắt buộc phải
-  // gắn window vì thả chuột ngoài khung nhìn mà không nhận được `mouseup` là
-  // nét vẽ treo lại vĩnh viễn và không bao giờ được lưu. Ở đây lượt chỉ chẳng
-  // có gì để commit, mà .laser-capture lại phủ kín khung nhìn — rời khỏi nó là
-  // rời khỏi bảng, nên `onMouseLeave` đủ để đóng lượt. Đổi lại: không có
-  // listener nào sống sót ra ngoài lượt, nên không có đường nào rò như bẫy
-  // "blur giữa nét" mà useInk.js phải dựng cả một cleanupRef để chặn.
-  function handleLaserMouseMove(e) {
-    if (!laserDownRef.current) return;
-    if (!viewportRef.current || !boardRef.current) return;
-    const p = eventToCanvas(e);
-    laser.track(p.x, p.y, laserPrefs);
-  }
-
-  function handleLaserMouseUp() {
-    if (!laserDownRef.current) return;
-    laserDownRef.current = false;
-    laser.end();
-  }
-
-  function deleteSelection() {
-    const ids = selectedIds;
-    const edgeIds = selectedEdgeIds;
-    const groupIds = selectedGroupIds;
-    const drawIds = selectedDrawingIds;
-    if (ids.size === 0 && edgeIds.size === 0 && groupIds.size === 0 && drawIds.size === 0) return;
-    // Xoá khung chỉ bỏ CÁI KHUNG, thẻ bên trong ở nguyên — đúng như nút × trên
-    // khung vẫn làm. Khung là một cái vòng vẽ quanh, không phải cái hộp sở hữu
-    // thẻ; xoá nhầm mà mất luôn cả cụm ý tưởng thì quá đắt.
-    store.commit({
-      ...board,
-      nodes: board.nodes.filter((n) => !ids.has(n.id)),
-      groups: board.groups.filter((g) => !groupIds.has(g.id)),
-      drawings: (board.drawings || []).filter((d) => !drawIds.has(d.id)),
-      edges: board.edges.filter((e) => !(
-        edgeIds.has(e.id) ||
-        (ids.has(e.from) && (e.fromKind || "node") === "node") ||
-        (ids.has(e.to) && (e.toKind || "node") === "node") ||
-        (groupIds.has(e.from) && (e.fromKind || "node") === "group") ||
-        (groupIds.has(e.to) && (e.toKind || "node") === "group")
-      ))
-    });
-    clearSelection();
-  }
-
-  function applyToSelection(patch) {
-    store.commit({
-      ...board,
-      nodes: board.nodes.map((n) => (selectedIds.has(n.id) ? { ...n, ...patch } : n))
-    });
-  }
-
-  // Màu là thuộc tính duy nhất mà thẻ và khung dùng chung một bộ token, nên nó
-  // là thứ duy nhất áp được cho cả hai trong một cú bấm.
-  function applyColorToSelection(color) {
-    store.commit({
-      ...board,
-      nodes: board.nodes.map((n) => (selectedIds.has(n.id) ? { ...n, color } : n)),
-      groups: board.groups.map((g) => (selectedGroupIds.has(g.id) ? { ...g, color } : g)),
-      // Nét vẽ không có khái niệm "không màu" (một nét không màu là nét vô
-      // hình), nên ô "Không màu" bỏ qua chúng thay vì làm chúng biến mất.
-      drawings: color == null
-        ? (board.drawings || [])
-        : (board.drawings || []).map((d) => (selectedDrawingIds.has(d.id) ? { ...d, color } : d))
-    });
-  }
-
-  function tidySelection() {
-    if (selectedIds.size < 2) return;
-    const selected = board.nodes
-      .filter((n) => selectedIds.has(n.id) && !n.locked && !layoutOwners.has(edgeKey("node", n.id)))
-      .sort((a, b) => (a.y - b.y) || (a.x - b.x));       // thứ tự đọc
-    if (selected.length < 2) return;
-    const items = selected.map((n) => ({ id: n.id, ...frameCardSize(n.id) }));
-    const origin = {
-      x: Math.min(...selected.map((n) => n.x)),
-      y: Math.min(...selected.map((n) => n.y))
-    };
-    // Chỉ cạnh thẻ–thẻ mới định tầng; cạnh dính khung không nói gì về thứ tự thẻ.
-    const links = board.edges.filter(
-      (e) => (e.fromKind || "node") === "node" && (e.toKind || "node") === "node"
-    );
-    const pos = layerLayout(items, links, origin);
-    store.commit({
-      ...board,
-      nodes: board.nodes.map((n) => (pos.has(n.id) ? { ...n, ...pos.get(n.id) } : n))
-    });
-  }
 
   function exportPng() {
     const styles = getComputedStyle(document.documentElement);
@@ -1238,15 +998,6 @@ export default function IdeaMap() {
   }
 
   const anyPanelOn = PANEL_KEYS.some((k) => panels[k]);
-
-  function openColorMenu(e, kind, id) {
-    e.preventDefault();
-    e.stopPropagation();
-    if (suppressContextMenuRef.current) { suppressContextMenuRef.current = false; return; }
-    setEdgeMenu(null);
-    setCommentsFor(null);
-    setColorMenu({ kind, id, x: e.clientX, y: e.clientY });
-  }
 
   return (
     <BoardContext.Provider value={{ store, selection, camera }}>
