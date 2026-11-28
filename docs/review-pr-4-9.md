@@ -59,3 +59,45 @@ Sau khi #5–#8 đã vào `main`, diff của #9 cần đối chiếu lại. Gi�
 **Kiểm tra sau khi sửa:** trên `refactor/7.2-docs` (cây tích hợp mới nhất), `npm run verify` pass: lint 0 lỗi / 36 cảnh báo, client 802 test, build, 5 kịch bản smoke, server 213 test. Nhánh #7 riêng: client 773 test, build, smoke pass. Nhánh #5 riêng: `npm run verify` pass, server 212 test.
 
 **Vẫn chưa làm, đồng ý với review:** chưa kiểm tay #7 bằng hai phiên trình duyệt trên cùng một board với backend thật (kéo/nhích rồi tải lại, va chạm 409). Bản sửa hàng đợi lưu làm việc này càng cần thiết trước khi merge.
+
+## Cho vòng review tiếp theo
+
+**Head hiện tại** (đã push; CI `verify` pass ở cả ba PR có thay đổi):
+
+| PR | Head lần review trước | Head mới | Thay đổi so với lần trước |
+|---|---|---|---|
+| #4 | `73fb0ea` | `73fb0ea` | Không đổi |
+| #5 | `cb31b73` | `d347bec` | +1 commit: sửa `nextStatusId` của board cũ |
+| #6 | `61fd73d` | `61fd73d` | Không đổi |
+| #7 | `235d698` | `6f92f20` | +1 commit: hàng đợi lưu (cú xếp hàng và timer qua 409) |
+| #8 | `2d7c509` | `2d7c509` | Không đổi |
+| #9 | `3d197dd` | `e51cc65` | Merge bản sửa #5/#7 qua `refactor/integration-trial`; +3 commit (Vite `fs.allow`, nút Game Flow, cổng 3345); +1 commit ghi phản hồi review vào file này |
+
+**Diff cần xem cho từng bản sửa:**
+
+- #7: `git show 6f92f20` — `client/src/lib/save-queue.js`, `client/src/lib/save-queue.test.js` (3 test mới ở cuối file).
+- #5: `git show d347bec` — `server/board-fields.js`, `server/board-fields.test.js` (2 test mới ở cuối file). Trên #9 bản sửa nằm ở `shared/board-fields.js`, trong merge commit `0f143ef`.
+- #9: `git show 792893f` (Vite), `git show 9c8220a` (Game Flow + smoke), `git show 6c24c6a` (cổng).
+
+**Lệnh tái hiện:**
+
+```bash
+# #7 — test hàng đợi lưu (gồm 3 test mới)
+cd client && node --test src/lib/save-queue.test.js
+
+# #5 — test bộ đếm trạng thái
+cd server && node --test board-fields.test.js
+
+# #9 — kịch bản smoke có phép kiểm nút Game Flow
+cd client && npx vite build -c smoke.vite.config.js && SMOKE_ONLY=game-design-panels node smoke-run.mjs
+
+# Toàn bộ (từ gốc repo, trên refactor/7.2-docs)
+npm run verify
+```
+
+Phép dò `fs.allow` được chạy bằng script tạm ngoài repo, không commit. Cách làm: dựng dev server qua `createServer()` của Vite với `client/vite.config.js`, rồi `fetch` `/@fs/<repo>/fs-probe-harmless.txt` (file tạo tạm ở gốc repo) và `/@fs/<repo>/shared/ink-kinds.js`. Kết quả: 403 và 200.
+
+**Điểm nên soi kỹ ở vòng này:**
+
+- `save-queue.js`: tôi dùng `rebase(merged, next, pending)`, tức đắp delta A→B lên bản vừa ghép. Cách này giả định B được dựng từ trạng thái local đã có A. Đúng với IdeaMap, vì `prepare` đặt bản đã xếp cây lên màn hình trước khi gửi.
+- `boardPayload` giờ có thể trả `nextStatusId` khác giá trị đang lưu trong DB, cho tới lần lưu kế tiếp. Test "board shape" chỉ kiểm tập key nên vẫn pass.
