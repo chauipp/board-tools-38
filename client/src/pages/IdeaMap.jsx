@@ -29,6 +29,7 @@ import { useBoardUiState } from "../lib/useBoardUiState.js";
 import { useBoardRefs } from "../lib/useBoardRefs.js";
 import { useBoardDerived } from "../lib/useBoardDerived.js";
 import { useBoardSync } from "../lib/useBoardSync.js";
+import { usePresenceSync } from "../lib/usePresenceSync.js";
 import { remapId, remapIdSet } from "../lib/rebase.js";
 import { useCardSizes } from "../lib/card-sizes.js";
 import { startDrag } from "../lib/drag-session.js";
@@ -300,16 +301,6 @@ export default function IdeaMap() {
     return () => ro.disconnect();
   }, [board != null]);
 
-  useEffect(() => { sendSelection(Array.from(selectedIds)); }, [selectedIds, sendSelection]);
-  useEffect(() => {
-    const draft = linkDraft
-      ? { fromKind: linkDraft.fromKind || "node", fromId: linkDraft.fromId, x: linkDraft.x, y: linkDraft.y }
-      : edgeDrag
-      ? { fromKind: edgeDrag.fixedKind, fromId: edgeDrag.fixedId, x: edgeDrag.x, y: edgeDrag.y }
-      : null;
-    sendEdgeDraft(draft);
-  }, [linkDraft, edgeDrag, sendEdgeDraft]);
-
   // Đường ghi camera dành RIÊNG cho vòng bám khi ghim màn hình. Cố ý không đi
   // qua setCamera: setCamera là "người dùng chủ động đổi camera" nên nó huỷ
   // ghim, mà vòng bám cũng đổi camera — dùng chung một cửa thì vòng bám tự huỷ
@@ -331,25 +322,14 @@ export default function IdeaMap() {
   const {
     setCamera, zoomButton, goToPoint, fitToView, zoomToNodes, zoomToSelection, jumpToCard, jumpToPeer, startPan, clientToCanvas, toCanvasPoint, eventToCanvas
   } = cameraUI;
+  // Phát lựa chọn, dây đang kéo và camera (khi có người ghim) cho người khác — lib/usePresenceSync.js.
+  usePresenceSync({
+    board, view, viewportSize, selectedIds, linkDraft, edgeDrag, watcherCount, sendSelection, sendEdgeDraft, sendView
+  });
   // Đồng bộ board ↔ trạng thái làm việc riêng (camera, inspector), tải snapshot, nhảy tới ?card=, xếp lại cây khoá — lib/useBoardSync.js.
   useBoardSync({
     store, board, boardId, boardRef, roleRef, workspace, inspector, view, viewRef, setView, viewportSize, frameCardSize, saveNow, setSaveError, setSelectedIds, setFlashId, setSnapshots, setSnapshotsLoading, snapshotsOpen, pendingJumpRef, workspaceCameraRef, zoomToNodes
   });
-
-  // Chỉ phát camera khi THỰC SỰ có người đang xem. Ghim là tính năng dùng theo
-  // đợt (lúc họp), nên mặc định phải là im lặng tuyệt đối: không ai ghim thì
-  // không một gói nào rời máy, dù người dùng có cuộn cả buổi.
-  useEffect(() => {
-    if (!board || watcherCount === 0) return;
-    // Kích thước khung nhìn đi kèm camera, vì người xem cần biết mình đang thấy
-    // VÙNG nào chứ không phải pan/zoom bao nhiêu — hai màn hình khác cỡ thì hai
-    // con số đó nghĩa khác nhau (lib/follow.js).
-    if (viewportSize.w <= 0 || viewportSize.h <= 0) return;
-    sendView({
-      panX: view.panX, panY: view.panY, scale: view.scale,
-      w: viewportSize.w, h: viewportSize.h
-    });
-  }, [view, viewportSize, watcherCount, sendView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const { geomOverlay, textOverlay, sendLiveText, publishGeom, finishGeom } =
     useLiveSync(socket, boardRef, editingIdRef, lastUpdatedAtRef, applyRemoteBoard);
