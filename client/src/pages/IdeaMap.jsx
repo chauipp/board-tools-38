@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { useWorkspaceState } from "../lib/useWorkspaceState.js";
 import { useParams } from "react-router-dom";
 import { Trans, useLingui } from "@lingui/react/macro";
 import { useTheme } from "../lib/useTheme.js";
 import { useSkin } from "../lib/useSkin.js";
-import { textLines, textBox, TEXT_LINE_H } from "../lib/text-el.js";
 import TreePanel from "../components/TreePanel.jsx";
 import MiniMap from "../components/MiniMap.jsx";
 import LoadError from "../components/LoadError.jsx";
@@ -14,9 +13,6 @@ import FrameBox from "../components/FrameBox.jsx";
 import IdeaCard from "../components/IdeaCard.jsx";
 import ToolRail from "../components/ToolRail.jsx";
 import ToolOptions from "../components/ToolOptions.jsx";
-import { buildOutline } from "../lib/outline.js";
-import { gridLayout } from "../lib/layout.js";
-import { buildTree, edgeKey } from "../lib/tree-layout.js";
 import { treeLockOwners } from "../lib/locked-tree.js";
 import { useAuth } from "../context/AuthContext.jsx";
 import { usePresence } from "../lib/usePresence.js";
@@ -30,10 +26,10 @@ import { useBoardDerived } from "../lib/useBoardDerived.js";
 import { useBoardSync } from "../lib/useBoardSync.js";
 import { usePresenceSync } from "../lib/usePresenceSync.js";
 import { useViewportGestures } from "../lib/useViewportGestures.js";
+import { useEdgeLayerHandlers } from "../lib/useEdgeLayerHandlers.js";
+import { useBoardImportExport } from "../lib/useBoardImportExport.js";
 import { remapId, remapIdSet } from "../lib/rebase.js";
 import { useCardSizes } from "../lib/card-sizes.js";
-import { startDrag } from "../lib/drag-session.js";
-import { toggleId } from "../lib/selection.js";
 import { useBoardSelection } from "../lib/useBoardSelection.js";
 import { useBoardFilters } from "../lib/useBoardFilters.js";
 import { useBadgesAndPalette } from "../lib/useBadgesAndPalette.js";
@@ -52,15 +48,13 @@ import { BoardContext } from "../lib/board-context.js";
 import { useSelectionActions } from "../lib/useSelectionActions.js";
 import { useViewportInput } from "../lib/useViewportInput.js";
 import { useCameraControls } from "../lib/useCameraControls.js";
-import { drawBoardToCanvas } from "../lib/png-export.js";
 import { ERASE_PART } from "../lib/erase.js";
 import InkLayer from "../components/InkLayer.jsx";
 import { useInk } from "../lib/useInk.js";
 import { useInkLive } from "../lib/useInkLive.js";
 import { useLaser } from "../lib/useLaser.js";
-import { CARD_W, SEL_GRAB_PAD, PICK_RADIUS, MIN_SCALE, PANEL_KEYS, TREE_OPTS, EMPTY_ARRAY, EMPTY_MAP, EMPTY_SET, MAX_SCALE } from "../lib/board-constants.js";
+import { MIN_SCALE, PANEL_KEYS, MAX_SCALE } from "../lib/board-constants.js";
 import { useCamera } from "../lib/useCamera.js";
-import { normalizeGameDesignBoard } from "../lib/normalize-board.js";
 import BoardTopBar from "../components/board/BoardTopBar.jsx";
 import BoardHudBottom from "../components/board/BoardHudBottom.jsx";
 import PresenceIsland from "../components/board/PresenceIsland.jsx";
@@ -393,42 +387,13 @@ export default function IdeaMap() {
     resizeMouseDown: (e, id) => handleGroupResizeMouseDown(e, id),
     connectorMouseDown: (e, id) => handleGroupConnectorMouseDown(e, id)
   });
-  const onEdgeEnter = useMemo(() => (id) => setHoveredEdgeId(id), []);
-  const onEdgeLeave = useMemo(() => (id) => setHoveredEdgeId((cur) => (cur === id ? null : cur)), []);
-  // Chuột TRÁI trên dây = chọn, y như bấm vào thẻ: một mình nó, hoặc Ctrl để
-  // cộng dồn. Chuột PHẢI mới mở menu sửa dây — cùng luật với thẻ và khung, nên
-  // không phải nhớ riêng cho dây một kiểu bấm khác.
-  const onEdgeClick = useMemo(() => (e, id) => {
-    setColorMenu(null);
-    setCommentsFor(null);
-    setEdgeMenu(null);
-    setDesignEditId(null);
-    if (e.ctrlKey || e.metaKey) {
-      setSelectedEdgeIds((prev) => toggleId(prev, id));
-      return;
-    }
-    setSelectedEdgeIds(new Set([id]));
-    setSelectedIds(EMPTY_SET);
-    setSelectedGroupIds(EMPTY_SET);
-    setSelectedDrawingIds(EMPTY_SET);
-  }, [board?.kind]);
-
-  const onEdgeContextMenu = useMemo(() => (e, id) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setColorMenu(null);
-    setCommentsFor(null);
-    if (board?.kind === "game-design") {
-      setDesignEditId(null);
-      setSelectedEdgeIds(new Set([id]));
-      setSelectedIds(EMPTY_SET);
-      setSelectedGroupIds(EMPTY_SET);
-      setSelectedDrawingIds(EMPTY_SET);
-      setEdgeMenu(null);
-      return;
-    }
-    setEdgeMenu({ id, x: e.clientX, y: e.clientY });
-  }, [board?.kind]);
+  // Handler định danh ổn định cho lớp dây (hover, bấm chọn, chuột phải mở menu) — lib/useEdgeLayerHandlers.js.
+  const edgeLayer = useEdgeLayerHandlers({
+    board, setHoveredEdgeId, setColorMenu, setCommentsFor, setEdgeMenu, setDesignEditId, setSelectedIds, setSelectedEdgeIds, setSelectedGroupIds, setSelectedDrawingIds
+  });
+  const {
+    onEdgeEnter, onEdgeLeave, onEdgeClick, onEdgeContextMenu
+  } = edgeLayer;
 
   // Những thứ store cần mà khai báo sau board (xem lib/useBoardStore.js).
   store.bind({
@@ -449,15 +414,13 @@ export default function IdeaMap() {
       setSelectedDrawingIds((prev) => remapIdSet(prev, plan, "drawings"));
     }
   });
-
-  function openSnapshots() {
-    setSnapshotsOpen(true);
-  }
-
-  async function createSnapshot(label) {
-    const snapshot = await store.createSnapshot(label);
-    setSnapshots((current) => [snapshot, ...current].slice(0, 30));
-  }
+  // Xuất PNG, nhập JSON, nhập nhanh nhiều ý tưởng, tạo snapshot — lib/useBoardImportExport.js.
+  const io = useBoardImportExport({
+    store, board, view, setView, viewportRef, frameCardSize, theme, ioText, setIoOpen, captureText, setCaptureText, setCaptureOpen, setFocusId, setPanels, setSnapshots, setSnapshotsOpen
+  });
+  const {
+    openSnapshots, createSnapshot, exportPng, handleImportConfirm, confirmCapture, togglePanel
+  } = io;
 
   // Phím tắt toàn cục và nhích bằng phím mũi tên — lib/useBoardKeyboard.js.
   const keyboard = useBoardKeyboard({
@@ -527,75 +490,8 @@ export default function IdeaMap() {
   // của cử chỉ này khai ở đầu component cùng mọi hook khác — dưới đây đã qua
   // nhánh `if (!board) return`, gọi hook ở đây là gọi có điều kiện.
 
-  function exportPng() {
-    const styles = getComputedStyle(document.documentElement);
-    const v = (name) => styles.getPropertyValue(name).trim();
-    const theme = {
-      bg: v("--bg"), surface: v("--surface-2"), line: v("--line"),
-      ink: v("--ink"), inkDim: v("--ink-dim"), accent: v("--accent"),
-      colorOf: (token) => v(`--${token}`)
-    };
-    const canvas = drawBoardToCanvas(board, frameCardSize, theme);
-    canvas.toBlob((blob) => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = "idea-map.png"; a.click();
-      URL.revokeObjectURL(url);
-    }, "image/png");
-  }
-
-  function handleImportConfirm() {
-    try {
-      const payload = JSON.parse(ioText);
-      const parsed = payload?.format === "game-design-board-export/v1" && payload.board ? payload.board : payload;
-      if (!parsed.nodes || !parsed.edges || !parsed.view) throw new Error("bad shape");
-      if (!Array.isArray(parsed.groups)) parsed.groups = [];
-      if (typeof parsed.nextGroupId !== "number") parsed.nextGroupId = 1;
-      // `view` của bản nhập là camera, không phải nội dung: tách ra đặt riêng.
-      const { view: importedView, ...content } = parsed;
-      store.commit(normalizeGameDesignBoard(content));
-      setView(importedView);
-      setIoOpen(false);
-    } catch (e) {
-      alert(t`JSON không hợp lệ — kiểm tra lại nội dung đã dán.`);
-    }
-  }
-
-  function confirmCapture() {
-    const titles = captureText.split("\n").map((s) => s.trim()).filter(Boolean);
-    if (titles.length === 0) { setCaptureOpen(false); return; }
-    setFocusId(null);
-    const rect = viewportRef.current.getBoundingClientRect();
-    const cx = (rect.width / 2 - view.panX) / view.scale;
-    const cy = (rect.height / 2 - view.panY) / view.scale;
-    const estH = 90;
-    const cols = Math.ceil(Math.sqrt(titles.length));
-    const items = titles.map((_, i) => ({ id: i, w: CARD_W, h: estH }));
-    const gridW = cols * (CARD_W + 24) - 24;
-    const rows = Math.ceil(titles.length / cols);
-    const gridH = rows * (estH + 24) - 24;
-    const pos = gridLayout(items, { x: Math.round(cx - gridW / 2), y: Math.round(cy - gridH / 2) }, cols);
-    let nextId = board.nextNodeId;
-    const newNodes = titles.map((title, i) => ({
-      id: nextId + i,
-      title,
-      desc: "",
-      tagId: null,
-      statusId: null,
-      x: pos.get(i).x,
-      y: pos.get(i).y
-    }));
-    store.commit({ ...board, nodes: [...board.nodes, ...newNodes], nextNodeId: nextId + titles.length });
-    setCaptureOpen(false);
-    setCaptureText("");
-  }
-
   const hasNoStatus = board.nodes.some((n) => n.statusId == null);
   const hasNoTag = board.nodes.some((n) => n.tagId == null);
-
-  function togglePanel(key) {
-    setPanels((prev) => ({ ...prev, [key]: !prev[key] }));
-  }
 
   const anyPanelOn = PANEL_KEYS.some((k) => panels[k]);
 
