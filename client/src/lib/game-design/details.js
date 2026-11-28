@@ -1,3 +1,4 @@
+import { GAME_DESIGN_DETAIL_LIMITS } from "../../../../shared/game-design-limits.js";
 export function emptyGameDesignDetails() {
   return { examples: [], failureStates: [], tuningParameters: [] };
 }
@@ -21,9 +22,9 @@ function normalizeDetailItems(items, { prefix, key, fields, limit }) {
 export function normalizeGameDesignDetails(value) {
   const details = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   return {
-    examples: normalizeDetailItems(details.examples, { prefix: "example", key: "title", fields: ["title", "scenario", "expectedResult"], limit: 20 }),
-    failureStates: normalizeDetailItems(details.failureStates, { prefix: "failure", key: "condition", fields: ["condition", "playerFeedback", "recovery"], limit: 20 }),
-    tuningParameters: normalizeDetailItems(details.tuningParameters, { prefix: "tuning", key: "name", fields: ["name", "defaultValue", "min", "max", "unit", "note"], limit: 30 })
+    examples: normalizeDetailItems(details.examples, { prefix: "example", key: "title", fields: ["title", "scenario", "expectedResult"], limit: GAME_DESIGN_DETAIL_LIMITS.examples }),
+    failureStates: normalizeDetailItems(details.failureStates, { prefix: "failure", key: "condition", fields: ["condition", "playerFeedback", "recovery"], limit: GAME_DESIGN_DETAIL_LIMITS.failureStates }),
+    tuningParameters: normalizeDetailItems(details.tuningParameters, { prefix: "tuning", key: "name", fields: ["name", "defaultValue", "min", "max", "unit", "note"], limit: GAME_DESIGN_DETAIL_LIMITS.tuningParameters })
   };
 }
 

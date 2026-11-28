@@ -1,7 +1,8 @@
+import { GAME_DESIGN_REVIEW_LIMITS, REVIEW_OUTCOMES } from "../../../../shared/game-design-limits.js";
 export function emptyReview() { return { reviewer: "", date: "", outcome: "pending", comments: [] }; }
 export function normalizeReview(value) {
   const review = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-  const outcomes = new Set(["pending", "approved", "changes-requested", "rejected"]);
+  const outcomes = new Set(REVIEW_OUTCOMES);
   return {
     reviewer: typeof review.reviewer === "string" ? review.reviewer.trim() : "",
     date: typeof review.date === "string" ? review.date.trim() : "",
@@ -11,6 +12,6 @@ export function normalizeReview(value) {
       text: typeof item.text === "string" ? item.text.trim() : "",
       author: typeof item.author === "string" ? item.author.trim() : "",
       resolved: item.resolved === true
-    })).filter((item) => item.text).slice(0, 20)
+    })).filter((item) => item.text).slice(0, GAME_DESIGN_REVIEW_LIMITS.comments)
   };
 }

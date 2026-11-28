@@ -16,6 +16,7 @@
 // Field nào KHÔNG có trong payload thì bỏ qua, không coi là lỗi: findByIdAndUpdate
 // bỏ qua field undefined, nên thiếu field nghĩa là "không đổi phần này".
 
+import { RELATION_IDS } from "../../shared/game-design-limits.js";
 import { BOARD_LIST_FIELDS as LIST_FIELDS, BOARD_COUNTER_FIELDS as COUNTER_FIELDS } from "../board-fields.js";
 import {
   GAME_DESIGN_DETAIL_LIMITS,
@@ -50,7 +51,6 @@ export const BOARD_LIMITS = {
 };
 
 const BOARD_KINDS = new Set(["idea", "game-design"]);
-const RELATION_IDS = new Set(["depends-on", "unlocks", "replaces", "conflicts-with"]);
 
 // Số "dùng được": phải là number thật, không NaN, không Infinity. Chuỗi số cũng
 // bị loại — client luôn gửi number, nên chuỗi ở đây là dấu hiệu dữ liệu đã méo

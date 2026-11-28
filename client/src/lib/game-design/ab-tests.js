@@ -1,4 +1,5 @@
-const AB_TEST_STATUSES = new Set(["draft", "running", "concluded", "rejected"]);
+import { AB_TEST_STATUSES, GAME_DESIGN_AB_TEST_LIMITS } from "../../../../shared/game-design-limits.js";
+const AB_TEST_STATUSES_SET = new Set(AB_TEST_STATUSES);
 
 export function normalizeABTests(value) {
   if (!Array.isArray(value)) return [];
@@ -10,8 +11,8 @@ export function normalizeABTests(value) {
     primaryMetric: typeof item.primaryMetric === "string" ? item.primaryMetric.trim() : "",
     successCriteria: typeof item.successCriteria === "string" ? item.successCriteria.trim() : "",
     segment: typeof item.segment === "string" ? item.segment.trim() : "",
-    status: AB_TEST_STATUSES.has(item.status) ? item.status : "draft"
-  })).filter((item) => item.hypothesis).slice(0, 20);
+    status: AB_TEST_STATUSES_SET.has(item.status) ? item.status : "draft"
+  })).filter((item) => item.hypothesis).slice(0, GAME_DESIGN_AB_TEST_LIMITS.tests);
 }
 
 export function abTestProgress(node) {

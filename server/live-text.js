@@ -71,7 +71,7 @@ const MAX_MOVE_COORD = 20000;
 // cắt nghĩa là người nhận thấy nửa cụm nhúc nhích còn nửa kia đứng yên — sai
 // lệch đó khó hiểu hơn hẳn việc không thấy gì.
 // `kindAllowed` là vị từ kiểm kind, do realtime/sanitize-ink.js truyền vào — danh sách kind hợp
-// lệ là bản sao tay của SHAPE_KINDS bên client và nó phải có ĐÚNG MỘT chỗ ở.
+// lệ dựng từ shared/ink-kinds.js và nó phải có ĐÚNG MỘT chỗ ở.
 export function sanitizeLiveMoves(list, kindAllowed) {
   if (!Array.isArray(list) || !list.length || list.length > MAX_MOVE_ITEMS) return null;
   const out = [];

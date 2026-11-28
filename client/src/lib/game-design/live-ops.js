@@ -1,4 +1,5 @@
-const LIVE_OPS_STATUSES = new Set(["planned", "running", "paused", "full", "rolled-back"]);
+import { LIVE_OPS_STATUSES } from "../../../../shared/game-design-limits.js";
+const LIVE_OPS_STATUSES_SET = new Set(LIVE_OPS_STATUSES);
 
 export function emptyLiveOps() {
   return { tuningNotes: "", version: "", featureFlag: "", rolloutPercent: "", audience: "", status: "planned", rollbackPlan: "" };
@@ -11,7 +12,7 @@ export function normalizeLiveOps(value) {
   return {
     tuningNotes: text("tuningNotes"), version: text("version"), featureFlag: text("featureFlag"),
     rolloutPercent: /^(0|[1-9]\d?|100)$/.test(rolloutPercent) ? rolloutPercent : "",
-    audience: text("audience"), status: LIVE_OPS_STATUSES.has(source.status) ? source.status : "planned", rollbackPlan: text("rollbackPlan")
+    audience: text("audience"), status: LIVE_OPS_STATUSES_SET.has(source.status) ? source.status : "planned", rollbackPlan: text("rollbackPlan")
   };
 }
 

@@ -24,9 +24,11 @@
 
 import { polylineHitBy, pointInPolygon } from "./stroke.js";
 import { textHitBy } from "./text-el.js";
+// SHAPE_KINDS (mọi kind hợp lệ), SHAPE_CLOSED (hình tô được), VERTEX_NUMBERS
+// (kind nào có dạng đỉnh thật) nằm ở shared/ink-kinds.js để server dùng chung.
+import { SHAPE_KINDS, SHAPE_CLOSED, VERTEX_NUMBERS } from "../../../shared/ink-kinds.js";
 
-// MỌI kind hợp lệ, kể cả kind không vẽ trực tiếp được.
-export const SHAPE_KINDS = ["rect", "ellipse", "line", "arrow", "triangle", "diamond", "quad"];
+export { SHAPE_KINDS, SHAPE_CLOSED, VERTEX_NUMBERS };
 
 // Nút có mặt trên bảng chọn ở khu 4, theo đúng thứ tự hiện ra. Cũng là danh
 // sách mà pen.js dùng để lọc lựa chọn đã lưu trong localStorage.
@@ -51,12 +53,6 @@ export function shapeKindOf(tool) {
   return TOOL_KIND[tool] || tool;
 }
 
-// Hình có vùng trong nên tô được. Hai hình còn lại (line, arrow) là hình mở: nút
-// "cả hình" ở khu 4 bị vô hiệu khi đang chọn chúng.
-export const SHAPE_CLOSED = new Set(["rect", "ellipse", "triangle", "diamond", "quad"]);
-
-// Kind nào có dạng ĐỈNH THẬT, và bao nhiêu toạ độ. Xem ghi chú đầu file.
-export const VERTEX_NUMBERS = { triangle: 6, quad: 8 };
 
 // Số mẫu khi xấp xỉ ê-líp cho hit-test. 32 mẫu ở kích thước thường sai dưới 1
 // đơn vị canvas, và cái giá của sai số chỉ là cục gôm bắt chệch nửa pixel.

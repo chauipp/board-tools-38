@@ -11,6 +11,8 @@ export default defineConfig({
   ],
   server: {
     port: 7155,
+    // shared/ (hằng số dùng chung với server) nằm ngoài thư mục client.
+    fs: { allow: [".."] },
     proxy: {
       "/api": "http://localhost:3345",
       "/socket.io": { target: "http://localhost:3345", ws: true }

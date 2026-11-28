@@ -1,9 +1,10 @@
+import { TEAM_HANDOFF_STATUSES } from "../../../../shared/game-design-limits.js";
 export const TEAM_HANDOFF_TEAMS = [
   { id: "dev", label: "Dev", fields: ["notes"] },
   { id: "art", label: "Art", fields: ["brief", "requirements", "references", "format", "naming"] },
   { id: "audio", label: "Audio", fields: ["brief", "requirements", "references", "format", "naming"] }
 ];
-const TEAM_HANDOFF_STATUSES = new Set(["draft", "ready", "handed-off"]);
+const TEAM_HANDOFF_STATUSES_SET = new Set(TEAM_HANDOFF_STATUSES);
 
 export function emptyTeamHandoff() {
   return {
@@ -19,7 +20,7 @@ export function normalizeTeamHandoff(value) {
   return Object.fromEntries(TEAM_HANDOFF_TEAMS.map(({ id, fields }) => {
     const item = input[id] && typeof input[id] === "object" && !Array.isArray(input[id]) ? input[id] : {};
     return [id, {
-      status: TEAM_HANDOFF_STATUSES.has(item.status) ? item.status : "draft",
+      status: TEAM_HANDOFF_STATUSES_SET.has(item.status) ? item.status : "draft",
       owner: typeof item.owner === "string" ? item.owner.trim() : "",
       handedOffAt: typeof item.handedOffAt === "string" ? item.handedOffAt.trim() : "",
       ...Object.fromEntries(fields.map((field) => [field, typeof item[field] === "string" ? item[field].trim() : empty[id][field]]))
