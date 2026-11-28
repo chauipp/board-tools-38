@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import { createDragClickGuard, createMultiClick } from "./multi-click.js";
-import { useLiveSync } from "./useLiveSync.js";
 import { createWheelReader } from "./pointer-input.js";
 
 // Các ref dùng chung của bảng: nút DOM (khung nhìn, canvas, dock, ô tìm), bản
