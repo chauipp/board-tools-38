@@ -101,3 +101,16 @@ Phép dò `fs.allow` được chạy bằng script tạm ngoài repo, không com
 
 - `save-queue.js`: tôi dùng `rebase(merged, next, pending)`, tức đắp delta A→B lên bản vừa ghép. Cách này giả định B được dựng từ trạng thái local đã có A. Đúng với IdeaMap, vì `prepare` đặt bản đã xếp cây lên màn hình trước khi gửi.
 - `boardPayload` giờ có thể trả `nextStatusId` khác giá trị đang lưu trong DB, cho tới lần lưu kế tiếp. Test "board shape" chỉ kiểm tập key nên vẫn pass.
+
+## Re-review trên f0b34dc — còn lỗi mất chỉnh sửa
+
+**Chưa nên merge #5/#7.** Đã dùng hai tài khoản riêng trong hai tab sidebar, một owner và một editor, trên cùng board test với Vite, Express, Socket.IO và MongoDB local thật. Hai người thấy nhau trong danh sách online. Owner nhích thẻ A từ x=0 lên 10, editor nhích thẻ B từ y=0 lên 10 gần như đồng thời. UI từng phiên hiện đúng vị trí vừa nhích. Sau khi tải lại cả hai tab, cả hai đều thấy **A trở về x=0, B giữ y=10**. Đây là bằng chứng end-to-end về mất chỉnh sửa. Không thu trace HTTP trong lượt này nên chưa quy kết nó cho một nguyên nhân cụ thể.
+
+| Ưu tiên | Vị trí | Bằng chứng và yêu cầu sửa |
+|---|---|---|
+| P1 | #5 · `server/routes/boards.js:135` | Kiểm mốc khi đọc rồi ghi bằng ID ở câu lệnh riêng. Đã gọi handler thật với owner và editor, mock model cho hai phép đọc thấy cùng phiên bản. Cả hai nhận 200 và ghi hai nội dung khác nhau. Dùng điều kiện phiên bản ngay trong phép cập nhật MongoDB, bảo đảm phiên bản mới khác phiên bản cũ, và trả 409 kèm board mới khi điều kiện trượt. Test hai PUT đồng thời cùng mốc phải cho đúng một lần thành công trước khi retry. |
+| P1 | #7 · `client/src/lib/save-queue.js:139` | Hai người cùng tạo thẻ số 1. Lần ghép đầu chuyển thẻ local sang số 2. Bản chờ sửa thẻ local vẫn dùng số 1. Chạy queue và `rebaseBoard` thật cho kết quả thẻ số 1 của cộng tác viên bị đổi thành B, còn thẻ local số 2 giữ tên A. Cần giữ ánh xạ ID xuyên suốt các phiên bản chờ, kể cả tham chiếu. Test sau reload phải còn thẻ remote nguyên vẹn và thẻ local mang tên B. |
+| P1 | #7 · `client/src/lib/save-queue.js:74` | Với PUT A đang gửi, PUT B đang chờ và thao tác C mới hơn đang debounce, khi A retry thành công, `settleSave` gọi `saveNow(B)` rồi hủy timer của C. Đã chạy queue thật với timer điều khiển được. PUT cuối mang B, C biến mất. Phân biệt việc rút phần tử khỏi hàng đợi với việc nhận thao tác mới. Test cả trường hợp retry lẫn lưu thành công ngay. |
+| P2 | #5 · `server/routes/board-snapshots.js:74` | Bản sửa chuẩn hóa bộ đếm khi GET và khi tạo snapshot mới. Restore snapshot cũ lại dùng `pickBoardContent(normalized)`, ghi, broadcast và trả nguyên bộ đếm 9. Người dùng thêm trạng thái ngay sau restore vẫn có thể cấp trùng ID 9. Chuẩn hóa trước khi ghi restore. Test snapshot cũ qua route restore, kiểm tra phản hồi, broadcast và bản lưu đều trả 10. Phát hiện qua đọc code. |
+
+Bản sửa giới hạn Game Flow, phạm vi file Vite và cổng mặc định phù hợp với review trước. Đã kiểm trực tiếp đăng nhập và presence qua proxy Vite ở cổng 7155 với backend 3345. `npm run verify` trên cây tích hợp đạt 802 test client, cả 5 kịch bản smoke và 213 test server, lint có 36 warning. Các test queue hiện có bao phủ riêng thao tác chờ và thao tác debounce, nhưng chưa bao phủ tình huống đồng thời ở trên.
