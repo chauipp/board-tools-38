@@ -6,14 +6,11 @@ import { Trans, useLingui } from "@lingui/react/macro";
 import { listBoardSnapshots } from "../lib/api.js";
 import { useTheme } from "../lib/useTheme.js";
 import { useSkin } from "../lib/useSkin.js";
-import {
-  drawingsHitBy, drawingsInRect, moveDrawing, drawingBox,
-  shapeHandles, moveShapeHandle, HANDLE_EDGE
-} from "../lib/shape.js";
+import { drawingsHitBy, moveDrawing, drawingBox, shapeHandles, moveShapeHandle, HANDLE_EDGE } from "../lib/shape.js";
 import { textLines, textBox, TEXT_LINE_H } from "../lib/text-el.js";
 import { BADGE_PALETTE, colorVar, statusById, tagById } from "../lib/badges.js";
 import { RELATION_OPTIONS, relationDefinition, isGameDesignRelation, createRelatedGameDesignCard, duplicateGameDesignCard, exportPackage, exportVersion, normalizeGameDesignBrief, normalizeGameDesignFlow, normalizeGameDesignBalance, createGameDesignNode, dependencyAnalysis, gameDesignMarkdown } from "../lib/game-design.js";
-import { paletteCss, applyColorTo, applyColorToMany, removePaletteColor } from "../lib/palette.js";
+import { paletteCss } from "../lib/palette.js";
 import { BOARD_BGS, BOARD_GRIDS, COLOR_PACKS, isBoardBg, isBoardGrid, isColorPack } from "../lib/board-theme.js";
 import FilterPanel from "../components/FilterPanel.jsx";
 import TreePanel from "../components/TreePanel.jsx";
@@ -65,6 +62,7 @@ import { replaceIdSet, toggleId, unionIdSet } from "../lib/selection.js";
 import { rectsOverlap } from "../lib/board-geometry.js";
 import { useBoardSelection } from "../lib/useBoardSelection.js";
 import { useBoardFilters } from "../lib/useBoardFilters.js";
+import { useBadgesAndPalette } from "../lib/useBadgesAndPalette.js";
 import { readImageFile } from "../lib/image-utils.js";
 import { canAddImage, formatMB } from "../lib/image-budget.js";
 import { drawBoardToCanvas } from "../lib/png-export.js";
@@ -79,10 +77,7 @@ import LaserLayer from "../components/LaserLayer.jsx";
 import { useLaser } from "../lib/useLaser.js";
 import { loadLaserPrefs, saveLaserPrefs } from "../lib/laser.js";
 import { createWheelReader, loadWheelMode, saveWheelMode } from "../lib/pointer-input.js";
-import {
-  selectionBounds, pointInBounds, cornerPoint, anchorFor, scaleFactorFor, scaleSelection,
-  SELECTION_CORNERS
-} from "../lib/selection-box.js";
+import { pointInBounds, cornerPoint, anchorFor, scaleFactorFor, scaleSelection, SELECTION_CORNERS } from "../lib/selection-box.js";
 import { CARD_W, TEXT_DRAG_THRESHOLD, SEL_GRAB_PAD, SELECTION_DROP, PICK_RADIUS, MIN_GROUP_W, MIN_SCALE, PANEL_KEYS, TREE_OPTS, EMPTY_ARRAY, EMPTY_MAP, EMPTY_SET, MIN_GROUP_H, MAX_SCALE } from "../lib/board-constants.js";
 import { computeZoom } from "../lib/camera.js";
 import { useCamera } from "../lib/useCamera.js";
@@ -184,7 +179,6 @@ export default function IdeaMap() {
   const [isPanning, setIsPanning] = useState(false);
   const [linkDraft, setLinkDraft] = useState(null);
   const [dropTargetId, setDropTargetId] = useState(null);
-  const [chipDrag, setChipDrag] = useState(null);
   // Mặc định mở Trạng thái + Nhãn để giữ đúng hành vi cũ khi mới vào; Bảng màu
   // đóng. Trạng thái riêng của tài khoản, board và nhóm màn hình.
   const panels = useMemo(() => ({ status: workspaceState.statusOpen, tag: workspaceState.tagOpen, palette: workspaceState.paletteOpen }), [workspaceState.statusOpen, workspaceState.tagOpen, workspaceState.paletteOpen]);
@@ -226,10 +220,7 @@ export default function IdeaMap() {
   // không phải chuyện bảng đang mở.
   const [wheelMode, setWheelMode] = useState(() => loadWheelMode(window.localStorage));
   const [cardLevelPref, setCardLevelPref] = useState(() => loadCardLevel(window.localStorage));
-  const [paletteUI, setPaletteUI] = useState(null); // { mode: "create"|"edit", id?, hex, x, y } | null
-  const [colorDrag, setColorDrag] = useState(null); // { token, x, y } | null
   const [snapGuides, setSnapGuides] = useState([]);
-  const [badgeUI, setBadgeUI] = useState(null); // { mode: "create"|"edit", kind, def?, x, y }
   const [colorMenu, setColorMenu] = useState(null); // { kind: "card"|"group", id, x, y }
   const [edgeMenu, setEdgeMenu] = useState(null); // { id, x, y } | null
   const [hoveredEdgeId, setHoveredEdgeId] = useState(null);
@@ -276,6 +267,22 @@ export default function IdeaMap() {
     selectedGroupIds, setSelectedGroupIds, selectedDrawingIds, setSelectedDrawingIds,
     marquee, selectionSet, selBounds, clearSelection, selectionDragSet, handleMarqueeMouseDown
   } = selection;
+  // Badge (trạng thái/nhãn), bảng màu, nền bảng; kéo chip/màu thả vào thẻ:
+  // lib/useBadgesAndPalette.js.
+  const badges = useBadgesAndPalette({
+    store, board, role, boardRef, selBounds, setDropTargetId, setFilterStatus, setFilterTags
+  });
+  const {
+    chipDrag, colorDrag, badgeUI, setBadgeUI, paletteUI, setPaletteUI,
+    applyChipToNodes, handleChipMouseDown, openBadgeMenu, openBadgeCreate, createBadge, updateBadge, deleteBadge,
+    openPaletteEditor, setBoardBg, setBoardGrid, setBoardPack,
+    createPaletteColor, updatePaletteColor, deletePaletteColor, handleColorMouseDown
+  } = badges;
+  badges.bind({
+    dropIdsFor: (...a) => dropIdsFor(...a),
+    clientToCanvas: (...a) => clientToCanvas(...a),
+    applyColorToSelection: (...a) => applyColorToSelection(...a)
+  });
   const treeSizeRef = useRef(frameCardSize);
   treeSizeRef.current = frameCardSize;
   const layoutOwners = useMemo(
@@ -1870,53 +1877,6 @@ export default function IdeaMap() {
     return selectedIds.size > 1 && selectedIds.has(dropTargetId.id) && selectedIds.has(nodeId);
   }
 
-  function applyChipToNodes(nodeIds, kind, value) {
-    const ids = new Set(nodeIds.filter((id) => board.nodes.some((n) => n.id === id)));
-    if (ids.size === 0) return;
-    const nextVal = value === "none" ? null : Number(value);
-    const field = kind === "status" ? "statusId" : "tagId";
-    // Mọi thẻ đã đúng giá trị thì không ghi gì: một cú thả vô nghĩa không nên
-    // sinh ra một bước hoàn tác và một lượt PUT cả bảng.
-    if (!board.nodes.some((n) => ids.has(n.id) && (n[field] ?? null) !== nextVal)) return;
-    store.commit({
-      ...board,
-      nodes: board.nodes.map((n) => (ids.has(n.id) ? { ...n, [field]: nextVal } : n))
-    });
-  }
-
-  // Chip trạng thái/nhãn: click = lọc (đọc, người chỉ xem vẫn dùng được), nhưng
-  // kéo = gán badge vào thẻ và chuột phải = sửa badge, cả hai đều ghi dữ liệu.
-  // CSS không tách được ba cử chỉ trên cùng một phần tử nên chặn ở đây.
-  function handleChipMouseDown(e, kind, value) {
-    if (role === "viewer") return;
-    if (e.button !== 0) return;
-    const startX = e.clientX, startY = e.clientY;
-    let dragging = false;
-    const THRESHOLD = 5;
-
-    function targetCardIdAt(clientX, clientY) {
-      const el = document.elementFromPoint(clientX, clientY);
-      const card = el && el.closest(".idea-card");
-      return card ? Number(card.getAttribute("data-id")) : null;
-    }
-
-    const onMove = (ev) => {
-      if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
-      if (!dragging) return;
-      setChipDrag({ kind, value, x: ev.clientX, y: ev.clientY });
-      const id = targetCardIdAt(ev.clientX, ev.clientY);
-      setDropTargetId(id != null ? { id, kind: "node" } : null);
-    };
-    function onUp(ev) {
-      if (!dragging) return;
-      const targetId = targetCardIdAt(ev.clientX, ev.clientY);
-      setChipDrag(null);
-      setDropTargetId(null);
-      if (targetId !== null) applyChipToNodes(dropIdsFor("node", targetId), kind, value);
-    }
-    startDrag(e, { onMove, onEnd: onUp, release: "cancel" });
-  }
-
   function deleteNode(id) {
     store.commit({
       ...board,
@@ -3481,13 +3441,6 @@ export default function IdeaMap() {
 
   const anyPanelOn = PANEL_KEYS.some((k) => panels[k]);
 
-  function openBadgeMenu(e, kind, def) {
-    if (role === "viewer") return;
-    e.preventDefault();
-    e.stopPropagation();
-    setBadgeUI({ mode: "edit", kind, def, x: e.clientX, y: e.clientY });
-  }
-
   function openColorMenu(e, kind, id) {
     e.preventDefault();
     e.stopPropagation();
@@ -3550,160 +3503,6 @@ export default function IdeaMap() {
         ? { ...n, comments: (n.comments ?? []).filter((_, i) => i !== index) }
         : n))
     });
-  }
-
-  function openBadgeCreate(e, kind) {
-    e.preventDefault();
-    e.stopPropagation();
-    const r = e.currentTarget.getBoundingClientRect();
-    setBadgeUI({ mode: "create", kind, x: r.left, y: r.bottom + 4 });
-  }
-
-  function createBadge(kind, name, color) {
-    if (kind === "status") {
-      const id = board.nextStatusId;
-      store.commit({ ...board, statuses: [...board.statuses, { id, name, color }], nextStatusId: id + 1 });
-    } else {
-      const id = board.nextTagId;
-      store.commit({ ...board, tags: [...board.tags, { id, name, color }], nextTagId: id + 1 });
-    }
-    setBadgeUI(null);
-  }
-
-  function updateBadge(kind, id, name, color) {
-    if (kind === "status") {
-      store.commit({ ...board, statuses: board.statuses.map((s) => (s.id === id ? { ...s, name, color } : s)) });
-    } else {
-      store.commit({ ...board, tags: board.tags.map((tg) => (tg.id === id ? { ...tg, name, color } : tg)) });
-    }
-    setBadgeUI(null);
-  }
-
-  function deleteBadge(kind, id) {
-    if (kind === "status") {
-      store.commit({
-        ...board,
-        statuses: board.statuses.filter((s) => s.id !== id),
-        nodes: board.nodes.map((n) => (n.statusId === id ? { ...n, statusId: null } : n))
-      });
-      setFilterStatus((prev) => { const next = { ...prev }; delete next[String(id)]; return next; });
-    } else {
-      store.commit({
-        ...board,
-        tags: board.tags.filter((tg) => tg.id !== id),
-        nodes: board.nodes.map((n) => (n.tagId === id ? { ...n, tagId: null } : n))
-      });
-      setFilterTags((prev) => { const next = { ...prev }; delete next[String(id)]; return next; });
-    }
-    setBadgeUI(null);
-  }
-
-  function openPaletteEditor(e, entry) {
-    e.preventDefault();
-    e.stopPropagation();
-    const r = e.currentTarget.getBoundingClientRect();
-    setPaletteUI(entry
-      ? { mode: "edit", id: entry.id, hex: entry.hex, x: r.left, y: r.bottom + 6 }
-      : { mode: "create", hex: "#888888", x: r.left, y: r.bottom + 6 });
-  }
-
-  // Nền và bộ màu đi qua đúng đường lưu của mọi thay đổi board khác, nên tự có
-  // hoàn tác và tự phát realtime — không cần đường riêng.
-  function setBoardBg(next) {
-    if (board.bg === next) return;
-    store.commit({ ...board, bg: next });
-  }
-
-  function setBoardGrid(next) {
-    if ((board.grid ?? null) === next) return;
-    store.commit({ ...board, grid: next });
-  }
-
-  function setBoardPack(next) {
-    if (board.pack === next) return;
-    store.commit({ ...board, pack: next });
-  }
-
-  function createPaletteColor(hex) {
-    const id = board.nextPaletteId;
-    store.commit({ ...board, palette: [...board.palette, { id, hex }], nextPaletteId: id + 1 });
-    setPaletteUI(null);
-  }
-
-  // Popover ở lại sau khi đổi màu: sửa xong còn có thể chọn lại hoặc xoá luôn.
-  function updatePaletteColor(id, hex) {
-    store.commit({ ...board, palette: board.palette.map((c) => (c.id === id ? { ...c, hex } : c)) });
-  }
-
-  function deletePaletteColor(id) {
-    store.commit(removePaletteColor(board, id));
-    setPaletteUI(null);
-  }
-
-  function handleColorMouseDown(e, token) {
-    if (e.button !== 0) return;
-    const startX = e.clientX, startY = e.clientY;
-    let dragging = false;
-    const THRESHOLD = 5;
-
-    // Badge phải kiểm TRƯỚC thẻ: .status-pill nằm bên trong .idea-card, nếu xét
-    // thẻ trước thì thả vào pill sẽ tô thẻ chứ không đổi màu badge.
-    function colorTargetAt(clientX, clientY) {
-      const el = document.elementFromPoint(clientX, clientY);
-      if (el) {
-        const badge = el.closest("[data-badge-kind][data-badge-id]");
-        if (badge) return { kind: badge.getAttribute("data-badge-kind"), id: Number(badge.getAttribute("data-badge-id")) };
-        const card = el.closest(".idea-card[data-id]");
-        if (card) return { kind: "node", id: Number(card.getAttribute("data-id")) };
-        const edge = el.closest("[data-edge-id]");
-        if (edge) return { kind: "edge", id: Number(edge.getAttribute("data-edge-id")) };
-      }
-      // Nét bút / hình khối / chữ không có nút DOM để elementFromPoint tìm ra
-      // (cả lớp vẽ là một <svg> pointer-events: none), nên phải dò bằng hình học
-      // trên toạ độ canvas — và dò ngoài nhánh `el` ở trên, không phụ thuộc vào
-      // việc có tìm được nút DOM nào dưới con trỏ hay không. Xét SAU thẻ và dây:
-      // thả màu lên chỗ một nét vẽ nằm đè lên thẻ thì cái người ta nhắm tới gần
-      // như luôn là cái thẻ.
-      const p = clientToCanvas(clientX, clientY);
-      const hits = drawingsHitBy(boardRef.current?.drawings || [], p, PICK_RADIUS);
-      if (hits.length) return { kind: "drawing", id: hits[hits.length - 1] };
-      // Chỗ TRỐNG bên trong vùng chọn: cả cụm nhận màu. Xét CUỐI cùng, sau mọi
-      // đích cụ thể — thả trúng một cái thẻ trong vùng chọn thì vẫn đi đường cũ
-      // (dropIdsFor cũng đã tô cả vùng), còn đây là để không phải nhắm cho trúng
-      // một cái gì cả.
-      if (selBounds && pointInBounds(selBounds, p)) return { kind: "selection" };
-      return null;
-    }
-
-    const onMove = (ev) => {
-      if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > THRESHOLD) dragging = true;
-      if (!dragging) return;
-      setColorDrag({ token, x: ev.clientX, y: ev.clientY });
-      const target = colorTargetAt(ev.clientX, ev.clientY);
-      // "selection" cũng phải sáng lên: thả vào chỗ trống mà không có phản hồi
-      // nào thì người dùng không tin là nó sẽ ăn, và sẽ đi nhắm vào từng cái một
-      // — đúng cái việc mà đích này sinh ra để khỏi phải làm.
-      if (target && target.kind === "selection") setDropTargetId(SELECTION_DROP);
-      else setDropTargetId(target && target.kind === "node" ? { id: target.id, kind: "node" } : null);
-    };
-    function onUp(ev) {
-      if (!dragging) return;
-      const target = colorTargetAt(ev.clientX, ev.clientY);
-      setColorDrag(null);
-      setDropTargetId(null);
-      if (!target) return;
-      // Thả vào chỗ trống trong vùng chọn: đi đúng hàm mà menu chuột phải đang
-      // dùng cho "tô cả vùng chọn", nên hai lối vào không bao giờ cho hai kết
-      // quả khác nhau.
-      if (target.kind === "selection") { applyColorToSelection(token); return; }
-      // Badge đi đường applyColorTo như cũ — nó không thuộc vùng chọn nào.
-      if (target.kind === "node" || target.kind === "edge" || target.kind === "drawing") {
-        store.commit(applyColorToMany(board, target.kind, dropIdsFor(target.kind, target.id), token));
-      } else {
-        store.commit(applyColorTo(board, target, token));
-      }
-    }
-    startDrag(e, { onMove, onEnd: onUp, release: "cancel" });
   }
 
   // Nối lớp vỏ ổn định ở trên với bản mới nhất của từng hàm xử lý. Gán thường,
